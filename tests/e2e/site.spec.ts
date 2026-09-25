@@ -1,5 +1,6 @@
 /** Playwright end-to-end tests against a production build served on port 3100. */
 import { expect, test, type Page } from "@playwright/test";
+import { SITE_TITLE } from "../../lib/site";
 
 /**
  * Wait until client components have hydrated (the theme toggle only gets its
@@ -12,8 +13,8 @@ async function hydrated(page: Page) {
 test.describe("home", () => {
   test("lists the twelve topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle("Zach");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach");
+    await expect(page).toHaveTitle(SITE_TITLE);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
     await expect(nav.locator("a")).toHaveCount(12);
@@ -62,19 +63,19 @@ test.describe("navigation", () => {
     await page.goto("/");
     await page.getByRole("link", { name: "Physics" }).click();
     await expect(page).toHaveURL(/\/physics\/$/);
-    await expect(page).toHaveTitle("Physics - Zach");
+    await expect(page).toHaveTitle(`Physics - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Physics");
     await expect(page.locator("main nav a")).toHaveCount(3); // two sheets + the overview
     await expect(page.locator("main nav span").first()).toHaveText("00.");
 
     await page.locator("footer a", { hasText: "../" }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
   });
 
   test("sheet page renders MDX in house style and ../ returns to its topic", async ({ page }) => {
     await page.goto("/databases/postgres/");
-    await expect(page).toHaveTitle("PostgreSQL - Zach");
+    await expect(page).toHaveTitle(`PostgreSQL - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("PostgreSQL");
     await expect(page.locator("main > p").first()).toHaveText("-");
 
@@ -111,7 +112,7 @@ test.describe("navigation", () => {
 
   test("info page links back with ../", async ({ page }) => {
     await page.goto("/info/");
-    await expect(page).toHaveTitle("Info - Zach");
+    await expect(page).toHaveTitle(`Info - ${SITE_TITLE}`);
     await expect(page.getByRole("link", { name: "Sheet List" })).toHaveAttribute(
       "href",
       "/sheets/",
@@ -578,7 +579,7 @@ test.describe("typescript topic and directories", () => {
     page,
   }) => {
     await page.goto("/typescript/language/");
-    await expect(page).toHaveTitle("Language - Zach");
+    await expect(page).toHaveTitle(`Language - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Language");
     await expect(page.locator("main > p").nth(1)).toContainText("type system");
     const links = page.locator("main nav a");
@@ -598,7 +599,7 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/typescript/language/");
     await page.getByRole("link", { name: "Array methods" }).click();
     await expect(page).toHaveURL(/\/typescript\/language\/array-methods\/$/);
-    await expect(page).toHaveTitle("Array methods - Zach");
+    await expect(page).toHaveTitle(`Array methods - ${SITE_TITLE}`);
     expect(await page.locator("main h2").count()).toBeGreaterThanOrEqual(6);
     await expect(page.getByRole("navigation", { name: "Contents" })).toBeVisible();
     await expect(page.locator("main pre code[data-theme]").first()).toBeVisible();
@@ -727,7 +728,7 @@ test.describe("keyboard", () => {
     await backTo("/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
   });
 
   test("list pages are menus: arrows and j/k move a > highlight, Enter opens, hover follows", async ({
@@ -1318,5 +1319,62 @@ test.describe("responsive: desktop", () => {
     await page.goto("/databases/postgres/");
     await expect(page.locator(".toc-rail nav")).toBeVisible();
     await expect(page.getByRole("button", { name: "Table of contents" })).toBeHidden();
+  });
+});
+
+test.describe("touch edge gestures", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  /** Two quick taps at `(x, y)`. */
+  async function doubleTap(page: Page, x: number, y = 600) {
+    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(x, y);
+  }
+
+  test("left edge goes up a level; right edge re-enters the row you left", async ({ page }) => {
+    await page.goto("/typescript/language/oop/");
+    await hydrated(page);
+    await doubleTap(page, 12);
+    await expect(page).toHaveURL(/\/typescript\/language\/$/);
+    await expect(page.locator("main nav[data-menu] a[data-active]")).toHaveAttribute(
+      "href",
+      "/typescript/language/oop/",
+    );
+    await expect(page.locator(".tap-flash-left")).toBeVisible();
+    await doubleTap(page, 378);
+    await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
+  });
+
+  test("single taps, the middle of the screen and a right edge with no highlight do nothing", async ({
+    page,
+  }) => {
+    await page.goto("/typescript/language/oop/");
+    await hydrated(page);
+    await page.touchscreen.tap(12, 600);
+    await doubleTap(page, 195);
+    await doubleTap(page, 378);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
+    await expect(page.locator(".tap-flash")).toHaveCount(0);
+  });
+
+  test("a double tap on a link just follows the link", async ({ page }) => {
+    await page.goto("/typescript/language/");
+    await hydrated(page);
+    const link = page.locator("main nav[data-menu] a").first();
+    const box = (await link.boundingBox())!;
+    await doubleTap(page, box.x + 4, box.y + box.height / 2);
+    await expect(page).toHaveURL(/\/typescript\/language\/fundamentals\/$/);
+  });
+});
+
+test.describe("mouse", () => {
+  test("double-clicking a screen edge does not navigate", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto("/typescript/language/oop/");
+    await hydrated(page);
+    await page.mouse.dblclick(10, 600);
+    await page.waitForTimeout(300);
+    await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
   });
 });

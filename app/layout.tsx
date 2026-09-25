@@ -1,6 +1,7 @@
 /**
  * @file Root layout: `<html>`/`<body>`, global CSS (site + KaTeX), metadata,
- * the inline theme bootstrap script, the fixed theme toggle and the ⌘K palette.
+ * the inline theme bootstrap script, the fixed theme toggle, the ⌘K palette and
+ * the touch edge gestures.
  *
  * `suppressHydrationWarning` on `<html>` is required because the inline script
  * may add `data-theme` before React hydrates.
@@ -8,6 +9,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { SearchPalette } from "@/components/SearchPalette";
+import { TapNav } from "@/components/TapNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -29,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeToggle />
         {children}
         <SearchPalette />
+        <TapNav />
       </body>
     </html>
   );

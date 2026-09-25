@@ -37,6 +37,9 @@ export const SHORTCUT_LIST: readonly (readonly [string, string])[] = [
   ["→ l", "into the highlighted row"],
   ["↑↓ jk", "move in a list"],
   ["enter", "open"],
+  // Short enough for a 360px phone: the list is `white-space: pre`.
+  ["2×tap ◂", "up a level, left edge"],
+  ["2×tap ▸", "into the row, right edge"],
 ];
 
 /** The subset of `KeyboardEvent` the guards need; lets tests pass plain objects. */

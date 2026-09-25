@@ -4,7 +4,7 @@
  */
 
 /** Site name; shown as the home page heading and appended to every page title. */
-export const SITE_TITLE = "Zach";
+export const SITE_TITLE = "Zach's Docs";
 
 /** One-line description for search engines and link previews. */
 export const SITE_DESCRIPTION =

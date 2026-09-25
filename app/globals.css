@@ -78,6 +78,8 @@ ul {
 
 html {
   margin: 0 0 0 calc(100vw - 100%);
+  /* No double-tap-to-zoom (pinch still zooms): double taps on the screen edges are navigation. */
+  touch-action: manipulation;
   /* Anchor jumps (#heading) stop below the fixed top bar instead of under it. */
   scroll-padding-top: 4em;
   -webkit-text-size-adjust: 100%;
@@ -1158,5 +1160,43 @@ body[data-search-open] {
   a i,
   button.link i {
     border-color: var(--dot-mobile);
+  }
+}
+/* Touch edge gestures (TapNav): a brief `<` / `>` at the edge that was double-tapped. */
+.tap-flash {
+  position: fixed;
+  top: 50%;
+  z-index: 20;
+  translate: 0 -50%;
+  padding: 0.25em 0.5ch;
+  font-size: 2em;
+  line-height: 1;
+  background: var(--bg);
+  color: var(--fg);
+  pointer-events: none;
+  animation: tap-flash 400ms ease-out forwards;
+}
+
+.tap-flash-left {
+  left: 0.5ch;
+}
+
+.tap-flash-right {
+  right: 0.5ch;
+}
+
+@keyframes tap-flash {
+  from {
+    opacity: 0.9;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-flash {
+    animation: none;
   }
 }

@@ -112,6 +112,8 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `Esc` / `←` / `h` | any page but home | go up a level (`../`); `Esc` closes search first; the parent list highlights the row you left |
 | `↑` `↓` / `j` `k` | list pages | move the `>` highlight (hover works too) |
 | `Enter` / `→` / `l` | list pages | open the highlighted row: into a directory or a sheet |
+| double-tap left edge | touch, any page but home | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables) |
+| double-tap right edge | touch, list pages | same as `→`: open the highlighted row; nothing if no row is highlighted |
 
 ## Site map
 
