@@ -112,7 +112,7 @@ test.describe("navigation", () => {
   test("info page links back with ../", async ({ page }) => {
     await page.goto("/info/");
     await expect(page).toHaveTitle("Info - Zach");
-    await expect(page.getByRole("link", { name: "Cheatsheets" })).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Sheet List" })).toHaveAttribute(
       "href",
       "/sheets/",
     );
