@@ -1219,6 +1219,27 @@ for (const size of SIZES) {
       expect(scroll).toBeLessThanOrEqual(client);
     });
 
+    test("search's esc is reachable without scrolling", async ({ page }) => {
+      await page.goto("/typescript/");
+      await hydrated(page);
+      await page.keyboard.press("/");
+      await page.keyboard.type("a");
+      const esc = page.getByRole("button", { name: "Close search" });
+      await expect(esc).toBeInViewport();
+      if (size.width <= 600) {
+        // Phones: pinned top-left, where ../ sits on other pages, above the title.
+        const box = (await esc.boundingBox())!;
+        const title = (await page.locator(".search h1").boundingBox())!;
+        expect(box.y + box.height).toBeLessThanOrEqual(title.y);
+        expect(box.x).toBeLessThanOrEqual(title.x + 2);
+      }
+      // Still pinned after the results scroll.
+      await page.locator(".search").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await expect(esc).toBeInViewport();
+      await esc.click();
+      await expect(page.locator(".search")).toHaveCount(0);
+    });
+
     test("the contents menu opens, jumps to a section and closes", async ({ page }) => {
       await page.goto("/databases/postgres/");
       await hydrated(page);

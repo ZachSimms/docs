@@ -1124,6 +1124,19 @@ nav[data-menu] a,
   border-bottom-style: solid;
 }
 
+/* Phones: the on-screen keyboard and the results push the footer's `esc` out of reach, so it is
+   pinned top-left, where `../` sits on every other page (the palette covers the top bar). */
+@media (max-width: 600px) {
+  .search footer {
+    position: fixed;
+    top: 1em;
+    left: 2em;
+    z-index: 1;
+    padding: 0;
+    background: var(--bg);
+  }
+}
+
 body[data-search-open] {
   overflow: hidden;
 }
