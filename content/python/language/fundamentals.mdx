@@ -1,0 +1,803 @@
+---
+title: Fundamentals
+date: 2026-09-25
+order: 1
+---
+
+Core Python 3.14 syntax and semantics for a TypeScript developer: types, operators, control flow,
+functions, scope, exceptions, generators and type hints. Text is in [Strings](/python/language/strings/),
+classes in [OOP](/python/language/oop/), `async` in [Async & concurrency](/python/language/async-concurrency/).
+
+## Syntax
+
+| Rule | Detail |
+| :--- | :----- |
+| Blocks | `:` then an indented body (4 spaces); no braces |
+| Line breaks | one statement per line; open `(`, `[` or `{` continues a line |
+| Comments | `#`; a string literal first in a module, class or `def` is its docstring |
+| Naming | `snake_case` vars and functions, `PascalCase` classes, `UPPER_CASE` constants, `_name` = private by convention |
+| Empty body | `pass`, or `...` (Ellipsis) in stubs |
+| Declarations | none: the first assignment creates the name; `Final` marks a constant for checkers |
+| Run a file | `uv run main.py` (or `python3 main.py`); a module: `python3 -m pkg.mod` |
+| REPL | `python3`; 3.13+ has colour, multiline editing and `exit` without parens |
+
+```python title="hello.py"
+def greet(name: str, loud: bool = False) -> str:
+    """Return a greeting for `name`."""
+    msg = f"hello {name}"
+    if loud:
+        msg = msg.upper()
+    return msg
+
+
+total = (
+    1 + 2
+    + 3
+)  # brackets continue the expression
+print(greet("ada", loud=True), total)
+```
+
+## Built-in types
+
+| Type | Literals | Notes |
+| :--- | :------- | :---- |
+| `int` | `42`, `1_000_000`, `0xFF`, `0o17`, `0b101` | arbitrary precision, never overflows |
+| `float` | `3.14`, `1e-9`, `float("inf")`, `float("nan")` | IEEE 754 double, like JS `number` |
+| `complex` | `2+3j` | `.real`, `.imag` |
+| `bool` | `True`, `False` | subclass of `int`: `True + True == 2` |
+| `str` | `"a"`, `'a'`, `"""multi"""`, `r"\d"`, `f"{x}"` | immutable Unicode |
+| `bytes` | `b"\x00ab"` | immutable bytes; `bytearray` is mutable |
+| `None` | `None` | the only null; no `undefined` |
+| `list` | `[1, 2]` | mutable, ordered |
+| `tuple` | `(1, 2)`, `(1,)`, `1, 2` | immutable; the comma makes the tuple, not the parens |
+| `dict` | `{"a": 1}`, `dict(a=1)` | keeps insertion order |
+| `set` | `{1, 2}`, `set()` | `{}` is an empty **dict** |
+| `frozenset` | `frozenset({1, 2})` | immutable, hashable set |
+| `range` | `range(10)`, `range(0, 10, 2)` | lazy, half-open `[start, stop)` |
+
+| Expression | Result | Note |
+| :--------- | :----- | :--- |
+| `7 / 2` | `3.5` | `/` always returns `float` |
+| `7 // 2`, `-7 // 2` | `3`, `-4` | floor division rounds towards minus infinity |
+| `-7 % 3` | `2` | result takes the divisor's sign |
+| `2 ** 10`, `pow(2, 10, 1000)` | `1024`, `24` | power; 3-arg form is modular |
+| `divmod(7, 2)` | `(3, 1)` | quotient and remainder |
+| `round(2.5)`, `round(3.5)` | `2`, `4` | banker's rounding (half to even) |
+| `int("42")`, `float("1.5")`, `str(3)` | conversions | `"1" + 1` is a `TypeError`, no coercion |
+| `0.1 + 0.2 == 0.3` | `False` | use `math.isclose` or `decimal.Decimal` for money |
+| `type(x)`, `isinstance(x, (int, float))` | type checks | prefer `isinstance` (respects subclasses) |
+
+Assignment binds a name to an object; it never copies. `b = a` shares the list. Copy with
+`a.copy()`, `a[:]`, `list(a)`, `{**d}` (shallow) or `copy.deepcopy(a)`.
+
+## Truthiness & operators
+
+**Falsy:** `False`, `None`, `0`, `0.0`, `0j`, `""`, `b""`, `[]`, `()`, `{}`, `set()`, `range(0)`,
+and objects whose `__bool__` returns `False` or `__len__` returns `0`. Everything else is truthy.
+
+| Python | TypeScript | Note |
+| :----- | :--------- | :--- |
+| `and`, `or`, `not` | `&&`, `\|\|`, `!` | `and`/`or` return an operand, not a `bool` |
+| `x or default` | `x \|\| default` | falls back on **any** falsy value (`0`, `""`) |
+| `d if x is None else x` | `x ?? d` | there is no `??` or `?.` |
+| `a if cond else b` | `cond ? a : b` | conditional expression |
+| `==`, `!=` | `===`, `!==` | value equality via `__eq__`; `[1] == [1]` is `True` |
+| `is`, `is not` | `Object.is` | identity; use for `None`, `True`/`False` and sentinels |
+| `in`, `not in` | `includes`, `in` | item in a sequence, key in a dict, substring in a str |
+| `1 < x <= 10` | `1 < x && x <= 10` | comparisons chain; each operand evaluated once |
+| `(n := len(xs)) > 3` | none | walrus: assign inside an expression |
+| `&`, `\|`, `^`, `~`, `<<`, `>>` | same | bitwise on `int`; union/intersection on `set` |
+| `x += 1` | `x++` | no `++`/`--` |
+| `@` | none | matrix multiply (NumPy) |
+
+```python
+import re
+
+a, b = [1, 2], [1, 2]
+print(a == b, a is b)  # True False
+
+x: int | None = None
+print(x is None)  # always compare None with `is`
+
+if (m := re.search(r"(\d+)px", "width: 40px")) is not None:
+    print(int(m.group(1)))  # 40
+
+nums = [3, 8, 1]
+if (big := [n for n in nums if n > 2]) and len(big) > 1:
+    print(big)  # [3, 8]
+```
+
+## Control flow
+
+```python
+for i, name in enumerate(["ann", "bo"], start=1):
+    print(i, name)
+
+for key, value in {"x": 1, "y": 2}.items():
+    print(key, value)
+
+for n, ch in zip([1, 2], "ab", strict=True):  # raise
+    print(n, ch)                              # on length
+                                              # mismatch
+for n in range(2, 10):
+    if n % 7 == 0:
+        print("found", n)
+        break
+else:  # runs only when the loop did not `break`
+    print("none")
+
+count = 0
+while count < 3:
+    count += 1
+```
+
+| Construct | Note |
+| :-------- | :--- |
+| `if` / `elif` / `else` | no parens needed; no `switch` (use `match` or a dict) |
+| `for x in iterable` | the only `for`; use `range(n)` for counters |
+| `for ... else`, `while ... else` | `else` runs when the loop ends without `break` |
+| `break`, `continue` | as in TS; no labels |
+| `match` | structural pattern matching (3.10+), below |
+
+### `match`
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+
+def describe(obj: object) -> str:
+    match obj:
+        case None:
+            return "nothing"
+        case 0 | 1:
+            return "bit"
+        case int(n) if n < 0:
+            return "negative int"
+        case str() as s:
+            return f"string of {len(s)}"
+        case [x, y]:
+            return f"pair {x}, {y}"
+        case [first, *rest]:
+            return f"{first} and {len(rest)} more"
+        case {"type": "click", "pos": (x, y)}:
+            return f"click at {x}, {y}"
+        case Point(x=0, y=0):
+            return "origin"
+        case Point(x=px):
+            return f"point at x={px}"
+        case _:
+            return "something else"
+
+
+print(describe({"type": "click", "pos": (1, 2)}))
+```
+
+| Pattern | Matches |
+| :------ | :------ |
+| `42`, `"a"`, `None`, `True` | literal (`None` and bools compared by identity) |
+| `name` | anything, and binds it: a bare name **never** compares |
+| `_` | anything, binds nothing |
+| `Color.RED`, `mod.CONST` | dotted name: compared by value |
+| `p1 \| p2` | either pattern |
+| `[a, b, *rest]`, `(a, b)` | any sequence except `str`/`bytes` |
+| `{"k": v, **rest}` | mapping with at least those keys |
+| `Cls(a, b=p)` | `isinstance` check, then attributes (positional via `__match_args__`) |
+| `int(n)`, `str()` | type check on builtins, binding the value |
+| `p as name` | binds the whole matched value |
+| `case p if cond` | guard, checked after the pattern binds |
+
+<Note kind="warning">`case RED:` with a bare name captures everything and shadows `RED`. Use a
+dotted name like `Color.RED` to compare against a constant.</Note>
+
+## Comprehensions
+
+```python
+nums = range(10)
+evens_sq = [n * n for n in nums if n % 2 == 0]
+lengths = {w: len(w) for w in ["hi", "hey"]}
+initials = {w[0] for w in ["ann", "amy", "bo"]}
+total = sum(n * n for n in nums)  # generator: lazy
+pairs = [(r, c) for r in range(2) for c in range(3)]
+flat = [x for row in [[1], [2, 3]] for x in row]
+labels = ["even" if n % 2 == 0 else "odd" for n in nums]
+first_big = next((n for n in nums if n > 7), None)
+```
+
+| TypeScript | Python |
+| :--------- | :----- |
+| `xs.map(f)` | `[f(x) for x in xs]` |
+| `xs.filter(p)` | `[x for x in xs if p(x)]` |
+| `xs.flatMap(f)` | `[y for x in xs for y in f(x)]` |
+| `xs.find(p)` | `next((x for x in xs if p(x)), None)` |
+| `xs.some(p)`, `xs.every(p)` | `any(p(x) for x in xs)`, `all(...)` |
+| `xs.reduce(f, init)` | `functools.reduce(f, xs, init)`; usually `sum`, `max`, `min` |
+| `Object.fromEntries(pairs)` | `dict(pairs)` or a dict comprehension |
+| `xs.toSorted((a, b) => ...)` | `sorted(xs, key=lambda x: ..., reverse=True)` |
+
+Loops read left to right like nested `for` statements. A generator expression (`(...)`) is lazy and
+single-use; pass it straight into `sum`, `any`, `"".join`, `dict` without extra parens.
+
+## Unpacking
+
+```python
+a, b = 1, 2
+a, b = b, a  # swap
+first, *middle, last = [1, 2, 3, 4]  # middle == [2, 3]
+(x, y), z = (1, 2), 3
+_, value = ("key", 42)  # _ = ignored by convention
+
+base = {"a": 1, "b": 2}
+merged = {**base, "b": 3}  # like {...base, b: 3}
+union = base | {"c": 4}  # dict union (3.9+)
+combined = [*range(3), *"ab"]  # [0, 1, 2, 'a', 'b']
+
+
+def add3(a: int, b: int, c: int) -> int:
+    return a + b + c
+
+
+args = [1, 2, 3]
+kwargs = {"a": 1, "b": 2, "c": 3}
+assert add3(*args) == add3(**kwargs) == 6
+```
+
+## Functions
+
+```python
+def request(
+    url: str,
+    /,  # url is positional-only
+    method: str = "GET",
+    *,  # the rest are keyword-only
+    timeout: float = 10.0,
+    **headers: str,
+) -> str:
+    return f"{method} {url} {timeout}s {headers}"
+
+
+request("/a", "POST", timeout=5, accept="json")
+# request(url="/a")   TypeError: positional-only
+# request("/a", "GET", 5)   TypeError: keyword-only
+
+
+def total(*nums: float) -> float:  # nums: tuple
+    return sum(nums)
+
+
+by_age = sorted(
+    [("ann", 30), ("bo", 20)],
+    key=lambda u: u[1],  # one expression only
+)
+```
+
+| Parameter | Meaning |
+| :-------- | :------ |
+| `a, /` | positional-only: callers cannot pass `a=` |
+| `b` | positional or keyword |
+| `b=1` | default; evaluated **once**, when `def` runs |
+| `*args` | extra positionals as a `tuple` |
+| `*` | everything after it is keyword-only |
+| `**kwargs` | extra keywords as a `dict` |
+| `-> T` | return annotation; no `return` means `None` |
+
+### Mutable default pitfall
+
+```python
+def add_bad(item: int, bucket: list[int] = []) -> list[int]:
+    bucket.append(item)  # ❌ same list on every call
+    return bucket
+
+
+def add(
+    item: int, bucket: list[int] | None = None
+) -> list[int]:
+    bucket = [] if bucket is None else bucket
+    bucket.append(item)
+    return bucket
+
+
+add_bad(1)
+print(add_bad(2), add(2))  # [1, 2] [2]
+```
+
+## Scope & closures
+
+Name lookup is **LEGB**: Local, Enclosing function, Global (module), Built-in. Only `def`, `class`,
+lambdas and comprehensions create scopes; `if`, `for`, `with` and `try` do not, so their names survive
+the block.
+
+| Keyword | Effect |
+| :------ | :----- |
+| `global x` | assignments to `x` target the module-level name |
+| `nonlocal x` | assignments target the nearest enclosing function's `x` |
+| (none) | assigning anywhere in a function makes the name local for the **whole** body |
+
+```python
+from collections.abc import Callable
+
+hits = 0
+
+
+def bump() -> None:
+    global hits
+    hits += 1  # without `global`: UnboundLocalError
+
+
+def counter() -> Callable[[], int]:
+    n = 0
+
+    def inc() -> int:
+        nonlocal n
+        n += 1
+        return n
+
+    return inc
+
+
+c = counter()
+c(), c()  # (1, 2)
+
+late = [lambda: i for i in range(3)]
+[f() for f in late]  # [2, 2, 2]: closures see the last i
+bound = [lambda i=i: i for i in range(3)]
+[f() for f in bound]  # [0, 1, 2]
+```
+
+### Decorators
+
+`@deco` above a `def` means `f = deco(f)`. Keep the signature typed with `ParamSpec` (`**P`).
+
+```python
+import functools
+import time
+from collections.abc import Callable
+
+
+def timed[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+    @functools.wraps(fn)  # keep __name__, __doc__
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        start = time.perf_counter()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            ms = (time.perf_counter() - start) * 1000
+            print(f"{fn.__name__}: {ms:.2f} ms")
+
+    return wrapper
+
+
+@timed
+def work(n: int) -> int:
+    return sum(range(n))
+
+
+work(100_000)
+```
+
+| Built-in decorator | Use |
+| :----------------- | :-- |
+| `@functools.cache`, `@functools.lru_cache(maxsize=128)` | memoise pure functions |
+| `@dataclass` | generate `__init__`, `__repr__`, `__eq__` |
+| `@property`, `@staticmethod`, `@classmethod` | class members ([OOP](/python/language/oop/)) |
+| `@contextlib.contextmanager` | turn a generator into a `with` context manager |
+| `@typing.override`, `@typing.final` | checker-only markers |
+
+## Exceptions
+
+```python
+import json
+from pathlib import Path
+
+
+def load(path: Path) -> dict[str, object]:
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except FileNotFoundError:
+        return {}
+    except PermissionError, IsADirectoryError:  # 3.14
+        raise
+    except json.JSONDecodeError as e:
+        e.add_note(f"while loading {path}")
+        raise ValueError("bad config") from e
+    else:  # ran only if nothing was raised
+        if not isinstance(data, dict):
+            raise TypeError("expected an object")
+        return data
+    finally:  # always runs; don't `return` here
+        print("done", path)
+```
+
+| Syntax | Meaning |
+| :----- | :------ |
+| `except E as e` | catch `E` and subclasses; `e` is unbound after the block |
+| `except (A, B) as e` | several types; 3.14 allows `except A, B:` without parens when there is no `as` |
+| `except Exception` | catch everything sensible; bare `except:` also swallows `KeyboardInterrupt` |
+| `else` | runs when `try` raised nothing; keeps the `try` body small |
+| `finally` | cleanup; `return`/`break` in it now warns (3.14, PEP 765) |
+| `raise` | re-raise the current exception |
+| `raise X from e` | chain: traceback shows "direct cause" |
+| `raise X from None` | hide the original context |
+| `e.add_note("...")` | extra line in the traceback (3.11+) |
+| `with open(p) as f:` | context manager: cleanup even on error, like `using` in TS |
+
+| Built-in | Raised when |
+| :------- | :---------- |
+| `ValueError` | right type, bad value (`int("x")`) |
+| `TypeError` | wrong type (`"a" + 1`) |
+| `KeyError`, `IndexError` | missing dict key, list index out of range |
+| `AttributeError` | missing attribute |
+| `FileNotFoundError`, `PermissionError` | subclasses of `OSError` |
+| `TimeoutError` | builtin; `asyncio.timeout` raises it too |
+| `NotImplementedError` | abstract method stub |
+| `StopIteration` | iterator exhausted |
+| `KeyboardInterrupt`, `SystemExit` | derive from `BaseException`, not `Exception` |
+
+```python
+class AppError(Exception):
+    """Base class for this app's errors."""
+
+
+class NotFoundError(AppError):
+    def __init__(self, what: str) -> None:
+        super().__init__(f"{what} not found")
+        self.what = what
+```
+
+### Exception groups & `except*`
+
+Several failures at once, e.g. from `asyncio.TaskGroup`. Each `except*` clause handles its matching
+subgroup; unhandled ones propagate.
+
+```python
+def run_batch() -> None:
+    raise ExceptionGroup(
+        "batch failed",
+        [
+            ValueError("row 3"),
+            KeyError("id"),
+            ValueError("row 9"),
+        ],
+    )
+
+
+try:
+    run_batch()
+except* ValueError as eg:
+    print("bad rows:", [str(e) for e in eg.exceptions])
+except* KeyError as eg:
+    print("missing:", eg.exceptions)
+```
+
+## Iterators & generators
+
+An **iterable** has `__iter__` (list, dict, str, file, generator). An **iterator** also has `__next__`
+and raises `StopIteration` when done. Generators are iterators you write with `yield`; they are
+lazy and single-use.
+
+```python
+from collections.abc import Generator, Iterator
+from pathlib import Path
+
+
+def countdown(n: int) -> Iterator[int]:
+    while n > 0:
+        yield n
+        n -= 1
+
+
+print(list(countdown(3)))  # [3, 2, 1]
+it = iter([1, 2])
+print(next(it), next(it), next(it, None))  # 1 2 None
+
+
+def lines(path: Path) -> Iterator[str]:
+    with path.open(encoding="utf-8") as f:
+        yield from (ln.rstrip("\n") for ln in f)
+
+
+def running_avg() -> Generator[float, float]:
+    total, count = 0.0, 0
+    value = yield 0.0
+    while True:
+        total, count = total + value, count + 1
+        value = yield total / count
+
+
+avg = running_avg()
+next(avg)  # prime it
+print(avg.send(10), avg.send(20))  # 10.0 15.0
+```
+
+| `itertools` | Does |
+| :---------- | :--- |
+| `islice(it, 5)` | first 5 items of any iterator |
+| `chain(a, b)`, `chain.from_iterable(xss)` | concatenate; flatten one level |
+| `batched(it, 3)` | tuples of up to 3 (3.12+; `strict=True` 3.13+) |
+| `pairwise(xs)` | `(x0, x1), (x1, x2), ...` |
+| `groupby(xs, key)` | runs of equal keys; **sort by the key first** |
+| `accumulate(xs)` | running totals |
+| `product`, `permutations`, `combinations` | combinatorics |
+| `count()`, `cycle(xs)`, `repeat(x, n)` | infinite / repeated streams |
+| `zip_longest(a, b, fillvalue=0)` | zip to the longest input |
+| `takewhile`, `dropwhile`, `filterfalse` | predicate-driven slicing |
+
+## Type hints
+
+Annotations are not checked at runtime. Run a checker: `uvx mypy .`, `uvx pyright` or Astral's
+`uvx ty check`. Since 3.14 annotations are evaluated lazily (PEP 649), so forward references need no
+quotes.
+
+```python
+from collections.abc import Callable, Iterable, Sequence
+from typing import Literal, NotRequired, Protocol, TypedDict
+
+type UserId = int  # alias (3.12+)
+type Json = (
+    dict[str, Json] | list[Json] | str | int | float
+    | bool | None
+)
+Mode = Literal["r", "w"]
+
+
+class User(TypedDict):  # like a TS object type
+    id: UserId
+    name: str
+    email: NotRequired[str]
+
+
+class HasLen(Protocol):  # structural, like an interface
+    def __len__(self) -> int: ...
+
+
+def first[T](xs: Sequence[T]) -> T | None:
+    return xs[0] if xs else None
+
+
+def longest[S: HasLen](xs: Iterable[S]) -> S:  # bound
+    return max(xs, key=len)
+
+
+class Box[T = int]:  # type parameter default (3.13+)
+    def __init__(self, value: T) -> None:
+        self.value = value
+
+    def map[U](self, f: Callable[[T], U]) -> Box[U]:
+        return Box(f(self.value))
+
+
+u: User = {"id": 1, "name": "ann"}
+print(first([1, 2]), longest(["a", "abc"]))
+```
+
+| Annotation | Meaning |
+| :--------- | :------ |
+| `list[int]`, `dict[str, int]`, `set[str]` | built-in generics |
+| `tuple[int, str]`, `tuple[int, ...]` | fixed-length tuple, variable-length tuple |
+| `X \| None` | optional value (no `?:` shorthand) |
+| `Literal["a", "b"]` | literal union |
+| `object`, `Any` | `unknown` (must narrow), `any` (unchecked) |
+| `Callable[[int, str], bool]` | function type; `Callable[..., T]` for any args |
+| `Sequence[T]`, `Mapping[K, V]`, `Iterable[T]` | read-only parameter types from `collections.abc` |
+| `TypedDict`, `NotRequired[T]`, `ReadOnly[T]` | shape of a dict |
+| `Protocol` | structural interface |
+| `Final`, `ClassVar[T]` | constant; class-level attribute |
+| `type Alias = ...` | lazily evaluated alias; can be generic: `type Pair[T] = tuple[T, T]` |
+| `def f[T](x: T) -> T`, `class C[T]:` | generics (PEP 695) |
+| `[T: Base]`, `[T: (int, str)]`, `[T = int]` | bound, constraints, default |
+| `[**P]`, `[*Ts]` | parameter spec, variadic tuple |
+| `Self`, `Never`, `TypeIs[T]` | return-self, bottom type, custom type guard (3.13) |
+| `cast(T, x)`, `assert isinstance(x, T)` | override, or narrow at runtime |
+
+## Coming from TypeScript
+
+| TypeScript | Python |
+| :--------- | :----- |
+| `const x = 1`, `let y` | `x = 1`; `X: Final = 1` for a checked constant |
+| `null`, `undefined` | `None` |
+| `obj?.a?.b` | `getattr(obj, "a", None)`; for dicts `d.get("a", {}).get("b")` |
+| `` `Hi ${name}` `` | `f"Hi {name}"` |
+| `a === b` | `a == b`; `a is b` for identity |
+| `xs.length` | `len(xs)` |
+| `xs.push(x)`, `xs.pop()` | `xs.append(x)`, `xs.pop()` |
+| `xs.slice(1, -1)`, `xs.at(-1)` | `xs[1:-1]`, `xs[-1]` |
+| `[...a, ...b]` | `[*a, *b]` or `a + b` |
+| `{ ...a, ...b }` | `{**a, **b}` or `a \| b` |
+| `const { a, b } = obj` | `a, b = obj["a"], obj["b"]`, or a `match` mapping pattern |
+| `Object.keys/entries(o)` | `d.keys()`, `d.items()` |
+| `for (const x of xs)` | `for x in xs:` |
+| `xs.forEach((x, i) => ...)` | `for i, x in enumerate(xs):` |
+| `switch` | `match` |
+| `try { } catch (e) { }` | `try: ... except Exception as e: ...` |
+| `throw new Error("x")` | `raise ValueError("x")` |
+| `(a, b) => a + b` | `lambda a, b: a + b` (single expression) |
+| `f({ id, force: true })` | keyword arguments: `f(id=id, force=True)` |
+| `interface`, object `type` | `TypedDict`, `Protocol` or `@dataclass` |
+| `T[]`, `Record<string, T>` | `list[T]`, `dict[str, T]` |
+| `readonly T[]` | `Sequence[T]` or `tuple[T, ...]` |
+| `unknown`, `any` | `object`, `Any` |
+| `enum Color { Red }` | `class Color(enum.StrEnum): RED = "red"` |
+| `Promise.all([...])` | `asyncio.gather(...)` or `asyncio.TaskGroup` |
+| `import { x } from "./m"` | `from .m import x` |
+| `export` | module names are public unless `_prefixed`; `__all__` lists exports |
+| `JSON.parse/stringify` | `json.loads`, `json.dumps` |
+| `parseInt(s)` | `int(s)` raises `ValueError` on junk instead of `NaN` |
+| `n.toFixed(2)` | `f"{n:.2f}"` |
+| `console.log(a, b)` | `print(a, b)`; `logging` in real code |
+| `package.json`, `bun add zod` | `pyproject.toml`, `uv add pydantic` |
+| `bun run app.ts` | `uv run app.py` |
+
+## Recipes
+
+### Safe access & grouping
+When reading optional keys or bucketing records by a field.
+
+```python
+from collections import Counter, defaultdict
+
+users = [
+    {"name": "ann", "team": "a"},
+    {"name": "bo", "team": "b"},
+    {"name": "cy", "team": "a"},
+]
+role = users[0].get("role", "member")  # no KeyError
+
+by_team: defaultdict[str, list[str]] = defaultdict(list)
+for u in users:
+    by_team[u["team"]].append(u["name"])
+print(dict(by_team))  # {'a': ['ann', 'cy'], 'b': ['bo']}
+
+counts = Counter(u["team"] for u in users)
+print(counts.most_common(1))  # [('a', 2)]
+
+seen: dict[str, int] = {}
+seen.setdefault("x", 0)  # insert only if missing
+
+
+def dig(d: object, *keys: str) -> object:
+    for k in keys:
+        if not isinstance(d, dict):
+            return None
+        d = d.get(k)
+    return d
+
+
+print(dig({"a": {"b": {"c": 1}}}, "a", "b", "c"))  # 1
+```
+
+### Flatten
+When lists nest one or many levels deep.
+
+```python
+from collections.abc import Iterable, Iterator
+from itertools import chain
+
+rows = [[1, 2], [3], []]
+print(list(chain.from_iterable(rows)))  # one level
+
+type Nested = int | Iterable[Nested]
+
+
+def deep_flatten(x: Nested) -> Iterator[int]:
+    if isinstance(x, int):  # check str too if it
+        yield x             # can appear: str iterates
+    else:
+        for item in x:
+            yield from deep_flatten(item)
+
+
+print(list(deep_flatten([1, [2, [3, [4]]]])))
+```
+
+### Chunk an iterable
+When sending rows to an API or database in batches.
+
+```python
+from itertools import batched
+
+for batch in batched(range(7), 3):
+    print(batch)  # (0, 1, 2) (3, 4, 5) (6,)
+
+# strict=True raises ValueError on a short last batch
+list(batched("abcdef", 2, strict=True))
+
+xs = list(range(7))
+chunks = [xs[i : i + 3] for i in range(0, len(xs), 3)]
+```
+
+### Dedupe, keeping order
+When you need `new Set(xs)` but order matters.
+
+```python
+xs = [3, 1, 3, 2, 1]
+print(list(dict.fromkeys(xs)))  # [3, 1, 2]
+
+users = [{"id": 1}, {"id": 2}, {"id": 1}]
+unique = list({u["id"]: u for u in users}.values())
+```
+
+### Main guard & CLI entry point
+When a module should run as a script and install as a command.
+
+```python title="src/mytool/cli.py"
+import argparse
+import sys
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="mytool")
+    p.add_argument("path")
+    p.add_argument("-n", "--count", type=int, default=1)
+    p.add_argument("-v", "--verbose", action="store_true")
+    args = p.parse_args(argv)
+    for _ in range(args.count):
+        print(args.path)
+    return 0
+
+
+if __name__ == "__main__":  # not run on import
+    sys.exit(main())
+```
+
+```toml title="pyproject.toml"
+[project.scripts]
+mytool = "mytool.cli:main"  # then: uv run mytool a.txt
+```
+
+### Retry decorator with backoff
+When a flaky call (network, lock) should be retried a few times with jittered delays.
+
+```python
+import functools
+import random
+import time
+from collections.abc import Callable
+
+
+def retry[**P, R](
+    times: int = 3,
+    base: float = 0.2,
+    on: tuple[type[Exception], ...] = (Exception,),
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def deco(fn: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(fn)
+        def wrapper(*a: P.args, **kw: P.kwargs) -> R:
+            for attempt in range(1, times + 1):
+                try:
+                    return fn(*a, **kw)
+                except on:
+                    if attempt == times:
+                        raise
+                    cap = base * 2 ** (attempt - 1)
+                    time.sleep(random.uniform(0, cap))
+            raise AssertionError("unreachable")
+
+        return wrapper
+
+    return deco
+
+
+@retry(times=5, on=(ConnectionError, TimeoutError))
+def fetch_status() -> int:
+    return 200
+```
+
+## References
+
+- [Python docs: The Python tutorial](https://docs.python.org/3.14/tutorial/index.html): the official walkthrough
+- [Python docs: Compound statements](https://docs.python.org/3.14/reference/compound_stmts.html): `if`, `for`, `try`, `with`, `match`, `def`, type params
+- [Python docs: Built-in types](https://docs.python.org/3.14/library/stdtypes.html): truthiness, numbers, sequences, dicts, sets
+- [Python docs: Execution model](https://docs.python.org/3.14/reference/executionmodel.html): scopes, `global`, `nonlocal`
+- [Python docs: Built-in exceptions](https://docs.python.org/3.14/library/exceptions.html): hierarchy, groups, notes
+- [Python docs: itertools](https://docs.python.org/3.14/library/itertools.html): iterator building blocks and recipes
+- [Python docs: typing](https://docs.python.org/3.14/library/typing.html): every typing construct
+- [Python docs: What's new in 3.14](https://docs.python.org/3.14/whatsnew/3.14.html): lazy annotations, `except A, B`, t-strings
+- [PEP 636: Structural pattern matching tutorial](https://peps.python.org/pep-0636/): `match` by example
+- [PEP 695: Type parameter syntax](https://peps.python.org/pep-0695/): `def f[T]`, `class C[T]`, `type`
+- [typing.python.org: Typing docs](https://typing.python.org/en/latest/): the spec and guides shared by all checkers

@@ -713,6 +713,45 @@ swap it; see [Testing](/typescript/testing/#mocking-the-network).
 
 JSON with Zod is in [Validating responses](#validating-responses), download progress in [Download progress](#download-progress), and a full wrapper in [A typed API client](#a-typed-api-client). For many requests at once, use the pool in [Async & Promises](/typescript/language/async-promises/#limited-concurrency-pool).
 
+### fetch() boilerplate
+
+A starting point for JSON calls: a timeout, a status check (`fetch` only rejects on network errors) and a typed result.
+
+```ts
+const TIMEOUT_MS = 10_000;
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`GET ${url}: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+async function postJson<T>(
+  url: string,
+  body: unknown,
+): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`POST ${url}: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+type User = { id: string; name: string };
+const user = await getJson<User>("/api/users/1");
+const made = await postJson<User>("/api/users", {
+  name: "Ada",
+});
+```
+
+`as T` trusts the server. Validate with a schema when the data matters ([Validating responses](#validating-responses)).
+
 ### Download a response as a file
 
 When the file needs an auth header, so a plain `<a href download>` link won't work.

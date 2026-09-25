@@ -37,7 +37,7 @@ const TOPICS: Readonly<Record<string, Layout>> = {
     ],
     directories: {
       language: ["fundamentals", "objects", "array-methods", "string-methods", "oop", "async-promises"],
-      "design-architecture": ["design-patterns", "modules-packages"],
+      "design-architecture": ["design-patterns", "software-architecture", "modules-packages"],
       "runtime-tooling": ["bun", "node", "pnpm-monorepos"],
       frontend: ["dom", "events", "forms"],
       react: ["react", "react-hooks", "typescript-react", "zustand", "tanstack-query", "next-js"],
@@ -66,16 +66,37 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       backend: ["hono", "file-io", "streaming", "websockets", "authentication"],
     },
   },
-  databases: { entries: ["postgres", "db-design"], directories: {} },
+  databases: { entries: ["postgres", "db-design", "drizzle"], directories: {} },
   infrastructure: {
-    entries: ["linux/", "containers/", "kubernetes/", "grafana", "communication-networks"],
+    entries: [
+      "linux/",
+      "containers/",
+      "kubernetes/",
+      "ansible",
+      "grafana",
+      "communication-networks",
+      "system-design",
+    ],
     directories: {
       linux: ["sysadmin", "ssh-keys-certs"],
       containers: ["docker", "dockerfile"],
       kubernetes: ["kubernetes", "helm"],
     },
   },
+  physics: { entries: ["fundamentals", "numerical-weather-modeling", "overview"], directories: {} },
+  "ml-ai": { entries: ["scikit-learn", "pytorch", "overview"], directories: {} },
+  python: {
+    entries: ["language/", "engineering/", "data/", "fastapi", "overview"],
+    directories: {
+      language: ["fundamentals", "strings", "datetime", "oop", "async-concurrency", "std-library"],
+      engineering: ["packages", "testing", "design-patterns"],
+      data: ["numpy", "pandas"],
+    },
+  },
 };
+
+/** Loose entry that is a topic's coming-soon page, not a reference sheet (checked further down). */
+const OVERVIEW = "overview";
 
 /** Design sheets checked for sections and line length (the topic also holds the Demo sheet). */
 const DESIGN_DIRECTORIES: Readonly<Record<string, readonly string[]>> = {
@@ -83,7 +104,10 @@ const DESIGN_DIRECTORIES: Readonly<Record<string, readonly string[]>> = {
   css: ["css", "tailwind", "animation"],
 };
 
-/** Sheets that promise a `## Recipes` section of quick copy-paste snippets. */
+/**
+ * Sheets that promise a `## Recipes` section of quick copy-paste snippets: a bare slug
+ * matches that slug in any topic, a `topic/group/slug` label matches one sheet.
+ */
 const WITH_RECIPES: ReadonlySet<string> = new Set([
   "oop",
   "async-promises",
@@ -117,7 +141,34 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "storage-indexeddb",
   "web-workers",
   "service-workers",
+  "drizzle",
+  "ansible",
+  "software-architecture",
+  "fastapi",
+  "numpy",
+  "pandas",
+  "scikit-learn",
+  "pytorch",
+  "python/language/fundamentals",
+  "strings",
+  "datetime",
+  "async-concurrency",
+  "std-library",
+  "packages",
+  "python/engineering/design-patterns",
 ]);
+
+/** Visual components or live demos each design sheet must use at least this many times. */
+const DESIGN_VISUALS: Readonly<Record<string, number>> = {
+  "ux-ui": 3,
+  "color-theory": 3,
+  css: 3,
+  animation: 3,
+  tailwind: 1,
+};
+
+/** A visual in MDX source: a colour component, a diagram or a live demo fence. */
+const VISUAL = /^(?:<(?:Swatches|Scale|Contrast|Diagram)\b|```html [^\n]*\bdemo\b)/gm;
 
 /** Each sheet's `##` sections are its subpages; fewer than this is a stub. */
 const MIN_SECTIONS = 6;
@@ -166,7 +217,9 @@ function sheetsOf(topic: string, layout: Layout): SheetRef[] {
     ...Object.entries(layout.directories).flatMap(([group, slugs]) =>
       slugs.map((slug) => ({ topic, group, slug })),
     ),
-    ...layout.entries.filter((e) => !e.endsWith("/")).map((slug) => ({ topic, slug })),
+    ...layout.entries
+      .filter((e) => !e.endsWith("/") && e !== OVERVIEW)
+      .map((slug) => ({ topic, slug })),
   ];
 }
 
@@ -212,6 +265,14 @@ describe("content/design", () => {
     it(`${group}/ holds its sheets in order`, () => {
       expect(listGroupSheets("design", group).map((s) => s.slug)).toEqual([...slugs]);
     });
+
+    for (const slug of slugs) {
+      const min = DESIGN_VISUALS[slug] ?? 0;
+      it(`${group}/${slug} has at least ${min} visuals`, () => {
+        const body = readSheetBody({ topic: "design", group, slug });
+        expect(body.match(VISUAL)?.length ?? 0).toBeGreaterThanOrEqual(min);
+      });
+    }
   }
 });
 
@@ -223,7 +284,9 @@ describe("every reference sheet", () => {
         .map((e) => e.text);
       expect(sections.length).toBeGreaterThanOrEqual(MIN_SECTIONS);
       expect(sections.at(-1)).toBe("References");
-      if (WITH_RECIPES.has(sheet.slug)) expect(sections.at(-2)).toBe("Recipes");
+      if (WITH_RECIPES.has(sheet.slug) || WITH_RECIPES.has(label(sheet))) {
+        expect(sections.at(-2)).toBe("Recipes");
+      }
     });
 
     it(`${label(sheet)} keeps code lines and file trees within ${MAX_CODE_LINE} characters`, () => {

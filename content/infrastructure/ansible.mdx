@@ -1,0 +1,923 @@
+---
+title: Ansible
+date: 2026-09-25
+order: 4
+---
+
+Agentless configuration management over SSH: inventory, playbooks, modules, roles, vault
+and testing. Targets ansible-core 2.21 (Python 3.12+ on the control node, 3.9+ on targets)
+and the Ansible 14 community package. Server basics live in
+[Linux sysadmin](/infrastructure/linux/sysadmin/), keys in
+[SSH keys & certs](/infrastructure/linux/ssh-keys-certs/).
+
+## Install & ansible.cfg
+
+| Package | Contains | Install |
+| :------ | :------- | :------ |
+| `ansible-core` 2.21 | engine, CLI tools, `ansible.builtin` | `uv tool install ansible-core` |
+| `ansible` 14.x | ansible-core 2.21 + ~80 curated collections | `uv tool install --with-executables-from ansible-core ansible` |
+| `ansible-lint` 26.x | linter, rules, autofix | `uv tool install ansible-lint` |
+| `molecule` 26.x | role/playbook test harness | `uv tool install molecule` |
+
+```sh
+uv tool install ansible-core  # or: pipx install ansible-core
+uvx --from ansible-core ansible --version  # no install
+ansible-galaxy collection install community.general
+ansible-galaxy collection install -r requirements.yml
+ansible-galaxy collection list
+ansible-doc ansible.builtin.copy   # docs + examples
+ansible-doc -l community.docker    # list a collection
+```
+
+```yaml title="requirements.yml"
+collections:
+  - name: community.general
+    version: ">=13.0.0"
+  - name: community.docker
+  - name: ansible.posix
+roles:
+  - name: geerlingguy.docker
+```
+
+### ansible.cfg
+
+Lookup order, first found wins: `ANSIBLE_CONFIG` env, `./ansible.cfg`, `~/.ansible.cfg`,
+`/etc/ansible/ansible.cfg`. Ansible ignores `./ansible.cfg` in a world-writable directory.
+
+```ini title="ansible.cfg"
+[defaults]
+inventory = inventory/
+roles_path = roles
+collections_path = ./collections
+remote_user = deploy
+host_key_checking = True
+forks = 20
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+vault_password_file = ~/.vault_pass
+interpreter_python = auto_silent
+retry_files_enabled = False
+
+[privilege_escalation]
+become = True
+become_method = sudo
+
+[ssh_connection]
+pipelining = True
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+```
+
+`ansible-config dump --only-changed` shows what you overrode; `ansible-config init
+--disabled > ansible.cfg` writes a commented template.
+
+## Concepts
+
+| Term | Meaning |
+| :--- | :------ |
+| Control node | machine running `ansible*` (needs Python; not Windows) |
+| Managed node | target host; needs SSH + Python, no agent |
+| Inventory | hosts and groups, with variables |
+| Module | unit of work shipped to the host and run there (`ansible.builtin.copy`) |
+| Task | one module call with arguments |
+| Play | maps a host pattern to tasks, vars, roles |
+| Playbook | YAML file with one or more plays, run top to bottom |
+| Role | reusable bundle of tasks, handlers, templates, defaults |
+| Collection | distributable namespace of modules, plugins, roles (`community.docker`) |
+| Handler | task run once at the end of a play, only if notified by a change |
+| Fact | host data gathered by `setup` (`ansible_facts`) |
+| FQCN | fully qualified collection name: `namespace.collection.module` |
+
+A task reports `ok` (already in state), `changed`, `failed`, `skipped` or `unreachable`.
+Plays run each task on all hosts in parallel (`forks`) before the next task
+(`strategy: linear`).
+
+## Inventory
+
+```ini title="inventory/hosts.ini"
+[web]
+web1.example.com
+web[2:4].example.com ansible_user=ubuntu
+
+[db]
+db1 ansible_host=10.0.0.21 ansible_port=2222
+
+[prod:children]
+web
+db
+
+[prod:vars]
+env=prod
+```
+
+```yaml title="inventory/hosts.yml"
+all:
+  children:
+    web:
+      hosts:
+        web1.example.com:
+        web2.example.com:
+          http_port: 8080
+    db:
+      hosts:
+        db1:
+          ansible_host: 10.0.0.21
+    prod:
+      children:
+        web:
+        db:
+      vars:
+        env: prod
+```
+
+```tree title="inventory directory"
+inventory/
+  hosts.yml
+  group_vars/
+    all.yml         # every host
+    web.yml         # group "web"
+    prod/
+      vars.yml
+      vault.yml     # encrypted
+  host_vars/
+    db1.yml         # one host
+```
+
+| Connection var | Purpose |
+| :------------- | :------ |
+| `ansible_host` | address to connect to (alias stays the inventory name) |
+| `ansible_port` / `ansible_user` | SSH port / login user |
+| `ansible_ssh_private_key_file` | key for this host |
+| `ansible_become` / `ansible_become_user` | escalate, and to whom |
+| `ansible_python_interpreter` | e.g. `/usr/bin/python3` |
+| `ansible_connection` | `ssh` (default), `local`, `community.docker.docker` |
+
+Built-in groups: `all` and `ungrouped`. `localhost` is implicit.
+
+```sh
+ansible-inventory -i inventory/ --graph
+ansible-inventory -i inventory/ --host web1.example.com
+ansible-inventory -i inventory/ --list -y
+```
+
+### Patterns and dynamic inventory
+
+| Pattern | Hosts |
+| :------ | :---- |
+| `web:db` | union |
+| `prod:&web` | intersection |
+| `web:!web1*` | exclusion |
+| `~web[0-9]+` | regex |
+| `web[0]`, `web[1:]` | index / slice within a group |
+
+Dynamic inventory is an inventory plugin configured by a YAML file whose name ends in
+the plugin's suffix, e.g. `aws_ec2.yml` (`amazon.aws.aws_ec2`), `hcloud.yml`,
+`gcp_compute.yml`, or `community.docker.docker_containers`.
+
+```yaml title="inventory/aws_ec2.yml"
+plugin: amazon.aws.aws_ec2
+regions: [eu-west-1]
+filters:
+  tag:Env: prod
+keyed_groups:
+  - key: tags.Role
+    prefix: role
+hostnames: [private-ip-address]
+```
+
+## Ad-hoc commands
+
+`ansible <pattern> -m <module> -a <args>` for one-off tasks.
+
+```sh
+ansible all -m ansible.builtin.ping
+ansible web -a "uptime"                  # default: command
+ansible web -m ansible.builtin.shell -a "df -h | grep /$"
+ansible db -b -m ansible.builtin.apt \
+  -a "name=htop state=present update_cache=true"
+ansible web -b -m ansible.builtin.service \
+  -a "name=nginx state=restarted"
+ansible all -m ansible.builtin.setup \
+  -a "filter=ansible_distribution*"
+ansible web -m ansible.builtin.copy \
+  -a "src=motd dest=/etc/motd" -b --check --diff
+ansible 'web:!web1*' -f 50 -a "systemctl is-active app"
+```
+
+| Flag | Meaning |
+| :--- | :------ |
+| `-i PATH` | inventory file/dir (repeatable) |
+| `-m` / `-a` | module / its arguments |
+| `-b`, `-K` | become (sudo), ask become password |
+| `-u USER`, `-k` | remote user, ask SSH password |
+| `-f N` | forks (parallel hosts) |
+| `-l PATTERN` | limit further |
+| `-e k=v` / `-e @file.yml` | extra vars (highest precedence) |
+| `-C`, `-D` | check mode, diff |
+| `-v` … `-vvvv` | verbosity (`-vvv` shows SSH) |
+
+## Playbooks
+
+```yaml title="site.yml"
+- name: Configure web servers
+  hosts: web
+  become: true
+  gather_facts: true
+  vars:
+    app_port: 3000
+  vars_files:
+    - vars/common.yml
+
+  pre_tasks:
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - common
+    - role: nginx
+      vars:
+        nginx_port: 80
+
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        name: [git, curl]
+        state: present
+
+    - name: Write nginx config
+      ansible.builtin.template:
+        src: site.conf.j2
+        dest: /etc/nginx/sites-enabled/app.conf
+        mode: "0644"
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+```
+
+Order inside a play: `pre_tasks`, their handlers, `roles`, `tasks`, handlers,
+`post_tasks`, handlers.
+
+| Play keyword | Purpose |
+| :----------- | :------ |
+| `hosts` | pattern to target |
+| `become` / `become_user` | sudo, and as whom |
+| `gather_facts` | run `setup` first (default true) |
+| `serial` | batch size for rolling runs (`2`, `"25%"`, `[1, 5, "50%"]`) |
+| `max_fail_percentage` | abort the batch run past this failure rate |
+| `any_errors_fatal` | one failure stops all hosts |
+| `strategy` | `linear` (default) or `free` |
+| `environment` | env vars for tasks |
+| `import_playbook` | top-level: include another playbook file |
+
+### Handlers
+
+```yaml
+tasks:
+  - name: Update app config
+    ansible.builtin.template:
+      src: app.env.j2
+      dest: /etc/app/app.env
+      mode: "0640"
+    notify:
+      - Restart app
+
+  - name: Flush now, not at end of play
+    ansible.builtin.meta: flush_handlers
+
+handlers:
+  - name: Restart app
+    ansible.builtin.systemd_service:
+      name: app
+      state: restarted
+      daemon_reload: true
+    listen: app changed   # notify "app changed" works too
+```
+
+A handler runs once per play however often it is notified, in the order handlers are
+**defined**. A failed task later in the play skips pending handlers unless
+`--force-handlers` or `force_handlers: true`.
+
+### import vs include
+
+| | `import_*` (static) | `include_*` (dynamic) |
+| :- | :------------------ | :-------------------- |
+| When resolved | parse time | run time |
+| Loops | no | yes |
+| Tags / `when` | applied to every imported task | applied to the include itself |
+| `--list-tasks` sees tasks | yes | no |
+| Forms | `import_tasks`, `import_role`, `import_playbook` | `include_tasks`, `include_role`, `include_vars` |
+
+## Common modules
+
+Always write the FQCN (`ansible.builtin.copy`, not `copy`); `ansible-lint` enforces it.
+
+| Module | Use |
+| :----- | :-- |
+| `ansible.builtin.package` | distro-agnostic install |
+| `ansible.builtin.apt` / `dnf` | Debian/Ubuntu / Fedora-RHEL packages, cache, upgrades |
+| `ansible.builtin.deb822_repository` | add an apt repo with its signing key |
+| `ansible.builtin.copy` | push a file or inline `content` |
+| `ansible.builtin.template` | render a Jinja2 `.j2` file onto the host |
+| `ansible.builtin.file` | dirs, symlinks, perms, `state: absent` |
+| `ansible.builtin.lineinfile` | ensure one line (regexp replace) |
+| `ansible.builtin.blockinfile` | ensure a marked block of lines |
+| `ansible.builtin.systemd_service` | start/stop/enable units, `daemon_reload` |
+| `ansible.builtin.service` | init-agnostic service control |
+| `ansible.builtin.user` / `group` | accounts, groups, shells |
+| `ansible.builtin.command` | run a binary, no shell features |
+| `ansible.builtin.shell` | run through `/bin/sh` (pipes, redirects, globs) |
+| `ansible.builtin.uri` | HTTP calls, health checks |
+| `ansible.builtin.get_url` | download a file (with `checksum`) |
+| `ansible.builtin.unarchive` | extract tar/zip, optionally from a URL |
+| `ansible.builtin.git` | clone/checkout a repo at a `version` |
+| `ansible.builtin.cron` | manage crontab entries |
+| `ansible.builtin.stat` | inspect a path (register and test) |
+| `ansible.builtin.wait_for` | wait for a port or file |
+| `ansible.builtin.debug` / `assert` / `fail` | print, check, abort |
+| `ansible.builtin.set_fact` | define vars at run time |
+| `ansible.posix.authorized_key` | manage `authorized_keys` |
+| `ansible.posix.sysctl` / `mount` | kernel params / fstab mounts |
+| `community.general.ufw` | Ubuntu firewall |
+| `community.docker.docker_compose_v2` | `docker compose up/down` for a project |
+| `community.docker.docker_container` | one container |
+
+### command vs shell
+
+`command` is safer (no shell injection, no globbing); use `shell` only for shell
+features. Neither is idempotent by itself: add `creates`, `removes` or `changed_when`.
+
+```yaml
+- name: Initialise database once
+  ansible.builtin.command:
+    cmd: /opt/app/bin/migrate --init
+    creates: /var/lib/app/.initialised
+
+- name: Probe without reporting a change
+  ansible.builtin.command:
+    cmd: grep -q '^FEATURE_X=1' /etc/app/app.env
+  register: feature_x
+  changed_when: false
+  failed_when: feature_x.rc not in [0, 1]
+```
+
+## Variables & facts
+
+Precedence, simplified (low to high; later wins):
+
+| # | Source |
+| :- | :----- |
+| 1 | role `defaults/main.yml` |
+| 2 | inventory `group_vars/all`, then `group_vars/<group>` |
+| 3 | inventory `host_vars/<host>` and host vars in the inventory file |
+| 4 | gathered facts |
+| 5 | play `vars`, `vars_prompt`, `vars_files` |
+| 6 | role `vars/main.yml` |
+| 7 | block `vars`, then task `vars` |
+| 8 | `include_vars`, `set_fact`, `register` |
+| 9 | role params (`- role: x` with `vars`), include params |
+| 10 | extra vars `-e` (always win) |
+
+Put tunables in role `defaults`, environment-specific values in `group_vars`, and keep
+role `vars` for constants.
+
+| Special var | Holds |
+| :---------- | :---- |
+| `inventory_hostname` | host name as in inventory |
+| `ansible_facts` | gathered facts dict |
+| `hostvars['db1']` | another host's vars and facts |
+| `groups['web']` | host names in a group |
+| `group_names` | groups this host is in |
+| `ansible_play_hosts` | hosts still active in the play |
+| `ansible_check_mode` | true under `--check` |
+| `role_path` / `playbook_dir` | current role dir / playbook dir |
+
+```yaml
+- name: Show facts
+  ansible.builtin.debug:
+    msg: >-
+      {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }},
+      {{ ansible_facts['memtotal_mb'] }} MB,
+      {{ ansible_facts['default_ipv4']['address'] }}
+```
+
+<Note kind="warning">Read facts through `ansible_facts['x']`. Top-level `ansible_x` fact
+vars (`INJECT_FACTS_AS_VARS`) are deprecated in 2.20 and default off in 2.24.</Note>
+
+## Jinja2 templating
+
+`{{ expr }}` outputs, `{% stmt %}` controls, `{# #}` comments. A YAML value that starts
+with `{{` must be quoted. Since 2.19 templating is native-typed, conditionals must return
+booleans, and nesting `{{ }}` inside `when`/`that` is an error.
+
+```jinja title="templates/app.env.j2"
+{{ ansible_managed | comment }}
+PORT={{ app_port }}
+NODE_ENV={{ env | default('production') }}
+DB_HOSTS={{ groups['db'] | map('extract', hostvars,
+  'ansible_host') | join(',') }}
+{% for key, value in app_env | dictsort %}
+{{ key | upper }}={{ value }}
+{% endfor %}
+{% if enable_debug | bool %}
+LOG_LEVEL=debug
+{% endif %}
+```
+
+| Filter | Example | Result |
+| :----- | :------ | :----- |
+| `default` | `x \| default('a')` | fallback if undefined |
+| `default(omit)` | `mode: "{{ m \| default(omit) }}"` | drop the argument |
+| `mandatory` | `x \| mandatory` | fail if undefined |
+| `bool` / `int` / `string` | `"yes" \| bool` | type conversion |
+| `to_json` / `to_nice_yaml` | `cfg \| to_nice_yaml` | serialise |
+| `from_json` / `from_yaml` | `out.stdout \| from_json` | parse |
+| `map` / `select` / `reject` | `users \| map(attribute='name')` | transform lists |
+| `selectattr` | `users \| selectattr('admin')` | filter by attribute |
+| `combine` | `a \| combine(b, recursive=true)` | merge dicts |
+| `dict2items` / `items2dict` | `d \| dict2items` | dict to `key`/`value` list |
+| `regex_replace` | `s \| regex_replace('^v', '')` | regex substitution |
+| `password_hash` | `pw \| password_hash('sha512')` | hash for `user` |
+| `b64encode` / `hash` | `s \| hash('sha256')` | encode / digest |
+| `ternary` | `ok \| ternary('up', 'down')` | inline if |
+| `ansible.utils.ipaddr` | `cidr \| ansible.utils.ipaddr('network')` | IP maths (ansible.utils) |
+
+| Lookup | Reads |
+| :----- | :---- |
+| `lookup('file', 'x.pub')` | a file on the control node |
+| `lookup('env', 'HOME')` | control-node env var |
+| `lookup('template', 'x.j2')` | rendered template as string |
+| `lookup('password', 'creds/db length=32')` | generate and store a secret |
+| `query('fileglob', 'files/*.conf')` | list of matches |
+
+## Conditionals, loops & register
+
+```yaml
+- name: Only on Ubuntu 24.04+
+  ansible.builtin.apt:
+    name: needrestart
+  when:
+    - ansible_facts['distribution'] == 'Ubuntu'
+    - >-
+      ansible_facts['distribution_version']
+      is version('24.04', '>=')
+
+- name: Create users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ item.groups | default([]) }}"
+    append: true
+  loop: "{{ users }}"
+  loop_control:
+    label: "{{ item.name }}"   # shorter output
+
+- name: Check health endpoint
+  ansible.builtin.uri:
+    url: http://localhost:3000/health
+  register: health
+  until: health.status == 200
+  retries: 10
+  delay: 3
+
+- name: Fail with context
+  ansible.builtin.fail:
+    msg: "unhealthy: {{ health.status }}"
+  when: health is failed
+```
+
+| Construct | Notes |
+| :-------- | :---- |
+| `when:` list | all items must be true (AND) |
+| Tests | `is defined`, `is changed`, `is failed`, `is succeeded`, `is skipped`, `is version(...)`, `is match(...)` |
+| `loop:` | list; use `dict2items`, `subelements`, `product` filters for shapes |
+| `loop_control` | `label`, `loop_var` (nested roles), `index_var`, `pause` |
+| `register` | result dict: `rc`, `stdout`, `stdout_lines`, `changed`, `failed`, `results` (loops) |
+| `until` / `retries` / `delay` | poll until true |
+| `changed_when` / `failed_when` | define change/failure yourself |
+| `ignore_errors: true` | continue past failure (prefer `failed_when`) |
+| `block` / `rescue` / `always` | try/catch/finally for task groups |
+| `delegate_to: host` | run this task elsewhere (e.g. a load balancer) |
+| `run_once: true` | one host only (migrations) |
+
+```yaml
+- name: Deploy with rollback
+  block:
+    - name: Run migration
+      ansible.builtin.command: /opt/app/bin/migrate
+      run_once: true
+      changed_when: true
+  rescue:
+    - name: Roll back
+      ansible.builtin.command: /opt/app/bin/migrate --down
+      run_once: true
+      changed_when: true
+  always:
+    - name: Report
+      ansible.builtin.debug:
+        msg: "migration finished"
+```
+
+## Roles & collections
+
+```tree title="roles/nginx (ansible-galaxy role init)"
+roles/nginx/
+  defaults/
+    main.yml        # tunables, lowest precedence
+  vars/
+    main.yml        # constants, high precedence
+  tasks/
+    main.yml        # entry point
+    install.yml
+  handlers/
+    main.yml
+  templates/
+    site.conf.j2    # template src: site.conf.j2
+  files/
+    dhparam.pem     # copy src: dhparam.pem
+  meta/
+    main.yml        # dependencies, platforms
+    argument_specs.yml  # validated role args
+  tests/
+    inventory
+    test.yml
+  README.md
+```
+
+```sh
+ansible-galaxy role init roles/nginx
+ansible-galaxy collection init acme.platform
+ansible-galaxy role install geerlingguy.docker
+```
+
+```yaml title="roles/nginx/meta/argument_specs.yml"
+argument_specs:
+  main:
+    short_description: Install and configure nginx
+    options:
+      nginx_port:
+        type: int
+        default: 80
+      nginx_server_name:
+        type: str
+        required: true
+```
+
+```yaml
+- name: Use a role three ways
+  hosts: web
+  roles:
+    - nginx                      # static, at play start
+  tasks:
+    - name: Static import
+      ansible.builtin.import_role:
+        name: nginx
+    - name: Dynamic, conditional
+      ansible.builtin.include_role:
+        name: nginx
+        tasks_from: install
+      when: install_nginx | bool
+```
+
+```tree title="project layout"
+infra/
+  ansible.cfg
+  requirements.yml
+  inventory/
+    prod/
+      hosts.yml
+      group_vars/
+    staging/
+      hosts.yml
+  playbooks/
+    site.yml
+    deploy.yml
+  roles/
+    common/
+    nginx/
+  collections/      # ansible-galaxy -p here
+```
+
+## Running playbooks
+
+```sh
+ansible-playbook -i inventory/prod site.yml
+ansible-playbook site.yml --syntax-check
+ansible-playbook site.yml --list-hosts --list-tasks
+ansible-playbook site.yml --check --diff     # dry run
+ansible-playbook site.yml -l web1.example.com
+ansible-playbook site.yml -t nginx,config
+ansible-playbook site.yml --skip-tags slow
+ansible-playbook site.yml --start-at-task "Install packages"
+ansible-playbook site.yml --step             # confirm each
+ansible-playbook site.yml -e app_version=1.4.2
+ansible-playbook site.yml -e @vars/release.yml
+```
+
+| Tag | Behaviour |
+| :-- | :-------- |
+| `tags: [nginx]` | on task, block, role or play; inherited downward |
+| `always` | runs unless `--skip-tags always` |
+| `never` | runs only when asked by tag (`--tags never,debug`) |
+| `--list-tags` | show all tags |
+
+| Check-mode control | Effect |
+| :----------------- | :----- |
+| `--check` | modules predict changes, make none |
+| `--diff` | show file/template diffs |
+| `check_mode: false` | task runs for real even in check (read-only probes) |
+| `check_mode: true` | task always simulates |
+| `when: not ansible_check_mode` | skip in dry runs |
+| `diff: false` | hide diff for a secret-bearing task |
+
+`command`/`shell` are skipped in check mode unless they set `creates`/`removes`, so
+registered results from them are missing: guard with `is skipped` or `check_mode: false`.
+
+## Ansible Vault
+
+```sh
+ansible-vault create group_vars/prod/vault.yml
+ansible-vault edit group_vars/prod/vault.yml
+ansible-vault encrypt secrets.yml        # in place
+ansible-vault decrypt secrets.yml
+ansible-vault view secrets.yml
+ansible-vault rekey secrets.yml
+ansible-vault encrypt_string 'hunter2' --name db_password
+ansible-playbook site.yml --ask-vault-pass
+ansible-playbook site.yml --vault-password-file ~/.vp
+ansible-playbook site.yml \
+  --vault-id prod@~/.vp-prod --vault-id dev@prompt
+```
+
+```yaml title="group_vars/prod/vars.yml"
+db_password: "{{ vault_db_password }}"   # visible name
+```
+
+```yaml title="group_vars/prod/vault.yml (decrypted view)"
+vault_db_password: s3cr3t
+```
+
+| Practice | Why |
+| :------- | :-- |
+| `vault_` prefix + plain alias | grep finds names without decrypting |
+| `--vault-password-file` script | pull from a password manager (`op read`, `pass`) |
+| `no_log: true` on tasks using secrets | keeps values out of output and logs |
+| Vault IDs per env | separate keys for prod and dev |
+
+## Idempotence, linting & testing
+
+| Rule | Instead of |
+| :--- | :--------- |
+| Describe state (`state: present`) | "run install" steps |
+| Use a module | `command: apt-get install` |
+| `creates` / `removes` / `changed_when` on commands | always "changed" |
+| `template`/`copy` whole files | many `lineinfile` edits to the same file |
+| Restart via handlers | restarting in every run |
+| Pin versions (`version:` for git, packages) | `latest` drift |
+| `update_cache` + `cache_valid_time` | refreshing apt every run |
+
+A second run of the same playbook should report `changed=0`.
+
+```sh
+uvx ansible-lint                  # lint the project
+uvx ansible-lint --fix            # autofix fqcn, yaml, etc.
+uvx ansible-lint --profile production
+molecule init scenario default    # in a role or project
+molecule test                     # full sequence
+molecule converge && molecule verify
+molecule login                    # shell into the instance
+molecule destroy
+```
+
+Molecule's `test` sequence: dependency, create, prepare, converge, idempotence, verify,
+cleanup, destroy. The idempotence step fails if a second converge changes anything.
+
+```yaml title=".ansible-lint"
+profile: production
+exclude_paths:
+  - collections/
+skip_list:
+  - yaml[line-length]
+```
+
+## Recipes
+
+### Bootstrap a new Ubuntu server
+First run against a fresh box: admin user with your key, key-only SSH, firewall, auto patches.
+
+```yaml
+- name: Bootstrap
+  hosts: new
+  become: true
+  tasks:
+    - name: Admin user
+      ansible.builtin.user:
+        name: deploy
+        groups: sudo
+        append: true
+        shell: /bin/bash
+    - name: Authorised key
+      ansible.posix.authorized_key:
+        user: deploy
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+    - name: Packages
+      ansible.builtin.apt:
+        name: [ufw, unattended-upgrades, fail2ban]
+        update_cache: true
+    - name: Harden
+      ansible.builtin.import_tasks: harden.yml
+  handlers:
+    - name: Reload ssh
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: reloaded
+```
+
+```yaml title="harden.yml"
+- name: Key-only SSH, no root
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+- name: Allow SSH through ufw
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+- name: Enable ufw, deny other incoming
+  community.general.ufw:
+    state: enabled
+    policy: deny
+- name: Enable unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    mode: "0644"
+```
+
+### Install Docker and run a compose app
+Official apt repo, then `docker compose up` from a copied project directory.
+
+```yaml
+- name: Docker repo
+  ansible.builtin.deb822_repository:
+    name: docker
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: stable
+    signed_by: https://download.docker.com/linux/ubuntu/gpg
+- name: Docker engine and compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    update_cache: true
+- name: Project files
+  ansible.builtin.copy:
+    src: app/
+    dest: /opt/app/
+    mode: preserve
+- name: Compose up
+  community.docker.docker_compose_v2:
+    project_src: /opt/app
+    remove_orphans: true
+    wait: true
+```
+
+See [Docker](/infrastructure/containers/docker/) for compose files themselves.
+
+### Deploy from git and restart via handler
+Pull a tag, install deps, restart the systemd unit only when code changed.
+
+```yaml
+- name: Checkout release
+  ansible.builtin.git:
+    repo: https://github.com/acme/app.git
+    dest: /srv/app
+    version: "{{ app_version }}"
+  become: true
+  become_user: app
+  notify: Restart app
+- name: Install dependencies
+  ansible.builtin.command:
+    cmd: bun install --frozen-lockfile --production
+    chdir: /srv/app
+  become: true
+  become_user: app
+  changed_when: false
+- name: Enabled and running
+  ansible.builtin.systemd_service:
+    name: app
+    enabled: true
+    state: started
+```
+
+The handler is `Restart app` from [Handlers](#handlers); template the unit file the
+same way and notify the same handler.
+
+### Template an nginx site
+One vhost per app, validated before it goes live.
+
+```nginx title="templates/site.conf.j2"
+server {
+  listen 80;
+  server_name {{ nginx_server_name }};
+  location / {
+    proxy_pass http://127.0.0.1:{{ app_port }};
+    proxy_set_header Host $host;
+  }
+}
+```
+
+```yaml
+- name: Site config
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: /etc/nginx/sites-available/app.conf
+    mode: "0644"
+  notify: Reload nginx
+- name: Enable site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/app.conf
+    dest: /etc/nginx/sites-enabled/app.conf
+    state: link
+  notify: Reload nginx
+- name: Validate
+  ansible.builtin.command: nginx -t
+  changed_when: false
+```
+
+### Rolling update with serial
+Update a few hosts at a time and take each out of the load balancer while it restarts.
+
+```yaml
+- name: Rolling deploy
+  hosts: web
+  serial: [1, "25%"]         # canary, then quarters
+  max_fail_percentage: 0
+  pre_tasks:
+    - name: Drain from LB
+      ansible.builtin.command: >-
+        lbctl disable {{ inventory_hostname }}
+      delegate_to: lb1
+      changed_when: true
+  roles:
+    - app
+  post_tasks:
+    - name: Wait until healthy
+      ansible.builtin.uri:
+        url: "http://{{ inventory_hostname }}:3000/health"
+      register: h
+      until: h.status == 200
+      retries: 20
+      delay: 3
+    - name: Back into LB
+      ansible.builtin.command: >-
+        lbctl enable {{ inventory_hostname }}
+      delegate_to: lb1
+      changed_when: true
+```
+
+### Encrypt a single secret
+Inline an encrypted value in a vars file, then use it without logging it.
+
+```sh
+ansible-vault encrypt_string --vault-id prod@prompt \
+  'p4ssw0rd' --name vault_db_password \
+  >> group_vars/prod/vars.yml
+```
+
+```yaml
+- name: Write DB credentials
+  ansible.builtin.template:
+    src: db.env.j2
+    dest: /etc/app/db.env
+    mode: "0600"
+    owner: app
+  no_log: true
+```
+
+## References
+
+- [Ansible documentation](https://docs.ansible.com/): entry point for ansible-core and the community package
+- [Ansible playbook guide](https://docs.ansible.com/projects/ansible/latest/playbook_guide/index.html): plays, handlers, conditionals, loops, blocks
+- [Variable precedence](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html#understanding-variable-precedence): the full 22-level list
+- [ansible.builtin collection](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/index.html): every built-in module, filter, lookup and test
+- [Release and maintenance](https://docs.ansible.com/projects/ansible/latest/reference_appendices/release_and_maintenance.html): ansible-core support windows and Python versions
+- [Porting guide for core 2.19](https://docs.ansible.com/projects/ansible/latest/porting_guides/porting_guide_core_2.19.html): the templating overhaul (booleans, trust, native types)
+- [Ansible Vault](https://docs.ansible.com/projects/ansible/latest/vault_guide/index.html): encrypting files and strings, vault IDs
+- [ansible-lint](https://docs.ansible.com/projects/lint/): rules, profiles, autofix
+- [Molecule](https://docs.ansible.com/projects/molecule/): scenario-based testing for roles and playbooks
+- [community.docker](https://docs.ansible.com/projects/ansible/latest/collections/community/docker/index.html): compose v2, containers, images
+- [uv tools guide](https://docs.astral.sh/uv/guides/tools/): `uv tool install` and `--with-executables-from`

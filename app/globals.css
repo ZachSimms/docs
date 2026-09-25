@@ -57,7 +57,9 @@
   color-scheme: dark;
 }
 
-* {
+/* SVG descendants are left out (specificity stays 0): author CSS beats presentation attributes, so the
+   reset would override every font-size/font-weight in the diagrams. Fonts inherit inside SVG anyway. */
+:where(:not(svg *)) {
   margin: 0;
   padding: 0;
   font: inherit;
@@ -575,6 +577,172 @@ kbd {
   .graphs {
     grid-template-columns: 1fr;
   }
+}
+
+/* <Swatches>/<Scale>/<Contrast>: real colour chips (fixed colours, same in both themes). */
+.swatches {
+  margin: 0 0 var(--lh);
+}
+
+.swatches ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12ch, 1fr));
+  gap: calc(var(--lh) / 2) 1ch;
+  margin: 0;
+  padding: 0;
+}
+
+.swatches-compact ul {
+  grid-template-columns: repeat(auto-fill, minmax(8ch, 1fr));
+}
+
+.swatches li {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.swatches li:before {
+  content: none;
+}
+
+/* Undo the bullet lists' hanging indent: text-indent inherits and would shift every label left. */
+.swatches li {
+  text-indent: 0;
+}
+
+.swatch-chip {
+  display: block;
+  height: calc(var(--lh) * 1.5);
+  margin-bottom: 0.25em;
+  border-radius: 3px;
+  outline: 1px solid var(--pre-border);
+  outline-offset: -1px;
+}
+
+.swatch-value,
+.swatch-weight {
+  opacity: 0.7;
+}
+
+.swatch-bar {
+  display: flex;
+  height: calc(var(--lh) * 1.25);
+  margin-bottom: calc(var(--lh) / 2);
+  border-radius: 3px;
+  overflow: hidden;
+  outline: 1px solid var(--pre-border);
+  outline-offset: -1px;
+}
+
+.swatch-bar span {
+  flex-basis: 0;
+}
+
+.contrast {
+  margin: 0 0 var(--lh);
+}
+
+.contrast-sample {
+  padding: calc(var(--lh) / 2) 1ch;
+  border-radius: 3px 3px 0 0;
+  outline: 1px solid var(--pre-border);
+  outline-offset: -1px;
+}
+
+.swatches figcaption,
+.contrast figcaption,
+.diagram figcaption,
+.demo figcaption {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.contrast figcaption {
+  margin-top: 0.25em;
+}
+
+/* <Demo>: live result of an ```html demo fence, framed like the code box above it. */
+.demo {
+  margin: calc(var(--lh) / -2) 0 var(--lh);
+}
+
+.demo iframe {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--pre-border);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+/* <Diagram>: inline SVG; strokes/text use currentColor, accents use the graph palette. */
+.diagram {
+  margin: 0 0 var(--lh);
+}
+
+.diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.diagram figcaption {
+  margin-top: 0.25em;
+}
+
+.diagram .d-muted {
+  opacity: 0.55;
+}
+
+.diagram .d-bg {
+  fill: var(--bg);
+}
+
+.diagram .d-chip {
+  fill: var(--chip);
+}
+
+.diagram .d-tint {
+  fill-opacity: 0.2;
+}
+
+.diagram .d-fill-0 {
+  fill: var(--graph-0);
+}
+
+.diagram .d-fill-1 {
+  fill: var(--graph-1);
+}
+
+.diagram .d-fill-2 {
+  fill: var(--graph-2);
+}
+
+.diagram .d-fill-3 {
+  fill: var(--graph-3);
+}
+
+.diagram .d-stroke-0 {
+  stroke: var(--graph-0);
+}
+
+.diagram .d-stroke-1 {
+  stroke: var(--graph-1);
+}
+
+.diagram .d-stroke-2 {
+  stroke: var(--graph-2);
+}
+
+.diagram .d-stroke-3 {
+  stroke: var(--graph-3);
 }
 
 /* KaTeX: display maths gets the page rhythm and scrolls sideways if wide; colours follow the theme. */

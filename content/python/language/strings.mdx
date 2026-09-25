@@ -1,0 +1,531 @@
+---
+title: Strings
+date: 2026-09-25
+order: 2
+---
+
+Text in Python 3.14: `str` methods, slicing, f-strings and the format mini-language, t-strings
+(new in 3.14), bytes and encodings, Unicode, the `re` module and `textwrap`. The JS side is in
+[String methods](/typescript/language/string-methods/).
+
+## Literals & basics
+
+| Literal | Meaning |
+| :------ | :------ |
+| `"a"`, `'a'` | same type; pick one quote style (ruff/black default to `"`) |
+| `"""..."""`, `'''...'''` | multi-line; newlines kept |
+| `r"\d+\n"` | raw: backslashes are literal (regex, Windows paths) |
+| `f"{x}"`, `rf"..."` | formatted string, evaluated now |
+| `t"{x}"` | template string (3.14): a `Template` object, not a `str` |
+| `b"..."`, `rb"..."` | `bytes`, not `str` |
+| `"a" "b"` | adjacent literals concatenate at compile time |
+| `"\n"`, `"\t"`, `"\\"`, `"\x41"`, `"é"`, `"\N{EURO SIGN}"` | escapes |
+
+`str` is immutable Unicode; every method returns a new string. There is no `char` type: `s[0]` is a
+1-length `str`. Build strings in a loop with a list and `"".join(parts)`, not `+=`.
+
+```python
+s = "hello"
+len(s)  # 5, counts code points
+"ell" in s  # True, substring test
+s * 2  # 'hellohello'
+s < "help"  # True, compares code points
+ord("A"), chr(65)  # (65, 'A')
+str(42), repr("x")  # ('42', "'x'")
+", ".join(["a", "b", "c"])  # 'a, b, c'
+", ".join(map(str, [1, 2]))  # join needs str items
+```
+
+## Indexing & slicing
+
+`s[start:stop:step]`: `stop` is excluded, negatives count from the end, out-of-range slices clamp
+instead of raising.
+
+| Expression | `"python"` gives | JS equivalent |
+| :--------- | :--------------- | :------------ |
+| `s[0]`, `s[-1]` | `'p'`, `'n'` | `s[0]`, `s.at(-1)` |
+| `s[1:4]` | `'yth'` | `s.slice(1, 4)` |
+| `s[:2]`, `s[2:]` | `'py'`, `'thon'` | `s.slice(0, 2)`, `s.slice(2)` |
+| `s[-3:]` | `'hon'` | `s.slice(-3)` |
+| `s[::2]` | `'pto'` | none |
+| `s[::-1]` | `'nohtyp'` | `[...s].reverse().join("")` |
+| `s[10:]` | `''` | `s.slice(10)` |
+| `s[10]` | `IndexError` | `undefined` |
+
+## Methods
+
+| Method | Does | Example → result |
+| :----- | :--- | :--------------- |
+| `split(sep=None, maxsplit=-1)` | split; no `sep` = runs of whitespace, trimmed | `" a  b ".split()` → `['a', 'b']` |
+| `rsplit(sep, 1)` | split from the right | `"a.b.c".rsplit(".", 1)` → `['a.b', 'c']` |
+| `splitlines()` | split on `\n`, `\r\n`, etc. | `"a\nb".splitlines()` → `['a', 'b']` |
+| `partition(sep)` | split once into 3 parts | `"k=v=w".partition("=")` → `('k', '=', 'v=w')` |
+| `sep.join(xs)` | join `str` items | `"-".join("abc")` → `'a-b-c'` |
+| `strip()`, `lstrip()`, `rstrip()` | trim whitespace, or any chars in the argument | `"xxhixx".strip("x")` → `'hi'` |
+| `removeprefix(p)`, `removesuffix(s)` | remove an exact affix once | `"v1.2".removeprefix("v")` → `'1.2'` |
+| `startswith(x)`, `endswith(x)` | also accept a tuple | `f.endswith((".jpg", ".png"))` |
+| `find(x)`, `rfind(x)` | index or `-1` | `"abc".find("z")` → `-1` |
+| `index(x)`, `rindex(x)` | index or `ValueError` | |
+| `count(x)` | non-overlapping occurrences | `"aaa".count("aa")` → `1` |
+| `replace(old, new, count=-1)` | replace all or first `count` | `"a-b-c".replace("-", "+", count=1)` → `'a+b-c'` |
+| `lower()`, `upper()` | case mapping | `"straße".upper()` → `'STRASSE'` |
+| `casefold()` | aggressive lower for comparisons | `"Straße".casefold()` → `'strasse'` |
+| `title()`, `capitalize()`, `swapcase()` | word / first-letter case | `"they're".title()` → `"They'Re"` (naive) |
+| `center(w, c)`, `ljust(w)`, `rjust(w)` | pad to width | `"x".center(5, "-")` → `'--x--'` |
+| `zfill(w)` | zero-pad, sign-aware | `"-42".zfill(5)` → `'-0042'` |
+| `expandtabs(4)` | tabs to spaces | |
+| `translate(table)` | map/delete chars via `str.maketrans` | `"abc".translate(str.maketrans("ab", "xy", "c"))` → `'xy'` |
+| `encode("utf-8")` | `str` → `bytes` | `"é".encode()` → `b'\xc3\xa9'` |
+| `format(...)`, `format_map(d)` | legacy formatting | see below |
+
+| Predicate | `True` when |
+| :-------- | :---------- |
+| `isdigit()`, `isdecimal()`, `isnumeric()` | digits; widest to narrowest differs: `"²".isdigit()` is `True`, `"²".isdecimal()` is `False` |
+| `isalpha()`, `isalnum()` | letters (any script), letters or digits |
+| `isspace()`, `isupper()`, `islower()`, `istitle()` | whitespace / case checks; empty string is `False` |
+| `isascii()` | all code points below 128 (empty is `True`) |
+| `isidentifier()`, `isprintable()` | valid Python name; no control chars |
+
+<Note kind="tip">`int(s)` is the real validity test for numbers: it accepts `" 42 "`, `"-7"`, `"1_000"`
+and other scripts' digits, and raises `ValueError` otherwise. `isdigit()` rejects `"-7"`.</Note>
+
+## f-strings
+
+Since 3.12 (PEP 701) the expression part is full Python: reuse the outer quotes, use backslashes,
+span lines and add `#` comments.
+
+```python
+from datetime import UTC, datetime
+
+name, n, price = "Ada", 3, 1234.5
+user = {"name": "ann"}
+now = datetime(2026, 9, 25, 14, 30, tzinfo=UTC)
+
+print(f"{name} has {n} item{'s' if n != 1 else ''}")
+print(f"{user["name"]}")  # same quotes (3.12+)
+print(f"{'\n'.join(['a', 'b'])}")  # backslash (3.12+)
+print(f"{price:,.2f}")  # 1,234.50
+print(f"{now:%Y-%m-%d %H:%M}")  # 2026-09-25 14:30
+print(f"{name!r}")  # 'Ada': repr()
+print(f"{n=}")  # n=3: self-documenting
+print(f"{price = :.1f}")  # price = 1234.5
+print(f"{{literal braces}}")  # {literal braces}
+width = 8
+print(f"[{name:>{width}}]")  # nested spec: [     Ada]
+print(f"""{
+    n * price  # comments allowed inside
+}""")
+```
+
+| Part | Meaning |
+| :--- | :------ |
+| `{expr}` | `format(expr, "")`, which is usually `str(expr)` |
+| `{expr!r}`, `{expr!s}`, `{expr!a}` | `repr()`, `str()`, `ascii()` before formatting |
+| `{expr:spec}` | format spec (next section); a `datetime` takes `strftime` codes |
+| `{expr=}` | prints `expr=` then the `repr`; with a spec, the formatted value |
+| `{expr:{w}.{p}f}` | nested fields fill in the spec |
+| `{{`, `}}` | literal braces |
+
+## Format spec mini-language
+
+`[[fill]align][sign][z][#][0][width][grouping][.precision[grouping]][type]`. It is shared by
+f-strings, `format()` and `str.format`.
+
+| Spec | Input | Output | Meaning |
+| :--- | :---- | :----- | :------ |
+| `>8`, `<8`, `^8` | `"hi"` | `'      hi'`, `'hi      '`, `'   hi   '` | right, left, centre in width 8 |
+| `*^10` | `"hi"` | `'****hi****'` | fill character |
+| `=+6` | `-3` | `'-    3'` | pad after the sign |
+| `+`, ` ` (space) | `3` | `'+3'`, `' 3'` | always show sign; space for positives |
+| `05d`, `08.3f` | `42`, `3.14159` | `'00042'`, `'0003.142'` | zero-pad |
+| `,d`, `_d` | `1234567` | `'1,234,567'`, `'1_234_567'` | thousands separator |
+| `,.4_f` | `1234.56789` | `'1,234.567_9'` | group the fraction too (3.14) |
+| `.2f` | `2.675` | `'2.67'` | fixed decimals (binary float!) |
+| `.3g` | `3.14159` | `'3.14'` | significant figures |
+| `.2e` | `0.0000123` | `'1.23e-05'` | scientific |
+| `.1%` | `0.256` | `'25.6%'` | multiply by 100 |
+| `z.2f` | `-0.0001` | `'0.00'` | no negative zero |
+| `x`, `X`, `o`, `b` | `255` | `'ff'`, `'FF'`, `'377'`, `'11111111'` | bases |
+| `#x`, `#010b` | `255`, `42` | `'0xff'`, `'0b00101010'` | with prefix; `0` pads after it |
+| `c` | `65` | `'A'` | code point to char |
+| `n` | `1234` | locale-aware | uses `locale` settings |
+
+Numbers default right-aligned, strings left-aligned. Custom classes hook in via `__format__`.
+
+## t-strings (3.14)
+
+`t"..."` (PEP 750) builds a `string.templatelib.Template` holding the literal parts and the
+evaluated values **separately**, so a library can escape or parameterise them. It is not a `str`:
+`str(t)` gives its repr, and `t + "x"` is a `TypeError` (`t1 + t2` works).
+
+| `Template` / `Interpolation` | Content |
+| :--------------------------- | :------ |
+| `iter(t)` | `str` and `Interpolation` items in order, empty strings skipped |
+| `t.strings` | tuple of static parts, always one more than interpolations |
+| `t.interpolations`, `t.values` | the `Interpolation`s; just their values |
+| `i.value` | evaluated object (already computed, not lazy) |
+| `i.expression` | source text, e.g. `"user.name"` |
+| `i.conversion` | `"r"`, `"s"`, `"a"` or `None` |
+| `i.format_spec` | text after `:`, e.g. `".2f"` |
+| `convert(v, conv)` | apply `!r`/`!s`/`!a` (from `string.templatelib`) |
+
+```python
+from html import escape
+from string.templatelib import (
+    Interpolation,
+    Template,
+    convert,
+)
+
+
+def html(t: Template) -> str:
+    out: list[str] = []
+    for item in t:
+        match item:
+            case str() as text:
+                out.append(text)  # trusted literal
+            case Interpolation(value, _, conv, spec):
+                v = format(convert(value, conv), spec)
+                out.append(escape(v))  # untrusted value
+    return "".join(out)
+
+
+def sql(t: Template) -> tuple[str, list[object]]:
+    query = "?".join(t.strings)
+    return query, list(t.values)
+
+
+evil = "<script>alert(1)</script>"
+print(html(t"<p>Hi {evil}!</p>"))
+# <p>Hi &lt;script&gt;alert(1)&lt;/script&gt;!</p>
+print(sql(t"SELECT * FROM users WHERE id = {42}"))
+# ('SELECT * FROM users WHERE id = ?', [42])
+```
+
+Like JS tagged templates (`` html`...` ``), but the processing function is called explicitly.
+
+## Legacy formatting
+
+| Style | Example | Use |
+| :---- | :------ | :-- |
+| f-string | `f"{name} is {age}"` | default choice |
+| `str.format` | `"{} is {}".format(name, age)`, `"{0}{0}".format("a")` | a template string stored as data |
+| `format_map` | `"{name}".format_map(row)` | template filled from a dict |
+| `%` | `"%s is %d, %.2f" % (name, age, x)`, `"%(n)s" % {"n": 1}` | old code; `logging` messages |
+| `string.Template` | `Template("$who paid $$$amt").substitute(who="ann", amt=5)` | user-editable templates; `safe_substitute` leaves unknown `$x` |
+| `format(x, spec)` | `format(0.5, ".0%")` → `'50%'` | format one value |
+
+```python
+import logging
+
+log = logging.getLogger(__name__)
+user_id = 7
+log.info("user %s logged in", user_id)  # lazy: args
+# are only formatted if the record is emitted
+```
+
+## Bytes & encodings
+
+`str` is text (code points); `bytes` is raw octets. Convert at the edges: decode on input, encode on
+output. Always pass `encoding=`: until UTF-8 mode becomes the default in 3.15 (PEP 686), `open()` without it uses the
+locale encoding, which is not UTF-8 on many Windows setups.
+
+```python
+data = "héllo €".encode("utf-8")
+# b'h\xc3\xa9llo \xe2\x82\xac'
+text = data.decode("utf-8")
+len("€"), len("€".encode())  # (1, 3)
+
+b"\xff".decode("utf-8", errors="replace")  # '�'
+"é".encode("ascii", errors="ignore")  # b''
+"é".encode("ascii", errors="backslashreplace")  # b'\\xe9'
+
+b"ab"[0], list(b"ab")  # (97, [97, 98]): ints
+bytes.fromhex("dead").hex(":")  # 'de:ad'
+bytearray(b"abc").upper()  # mutable variant
+
+with open("notes.txt", "w", encoding="utf-8") as f:
+    f.write(text)
+```
+
+| Error handler | On a bad char |
+| :------------ | :------------ |
+| `strict` (default) | raise `UnicodeDecodeError` / `UnicodeEncodeError` |
+| `replace` | `?` when encoding, `U+FFFD` when decoding |
+| `ignore` | drop it |
+| `backslashreplace` | `\xe9` escape |
+| `xmlcharrefreplace` | `&#233;` (encode only) |
+| `surrogateescape` | round-trip undecodable bytes (file names) |
+
+`base64.b64encode(b)`, `b.hex()`, `int.from_bytes(b, "big")` and `struct.pack` cover the other
+bytes ↔ text conversions. `uv run python -X utf8 app.py` forces UTF-8 mode.
+
+## Unicode
+
+| Task | Tool |
+| :--- | :--- |
+| Case-insensitive compare | `a.casefold() == b.casefold()` (`"ß"` → `"ss"`) |
+| Same text, different code points (`"é"` vs `"é"`) | `unicodedata.normalize("NFC", s)` before compare/store |
+| Compatibility folding (`"ﬁ"` → `"fi"`, `"①"` → `"1"`) | `normalize("NFKC", s)` |
+| Strip accents | `NFD`, then drop category `Mn` (recipe below) |
+| Char metadata | `unicodedata.name("€")`, `category("é")` (`'Ll'`), `numeric("½")` |
+| Check form | `unicodedata.is_normalized("NFC", s)` |
+| User-perceived characters | `len` counts code points: `len("👍🏽") == 2`; use the `regex` package's `\X` for graphemes |
+| Sort by locale | `locale.strxfrm` or PyICU; plain `sorted` sorts by code point |
+
+| Form | Does |
+| :--- | :--- |
+| `NFC` | compose (`e` + accent → `é`); the web/macOS-neutral default |
+| `NFD` | decompose into base + combining marks |
+| `NFKC`, `NFKD` | also fold compatibility chars (ligatures, width, superscripts); lossy |
+
+## Regular expressions
+
+```python
+import re
+
+LINE = re.compile(
+    r"""
+    (?P<ts>\d{4}-\d{2}-\d{2}T[\d:]+Z) \s+  # timestamp
+    (?P<level>INFO|WARN|ERROR) \s+       # level
+    (?P<msg>.*)                          # message
+    """,
+    re.VERBOSE,
+)
+
+if m := LINE.match("2026-09-25T10:00:00Z ERROR disk full"):
+    print(m["level"], m.group("msg"))  # ERROR disk full
+    print(m.groupdict()["ts"], m.span("msg"))
+
+print(re.findall(r"(\w)=(\d)", "a=1 b=2"))
+# [('a', '1'), ('b', '2')]: tuples of groups
+print(re.split(r"[,;]\s*", "a, b;c"))  # ['a', 'b', 'c']
+print(re.sub(r"(?P<user>\w+)@", r"\g<user> at ", "bob@x"))
+
+prices = "apple 1.50, pear 2.25"
+doubled = re.sub(
+    r"\d+\.\d+",
+    lambda m: f"{float(m[0]) * 2:.2f}",  # fn replacement
+    prices,
+    flags=re.ASCII,  # count/flags: keyword only
+)
+```
+
+| Function | Returns |
+| :------- | :------ |
+| `re.compile(p, flags)` | `Pattern`; module functions cache, so compile for reuse and naming |
+| `match(p, s)` | `Match \| None`, anchored at the **start** only |
+| `fullmatch(p, s)` | `Match \| None`, whole string (use for validation) |
+| `search(p, s)` | first match anywhere |
+| `findall(p, s)` | list of strings, or tuples when the pattern has several groups |
+| `finditer(p, s)` | iterator of `Match` objects (positions + named groups) |
+| `sub(p, repl, s, count=0)` | new string; `repl` may be a function of `Match` |
+| `subn(...)` | `(new_string, n_replacements)` |
+| `split(p, s, maxsplit=0)` | list; capturing groups are kept in the result |
+| `re.escape(s)` | escape user input for use inside a pattern |
+
+| `Match` | Gives |
+| :------ | :---- |
+| `m[0]`, `m.group()` | whole match |
+| `m[1]`, `m["name"]` | a group (`None` if it did not participate) |
+| `m.groups()`, `m.groupdict()` | all groups as tuple / dict |
+| `m.start()`, `m.end()`, `m.span(g)` | positions |
+
+| Syntax | Meaning |
+| :----- | :------ |
+| `(?P<name>...)` | named group; JS's `(?<name>...)` is a syntax error |
+| `(?P=name)`, `\1` | backreference in the pattern |
+| `\g<name>`, `\g<1>` | group in a `sub` replacement (JS: `$<name>`, `$1`) |
+| `(?:...)` | non-capturing group |
+| `(?=...)`, `(?!...)`, `(?<=...)`, `(?<!...)` | lookarounds; lookbehind must be fixed width |
+| `(?>...)`, `a*+`, `a++` | atomic group, possessive quantifiers (3.11+) |
+| `*?`, `+?`, `??` | lazy quantifiers |
+| `\A`, `\z` / `\Z` | start / end of string (`\z` added 3.14) |
+| `\b`, `\d`, `\w`, `\s` | Unicode-aware by default on `str` patterns |
+| `(?i)`, `(?x)` | inline flags at the pattern start |
+
+| Flag | Short | Effect |
+| :--- | :---- | :----- |
+| `re.IGNORECASE` | `re.I` | case-insensitive |
+| `re.MULTILINE` | `re.M` | `^`/`$` match at each line |
+| `re.DOTALL` | `re.S` | `.` matches `\n` too |
+| `re.VERBOSE` | `re.X` | whitespace ignored, `#` comments allowed |
+| `re.ASCII` | `re.A` | `\d`, `\w`, `\b` ASCII only |
+
+Combine with `|`: `re.I | re.M`. Bad patterns raise `re.PatternError` (3.13+, alias `re.error`).
+Use `r"..."` for every pattern.
+
+## textwrap & string constants
+
+| Call | Does |
+| :--- | :--- |
+| `textwrap.dedent(s)` | remove common leading indentation (triple-quoted blocks) |
+| `textwrap.indent(s, "> ")` | prefix every non-blank line |
+| `textwrap.fill(s, width=70)` | re-wrap into one string with `\n` |
+| `textwrap.wrap(s, width=70)` | same, as a list of lines |
+| `textwrap.shorten(s, 15, placeholder="…")` | collapse whitespace and truncate on a word boundary |
+
+```python
+import textwrap
+
+sql = textwrap.dedent("""\
+    SELECT id
+      FROM users
+""")  # 'SELECT id\n  FROM users\n'
+short = textwrap.shorten(
+    "The quick brown fox", 15, placeholder="…"
+)  # 'The quick…'
+```
+
+| `string.` constant | Value |
+| :----------------- | :---- |
+| `ascii_letters` | `ascii_lowercase + ascii_uppercase` |
+| `ascii_lowercase`, `ascii_uppercase` | `a`–`z`, `A`–`Z` |
+| `digits`, `hexdigits`, `octdigits` | `0-9`; plus `a-fA-F`; `0-7` |
+| `punctuation` | ASCII punctuation (`` !"#$%&'()*+,-./:;<=>?@[\]^_`{\|}~ ``) |
+| `whitespace` | space, `\t`, `\n`, `\r`, `\x0b`, `\x0c` |
+| `printable` | digits, letters, punctuation and whitespace |
+
+## Recipes
+
+### Slugify
+When turning a title into a URL segment.
+
+```python
+import re
+import unicodedata
+
+
+def slugify(text: str, sep: str = "-") -> str:
+    norm = unicodedata.normalize("NFKD", text)
+    ascii_only = norm.encode("ascii", "ignore").decode()
+    words = re.findall(r"[a-z0-9]+", ascii_only.lower())
+    return sep.join(words)
+
+
+print(slugify("Crème Brûlée: 10 Tips!"))
+# creme-brulee-10-tips
+```
+
+### Truncate with an ellipsis
+When a label must fit a fixed width without cutting a word in half.
+
+```python
+def truncate(s: str, limit: int, tail: str = "…") -> str:
+    if len(s) <= limit:
+        return s
+    cut = s[: limit - len(tail) + 1]  # peek 1 char
+    head = cut.rsplit(" ", 1)[0] if " " in cut else cut[:-1]
+    return head.rstrip(" ,.;:") + tail
+
+
+print(truncate("The quick brown fox jumps", 16))
+# The quick brown…
+```
+
+### Parse `key=value` lines
+When reading `.env`-style or `ini`-like text without a library.
+
+```python
+def parse_kv(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            raise ValueError(f"no '=' in {raw!r}")
+        out[key.strip()] = value.strip().strip("\"'")
+    return out
+
+
+print(parse_kv('# db\nHOST = localhost\nNAME="app"\n'))
+# {'HOST': 'localhost', 'NAME': 'app'}
+```
+
+### Case conversions
+When mapping JSON `camelCase` keys to Python `snake_case` and back.
+
+```python
+import re
+
+_WORDS = re.compile(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])")
+
+
+def words(s: str) -> list[str]:
+    return [w.lower() for w in _WORDS.findall(s)]
+
+
+def snake(s: str) -> str:
+    return "_".join(words(s))
+
+
+def kebab(s: str) -> str:
+    return "-".join(words(s))
+
+
+def camel(s: str) -> str:
+    first, *rest = words(s) or [""]
+    return first + "".join(w.capitalize() for w in rest)
+
+
+print(snake("parseHTTPResponse2"), kebab("user_id"))
+# parse_http_response2 user-id
+print(camel("created-at_utc"))  # createdAtUtc
+```
+
+### Strip accents
+When searching or sorting so that `"é"` matches `"e"` (keeps non-Latin letters).
+
+```python
+import unicodedata
+
+
+def strip_accents(s: str) -> str:
+    decomposed = unicodedata.normalize("NFD", s)
+    return "".join(
+        ch
+        for ch in decomposed
+        if unicodedata.category(ch) != "Mn"
+    )
+
+
+print(strip_accents("Ångström café Zürich"))
+# Angstrom cafe Zurich
+```
+
+### Aligned table output
+When printing rows to a terminal without `rich` or `tabulate`.
+
+```python
+rows = [("apple", 3, 1.5), ("kiwi", 12, 0.25)]
+head = ("item", "qty", "price")
+w = max(len(r[0]) for r in [*rows, head])
+
+print(f"{head[0]:<{w}}  {head[1]:>4}  {head[2]:>7}")
+print(f"{'':-<{w}}  {'':->4}  {'':->7}")
+for name, qty, price in rows:
+    print(f"{name:<{w}}  {qty:>4}  {price:>7,.2f}")
+```
+
+```text
+item    qty    price
+-----  ----  -------
+apple     3     1.50
+kiwi     12     0.25
+```
+
+## References
+
+- [Python docs: Text sequence type (str)](https://docs.python.org/3.14/library/stdtypes.html#text-sequence-type-str): every `str` method
+- [Python docs: string](https://docs.python.org/3.14/library/string.html): format spec mini-language, `Template`, constants
+- [Python docs: string.templatelib](https://docs.python.org/3.14/library/string.templatelib.html): t-string `Template` and `Interpolation`
+- [Python docs: Lexical analysis, f-strings](https://docs.python.org/3.14/reference/lexical_analysis.html#f-strings): literal and escape grammar
+- [Python docs: re](https://docs.python.org/3.14/library/re.html): regex syntax, flags, `Match`
+- [Python docs: Regular expression HOWTO](https://docs.python.org/3.14/howto/regex.html): longer guide
+- [Python docs: Unicode HOWTO](https://docs.python.org/3.14/howto/unicode.html): code points, encodings, normalisation
+- [Python docs: codecs error handlers](https://docs.python.org/3.14/library/codecs.html#error-handlers): `replace`, `surrogateescape`, ...
+- [Python docs: textwrap](https://docs.python.org/3.14/library/textwrap.html) and [unicodedata](https://docs.python.org/3.14/library/unicodedata.html)
+- [PEP 750: Template strings](https://peps.python.org/pep-0750/): t-string rationale and examples
+- [PEP 701: Syntactic formalization of f-strings](https://peps.python.org/pep-0701/): the 3.12 grammar changes

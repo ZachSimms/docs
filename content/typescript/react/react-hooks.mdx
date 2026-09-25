@@ -314,6 +314,29 @@ function Bio({ id }: { id: string }) {
 }
 ```
 
+## Lifecycle flow
+
+![React Hook Flow Diagram by Donavon West: for mount, update and unmount, the order is lazy initializers (mount only), render, React updates the DOM, clean up layout effects, run layout effects, browser paints, clean up effects, run effects](/images/typescript/hook-flow.png)
+
+Chart: [hook-flow](https://github.com/donavon/hook-flow) by Donavon West (MIT). Top to bottom, one column per phase:
+
+| Step | Mount | Update | Unmount |
+| :--- | :--- | :--- | :--- |
+| Lazy initializers (`useState(() => …)`, `useReducer(r, arg, init)`) | run | skipped | - |
+| Render (component body) | run | run | - |
+| React updates the DOM | insert | patch | remove |
+| Layout effects (`useLayoutEffect`) | run | old cleanup, then new run (deps changed) | cleanup |
+| Browser paints | yes | yes | yes |
+| Effects (`useEffect`) | run | old cleanup, then new run (deps changed) | cleanup |
+
+<Note kind="info">
+The chart dates from 2019 (React 16.8). Since then:
+- In development, `<StrictMode>` runs every effect's setup and cleanup one extra time on mount.
+- `useInsertionEffect` fires before any layout effect.
+- Effects caused by a discrete input such as a click may run before the paint.
+- A hidden `<Activity>` (19.2) cleans up effects but keeps state.
+</Note>
+
 ## Performance hooks
 
 With the [React Compiler](/typescript/react/react/#react-compiler--performance) on, skip manual
@@ -757,3 +780,4 @@ export function useEventListener<
 - [MDN: `Window.matchMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia), [`storage` event](https://developer.mozilla.org/en-US/docs/Web/API/Window/storage_event), [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
 - [Testing Library: `renderHook`](https://testing-library.com/docs/react-testing-library/api/#renderhook)
 - [usehooks-ts](https://usehooks-ts.com/): more ready-made hooks to compare against
+- [donavon/hook-flow](https://github.com/donavon/hook-flow): the hook lifecycle chart above (MIT)

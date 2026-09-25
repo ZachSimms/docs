@@ -1,0 +1,992 @@
+---
+title: Testing
+date: 2026-09-25
+order: 2
+---
+
+Testing Python 3.14 code with pytest 9: discovery, assertions, fixtures, parametrize, marks, mocking,
+async tests, coverage, Hypothesis and snapshots. Packaging and `uv` live in
+[Packages & libraries](/python/engineering/packages/); the TypeScript side is [Testing](/typescript/testing/).
+
+## Setup & layout
+
+```sh
+uv add --dev pytest pytest-cov pytest-mock
+uv run pytest                  # all tests
+uv run pytest tests/test_cart.py::TestAdd -q
+uvx --with pytest-cov pytest   # no project; throwaway env
+```
+
+`uv add --dev` writes to `[dependency-groups] dev`, which `uv sync` and `uv run` install by default
+(`pip install pytest` in a venv is the equivalent).
+
+```tree title="src layout with tests"
+shop/
+  pyproject.toml        # [tool.pytest], coverage
+  src/
+    shop/
+      __init__.py
+      cart.py
+  tests/
+    conftest.py         # fixtures for every test
+    unit/
+      test_cart.py
+    integration/
+      conftest.py       # DB fixtures, this dir only
+      test_orders.py
+    __snapshots__/      # syrupy output
+```
+
+With the src layout the package is importable only once installed, which `uv sync` does (editable),
+so tests exercise what users get. No `__init__.py` is needed in `tests/` with `--import-mode=importlib`.
+
+```python title="tests/unit/test_cart.py"
+import pytest
+
+from shop.cart import Cart
+
+
+def test_total_sums_lines() -> None:
+    cart = Cart()
+    cart.add("tea", price=4.5, qty=2)
+    assert cart.total() == 9.0
+
+
+class TestAdd:  # no __init__, so pytest collects it
+    def test_rejects_zero_qty(self) -> None:
+        with pytest.raises(ValueError, match="positive"):
+            Cart().add("tea", 4.5, qty=0)
+```
+
+## Discovery
+
+| What | Rule | Setting |
+| :--- | :--- | :------ |
+| Start points | CLI args, else `testpaths`, else the current dir | `testpaths` |
+| Directories | recursed, except `.*`, `build`, `dist`, `venv`, `node_modules`, `*.egg` and any virtualenv | `norecursedirs` |
+| Files | `test_*.py` or `*_test.py` | `python_files` |
+| Functions | `test*` at module level | `python_functions` |
+| Classes | `Test*` with no `__init__`; their `test*` methods | `python_classes` |
+| `conftest.py` | loaded for its directory and everything below it | none |
+| Config file | first of `pytest.toml`, `.pytest.toml`, `pytest.ini`, `.pytest.ini`, `pyproject.toml`, `tox.ini`, `setup.cfg` | `-c file` |
+| rootdir | directory of the config file; node IDs are relative to it | `--rootdir` |
+
+A node ID addresses one test: `tests/unit/test_cart.py::TestAdd::test_rejects_zero_qty`, with
+`[param-id]` appended for parametrized cases. `uv run pytest --co -q` lists them all.
+
+| `--import-mode` | Behaviour |
+| :-------------- | :-------- |
+| `prepend` (default) | inserts each test's root dir at the front of `sys.path`; test basenames must be unique without `__init__.py` |
+| `importlib` | imports test files without touching `sys.path`; duplicate basenames fine; tests can't import each other. Recommended for new projects |
+| `append` | like `prepend` but at the end, so installed packages win |
+
+## Assertions
+
+Plain `assert`. pytest rewrites asserts in test modules, `conftest.py` and plugins so a failure
+shows the intermediate values and a diff.
+
+```text
+>       assert got == {"name": "ada", "roles": ["dev"]}
+E       AssertionError: assert {'name': 'ada...s': ['admin']} == {'name': 'ada...les': ['dev']}
+E         Omitting 1 identical items, use -vv to show
+E         Differing items:
+E         {'roles': ['admin']} != {'roles': ['dev']}
+```
+
+Asserts in helper modules are not rewritten unless you call `pytest.register_assert_rewrite("tests.helpers")`
+in the root `conftest.py` before importing them. Never run tests with `python -O`, which strips asserts.
+
+```python title="tests/test_assert.py"
+import warnings
+
+import pytest
+
+from shop.net import parse_port
+
+
+def test_raises_with_message() -> None:
+    with pytest.raises(ValueError, match=r"range: \d+"):
+        parse_port("70000")
+
+
+def test_inspect_exception() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        parse_port("http")
+    assert "invalid literal" in str(exc_info.value)
+    assert exc_info.type is ValueError
+
+
+def test_floats() -> None:
+    assert 0.1 + 0.2 == pytest.approx(0.3)
+    assert [0.1 + 0.2, 1.0] == pytest.approx([0.3, 1.0])
+    assert 103 == pytest.approx(100, rel=0.05)  # within 5 %
+
+
+def test_warning() -> None:
+    with pytest.warns(DeprecationWarning, match="v1"):
+        warnings.warn("v1 is old", DeprecationWarning, 2)
+
+
+def test_exception_group() -> None:
+    with pytest.RaisesGroup(ValueError, TypeError):
+        errors = [ValueError(), TypeError()]
+        raise ExceptionGroup("batch", errors)
+```
+
+| Helper | Checks |
+| :----- | :----- |
+| `pytest.raises(E, match=re)` | block raises `E` (or a subclass); `match` is `re.search` on `str(exc)` |
+| `excinfo.value` / `.type` / `.traceback` | the caught exception, after the `with` block |
+| `pytest.RaisesGroup(E1, E2)` | an `ExceptionGroup` with exactly those leaves (`allow_unwrapped=True`, `flatten_subgroups=True`) |
+| `pytest.approx(x, rel=, abs=)` | floats, sequences, dicts, NumPy arrays; default `rel=1e-6` |
+| `pytest.warns(W, match=re)` | block emits warning `W` |
+| `pytest.deprecated_call()` | block emits a `DeprecationWarning` or `PendingDeprecationWarning` |
+| `pytest.fail(msg)` / `pytest.skip(msg)` | fail or skip from inside a test or fixture |
+
+## Fixtures
+
+A fixture is a function that a test requests by parameter name. Code before `yield` is setup; code
+after it is teardown, which runs even when the test fails.
+
+```python title="tests/conftest.py"
+import sqlite3
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture(scope="session")
+def db_path(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    return tmp_path_factory.mktemp("db") / "test.sqlite3"
+
+
+@pytest.fixture
+def conn(db_path: Path) -> Iterator[sqlite3.Connection]:
+    conn = sqlite3.connect(db_path)
+    yield conn  # the test runs here
+    conn.close()  # teardown runs even if the test failed
+
+
+@pytest.fixture(autouse=True)
+def _utc(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TZ", "UTC")  # every test, no request
+```
+
+| Scope | Created once per | Use for |
+| :---- | :--------------- | :------ |
+| `function` (default) | test | mutable state, anything a test might change |
+| `class` | test class | shared setup for a `Test*` class |
+| `module` | test file | expensive read-only data |
+| `package` | test directory | per-package services |
+| `session` | whole run | DB engine, Docker container, app instance |
+
+A fixture can only request fixtures of the same or a wider scope (a `session` fixture can't use
+`tmp_path`; use `tmp_path_factory`). Fixtures in `conftest.py` are visible to every test below that
+directory with no import; a fixture with the same name closer to the test overrides it.
+
+### Factory fixtures
+
+Return a function when a test needs several objects, or different ones.
+
+```python title="tests/test_users.py"
+from dataclasses import dataclass
+from typing import Protocol
+
+import pytest
+
+
+@dataclass(frozen=True)
+class User:
+    name: str
+    admin: bool = False
+
+
+class MakeUser(Protocol):
+    def __call__(
+        self, name: str = ..., *, admin: bool = ...
+    ) -> User: ...
+
+
+@pytest.fixture
+def make_user() -> MakeUser:
+    def make(
+        name: str = "ada", *, admin: bool = False
+    ) -> User:
+        return User(name, admin)
+
+    return make
+
+
+def test_factory(make_user: MakeUser) -> None:
+    admin = make_user("root", admin=True)
+    assert admin.admin and not make_user().admin
+```
+
+### Built-in fixtures
+
+| Fixture | Type | Gives you |
+| :------ | :--- | :-------- |
+| `tmp_path` | `pathlib.Path` | fresh empty directory per test |
+| `tmp_path_factory` | `pytest.TempPathFactory` | `.mktemp(name)` for session-scoped dirs |
+| `monkeypatch` | `pytest.MonkeyPatch` | `setattr`, `setitem`, `setenv`, `delenv`, `chdir`, `syspath_prepend`; undone after the test |
+| `capsys` / `capfd` | `pytest.CaptureFixture[str]` | `.readouterr()` of stdout/stderr (Python level / file descriptors) |
+| `caplog` | `pytest.LogCaptureFixture` | `.messages`, `.records`, `.record_tuples`, `.at_level()` |
+| `recwarn` | `pytest.WarningsRecorder` | every warning raised in the test |
+| `request` | `pytest.FixtureRequest` | `.param`, `.node`, `.addfinalizer()`, `.getfixturevalue()` |
+| `subtests` | `pytest.Subtests` | `with subtests.test(msg, **kw):` reports each block separately (pytest 9) |
+| `pytestconfig` | `pytest.Config` | CLI options, `.getini()` |
+| `cache` | `pytest.Cache` | values that persist between runs in `.pytest_cache` |
+
+```python title="tests/test_builtins.py"
+import logging
+import os
+
+import pytest
+
+log = logging.getLogger("shop")
+
+
+def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("API_URL", "http://test")
+    monkeypatch.delenv("HOME", raising=False)
+    assert os.environ["API_URL"] == "http://test"
+
+
+def test_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    print("hello")
+    out, err = capsys.readouterr()
+    assert out == "hello\n" and err == ""
+
+
+def test_logs(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING, logger="shop"):
+        log.warning("low stock: %s", "tea")
+    assert caplog.messages == ["low stock: tea"]
+
+
+def test_subtests(subtests: pytest.Subtests) -> None:
+    for n in (2, 4, 6):
+        with subtests.test("even", n=n):
+            assert n % 2 == 0  # each failure reported
+```
+
+`@pytest.mark.usefixtures("clean_db")` requests a fixture whose value the test doesn't need.
+
+## Parametrize
+
+```python title="tests/test_params.py"
+from dataclasses import dataclass
+
+import pytest
+
+from shop.net import parse_port
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("80", 80),
+        ("65535", 65_535),
+        pytest.param(" 443 ", 443, id="whitespace"),
+        pytest.param(
+            "0x50",
+            80,
+            marks=pytest.mark.xfail(raises=ValueError),
+        ),
+    ],
+)
+def test_parse(raw: str, expected: int) -> None:
+    assert parse_port(raw) == expected
+
+
+@pytest.mark.parametrize("x", [1, 2])
+@pytest.mark.parametrize("y", [10, 20])
+def test_grid(x: int, y: int) -> None:  # 4 cases
+    assert x < y
+
+
+@dataclass(frozen=True)
+class Conn:
+    driver: str
+
+
+@pytest.fixture
+def conn(request: pytest.FixtureRequest) -> Conn:
+    return Conn(driver=request.param)  # from parametrize
+
+
+@pytest.mark.parametrize(
+    "conn", ["sqlite", "postgres"], indirect=True
+)
+def test_indirect(conn: Conn) -> None:
+    assert conn.driver in {"sqlite", "postgres"}
+
+
+@pytest.fixture(params=["utf-8", "latin-1"], ids=str.upper)
+def encoding(request: pytest.FixtureRequest) -> str:
+    return str(request.param)  # users run once per param
+
+
+def test_encode(encoding: str) -> None:
+    assert "cafe".encode(encoding) == b"cafe"
+```
+
+```text
+test_params.py::test_parse[80-80]
+test_params.py::test_parse[whitespace]
+test_params.py::test_grid[10-1]
+test_params.py::test_indirect[sqlite]
+test_params.py::test_encode[UTF-8]
+```
+
+| Option | Effect |
+| :----- | :----- |
+| `ids=["a", "b"]` or `ids=fn` | readable IDs, for `-k` and reports; `fn` gets each value |
+| `pytest.param(..., id=, marks=)` | ID or marks for a single case |
+| stacked decorators | Cartesian product |
+| `indirect=True` or `indirect=["name"]` | value goes to the fixture as `request.param` instead of the test |
+| `@pytest.fixture(params=[...])` | parametrize every test that uses the fixture |
+| `scope="module"` | group cases so module-scoped fixtures aren't rebuilt |
+
+## Marks
+
+```python
+import sys
+
+import pytest
+
+
+@pytest.mark.skip(reason="flaky upstream")
+def test_skipped() -> None: ...
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="posix")
+def test_posix_only() -> None: ...
+
+
+@pytest.mark.xfail(reason="bug #42", strict=True)
+def test_known_bug() -> None:
+    assert int("1e3") == 1000
+
+
+@pytest.mark.slow  # custom: register it in config
+def test_big_import() -> None:
+    np = pytest.importorskip("numpy")  # skip if missing
+    assert np.zeros(3).sum() == 0
+
+
+pytestmark = pytest.mark.integration  # whole module
+```
+
+| Mark | Effect |
+| :--- | :----- |
+| `skip(reason=)` | never run; reported `s` |
+| `skipif(cond, reason=)` | skip when `cond` is true |
+| `xfail(reason=, raises=, strict=)` | expected failure `x`; an unexpected pass is `X`, or a failure with `strict=True` |
+| `usefixtures("name")` | request fixtures without parameters |
+| `filterwarnings("error::UserWarning")` | per-test warning filter |
+| `parametrize(...)` | see above |
+| any other name | custom mark for `-m`; unknown names fail under `strict` |
+
+```sh
+uv run pytest -m "not slow"
+uv run pytest -m "integration and not slow"
+uv run pytest -k "parse and not whitespace"  # name match
+```
+
+## Configuration
+
+pytest 9 reads native TOML from `[tool.pytest]` (lists are lists). The older
+`[tool.pytest.ini_options]` table, with string values, still works; use one or the other.
+
+```toml title="pyproject.toml"
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--import-mode=importlib"]
+strict = true  # strict config, markers, xfail, param ids
+markers = [
+  "slow: takes more than a second",
+  "integration: needs real services",
+]
+filterwarnings = [
+  "error",  # warnings fail tests
+  "ignore::DeprecationWarning:somelib.*",
+]
+log_level = "INFO"  # what caplog captures
+asyncio_mode = "auto"  # pytest-asyncio, see below
+```
+
+| Key | Meaning |
+| :-- | :------ |
+| `strict = true` | turns on `strict_config`, `strict_markers`, `strict_xfail`, `strict_parametrization_ids`; typos become errors |
+| `addopts` | flags added to every run |
+| `testpaths` | where to look when no path is given |
+| `pythonpath = ["src"]` | add dirs to `sys.path` (for projects that aren't installed) |
+| `filterwarnings` | warning filters, last match wins; `"error"` first is a good default |
+| `strict_xfail` | only strict xfail, without the rest of `strict` (older name `xfail_strict`) |
+| `required_plugins` | fail fast if a plugin (`"pytest-cov>=7"`) is missing |
+| `console_output_style` | `progress` (default), `count`, `classic` |
+
+## CLI flags
+
+| Flag | Does |
+| :--- | :--- |
+| `-q` / `-v` / `-vv` | less / more output; `-vv` shows full diffs |
+| `-x`, `--maxfail=N` | stop after the first / Nth failure |
+| `-k EXPR` | run tests whose names match (`"cart and not slow"`) |
+| `-m EXPR` | run tests with matching marks |
+| `--lf` / `--ff` | only last-failed / failed first, then the rest |
+| `--nf` | new test files first |
+| `--sw` | stepwise: stop at a failure, resume from it next run |
+| `-s` | don't capture output (see `print` live) |
+| `-l` | show local variables in tracebacks |
+| `--tb=short\|line\|no` | traceback style |
+| `-ra` | summary line for everything that didn't pass |
+| `--pdb` / `--trace` | debugger on failure / at the start of each test |
+| `--durations=10` | 10 slowest setups and tests |
+| `--co` | collect only; list tests |
+| `-p no:NAME` | disable a plugin (`-p no:randomly`) |
+| `-W error` | turn warnings into errors |
+| `-n auto` | run on all cores (pytest-xdist) |
+| `--runxfail` | run `xfail` tests as normal tests |
+
+## Mocking
+
+`unittest.mock` is stdlib; pytest-mock wraps it as the `mocker` fixture, which undoes patches at
+test end. Use `monkeypatch` for plain attribute and env swaps without call recording.
+
+**Patch where the name is looked up, not where it's defined.** If `shop/report.py` does
+`from shop.clock import now`, patch `shop.report.now`; patching `shop.clock.now` changes nothing
+that `report` sees.
+
+```python title="tests/test_mocking.py"
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, create_autospec, patch
+
+import pytest
+from pytest_mock import MockerFixture
+
+from shop import report
+from shop.notify import Mailer, welcome
+
+FIXED = datetime(2026, 9, 25, tzinfo=UTC)
+
+
+def test_patch_where_used() -> None:
+    with patch("shop.report.now", return_value=FIXED):
+        assert report.stamp() == "2026-09-25"
+
+
+def test_autospec_checks_signature() -> None:
+    with patch("shop.report.now", autospec=True) as now:
+        now.return_value = FIXED
+        report.stamp()
+        with pytest.raises(TypeError):
+            now("unexpected arg")  # real now() takes none
+
+
+async def test_async_method() -> None:
+    mailer = create_autospec(Mailer, instance=True)
+    mailer.send.return_value = True  # async def → AsyncMock
+    assert await welcome(mailer, "a@x.dev")
+    mailer.send.assert_awaited_once_with(
+        "a@x.dev", "Welcome!"
+    )
+
+
+async def test_side_effects() -> None:
+    send = AsyncMock(side_effect=[True, OSError("down")])
+    assert await send()
+    with pytest.raises(OSError):
+        await send()
+
+
+def test_mocker(mocker: MockerFixture) -> None:
+    now = mocker.patch("shop.report.now", return_value=FIXED)
+    spy = mocker.spy(report, "stamp")  # real call, recorded
+    report.stamp()
+    now.assert_called_once_with()
+    assert spy.spy_return == "2026-09-25"
+```
+
+| API | Use |
+| :-- | :-- |
+| `patch("pkg.mod.name")` | replace for a `with` block or decorated test; returns a `MagicMock` |
+| `patch.object(obj, "attr")` | patch an attribute of an object you already hold |
+| `patch.dict(os.environ, {...})` | temporarily change a dict |
+| `autospec=True` / `create_autospec(C)` | mock with the real signature; wrong calls raise `TypeError`, `async def` becomes `AsyncMock` |
+| `return_value` | what a call returns |
+| `side_effect` | exception to raise, iterable of results, or a function to call |
+| `assert_called_once_with(...)`, `assert_not_called()` | call checks; `call_args`, `call_count`, `mock_calls` to inspect |
+| `assert_awaited_once_with(...)` | the same for `AsyncMock` |
+| `ANY`, `call(...)`, `sentinel.x` | wildcards and unique placeholders in assertions |
+| `mocker.patch`, `mocker.spy`, `mocker.stub` | pytest-mock equivalents, auto-undone |
+
+Prefer injecting dependencies (a client, a clock) over patching module globals; patching is for code
+you can't change.
+
+## Async tests
+
+pytest can't run `async def` tests itself. Pick one plugin.
+
+| | pytest-asyncio 1.x | AnyIO plugin (ships with `anyio`) |
+| :- | :----------------- | :-------------------------------- |
+| Install | `uv add --dev pytest-asyncio` | already there if `anyio` is installed |
+| Mark | `@pytest.mark.asyncio` | `@pytest.mark.anyio` |
+| No marks | `asyncio_mode = "auto"` | `anyio_mode = "auto"` (runs on asyncio only by default) |
+| Async fixtures | `@pytest_asyncio.fixture` in strict mode; plain `@pytest.fixture` in auto | plain `@pytest.fixture` |
+| Loop sharing | `loop_scope="module"` on mark or fixture | backend fixture's scope |
+| Backends | asyncio | asyncio, trio (`anyio_backend` fixture) |
+
+```python title="tests/test_async.py (pytest-asyncio, strict mode)"
+import asyncio
+from collections.abc import AsyncIterator
+
+import pytest
+import pytest_asyncio
+
+
+@pytest_asyncio.fixture
+async def queue() -> AsyncIterator[asyncio.Queue[int]]:
+    q: asyncio.Queue[int] = asyncio.Queue()
+    yield q
+    q.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_queue(queue: asyncio.Queue[int]) -> None:
+    await queue.put(1)
+    assert await queue.get() == 1
+```
+
+```python title="tests/test_anyio.py"
+from collections.abc import AsyncIterator
+
+import anyio
+import pytest
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"  # params=["asyncio", "trio"] for both
+
+
+@pytest.fixture
+async def answer() -> AsyncIterator[int]:
+    yield 42
+
+
+async def test_sleep(answer: int) -> None:
+    with anyio.fail_after(1):  # timeout
+        await anyio.sleep(0)
+    assert answer == 42
+```
+
+Auto mode assumes asyncio is your only async library; if both plugins are installed, keep
+pytest-asyncio in strict mode. Code that requested the `event_loop` fixture must move to `loop_scope`:
+pytest-asyncio 1.0 removed that fixture.
+
+## Coverage
+
+```sh
+uv add --dev pytest-cov
+uv run pytest --cov --cov-report=term-missing
+uv run pytest --cov --cov-report=html  # htmlcov/index.html
+uv run pytest --cov --cov-report=xml   # CI upload
+```
+
+```toml title="pyproject.toml"
+[tool.coverage.run]
+branch = true  # count both sides of each if
+source = ["shop"]
+patch = ["subprocess"]  # measure child processes too
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+]
+```
+
+| Tool | Notes |
+| :--- | :---- |
+| `pytest --cov` | pytest-cov; `--cov=shop` to name the package, `--cov-branch`, `--cov-fail-under=90` |
+| `coverage run -m pytest` | coverage.py directly; then `coverage report`, `coverage html` |
+| branch coverage | flags an `if` whose false side never ran, which line coverage misses |
+| `# pragma: no cover` | exclude a line or block |
+
+Coverage shows what ran, not what was checked. Aim for high branch coverage on logic and don't chase
+100 % on glue code.
+
+## Property-based testing
+
+Hypothesis generates inputs, runs the test many times and shrinks any failure to a minimal example,
+which it saves and replays next run.
+
+```python title="tests/test_props.py"
+import json
+
+from hypothesis import example, given, settings
+from hypothesis import strategies as st
+
+from shop.cart import Cart
+
+json_values = st.recursive(
+    st.none() | st.booleans() | st.integers() | st.text(),
+    lambda kids: st.lists(kids)
+    | st.dictionaries(st.text(), kids),
+)
+
+
+@given(json_values)
+def test_json_roundtrip(value: object) -> None:
+    assert json.loads(json.dumps(value)) == value
+
+
+@given(st.lists(st.integers()))
+@example([])  # always tried, on top of random cases
+def test_sort_idempotent(xs: list[int]) -> None:
+    assert sorted(sorted(xs)) == sorted(xs)
+
+
+prices = st.floats(0, 1e6, allow_nan=False)
+qtys = st.integers(min_value=1, max_value=99)
+
+
+@settings(max_examples=500)
+@given(st.lists(st.tuples(prices, qtys), max_size=20))
+def test_total_never_negative(
+    lines: list[tuple[float, int]],
+) -> None:
+    cart = Cart()
+    for price, qty in lines:
+        cart.add("sku", price, qty)
+    assert cart.total() >= 0
+```
+
+| Strategy | Generates |
+| :------- | :-------- |
+| `st.integers(min_value=, max_value=)` | ints |
+| `st.floats(allow_nan=False, allow_infinity=False)` | floats |
+| `st.text()`, `st.binary()` | str, bytes |
+| `st.lists(s, min_size=, max_size=, unique=)` | lists; also `sets`, `tuples`, `dictionaries` |
+| `st.sampled_from(seq)`, `st.just(x)`, `a \| b` | choice, constant, either |
+| `st.builds(Cls, field=s)` | instances from a callable |
+| `st.from_type(T)` | anything with type hints: dataclasses, `TypedDict`, pydantic models |
+| `s.map(f)`, `s.filter(p)` | transform; filter sparingly |
+| `@st.composite` | hand-written strategy that draws from others |
+
+Good properties: round-trips (`decode(encode(x)) == x`), invariants (total never negative),
+idempotence, and agreement with a simpler reference implementation.
+`@settings(deadline=None)` stops slow tests being flagged; `--hypothesis-show-statistics` shows what ran.
+
+## Snapshot testing
+
+syrupy compares a value with a stored snapshot. The first run with `--snapshot-update` writes it;
+later runs fail on any difference. Review snapshot diffs like code.
+
+```python title="tests/test_snapshot.py"
+import pytest
+from syrupy.assertion import SnapshotAssertion
+from syrupy.extensions.json import JSONSnapshotExtension
+
+from shop.cart import Cart
+from shop.invoice import render
+
+
+@pytest.fixture
+def snapshot_json(
+    snapshot: SnapshotAssertion,
+) -> SnapshotAssertion:
+    return snapshot.use_extension(JSONSnapshotExtension)
+
+
+def test_invoice(snapshot: SnapshotAssertion) -> None:
+    cart = Cart()
+    cart.add("tea", 4.5, 2)
+    assert render(cart) == snapshot  # __snapshots__/*.ambr
+
+
+def test_invoice_json(
+    snapshot_json: SnapshotAssertion,
+) -> None:
+    assert render(Cart()) == snapshot_json  # one .json each
+```
+
+```sh
+uv add --dev syrupy
+uv run pytest --snapshot-update  # write or refresh
+uv run pytest                    # compare; unused ones fail
+```
+
+Only snapshot deterministic output: freeze time, sort sets and strip random IDs first.
+
+## Testing FastAPI
+
+`TestClient` calls the app in-process, with no server. Swap dependencies with
+`app.dependency_overrides`. More in [FastAPI](/python/fastapi/).
+
+```python title="tests/test_api.py"
+from collections.abc import Iterator
+
+import httpx2
+import pytest
+from fastapi.testclient import TestClient
+
+from shop.api import app, get_store
+
+
+def fake_store() -> dict[int, str]:
+    return {1: "tea"}
+
+
+@pytest.fixture
+def client() -> Iterator[TestClient]:
+    app.dependency_overrides[get_store] = fake_store
+    with TestClient(app) as c:  # runs lifespan events
+        yield c
+    app.dependency_overrides.clear()
+
+
+def test_read_item(client: TestClient) -> None:
+    r = client.get("/items/1")
+    assert r.status_code == 200
+    assert r.json() == {"name": "tea"}
+
+
+async def test_async_client() -> None:
+    app.dependency_overrides[get_store] = fake_store
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        r = await ac.get("/items/1")
+    app.dependency_overrides.clear()
+    assert r.json() == {"name": "tea"}
+```
+
+Starlette's `TestClient` now runs on `httpx2` (Pydantic's maintained continuation of httpx); with only
+`httpx` installed it still works but warns. Add `httpx2` to the dev group. Use the async client when
+the test itself must `await` other things, such as a database.
+
+## Recipes
+
+### Temp project directory
+When code reads or writes relative paths and must not touch the real working directory.
+
+```python
+import json
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    cfg = {"port": 8080}
+    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)  # restored after the test
+    return tmp_path
+
+
+def test_reads_cwd_config(project: Path) -> None:
+    cfg = json.loads(Path("config.json").read_text())
+    assert cfg["port"] == 8080
+```
+
+### Freeze time
+When output depends on "now": expiry, timestamps, schedules. time-machine patches the C-level clock,
+so `datetime.now`, `time.time` and friends all agree.
+
+```python
+from datetime import UTC, datetime, timedelta
+
+import time_machine
+from time_machine import TimeMachineFixture
+
+from shop.report import stamp
+
+
+def test_frozen(time_machine: TimeMachineFixture) -> None:
+    time_machine.move_to(
+        datetime(2026, 9, 25, 9, tzinfo=UTC), tick=False
+    )
+    assert stamp() == "2026-09-25"
+    time_machine.shift(timedelta(days=1))
+    assert stamp() == "2026-09-26"
+
+
+@time_machine.travel(datetime(2000, 1, 1, tzinfo=UTC))
+def test_decorator() -> None:
+    assert datetime.now(UTC).year == 2000
+```
+
+### Table-driven test
+When one function has many input/output cases; a dict keyed by case ID keeps rows readable in reports.
+
+```python
+import pytest
+
+from shop.net import parse_port
+
+type Row = tuple[str, int | None]  # None means "raises"
+
+CASES: dict[str, Row] = {
+    "http": ("80", 80),
+    "max": ("65535", 65_535),
+    "too-big": ("65536", None),
+    "not-a-number": ("http", None),
+}
+
+
+@pytest.mark.parametrize(
+    ("raw", "want"), CASES.values(), ids=CASES.keys()
+)
+def test_parse_port(raw: str, want: int | None) -> None:
+    if want is None:
+        with pytest.raises(ValueError):
+            parse_port(raw)
+    else:
+        assert parse_port(raw) == want
+```
+
+### Mock an HTTP call
+When code calls an API through httpx; respx intercepts at the transport, so the real client code runs.
+
+```python
+import httpx
+import pytest
+import respx
+
+from shop.weather import temperature, temperature_sync
+
+URL = "https://api.example.com/w/oslo"
+
+
+async def test_ok(respx_mock: respx.MockRouter) -> None:
+    body = {"temp": 4.5}
+    route = respx_mock.get(URL).respond(200, json=body)
+    async with httpx.AsyncClient() as client:
+        assert await temperature(client, "oslo") == 4.5
+    assert route.call_count == 1
+
+
+def test_errors(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(host="api.example.com").mock(
+        side_effect=[httpx.Response(503), httpx.ConnectError]
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        temperature_sync("oslo")
+    with pytest.raises(httpx.ConnectError):
+        temperature_sync("oslo")
+```
+
+Without respx: pass `httpx.Client(transport=httpx.MockTransport(handler))` into the code under test.
+
+### DB session that rolls back
+When tests hit a real database and each must start clean, even if the code calls `commit()`.
+
+```python
+from collections.abc import Iterator
+
+import pytest
+import sqlalchemy as sa
+from sqlalchemy.orm import Session
+
+from shop.models import Base
+
+
+@pytest.fixture(scope="session")
+def engine() -> sa.Engine:
+    engine = sa.create_engine("postgresql+psycopg://…/test")
+    Base.metadata.create_all(engine)
+    return engine
+
+
+@pytest.fixture
+def session(engine: sa.Engine) -> Iterator[Session]:
+    with engine.connect() as conn, conn.begin() as tx:
+        with Session(
+            bind=conn,
+            join_transaction_mode="create_savepoint",
+        ) as s:
+            yield s  # commit() only releases a SAVEPOINT
+        tx.rollback()
+```
+
+For SQLite (`sqlite3`), pass `connect_args={"autocommit": False}` so SAVEPOINTs work.
+
+### Run only failed or affected tests
+When iterating on a fix and the full suite is slow.
+
+```sh
+uv run pytest --lf           # last failed only
+uv run pytest --ff -x        # failed first, stop at one
+uv run pytest --sw           # fix one at a time, resume
+uv run pytest -n auto        # pytest-xdist, all cores
+# only tests whose code changed (pytest-testmon)
+uv run --with pytest-testmon pytest --testmon
+# re-run on save (pytest-watcher)
+uv run --with pytest-watcher ptw . --now
+```
+
+### Assert a warning or log was emitted
+When deprecations and error logs are part of the contract.
+
+```python
+import logging
+import warnings
+
+import pytest
+
+
+def old_api() -> int:
+    warnings.warn("use new_api()", DeprecationWarning, 2)
+    logging.getLogger("shop").error("old_api called")
+    return 1
+
+
+def test_warns_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with pytest.warns(DeprecationWarning, match="new_api"):
+        assert old_api() == 1
+    record = ("shop", logging.ERROR, "old_api called")
+    assert record in caplog.record_tuples
+
+
+def test_no_warnings() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning fails
+        int("80")
+```
+
+## References
+
+- [pytest documentation](https://docs.pytest.org/en/stable/): how-to guides and the full reference
+- [pytest: Fixtures reference](https://docs.pytest.org/en/stable/reference/fixtures.html): scopes, ordering, overriding
+- [pytest: Configuration](https://docs.pytest.org/en/stable/reference/customize.html): `[tool.pytest]`, `strict`, rootdir rules
+- [pytest: Changelog](https://docs.pytest.org/en/stable/changelog.html): what changed in 9.x
+- [Python docs: unittest.mock](https://docs.python.org/3/library/unittest.mock.html): `patch`, `autospec`, `AsyncMock`
+- [Python docs: Where to patch](https://docs.python.org/3/library/unittest.mock.html#where-to-patch): the lookup rule
+- [pytest-asyncio](https://pytest-asyncio.readthedocs.io/): modes and loop scopes
+- [AnyIO: Testing](https://anyio.readthedocs.io/en/stable/testing.html): the AnyIO pytest plugin
+- [pytest-cov](https://pytest-cov.readthedocs.io/) and [coverage.py](https://coverage.readthedocs.io/): flags and config
+- [Hypothesis](https://hypothesis.readthedocs.io/): strategies and settings
+- [syrupy](https://github.com/syrupy-project/syrupy): snapshot extensions and CLI flags
+- [RESPX](https://lundberg.github.io/respx/): route patterns and side effects
+- [time-machine](https://time-machine.readthedocs.io/): travel and the pytest fixture
+- [FastAPI: Testing](https://fastapi.tiangolo.com/tutorial/testing/): `TestClient` and dependency overrides
+- [SQLAlchemy: Joining a Session into an external transaction](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#joining-a-session-into-an-external-transaction-such-as-for-test-suites): the rollback fixture

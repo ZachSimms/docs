@@ -1,0 +1,638 @@
+---
+title: Packages & libraries
+date: 2026-09-25
+order: 1
+---
+
+Python projects with uv 0.12 (Astral's all-in-one tool: Python installs, venvs, locking, running,
+building, publishing): `pyproject.toml`, layouts, imports, lockfiles, tooling config and the go-to
+library for each job. Targets Python 3.14. Tests are in [Testing](/python/engineering/testing/); the
+TypeScript equivalent is [Modules & packages](/typescript/design-architecture/modules-packages/).
+
+## uv at a glance
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh  # or:
+brew install uv
+uv self update                 # standalone installs only
+```
+
+| Command | Does |
+| :------ | :--- |
+| `uv init` | new project: `pyproject.toml`, `.python-version`, README, git |
+| `uv add httpx` / `uv remove httpx` | edit dependencies, re-lock, sync `.venv` |
+| `uv sync` | make `.venv` match `uv.lock` exactly (creates both if missing) |
+| `uv lock` | resolve and write `uv.lock` without installing |
+| `uv run CMD` | lock + sync if stale, then run `CMD` inside `.venv` |
+| `uv tree` | dependency tree; `--outdated` shows newer versions |
+| `uv version --bump minor` | bump `project.version` (`major`, `minor`, `patch`, `alpha`, `rc`, …) |
+| `uv format` | run the Ruff formatter over the project |
+| `uv check` | type-check with ty (experimental in 0.12) |
+| `uv audit` | scan locked deps for known vulnerabilities (experimental) |
+| `uv export` | `uv.lock` to `requirements.txt`, `pylock.toml` or CycloneDX |
+| `uv build` / `uv publish` | sdist + wheel into `dist/`; upload to PyPI |
+| `uv tool install` / `uvx` | global CLI tools / run a tool once |
+| `uv python install` | download a managed CPython or PyPy |
+| `uv pip …`, `uv venv` | pip-compatible low-level interface |
+
+There's no `source .venv/bin/activate` step: `uv run` finds the project, checks the lock is fresh and
+runs in its venv. Activate only if you want bare `python`/`pytest` in your shell.
+
+## Python versions
+
+```sh
+uv python install 3.14         # managed CPython
+uv python install 3.14t        # free-threaded (no GIL) build
+uv python install --default    # python, python3 on PATH
+uv python pin 3.14             # writes .python-version
+uv python list --only-installed
+uv python upgrade 3.14         # latest patch release
+uv run -p 3.13 pytest          # one run on another version
+```
+
+| File or field | Role |
+| :------------ | :--- |
+| `.python-version` | the interpreter uv uses for this project's `.venv` (like `.nvmrc`) |
+| `requires-python = ">=3.14"` | versions the project supports; the lock resolves for all of them |
+| `uv python find` | which interpreter uv would pick here |
+
+uv downloads a missing interpreter on first use, so a fresh clone needs only `uv sync`.
+
+## Project workflow
+
+```sh
+uv init shop                   # packaged app, src/ layout
+uv init --lib shop             # library (adds py.typed)
+uv init --no-package scripts   # flat main.py, no build
+cd shop
+uv add httpx "pydantic>=2.11"  # [project] dependencies
+uv add --dev pytest ruff       # dependency group "dev"
+uv add --group docs mkdocs     # another group
+uv add --optional cli typer    # extra: pip install shop[cli]
+uv add "git+https://github.com/org/lib@v1.2.0"
+uv add --editable ../shared    # local path dependency
+uv add -r requirements.txt     # import an old project
+uv remove httpx
+uv lock --upgrade-package httpx  # bump one dep in the lock
+uv lock --upgrade              # bump everything allowed
+uv sync --locked               # CI: fail if lock is stale
+uv run python -m shop
+uv run --with rich python      # extra package, this run only
+uv run --env-file .env uvicorn app:app
+```
+
+| `uv sync` / `uv run` flag | Effect |
+| :------------------------ | :----- |
+| `--locked` | error if `uv.lock` doesn't match `pyproject.toml` (use in CI) |
+| `--frozen` | use `uv.lock` as is, never re-lock |
+| `--no-dev` | skip the `dev` group (production images) |
+| `--group NAME` / `--all-groups` | add groups on top of the defaults |
+| `--extra NAME` / `--all-extras` | install optional dependencies |
+| `--no-install-project` | deps only; good for a cached Docker layer |
+| `--inexact` | keep packages that aren't in the lock (sync is exact by default) |
+| `--all-packages` / `--package NAME` | workspace: every member / one member |
+
+`uv add` writes a lower bound (`httpx>=0.28.1`) by default; `--bounds major` writes a caret-style
+range instead (`rich>=15.0.0,<16.0.0`, or `httpx>=0.28.1,<0.29.0` for 0.x). The lock pins exact versions and hashes either way.
+
+## Tools & scripts
+
+```sh
+uvx ruff check .               # run a tool in a cached env
+uvx ruff@0.16.9 check .        # a specific version
+uvx --from httpie http GET example.com  # package ≠ command
+uv tool install ruff           # put ruff on PATH for good
+uv tool list
+uv tool upgrade --all
+uv tool install -e .           # your own CLI, editable
+```
+
+`uvx` is `uv tool run`. Tools get their own isolated venvs, so they never clash with a project; to use a
+tool that must import your code (pytest, mypy), add it to the project's `dev` group and `uv run` it.
+
+### Scripts with inline metadata (PEP 723)
+
+A single `.py` file declares its own Python and dependencies in a comment block; `uv run` builds a
+cached env for it. No project needed.
+
+```sh
+uv init --script tool.py --python 3.14
+uv add --script tool.py httpx rich  # edits the header
+uv run tool.py
+uv lock --script tool.py           # tool.py.lock beside it
+```
+
+## pip & venv equivalents
+
+| Task | uv project | `uv pip` (drop-in) | pip / venv |
+| :--- | :--------- | :----------------- | :--------- |
+| create venv | automatic (`.venv`) | `uv venv` | `python -m venv .venv` |
+| install a package | `uv add httpx` | `uv pip install httpx` | `pip install httpx` |
+| from a file | `uv add -r requirements.txt` | `uv pip install -r requirements.txt` | `pip install -r requirements.txt` |
+| editable install | `uv sync` (project is editable) | `uv pip install -e .` | `pip install -e .` |
+| lock | `uv lock` | `uv pip compile requirements.in -o requirements.txt` | `pip-compile` (pip-tools), `pip lock` |
+| install exactly the lock | `uv sync` | `uv pip sync requirements.txt` | `pip-sync` |
+| list / freeze | `uv tree` / `uv export` | `uv pip list` / `uv pip freeze` | `pip list` / `pip freeze` |
+| uninstall | `uv remove httpx` | `uv pip uninstall httpx` | `pip uninstall httpx` |
+| run a tool once | `uvx black` | | `pipx run black` |
+| install a tool globally | `uv tool install black` | | `pipx install black` |
+
+`uv pip` works on whatever venv is active (or `.venv`) and never touches `pyproject.toml`; use it for
+legacy `requirements.txt` repos. Prefer the project commands for anything new.
+
+## Coming from Bun & pnpm
+
+| Bun / pnpm / npm | uv / Python |
+| :--------------- | :---------- |
+| `package.json` | `pyproject.toml` |
+| `bun.lock`, `pnpm-lock.yaml` | `uv.lock` |
+| `node_modules/` | `.venv/` (one per project; `site-packages` inside) |
+| `bun install`, `pnpm install` | `uv sync` |
+| `bun add zod` | `uv add pydantic` |
+| `bun add -d vitest` / `devDependencies` | `uv add --dev pytest` / `[dependency-groups]` |
+| `optionalDependencies` | extras (`[project.optional-dependencies]`), chosen by the installer: `shop[cli]` |
+| `bun update zod` | `uv lock --upgrade-package pydantic` |
+| `bun outdated` | `uv tree --outdated` |
+| `bun run dev` (`"scripts"`) | `uv run CMD`; no scripts table, so use `[project.scripts]`, a Makefile or `just` |
+| `bunx`, `pnpm dlx`, `npx` | `uvx` |
+| `bun add -g` | `uv tool install` |
+| `"bin"` | `[project.scripts]` |
+| `.nvmrc`, `"engines"` | `.python-version`, `requires-python` |
+| `pnpm-workspace.yaml`, `"workspace:*"` | `[tool.uv.workspace]`, `{ workspace = true }` |
+| `.npmrc` registry | `[[tool.uv.index]]` |
+| `npm publish` | `uv build && uv publish` |
+| npm registry | PyPI |
+| `^1.2.3` | `>=1.2.3,<2` |
+| `~1.2.3` | `~=1.2.3` |
+| ESLint + Prettier | Ruff (`ruff check`, `ruff format`) |
+| `tsc --noEmit` / `tsconfig.json` | mypy, Pyright or ty / `[tool.mypy]`, `[tool.pyright]` |
+
+The big difference: Python has **one version of each package per environment**. There's no nested
+`node_modules`, so two dependencies that need incompatible versions of a third can't be installed together.
+
+## pyproject.toml
+
+```toml title="pyproject.toml"
+[project]
+name = "shop"              # PyPI name; import name is shop
+version = "0.1.0"
+description = "Carts and invoices"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"            # SPDX expression
+authors = [{ name = "Ada", email = "ada@example.com" }]
+dependencies = [
+  "httpx>=0.28",
+  "pydantic>=2.11,<3",
+  "uvloop>=0.21; sys_platform != 'win32'",  # marker
+]
+
+[project.optional-dependencies]  # extras: shop[cli]
+cli = ["typer>=0.27"]
+
+[project.scripts]          # console commands
+shop = "shop.cli:app"
+
+[project.entry-points."pytest11"]  # plugin hooks
+shop = "shop.pytest_plugin"
+
+[project.urls]
+Homepage = "https://github.com/acme/shop"
+
+[dependency-groups]        # dev-only, never published
+dev = ["pytest>=9", "ruff>=0.16"]
+docs = ["mkdocs-material>=9"]
+ci = [{ include-group = "dev" }, "pytest-cov>=7"]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = ["dev", "docs"]  # synced by default
+```
+
+| Table | Holds | Published? |
+| :---- | :---- | :--------- |
+| `[project]` | name, version, `requires-python`, runtime `dependencies` | yes (package metadata) |
+| `[project.optional-dependencies]` | extras users opt into: `pip install "shop[cli]"` | yes |
+| `[dependency-groups]` | dev, test, docs deps (PEP 735); `include-group` composes them | no |
+| `[project.scripts]` | `name = "module:callable"` commands created on install | yes |
+| `[project.entry-points."group"]` | plugin registration other packages discover | yes |
+| `[build-system]` | backend that turns the source into a wheel | used at build time |
+| `[tool.*]` | per-tool config: `uv`, `ruff`, `mypy`, `pytest`, `coverage` | no |
+
+Build backends: `uv_build` (uv's default, pure Python only), `hatchling`, `setuptools`, `flit_core`,
+`pdm-backend`, and `maturin` or `scikit-build-core` for Rust or C extensions. Pick one with
+`uv init --build-backend hatch`. A project without `[build-system]` is never installed as a package:
+fine for an app you only `uv run`.
+
+## Versions & lockfiles
+
+| Specifier | Means | npm |
+| :-------- | :---- | :-- |
+| `==1.4.2` | exactly this version | `1.4.2` |
+| `>=1.4,<2` | range | `^1.4.0` |
+| `~=1.4.2` | `>=1.4.2, ==1.4.*` (compatible release) | `~1.4.2` |
+| `~=1.4` | `>=1.4, ==1.*` | `^1.4` |
+| `==1.4.*` | any 1.4.x | `1.4.x` |
+| `!=1.5.0` | exclude a broken release | |
+| `pkg[extra]>=1` | with the package's extra | |
+| `pkg; sys_platform == 'linux'` | environment marker (also `python_version`, `platform_machine`) | |
+| `pkg @ git+https://…@tag` | direct URL (not allowed on PyPI uploads) | |
+
+Libraries: wide ranges with lower bounds, upper bounds only for known breaks. Apps: anything goes,
+because the lockfile pins exact versions.
+
+| Lockfile | Made by | Notes |
+| :------- | :------ | :---- |
+| `uv.lock` | `uv lock` (auto on `add`/`run`/`sync`) | universal: one file for every OS, Python version, extra and group; commit it |
+| `pylock.toml` | `uv export --format pylock.toml`, `pip lock` | PEP 751 standard (accepted 2025); pip 26.1+ installs it experimentally with `pip install -r pylock.toml`; `uv pip install -r pylock.toml` works too |
+| `requirements.txt` | `uv export --format requirements.txt`, `uv pip compile` | for tools and hosts that only read pip format; add `--no-hashes` if they choke on hashes |
+
+Keep `uv.lock` as the source of truth; export the others in CI when something downstream needs them.
+
+## Layout & imports
+
+```tree title="src layout (default for uv init)"
+shop/
+  pyproject.toml
+  uv.lock
+  .python-version
+  src/
+    shop/               # import shop
+      __init__.py
+      __main__.py       # python -m shop
+      py.typed          # ships type hints
+      cart.py           # shop.cart
+      payments/
+        __init__.py
+        stripe.py       # shop.payments.stripe
+  tests/
+    test_cart.py
+```
+
+```tree title="flat layout"
+shop/
+  pyproject.toml
+  shop/                 # importable from the repo root
+    __init__.py
+    cart.py
+  tests/
+```
+
+| | src layout | Flat layout |
+| :- | :--------- | :---------- |
+| Import works | only after install (`uv sync` does an editable install) | from the repo root, installed or not |
+| Tests run against | the installed package, as users get it | whatever is on disk, which can hide packaging bugs |
+| Good for | libraries, anything published, most apps | scripts, notebooks, tiny apps |
+| uv_build | default | set `module-root = ""` under `[tool.uv.build-backend]` |
+
+| Term | What it is |
+| :--- | :--------- |
+| module | one `.py` file; import name = file name |
+| package | a directory with `__init__.py`; can hold modules and subpackages |
+| namespace package | a directory with **no** `__init__.py` (PEP 420); several distributions can share it (`acme.core`, `acme.api`) |
+| distribution | what you install from PyPI (`pip install scikit-learn`); its import name can differ (`import sklearn`) |
+| `__init__.py` | runs on first import of the package; re-export the public API here |
+| `__main__.py` | runs on `python -m shop` |
+| `py.typed` | empty marker file: the package ships inline type hints (PEP 561) |
+
+```python title="src/shop/__init__.py"
+"""Public API: callers import from shop, not submodules."""
+
+from shop.cart import Cart, Line
+
+__all__ = ["Cart", "Line"]  # what `from shop import *` gets
+```
+
+```python title="src/shop/payments/stripe.py"
+from shop.cart import Cart  # absolute: the default choice
+
+from ..cart import Line  # relative: up one package
+from .errors import PaymentError  # same package
+
+
+def charge(cart: Cart) -> Line:
+    if not cart.lines:
+        raise PaymentError("empty cart")
+    return cart.lines[-1]
+```
+
+```python title="src/shop/__main__.py"
+import sys
+
+from shop.cli import main
+
+sys.exit(main())
+```
+
+| Import rule | Detail |
+| :---------- | :----- |
+| Prefer absolute imports | `from shop.cart import Cart`; relative ones (`.`, `..`) only work inside a package |
+| Run package modules with `-m` | `python src/shop/cart.py` breaks relative imports; use `uv run python -m shop.cart` |
+| Imports run once | the module is cached in `sys.modules`; top-level code runs on first import only |
+| Guard script code | `if __name__ == "__main__":` keeps it from running on import |
+| Break import cycles | move shared code to a third module, import inside the function, or import under `if TYPE_CHECKING:` for type-only use |
+| Annotations are lazy (3.14) | PEP 649: annotations are evaluated on demand, so `TYPE_CHECKING` imports work in hints without quotes or `from __future__ import annotations` |
+| Package data | `importlib.resources.files("shop") / "data.json"`, not paths built from `__file__` |
+
+## Workspaces
+
+Several packages in one repo sharing one `uv.lock` and one `.venv`, like a pnpm monorepo
+(see [pnpm & monorepos](/typescript/runtime-tooling/pnpm-monorepos/)).
+
+```tree title="uv workspace"
+acme/
+  pyproject.toml        # [tool.uv.workspace]
+  uv.lock               # one lock for all members
+  apps/
+    api/
+      pyproject.toml    # depends on core
+      src/
+  packages/
+    core/
+      pyproject.toml
+      src/
+```
+
+```toml title="pyproject.toml (root)"
+[tool.uv.workspace]
+members = ["apps/*", "packages/*"]
+```
+
+```toml title="apps/api/pyproject.toml"
+[project]
+name = "api"
+dependencies = ["core"]
+
+[tool.uv.sources]
+core = { workspace = true }  # use the local member
+```
+
+```sh
+uv init apps/api               # joins the workspace
+uv add --package api core      # writes both lines above
+uv sync --all-packages
+uv run --package api pytest
+uv workspace list
+```
+
+Every member shares one resolution, so they can't pin conflicting versions of a dependency. When they
+must, keep them as separate projects linked by path: `{ path = "../core", editable = true }`.
+
+## Building & publishing
+
+```sh
+uv build                       # dist/*.tar.gz + *.whl
+uv build --package core        # one workspace member
+uv version --bump patch
+uv publish                     # token or trusted publishing
+uv publish --index testpypi    # index with publish-url
+```
+
+| Artifact | What |
+| :------- | :--- |
+| sdist (`.tar.gz`) | source plus `pyproject.toml`; the installer builds it |
+| wheel (`.whl`) | pre-built zip installed by copying; pure Python is `py3-none-any` |
+
+**Trusted publishing**: PyPI trusts a GitHub Actions workflow through OIDC, so there's no API token to
+store or leak. On PyPI, add a publisher (repo, workflow file, environment); then:
+
+```yaml title=".github/workflows/release.yml"
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC token for PyPI
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv build
+      - run: uv publish  # detects trusted publishing
+```
+
+## Lint, format & types
+
+```toml title="pyproject.toml"
+[tool.ruff]
+line-length = 88  # target-version from requires-python
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+
+[tool.ty.rules]
+possibly-unresolved-reference = "error"
+```
+
+| Tool | Job | Run | Status |
+| :--- | :-- | :-- | :----- |
+| Ruff | linter + formatter + import sorter (replaces flake8, isort, Black) | `uvx ruff check --fix`, `uv format` | stable |
+| mypy | reference type checker | `uv run mypy` | stable (2.x) |
+| Pyright | fast checker; powers Pylance in VS Code | `uv run pyright` | stable |
+| ty | Astral's Rust type checker and language server | `uvx ty check`, `uv check` | beta (0.0.x); fast, still filling gaps |
+
+Run type checkers from the project env (`uv run`, dev group) so they see your dependencies. Ruff
+doesn't need them, so `uvx` is fine. Pick one type checker for CI; mypy or Pyright if you want
+no surprises, ty if speed matters and you can live with rough edges.
+
+## Go-to libraries
+
+| Job | Pick | Notes |
+| :-- | :--- | :---- |
+| HTTP client | httpx | sync + async, HTTP/2; httpx2 is Pydantic's maintained continuation |
+| Validation, models | pydantic | typed models, JSON (de)serialisation |
+| Web APIs | fastapi | pydantic + type hints; [FastAPI](/python/fastapi/) |
+| CLI | typer (or click) | typer builds on click from type hints |
+| Arrays | numpy | [NumPy](/python/data/numpy/) |
+| DataFrames | pandas or polars | [pandas](/python/data/pandas/); polars is faster and lazy |
+| Classic ML | scikit-learn | [scikit-learn](/ml-ai/scikit-learn/) |
+| Deep learning | pytorch | [PyTorch](/ml-ai/pytorch/) |
+| Testing | pytest, hypothesis | [Testing](/python/engineering/testing/) |
+| Lint, format | ruff | one tool for both |
+| Type checking | mypy or pyright (ty coming) | see above |
+| Settings, env vars | pydantic-settings | typed `.env` and env var loading |
+| Dates, time zones | stdlib `datetime` + `zoneinfo`, or whenever | whenever makes DST mistakes hard |
+| Logging | structlog | structured key-value logs; stdlib `logging` underneath |
+| SQL | sqlalchemy + psycopg | psycopg 3 is the Postgres driver; see [Postgres](/databases/postgres/) |
+| Async | anyio | structured concurrency over asyncio or trio |
+
+## Recipes
+
+### New app project
+When starting a service or CLI you'll run but not publish.
+
+```sh
+uv init --app shop --python 3.14
+cd shop
+uv add fastapi uvicorn pydantic-settings
+uv add --dev pytest ruff mypy
+# write src/shop/main.py with app = FastAPI()
+uv run uvicorn shop.main:app --reload
+git add pyproject.toml uv.lock .python-version
+```
+
+### New library with src layout
+When the code will be published or shared between projects.
+
+```sh
+uv init --lib acme-geo         # import name: acme_geo
+cd acme-geo
+uv add "httpx>=0.28"           # keep lower bounds loose
+uv add --dev pytest mypy ruff
+uv run pytest && uv run mypy src
+uv build && ls dist
+```
+
+### Add a CLI entry point
+When the project should install a command, like `"bin"` in `package.json`.
+
+```toml title="pyproject.toml"
+[project.scripts]
+acme = "acme_cli.cli:app"  # module:callable
+```
+
+```python title="src/acme_cli/cli.py"
+from typing import Annotated
+
+import typer
+
+app = typer.Typer(no_args_is_help=True)
+
+
+@app.command()
+def greet(
+    name: str,
+    shout: Annotated[bool, typer.Option("--shout")] = False,
+) -> None:
+    """Say hello."""
+    msg = f"Hello, {name}!"
+    typer.echo(msg.upper() if shout else msg)
+
+
+@app.command()
+def version() -> None:
+    typer.echo("0.1.0")
+```
+
+`uv run acme greet Ada --shout` in the project; `uv tool install .` puts `acme` on your PATH.
+
+### Pin Python per project
+When one repo needs 3.14 and another is stuck on 3.12.
+
+```sh
+uv python pin 3.14             # .python-version, commit it
+# pyproject.toml: requires-python = ">=3.14"
+uv sync                        # rebuilds .venv on 3.14
+uv run python --version
+uv python pin --global 3.14    # default outside projects
+```
+
+### Single-file script
+When a script needs a couple of packages and you don't want a project. `exclude-newer` makes re-runs
+reproducible.
+
+```python title="stars.py"
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = ["httpx>=0.28", "rich>=14"]
+# [tool.uv]
+# exclude-newer = "2026-09-01T00:00:00Z"
+# ///
+import sys
+
+import httpx
+from rich import print
+
+
+def stars(repo: str) -> int:
+    url = f"https://api.github.com/repos/{repo}"
+    r = httpx.get(url, timeout=10)
+    r.raise_for_status()
+    return int(r.json()["stargazers_count"])
+
+
+if __name__ == "__main__":
+    repo = sys.argv[1] if sys.argv[1:] else "astral-sh/uv"
+    print(f"[bold]{repo}[/]: {stars(repo):,} stars")
+```
+
+`chmod +x stars.py && ./stars.py pola-rs/polars`, or `uv run stars.py`.
+
+### Private index
+When some packages come from a company registry (Artifactory, CodeArtifact, GitLab) and the rest from PyPI.
+
+```toml title="pyproject.toml"
+[[tool.uv.index]]
+name = "internal"
+url = "https://pkgs.example.com/simple/"
+explicit = true  # only for packages pinned below
+
+[tool.uv.sources]
+acme-auth = { index = "internal" }
+```
+
+```sh
+export UV_INDEX_INTERNAL_USERNAME=ci
+export UV_INDEX_INTERNAL_PASSWORD="$TOKEN"
+uv add acme-auth
+```
+
+`explicit = true` stops a public package with the same name from being picked up (dependency confusion).
+
+### CI install with cache
+When GitHub Actions should install exactly the lockfile, fast.
+
+```yaml title=".github/workflows/test.yml"
+name: test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --all-extras
+      - run: uv run ruff check
+      - run: uv run pytest
+```
+
+For Docker images see [Dockerfile](/infrastructure/containers/dockerfile/): copy `uv.lock` first,
+`uv sync --locked --no-dev --no-install-project`, then copy the source.
+
+## References
+
+- [uv documentation](https://docs.astral.sh/uv/): guides, concepts and the full CLI reference
+- [uv: Working on projects](https://docs.astral.sh/uv/guides/projects/): `init`, `add`, `sync`, `run`
+- [uv: Managing dependencies](https://docs.astral.sh/uv/concepts/projects/dependencies/): sources, groups, extras
+- [uv: Workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/): members and shared locks
+- [uv: Package indexes](https://docs.astral.sh/uv/concepts/indexes/): private registries and credentials
+- [uv: Running scripts](https://docs.astral.sh/uv/guides/scripts/): PEP 723 inline metadata
+- [uv: GitHub Actions](https://docs.astral.sh/uv/guides/integration/github/): caching and publishing
+- [Python Packaging User Guide: Writing pyproject.toml](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/): every `[project]` field
+- [Packaging guide: src layout vs flat layout](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/)
+- [Packaging guide: Version specifiers](https://packaging.python.org/en/latest/specifications/version-specifiers/)
+- [Packaging guide: pylock.toml](https://packaging.python.org/en/latest/specifications/pylock-toml/): the PEP 751 format
+- [PyPI: Trusted publishers](https://docs.pypi.org/trusted-publishers/): OIDC publishing setup
+- [Python docs: The import system](https://docs.python.org/3/reference/import.html): packages, namespace packages, `__main__`
+- [Ruff](https://docs.astral.sh/ruff/), [mypy](https://mypy.readthedocs.io/), [Pyright](https://microsoft.github.io/pyright/), [ty](https://docs.astral.sh/ty/): tooling config

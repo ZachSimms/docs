@@ -15,10 +15,13 @@ import { DottedLink } from "@/components/DottedLink";
 import { MdxImage } from "@/components/MdxImage";
 import { Callout } from "@/components/Callout";
 import { Card, Cards } from "@/components/Cards";
+import { Demo } from "@/components/Demo";
+import { Diagram } from "@/components/Diagram";
 import { FileTree } from "@/components/FileTree";
 import { Graph, Graphs } from "@/components/Graph";
 import { Note } from "@/components/Note";
 import { Step, Steps } from "@/components/Steps";
+import { Contrast, Scale, Swatches } from "@/components/Swatches";
 import { Tab, Tabs } from "@/components/Tabs";
 
 /**
@@ -43,8 +46,10 @@ function MdxAnchor({
 /**
  * Site-wide defaults: `a`, `img`, and the authoring components available to
  * every sheet without an import: `Note`, `Callout`, `Tabs`/`Tab`,
- * `Steps`/`Step`, `Cards`/`Card`, `FileTree` for directory layouts, and
- * `Graph` for function plots.
+ * `Steps`/`Step`, `Cards`/`Card`, `FileTree` for directory layouts,
+ * `Graph` for function plots, `Swatches`/`Scale`/`Contrast` for colours,
+ * `Demo` for live HTML/CSS (inserted by `lib/remark-demo.ts`) and `Diagram`
+ * for inline SVG diagrams.
  */
 const defaults: MDXComponents = {
   a: MdxAnchor,
@@ -60,6 +65,11 @@ const defaults: MDXComponents = {
   FileTree,
   Graph,
   Graphs,
+  Swatches,
+  Scale,
+  Contrast,
+  Demo,
+  Diagram,
 };
 
 /**

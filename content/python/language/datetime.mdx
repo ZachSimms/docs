@@ -1,0 +1,527 @@
+---
+title: Dates & times
+date: 2026-09-25
+order: 3
+---
+
+The `datetime`, `zoneinfo`, `time` and `calendar` modules in Python 3.14: aware datetimes, time
+zones, ISO 8601, formatting and parsing, timestamps, arithmetic across DST, timers, and how it all
+maps to JS `Date` and Temporal.
+
+## Types
+
+| Type | Holds | Example |
+| :--- | :---- | :------ |
+| `date` | year, month, day | `date(2026, 9, 25)` |
+| `time` | hour … microsecond, optional `tzinfo` | `time(14, 30)` |
+| `datetime` | date + time, optional `tzinfo`; subclass of `date` | `datetime(2026, 9, 25, 14, 30, tzinfo=UTC)` |
+| `timedelta` | exact duration: days, seconds, microseconds | `timedelta(hours=1, minutes=30)` |
+| `timezone` | fixed UTC offset | `timezone(timedelta(hours=5, minutes=30))` |
+| `datetime.UTC` | alias of `timezone.utc` (3.11+) | `datetime.now(UTC)` |
+| `zoneinfo.ZoneInfo` | IANA zone with DST rules | `ZoneInfo("Europe/London")` |
+
+All are immutable and hashable; "changing" one means `dt.replace(hour=0)` or arithmetic, which
+return new objects. Precision is the microsecond. Months are 1-based; `weekday()` is 0 for Monday.
+
+```python
+from datetime import UTC, date, datetime, time
+
+now = datetime.now(UTC)  # aware, current instant
+today = date.today()  # local calendar date
+dt = datetime(2026, 9, 25, 14, 30, tzinfo=UTC)
+dt.date(), dt.time(), dt.year, dt.month, dt.day
+dt.weekday(), dt.isoweekday()  # (4, 5): Friday
+dt.replace(hour=0, minute=0)  # new object
+datetime.combine(date(2026, 9, 25), time(9), tzinfo=UTC)
+dt.isocalendar()  # (year=2026, week=39, weekday=5)
+```
+
+## Naive vs aware
+
+A **naive** datetime has `tzinfo=None`: it is a wall-clock reading with no instant attached. An
+**aware** one has a `tzinfo` and pins a real moment. Store and compute in aware UTC; convert to a
+local zone only for display or for calendar maths.
+
+| Call | Returns |
+| :--- | :------ |
+| `datetime.now(UTC)` | aware, UTC. The default choice |
+| `datetime.now(ZoneInfo("Asia/Tokyo"))` | aware, in that zone |
+| `datetime.now()` | naive local time ❌ |
+| `datetime.utcnow()` | naive UTC; deprecated since 3.12 ❌ |
+| `datetime.fromtimestamp(ts, UTC)` | aware |
+| `datetime.fromtimestamp(ts)` | naive local ❌ |
+| `naive.replace(tzinfo=tz)` | attach a zone to a wall time (no conversion) |
+| `aware.astimezone(tz)` | same instant in another zone |
+| `naive.astimezone(tz)` | treats the naive value as **system local** time first |
+| `aware.replace(tzinfo=None)` | drop the zone (e.g. for a DB column without zone) |
+
+```python
+from datetime import UTC, datetime
+
+aware = datetime.now(UTC)
+naive = datetime.now()
+aware.tzinfo, naive.tzinfo  # (datetime.timezone.utc, None)
+aware == naive  # False, never equal
+# aware < naive  TypeError: can't compare naive and aware
+# aware - naive  TypeError: can't subtract
+```
+
+<Note kind="tip">ruff's `DTZ` rules (flake8-datetimez) flag every naive constructor. Enable them with
+`select = ["DTZ"]` under `[tool.ruff.lint]`.</Note>
+
+## Time zones
+
+`zoneinfo` (3.9+) reads the IANA database from the OS. Windows has none: add the `tzdata` package
+(`uv add tzdata`). Use zone names like `"America/New_York"`, never abbreviations like `EST`.
+
+```python
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, available_timezones
+
+paris = ZoneInfo("Europe/Paris")  # cached per key
+meeting = datetime(2026, 9, 25, 9, 0, tzinfo=paris)
+
+meeting.astimezone(UTC)  # 07:00+00:00
+meeting.astimezone(ZoneInfo("Asia/Tokyo"))  # 16:00+09:00
+meeting.utcoffset(), meeting.tzname()  # 2h, 'CEST'
+paris.key  # 'Europe/Paris'
+
+"Europe/Paris" in available_timezones()  # ~600 keys
+local = datetime.now().astimezone()  # system zone,
+local.tzinfo  # but a fixed offset, not an IANA key
+```
+
+| Task | Code |
+| :--- | :--- |
+| Zone from user setting | `ZoneInfo(name)`; unknown name raises `ZoneInfoNotFoundError` (a `KeyError`) |
+| Convert | `dt.astimezone(tz)` |
+| Wall time in a zone | `datetime(y, m, d, h, tzinfo=tz)` or `naive.replace(tzinfo=tz)` |
+| Fixed offset from a string | `datetime.fromisoformat("...+05:30")` gives a `timezone` |
+| System zone's IANA name | not in the stdlib; `tzlocal.get_localzone_name()` (third-party) |
+| Zone data updates | `tzdata` from PyPI is used when the OS has none; update the package for new rules |
+
+## ISO 8601
+
+`fromisoformat` (3.11+) parses most ISO 8601: `Z`, offsets, basic format, ISO week dates, a space or
+`T` separator. It truncates fractions beyond microseconds.
+
+```python
+from datetime import UTC, date, datetime, time
+
+datetime.fromisoformat("2026-09-25T10:00:00Z")  # aware
+datetime.fromisoformat("2026-09-25T10:00+02:00")
+datetime.fromisoformat("20260925T100000")  # naive
+datetime.fromisoformat("2026-W39-5")  # 2026-09-25
+date.fromisoformat("2026-09-25")
+time.fromisoformat("10:30:15.250")
+
+dt = datetime(2026, 9, 25, 14, 5, 9, 123, tzinfo=UTC)
+dt.isoformat()  # '2026-09-25T14:05:09.000123+00:00'
+dt.isoformat(timespec="seconds")  # ...T14:05:09+00:00
+dt.isoformat(sep=" ", timespec="minutes")
+iso_z = dt.isoformat(timespec="milliseconds").replace(
+    "+00:00", "Z"
+)  # '2026-09-25T14:05:09.000Z', like toISOString()
+```
+
+| `timespec` | Output |
+| :--------- | :----- |
+| `"auto"` (default) | seconds, plus microseconds only when non-zero |
+| `"hours"`, `"minutes"`, `"seconds"` | truncate to that unit |
+| `"milliseconds"`, `"microseconds"` | 3 or 6 fractional digits |
+
+`json.dumps` cannot encode a datetime: call `.isoformat()` yourself, pass `default=str`, or let
+Pydantic serialise it.
+
+## strftime & strptime
+
+`dt.strftime(fmt)` formats and `datetime.strptime(s, fmt)` parses; 3.14 adds `date.strptime` and
+`time.strptime`. f-strings take the same codes: `f"{dt:%Y-%m-%d}"`.
+
+| Code | Meaning | Example |
+| :--- | :------ | :------ |
+| `%Y`, `%y` | year, 2-digit year | `2026`, `26` |
+| `%m`, `%B`, `%b` | month number, name, abbreviation | `09`, `September`, `Sep` |
+| `%d` | day of month, zero-padded | `05` |
+| `%j` | day of year | `268` |
+| `%A`, `%a` | weekday name, abbreviation | `Friday`, `Fri` |
+| `%w`, `%u` | weekday: 0 = Sunday; ISO 1 = Monday | `5`, `5` |
+| `%H`, `%I`, `%p` | 24-hour, 12-hour, AM/PM | `14`, `02`, `PM` |
+| `%M`, `%S`, `%f` | minute, second, microseconds (6 digits) | `05`, `09`, `000123` |
+| `%z` | offset; `strptime` also accepts `Z` and `+02:00` | `+0200` |
+| `%:z` | offset with colon (`strftime` only, 3.12+) | `+02:00` |
+| `%Z` | zone abbreviation (output only; don't parse it) | `CEST` |
+| `%G`, `%V` | ISO year and ISO week number | `2026`, `39` |
+| `%U`, `%W` | week of year (Sunday / Monday first) | `38` |
+| `%c`, `%x`, `%X` | locale date+time, date, time | `Fri Sep 25 14:05:09 2026` |
+| `%%` | literal `%` | |
+
+```python
+from datetime import UTC, date, datetime
+
+dt = datetime(2026, 9, 25, 14, 5, tzinfo=UTC)
+dt.strftime("%a %d %b %Y, %H:%M %Z")
+# 'Fri 25 Sep 2026, 14:05 UTC'
+f"{dt:%-d/%-m}"  # '25/9': glibc/macOS only, not Windows
+f"{dt.day}/{dt.month}"  # portable unpadded version
+
+datetime.strptime("25/09/2026 14:05", "%d/%m/%Y %H:%M")
+datetime.strptime("2026-09-25T10:00Z", "%Y-%m-%dT%H:%M%z")
+date.strptime("Sep 25 2026", "%b %d %Y")  # 3.14
+```
+
+<Note kind="warning">`strptime` without a year in the format is deprecated (3.13+): `"Feb 29"` fails
+because the default year 1900 is not a leap year. Always include a year. `%b`/`%a` depend on the
+locale; parse machine data with numeric codes or `fromisoformat`.</Note>
+
+## Timestamps & epoch
+
+A POSIX timestamp is seconds since `1970-01-01T00:00:00Z`, as a `float`. JS uses milliseconds.
+
+```python
+import time
+from datetime import UTC, datetime
+
+time.time()  # 1790294400.123 (float seconds)
+time.time_ns()  # int nanoseconds, no float rounding
+ms = time.time_ns() // 1_000_000  # Date.now()
+
+dt = datetime.fromtimestamp(1_790_294_400, UTC)
+from_js = datetime.fromtimestamp(ms / 1000, UTC)
+to_js = int(dt.timestamp() * 1000)
+secs = int(dt.timestamp())
+
+naive = datetime(2026, 9, 25)
+naive.timestamp()  # ❌ assumes system local time
+```
+
+| Direction | Code |
+| :-------- | :--- |
+| seconds → aware | `datetime.fromtimestamp(s, UTC)` |
+| JS ms → aware | `datetime.fromtimestamp(ms / 1000, UTC)` |
+| aware → seconds | `dt.timestamp()` (`float`) |
+| aware → JS ms | `int(dt.timestamp() * 1000)` or `round(...)` |
+| UTC `struct_time` → seconds | `calendar.timegm(t)` (inverse of `time.gmtime`) |
+
+## Arithmetic
+
+| Expression | Result |
+| :--------- | :----- |
+| `dt + timedelta(days=1, hours=2)` | `datetime` |
+| `dt2 - dt1` | `timedelta` (both aware or both naive) |
+| `date2 - date1` | `timedelta`; `.days` is the day count |
+| `td.total_seconds()` | `float` seconds |
+| `td // timedelta(hours=1)` | whole hours (`int`) |
+| `td / timedelta(minutes=1)` | minutes (`float`) |
+| `abs(td)`, `-td`, `td * 2` | sign and scaling |
+| `str(timedelta(seconds=3725))` | `'1:02:05'` |
+| `timedelta(hours=-1)` | `-1 day, 23:00:00` (normalised: days carry the sign) |
+| `dt1 < dt2`, `max(dts)` | comparisons (both aware or both naive) |
+
+`timedelta` has no months or years because they vary in length. Clamp the day yourself, or use
+`dateutil.relativedelta` (third-party):
+
+```python
+import calendar
+from datetime import date
+
+
+def add_months(d: date, n: int) -> date:
+    y, m0 = divmod(d.month - 1 + n, 12)
+    year, month = d.year + y, m0 + 1
+    last = calendar.monthrange(year, month)[1]
+    day = min(d.day, last)
+    return d.replace(year=year, month=month, day=day)
+
+
+add_months(date(2026, 1, 31), 1)  # 2026-02-28
+add_months(date(2026, 11, 15), 3)  # 2027-02-15
+```
+
+## DST pitfalls
+
+Adding a `timedelta` to an aware datetime is **wall-clock** arithmetic: the tzinfo stays the same
+and the offset is recomputed. Subtracting or comparing two datetimes that share a tzinfo also
+ignores offsets. For **absolute** (elapsed) time, go through UTC.
+
+```python
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+ny = ZoneInfo("America/New_York")
+a = datetime(2026, 3, 7, 12, tzinfo=ny)  # EST -05:00
+
+wall = a + timedelta(days=1)  # clocks sprang forward
+print(wall)  # 2026-03-08 12:00:00-04:00
+print(wall - a)  # 1 day, 0:00:00: wall-clock diff
+
+exact = (a.astimezone(UTC) + timedelta(days=1)).astimezone(
+    ny
+)
+print(exact)  # 2026-03-08 13:00:00-04:00
+print(wall.astimezone(UTC) - a.astimezone(UTC))  # 23:00:00
+
+# 02:30 did not exist that night (the gap)
+gap = datetime(2026, 3, 8, 2, 30, tzinfo=ny)
+print(gap.astimezone(UTC).astimezone(ny).time())  # 03:30
+
+# 01:30 happened twice on 1 Nov (the fold)
+first = datetime(2026, 11, 1, 1, 30, tzinfo=ny)
+second = first.replace(fold=1)  # the later one
+print(first.isoformat(), second.isoformat())
+# ...01:30:00-04:00 ...01:30:00-05:00
+print(first == second, second - first)  # True 0:00:00
+```
+
+| Situation | What happens | Do |
+| :-------- | :----------- | :- |
+| "Same time tomorrow" | wall-clock add keeps 12:00 across DST | `dt + timedelta(days=1)` in the local zone |
+| "24 hours later" | must be absolute | add in UTC, then `astimezone(tz)` |
+| Duration between events | same-zone subtraction ignores DST | subtract UTC values |
+| Gap (nonexistent local time) | no error; offset from before the jump | round-trip through UTC to detect (recipe) |
+| Fold (repeated local time) | `fold=0` = first, `fold=1` = second | ask the user or pick `fold` explicitly |
+| A local day's length | 23, 24 or 25 hours | use half-open `[start, next_start)` ranges |
+| Future local events | offset rules can change | store wall time + zone name; compute UTC late |
+
+## Clocks & timing
+
+| Function | Use | Notes |
+| :------- | :-- | :---- |
+| `time.time()`, `time.time_ns()` | wall-clock timestamp | can jump (NTP, manual changes) |
+| `time.monotonic()` | timeouts, deadlines | never goes backwards; only differences mean anything |
+| `time.perf_counter()`, `perf_counter_ns()` | benchmarks | highest resolution; like `performance.now()` |
+| `time.process_time()` | CPU time of this process | excludes sleep |
+| `time.sleep(s)` | block the thread | use `await asyncio.sleep(s)` in async code |
+| `time.get_clock_info("monotonic")` | clock resolution and source | |
+| `timeit` | micro-benchmarks | `uv run python -m timeit "sum(range(100))"` |
+
+```python
+import time
+from collections.abc import Callable
+
+
+def wait_for(
+    check: Callable[[], bool], timeout: float
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+t0 = time.perf_counter()
+sum(range(1_000_000))
+print(f"{(time.perf_counter() - t0) * 1000:.1f} ms")
+```
+
+## calendar
+
+| Call | Returns |
+| :--- | :------ |
+| `calendar.monthrange(2026, 2)` | `(SUNDAY, 28)`: weekday of the 1st, days in month |
+| `calendar.isleap(2028)`, `leapdays(2000, 2030)` | `True`, `8` |
+| `calendar.month_name[9]`, `month_abbr[9]` | `'September'`, `'Sep'` (locale-aware) |
+| `calendar.day_name[0]`, `day_abbr[0]` | `'Monday'`, `'Mon'` |
+| `calendar.Month.SEPTEMBER`, `calendar.Day.FRIDAY` | `IntEnum`s (3.12+): `9`, `4` |
+| `calendar.Calendar(firstweekday=6)` | Sunday-first calendar object |
+| `.itermonthdates(2026, 9)` | full weeks of `date`s, padded with neighbouring months |
+| `.monthdatescalendar(2026, 9)` | list of weeks, each a list of 7 `date`s (for a grid UI) |
+| `calendar.timegm(t)` | UTC `struct_time` → timestamp |
+| `calendar.month(2026, 9)` | text calendar; also `uv run python -m calendar 2026 9` |
+
+## Coming from JS Date & Temporal
+
+Python's model is close to Temporal: immutable values, separate date-only and time-only types, real
+IANA zones. Temporal is not yet Baseline, so check MDN before relying on it in browsers.
+
+| JS `Date` | Temporal | Python |
+| :-------- | :------- | :----- |
+| `new Date()` | `Temporal.Now.instant()` | `datetime.now(UTC)` |
+| `Date.now()` | `Temporal.Now.instant().epochMilliseconds` | `time.time_ns() // 1_000_000` |
+| `new Date(ms)` | `Temporal.Instant.fromEpochMilliseconds(ms)` | `datetime.fromtimestamp(ms / 1000, UTC)` |
+| `d.getTime()` | `instant.epochMilliseconds` | `int(dt.timestamp() * 1000)` |
+| `d.toISOString()` | `instant.toString()` | `dt.isoformat()` |
+| `new Date(isoString)` | `Temporal.Instant.from(s)` | `datetime.fromisoformat(s)` |
+| `d.getMonth()` (0-based) | `.month` (1-based) | `dt.month` (1-based) |
+| `d.getDay()` (0 = Sunday) | `.dayOfWeek` (1 = Monday) | `dt.weekday()` (0 = Mon), `isoweekday()` (1 = Mon) |
+| `d.setDate(d.getDate() + 1)` (mutates) | `.add({ days: 1 })` | `dt + timedelta(days=1)` |
+| none | `Temporal.PlainDate`, `PlainTime` | `date`, `time` |
+| none | `Temporal.PlainDateTime` | naive `datetime` |
+| none | `Temporal.ZonedDateTime` | aware `datetime` with a `ZoneInfo` |
+| none | `Temporal.Instant` | aware `datetime` in `UTC` |
+| none | `Temporal.Duration` | `timedelta` (no months or years) |
+| `toLocaleString()`, `Intl.DateTimeFormat` | `toLocaleString()` | `strftime`; Babel for real i18n |
+| `performance.now()` | none | `time.perf_counter()` |
+| nanoseconds: no | nanoseconds: yes | microseconds (`time.time_ns()` for ns) |
+
+## Recipes
+
+### Start and end of a day in a zone
+When querying "today's" rows stored in UTC for a user in another zone.
+
+```python
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+
+def day_bounds(
+    d: date, tz: ZoneInfo
+) -> tuple[datetime, datetime]:
+    """Half-open [start, end) of a local day, in UTC."""
+    nxt = d + timedelta(days=1)
+    start = datetime.combine(d, time.min, tzinfo=tz)
+    end = datetime.combine(nxt, time.min, tzinfo=tz)
+    return start.astimezone(UTC), end.astimezone(UTC)
+
+
+london = ZoneInfo("Europe/London")
+today = datetime.now(london).date()
+start, end = day_bounds(today, london)
+# WHERE created_at >= start AND created_at < end
+```
+
+### Business days between dates
+When counting working days for SLAs or invoices (weekends and holidays excluded).
+
+```python
+from datetime import date, timedelta
+
+
+def business_days(
+    start: date,
+    end: date,
+    holidays: frozenset[date] = frozenset(),
+) -> int:
+    """Mon–Fri in [start, end), minus holidays."""
+    return sum(
+        1
+        for i in range((end - start).days)
+        if (d := start + timedelta(days=i)).weekday() < 5
+        and d not in holidays
+    )
+
+
+xmas = frozenset({date(2026, 12, 25)})
+n = business_days(
+    date(2026, 12, 21), date(2027, 1, 4), xmas
+)  # 9
+```
+
+### Parse local input to UTC
+When a form gives a wall time and the user's zone, and you store UTC.
+
+```python
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
+
+def local_to_utc(
+    text: str, zone: str, fmt: str = "%Y-%m-%d %H:%M"
+) -> datetime:
+    tz = ZoneInfo(zone)  # ZoneInfoNotFoundError if bad
+    naive = datetime.strptime(text, fmt)  # ValueError
+    local = naive.replace(tzinfo=tz)
+    back = local.astimezone(UTC).astimezone(tz)
+    if back.replace(tzinfo=None) != naive:
+        raise ValueError(f"{text} does not exist in {zone}")
+    return local.astimezone(UTC)
+
+
+print(local_to_utc("2026-09-25 09:00", "Europe/Paris"))
+# 2026-09-25 07:00:00+00:00
+```
+
+### Humanise "3 hours ago"
+When showing relative times in logs, CLIs or emails.
+
+```python
+from datetime import UTC, datetime, timedelta
+
+UNITS = [
+    ("year", 365 * 86400), ("month", 30 * 86400),
+    ("week", 7 * 86400), ("day", 86400),
+    ("hour", 3600), ("minute", 60), ("second", 1),
+]
+
+
+def ago(then: datetime, now: datetime | None = None) -> str:
+    delta = (now or datetime.now(UTC)) - then
+    secs = int(delta.total_seconds())
+    if abs(secs) < 5:
+        return "just now"
+    for name, size in UNITS:
+        if (n := abs(secs) // size) >= 1:
+            label = f"{n} {name}{'' if n == 1 else 's'}"
+            if secs < 0:
+                return f"in {label}"
+            return f"{label} ago"
+    return "just now"
+
+
+print(ago(datetime.now(UTC) - timedelta(hours=3)))
+# 3 hours ago
+```
+
+### Iterate month ranges
+When building monthly reports or partitions between two dates.
+
+```python
+import calendar
+from collections.abc import Iterator
+from datetime import date
+
+
+def months(
+    start: date, end: date
+) -> Iterator[tuple[date, date]]:
+    """(first, last) day of each month, start to end."""
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        last = calendar.monthrange(y, m)[1]
+        yield date(y, m, 1), date(y, m, last)
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+
+
+span = months(date(2026, 11, 5), date(2027, 2, 1))
+for first, last in span:
+    print(first, last)  # 2026-11-01 2026-11-30 ...
+```
+
+### Measure elapsed time
+When timing a block of code or a request without a profiler.
+
+```python
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+
+@contextmanager
+def timer(label: str) -> Iterator[None]:
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        ms = (time.perf_counter() - start) * 1000
+        print(f"{label}: {ms:.1f} ms")
+
+
+with timer("sum"):
+    sum(range(1_000_000))
+```
+
+## References
+
+- [Python docs: datetime](https://docs.python.org/3.14/library/datetime.html): all types, naive vs aware, `strftime` codes
+- [Python docs: zoneinfo](https://docs.python.org/3.14/library/zoneinfo.html): IANA zones, `fold`, `tzdata`
+- [Python docs: time](https://docs.python.org/3.14/library/time.html): clocks, `monotonic`, `perf_counter`
+- [Python docs: calendar](https://docs.python.org/3.14/library/calendar.html): month ranges, `timegm`, enums
+- [Python docs: timeit](https://docs.python.org/3.14/library/timeit.html): micro-benchmarks
+- [MDN: Temporal](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal): the JS counterpart and its availability
+- [MDN: Date](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date): the legacy JS type
+- [PEP 495: Local time disambiguation](https://peps.python.org/pep-0495/): the `fold` attribute
+- [PEP 615: IANA time zone support](https://peps.python.org/pep-0615/): why `zoneinfo` works the way it does
+- [IANA Time Zone Database](https://www.iana.org/time-zones): the zone names and rules
+- [ruff: flake8-datetimez (DTZ)](https://docs.astral.sh/ruff/rules/#flake8-datetimez-dtz): lint rules against naive datetimes

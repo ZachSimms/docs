@@ -82,6 +82,22 @@ class toggle, `[open]`).
 .btn:active { scale: 0.97; }
 ```
 
+```html demo height=80 title="transition.html"
+<style>
+  .btn { padding: 10px 16px; border: 0; border-radius: 6px;
+    font: inherit; color: var(--bg);
+    background-color: var(--graph-0);
+    transition:
+      background-color 150ms ease-out,
+      translate 200ms ease-out,
+      scale 100ms ease-out; }
+  .btn:hover { background-color: var(--graph-3);
+    translate: 0 -3px; }
+  .btn:active { scale: 0.97; }
+</style>
+<button class="btn">Hover, then press</button>
+```
+
 | Discrete property | With `allow-discrete` |
 | :---------------- | :-------------------- |
 | `display: none` | the element stays visible until the exit transition ends, then flips |
@@ -109,6 +125,31 @@ so it wouldn't normally transition. `@starting-style` provides one (Baseline 202
     translate: 0 1rem;
   }
 }
+```
+
+A `@starting-style` entry only plays when the element starts rendering, so the demo re-inserts
+the toast on hover by flipping `display`. `allow-discrete` keeps it visible while it fades out
+again (Chromium and Safari; Firefox snaps closed).
+
+```html demo height=120 title="starting-style.html"
+<style>
+  .zone { height: 96px; padding: 10px; border-radius: 6px;
+    border: 1px dashed var(--muted); }
+  .toast { display: none; width: fit-content;
+    margin-top: 8px; padding: 8px 12px; border-radius: 6px;
+    background: var(--graph-2); color: var(--bg);
+    opacity: 0; translate: 0 12px;
+    transition: opacity 250ms ease-out,
+      translate 250ms ease-out,
+      display 250ms allow-discrete; }
+  .zone:hover .toast {
+    display: block; opacity: 1; translate: 0 0;
+    @starting-style { opacity: 0; translate: 0 12px; }
+  }
+</style>
+<div class="zone">Hover here: display goes from none to block
+  <div class="toast">Saved</div>
+</div>
 ```
 
 The same pattern animates popovers, dialogs, and anything that gets `hidden` removed.
@@ -154,6 +195,31 @@ a grid row going from `0fr` to `1fr`:
 .drawer { animation: slide-in 300ms cubic-bezier(.2,0,0,1); }
 ```
 
+```html demo height=90 title="keyframes.html"
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes spin { to { rotate: 1turn; } }
+
+  .row { display: flex; gap: 14px; align-items: center; }
+  .spinner { flex: none; width: 32px; height: 32px;
+    border-radius: 50%; border: 4px solid var(--chip);
+    border-top-color: var(--graph-0);
+    animation: spin 0.8s linear infinite; }
+  .lines { flex: 1; display: grid; gap: 8px; }
+  .lines i { height: 12px; border-radius: 6px;
+    background: var(--chip);
+    animation: pulse 1.5s ease-in-out infinite; }
+  .lines i:last-child { width: 60%; }
+</style>
+<div class="row">
+  <div class="spinner"></div>
+  <div class="lines"><i></i><i></i><i></i></div>
+</div>
+```
+
 | Property | Values |
 | :------- | :----- |
 | `animation-name` | the `@keyframes` name, or `none` |
@@ -179,6 +245,32 @@ a grid row going from `0fr` to `1fr`:
 | Listen for `animationend` / `transitionend` | or `el.getAnimations()` and await `.finished` |
 
 ## Easing functions
+
+<Diagram src="/images/diagrams/anim-easing.svg" label="Five easing curves plotted as progress over time: linear is a straight diagonal; ease rises quickly then flattens; ease-in starts flat and ends steep; ease-out starts steep and ends flat; back-out, cubic-bezier(.34, 1.56, .64, 1), rises past the end value and settles back." caption="Easing curves: x is time, y is progress" />
+
+```html demo height=190 title="easing.html"
+<style>
+  .lane { container-type: inline-size; position: relative;
+    height: 26px; margin-bottom: 6px; padding-left: 80px;
+    border-radius: 4px; background: var(--chip);
+    font: 11px/26px monospace; text-indent: -72px; }
+  .lane i { position: absolute; top: 3px; left: 80px;
+    width: 20px; height: 20px; border-radius: 4px;
+    background: var(--graph-0); }
+  @media (prefers-reduced-motion: no-preference) {
+    .lane i { animation: go 1.6s var(--e) infinite
+      alternate; }
+  }
+  /* stop 30px short of the end to leave room to overshoot */
+  @keyframes go { to { translate: calc(100cqi - 50px); } }
+</style>
+<div class="lane" style="--e: linear">linear<i></i></div>
+<div class="lane" style="--e: ease">ease<i></i></div>
+<div class="lane" style="--e: ease-in">ease-in<i></i></div>
+<div class="lane" style="--e: ease-out">ease-out<i></i></div>
+<div class="lane" style="--e: cubic-bezier(.34,1.56,.64,1)">
+  back-out<i></i></div>
+```
 
 | Function | Shape |
 | :------- | :---- |
@@ -215,6 +307,8 @@ drags and gestures use a JS spring (Motion).
 The browser renders in stages: style, layout, paint, composite. The cheapest animations
 skip straight to composite.
 
+<Diagram src="/images/diagrams/anim-pipeline.svg" label="The rendering pipeline Style, Layout, Paint, Composite, with three rows: width, height, top, margin and grid properties run all four stages (expensive); color, background and box-shadow skip layout (moderate); transform, translate, scale and opacity skip everything but composite (cheap)." caption="Which stages each kind of property triggers" />
+
 | Animating | Triggers | Cost |
 | :-------- | :------- | :--- |
 | `transform`, `translate`, `scale`, `rotate`, `opacity` | composite only (usually on the GPU) | cheap; stays smooth while the main thread is busy |
@@ -234,7 +328,11 @@ skip straight to composite.
 
 Animate a layout change with transforms: record the **F**irst box, make the change and
 measure the **L**ast box, **I**nvert with a transform, then **P**lay back to zero. See the
-FLIP recipe below. Motion's `layout` prop and GSAP's Flip plugin do this for you, and view
+FLIP recipe below.
+
+<Diagram src="/images/diagrams/anim-flip.svg" label="FLIP in four panels. First: the box at its start position is measured. Last: the DOM changes, the box jumps to its end position and is measured again. Invert: a transform moves it back to the start position. Play: the transform animates to zero, so the box slides to the end." caption="FLIP: First, Last, Invert, Play" />
+
+ Motion's `layout` prop and GSAP's Flip plugin do this for you, and view
 transitions do it at the browser level.
 
 ## Scroll-driven animations
@@ -278,6 +376,30 @@ as an enhancement.
 Declare `animation-timeline` **after** the `animation` shorthand, because the shorthand
 resets it. Use `linear` easing and `both` fill, and give the animation a duration only as a
 fallback. The JS equivalents are `new ScrollTimeline()` and `new ViewTimeline()`.
+
+Inside a scroll box, `scroll()` follows that box. The bar stays empty where scroll-driven
+animations aren't supported.
+
+```html demo height=170 title="scroll-timeline.html"
+<style>
+  @keyframes grow { from { scale: 0 1; } to { scale: 1; } }
+
+  .box { height: 146px; overflow-y: auto;
+    border: 1px solid var(--muted); border-radius: 4px; }
+  .bar { position: sticky; top: 0; height: 6px;
+    background: var(--graph-0); transform-origin: left;
+    scale: 0 1; }
+  @supports (animation-timeline: scroll()) {
+    .bar { animation: grow linear both;
+      animation-timeline: scroll(); }
+  }
+  .text { height: 520px; padding: 12px; }
+</style>
+<div class="box">
+  <div class="bar"></div>
+  <div class="text">Scroll this box: the bar tracks it.</div>
+</div>
+```
 
 ## View transitions
 
@@ -517,6 +639,34 @@ Entry animation for any element when it's inserted or unhidden, with no JS.
 }
 ```
 
+The demo inserts the items on hover by switching them from `display: none`:
+
+```html demo height=170 title="enter.html"
+<style>
+  .enter {
+    transition:
+      opacity 250ms cubic-bezier(0.2, 0, 0, 1),
+      translate 250ms cubic-bezier(0.2, 0, 0, 1);
+    @starting-style { opacity: 0; translate: 0 0.75rem; }
+  }
+  .list > .enter {
+    transition-delay: calc(var(--i, 0) * 40ms);
+  }
+
+  .list { height: 146px; padding: 8px; border-radius: 6px;
+    border: 1px dashed var(--muted); }
+  .list > .enter { display: none; margin-top: 6px;
+    padding: 4px 8px; border-radius: 4px;
+    background: var(--chip); }
+  .list:hover > .enter { display: block; }
+</style>
+<div class="list">Hover to insert the items
+  <div class="enter" style="--i: 0">One</div>
+  <div class="enter" style="--i: 1">Two</div>
+  <div class="enter" style="--i: 2">Three</div>
+</div>
+```
+
 ### Animate dialog open and close
 A modal that fades and scales in and out, backdrop included.
 
@@ -656,6 +806,29 @@ A bouncy settle for sheets and toggles; keep a plain fallback for old browsers.
   }
 }
 .switch-thumb { transition: translate 700ms var(--spring); }
+```
+
+Hover the frame: the top thumb uses the spring, the bottom one plain `ease-out`.
+
+```html demo height=100 title="spring.html"
+<style>
+  :root {
+    --spring: linear(0, 0.145, 0.436, 0.721, 0.93, 1.048,
+      1.092, 1.089, 1.065, 1.036, 1.013, 0.999, 0.992,
+      0.991, 0.993, 0.996, 1);
+  }
+  .track { width: 240px; height: 28px; padding: 2px;
+    margin-bottom: 10px; border-radius: 14px;
+    background: var(--chip); }
+  .thumb { width: 24px; height: 24px; border-radius: 50%;
+    background: var(--graph-3);
+    transition: translate 700ms var(--spring); }
+  .plain .thumb { background: var(--muted);
+    transition-timing-function: ease-out; }
+  body:hover .thumb { translate: 212px 0; }
+</style>
+<div class="track"><div class="thumb"></div></div>
+<div class="track plain"><div class="thumb"></div></div>
 ```
 
 ### Respect reduced motion globally

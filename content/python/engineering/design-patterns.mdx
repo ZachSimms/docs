@@ -1,0 +1,957 @@
+---
+title: Design patterns
+date: 2026-09-25
+order: 3
+---
+
+Pythonic takes on the classic creational, structural and behavioural patterns, plus
+dependency injection, repository and unit of work, plugin registries and functional core /
+imperative shell, in typed Python 3.14. Class mechanics are in [OOP](/python/language/oop/);
+the TypeScript versions are in [Design patterns](/typescript/design-architecture/design-patterns/).
+
+## Why patterns look smaller in Python
+
+| Language feature | Replaces |
+| :--------------- | :------- |
+| Modules are imported once | Singleton classes |
+| Functions are first-class values | Strategy, Command and Observer class hierarchies |
+| Keyword arguments with defaults | most Builders and telescoping constructors |
+| `@decorator` syntax + `functools.wraps` | Decorator wrapper classes for functions |
+| Generators and `yield` | hand-written Iterator classes |
+| `typing.Protocol` (structural) | "implements Interface" boilerplate for DI |
+| `match` + dataclasses + enums | Visitor and many State classes |
+| `__getattr__` | hand-written delegation in Proxy / Adapter |
+
+Reach for a class-based pattern when there is state to hold or several methods that belong
+together; otherwise a function usually does it.
+
+## Creational
+
+### Singleton → module
+
+A module body runs once per process; everything that imports it shares its objects.
+
+```python title="settings.py"
+import os
+from dataclasses import dataclass
+from functools import cache
+
+
+@dataclass(frozen=True, slots=True)
+class Settings:
+    db_url: str
+    debug: bool
+
+
+@cache                        # built lazily, then reused
+def get_settings() -> Settings:
+    return Settings(
+        db_url=os.environ.get("DATABASE_URL", "sqlite://"),
+        debug=os.environ.get("DEBUG") == "1",
+    )
+```
+
+- **Use when:** one config, one connection pool, one logger (`logging.getLogger(__name__)`
+  is already a per-name singleton).
+- **Watch out:** hidden global state makes tests order-dependent. Pass the instance in where
+  you can, and call `get_settings.cache_clear()` in test fixtures.
+
+### Factory functions & `@classmethod` constructors
+
+```python
+import json
+from dataclasses import dataclass
+from typing import Protocol, Self
+
+
+@dataclass(frozen=True)
+class User:
+    id: int
+    name: str
+
+    @classmethod                      # named constructor
+    def from_json(cls, raw: str) -> Self:
+        data = json.loads(raw)
+        return cls(int(data["id"]), str(data["name"]))
+
+
+class Cache(Protocol):
+    def get(self, key: str) -> str | None: ...
+
+
+class MemoryCache:
+    def get(self, key: str) -> str | None:
+        return None
+
+
+class FileCache:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def get(self, key: str) -> str | None:
+        return None
+
+
+def make_cache(url: str) -> Cache:    # picks the class
+    match url.split("://", 1):
+        case ["memory", _]:
+            return MemoryCache()
+        case ["file", path]:
+            return FileCache(path)
+        case _:
+            raise ValueError(f"unknown cache: {url}")
+```
+
+- **Use when:** construction depends on input or config, or a class has several ways in
+  (`datetime.fromisoformat`, `dict.fromkeys`).
+- **Watch out:** a factory that only calls one constructor is noise; `@classmethod` returning
+  `Self` keeps subclasses working, a `@staticmethod` does not.
+
+### Builder vs keyword arguments
+
+Keyword arguments with defaults plus a frozen dataclass cover most builders; use a fluent
+builder only when parts accumulate.
+
+```python
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from typing import Literal, Self
+
+
+@dataclass(frozen=True, kw_only=True)
+class Request:
+    url: str
+    method: Literal["GET", "POST"] = "GET"
+    headers: Mapping[str, str] = field(default_factory=dict)
+    timeout: float = 10.0
+
+
+base = Request(url="https://api.example.com")
+post = replace(base, method="POST", timeout=30)
+
+
+@dataclass(frozen=True)
+class Query:                          # accumulating parts
+    table: str
+    wheres: tuple[str, ...] = ()
+
+    def where(self, cond: str) -> Self:
+        return replace(self, wheres=(*self.wheres, cond))
+
+    def sql(self) -> str:
+        w = " AND ".join(self.wheres)
+        return f"SELECT * FROM {self.table}" + (
+            f" WHERE {w}" if w else "")
+
+
+Query("users").where("active").where("age > 18").sql()
+```
+
+- **Use when:** a builder: repeated or ordered steps (SQL, HTML, CLI args). Otherwise kwargs.
+- **Watch out:** a mutable builder shared between callers leaks steps; return new objects.
+
+## Structural
+
+### Adapter
+
+Wrap an object so it fits the `Protocol` your code expects.
+
+```python
+from typing import Literal, Protocol
+
+type Level = Literal["info", "error"]
+
+
+class Logger(Protocol):
+    def log(self, level: Level, msg: str) -> None: ...
+
+
+class LegacyLogger:                   # third-party shape
+    def write(self, line: str) -> None:
+        print(line)
+
+
+class LegacyAdapter:
+    def __init__(self, inner: LegacyLogger) -> None:
+        self._inner = inner
+
+    def log(self, level: Level, msg: str) -> None:
+        self._inner.write(f"[{level.upper()}] {msg}")
+
+
+def run(logger: Logger) -> None:
+    logger.log("info", "started")
+
+
+run(LegacyAdapter(LegacyLogger()))
+```
+
+- **Use when:** integrating SDKs, swapping vendors, wrapping sync code for an async API.
+- **Watch out:** keep adapters thin; business logic inside them is hard to find.
+
+### Decorator (function wrapping)
+
+A function that takes a function and returns a replacement. `ParamSpec` (`**P`) keeps the
+wrapped signature for type checkers; `functools.wraps` keeps its name and docstring.
+
+```python
+import functools
+import logging
+from collections.abc import Callable
+
+log = logging.getLogger(__name__)
+
+
+def logged[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+    @functools.wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        log.info("call %s", fn.__qualname__)
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+@logged
+def charge(user_id: int, cents: int) -> bool:
+    return cents > 0
+
+
+charge(1, 500)       # checker still sees (int, int) -> bool
+```
+
+Decorators that take arguments are factories that return a decorator: see the retry recipe
+below.
+
+| Built-in decorator | Does |
+| :----------------- | :--- |
+| `@functools.cache` / `@lru_cache(maxsize=n)` | memoise by arguments |
+| `@functools.cached_property` | compute an attribute once per instance |
+| `@functools.singledispatch` | overload a function on the first argument's type |
+| `@contextlib.contextmanager` | turn a generator into a `with` block |
+| `@warnings.deprecated("…")` | 3.13+; warns at runtime and in checkers |
+
+The GoF object decorator (a wrapper class implementing the same `Protocol` and delegating) is
+still useful for objects, for example a caching repository around a real one.
+
+- **Use when:** cross-cutting concerns: logging, timing, retries, caching, auth checks.
+- **Watch out:** forgetting `@functools.wraps`; decorators run at import time; order is
+  bottom-up; `async def` functions need an `async def` wrapper.
+
+### Facade
+
+One small function or class in front of a fiddly subsystem.
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class Post:
+    title: str
+    body: str
+
+
+def slugify(title: str) -> str:
+    return "-".join(title.lower().split())
+
+
+def render(post: Post) -> str:
+    return f"<h1>{post.title}</h1>{post.body}"
+
+
+def publish(post: Post, store: dict[str, str]) -> str:
+    """The facade: callers never touch the steps."""
+    slug = slugify(post.title)
+    store[slug] = render(post)
+    return f"/posts/{slug}"
+
+
+publish(Post("Hello World", "<p>hi</p>"), {})
+```
+
+- **Use when:** callers repeat the same multi-step dance (a service-layer function).
+- **Watch out:** facades grow into god modules; keep the lower-level API reachable.
+
+### Proxy
+
+Stand in for another object to add laziness, access control or caching. `__getattr__` runs
+only for missing attributes, so it forwards everything you don't define.
+
+```python
+from collections.abc import Callable
+
+
+class Lazy[T]:
+    def __init__(self, factory: Callable[[], T]) -> None:
+        self._factory = factory
+        self._obj: T | None = None
+
+    def get(self) -> T:
+        if self._obj is None:
+            self._obj = self._factory()   # first use only
+        return self._obj
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.get(), name)  # untyped path
+
+
+client = Lazy(lambda: {"connected": True})
+client.get()["connected"]             # typed access
+```
+
+- **Use when:** expensive clients, remote objects, read-only views (`types.MappingProxyType`).
+- **Watch out:** `__getattr__` forwarding loses static types and does not proxy dunders
+  (`len()`, `[]`, `with`); prefer an explicit `get()` or a typed wrapper class.
+
+## Behavioural
+
+### Observer / callbacks
+
+Subscribers are just callables in a list.
+
+```python
+from collections.abc import Callable
+
+
+class Signal[T]:
+    def __init__(self) -> None:
+        self._subs: list[Callable[[T], None]] = []
+
+    def connect(
+        self, fn: Callable[[T], None]
+    ) -> Callable[[], None]:
+        self._subs.append(fn)
+        return lambda: self._subs.remove(fn)   # unsubscribe
+
+    def emit(self, value: T) -> None:
+        for fn in list(self._subs):
+            fn(value)
+
+
+saved = Signal[int]()
+off = saved.connect(lambda user_id: print("saved", user_id))
+saved.emit(7)
+off()
+```
+
+- **Use when:** decoupling producers from consumers (domain events, UI, hooks).
+- **Watch out:** exceptions in one subscriber stop the rest; long-lived subscribers keep
+  objects alive (use `weakref.WeakMethod` for bound methods).
+
+### Strategy with first-class functions
+
+```python
+from collections.abc import Callable
+from typing import Literal
+
+type Pricing = Callable[[float], float]
+type Tier = Literal["regular", "member", "clearance"]
+
+PRICING: dict[Tier, Pricing] = {
+    "regular": lambda n: n,
+    "member": lambda n: n * 0.9,
+    "clearance": lambda n: max(0.0, n - 20),
+}
+
+
+def total(subtotal: float, tier: Tier) -> float:
+    return PRICING[tier](subtotal)
+
+
+sorted(["b", "A", "c"], key=str.casefold)  # a strategy too
+```
+
+- **Use when:** swapping an algorithm at runtime: pricing, sorting keys, retry back-off.
+- **Watch out:** use a `Protocol` class instead once a strategy needs configuration and
+  several methods.
+
+### Command
+
+Actions as data: frozen dataclasses, handled with `match`. Commands can be queued, logged,
+serialised and replayed.
+
+```python
+from dataclasses import dataclass
+from functools import reduce
+from typing import assert_never
+
+
+@dataclass(frozen=True)
+class Deposit:
+    amount: int
+
+
+@dataclass(frozen=True)
+class Withdraw:
+    amount: int
+
+
+type Command = Deposit | Withdraw
+
+
+def apply(balance: int, cmd: Command) -> int:
+    match cmd:
+        case Deposit(amount):
+            return balance + amount
+        case Withdraw(amount):
+            return balance - amount
+        case _:
+            assert_never(cmd)         # exhaustiveness
+
+
+history: list[Command] = [Deposit(100), Withdraw(30)]
+reduce(apply, history, 0)             # 70: replayable log
+```
+
+- **Use when:** undo/redo, job queues, audit logs, event sourcing, CLI subcommands.
+- **Watch out:** commands that hold live objects (sessions, sockets) can't be queued or
+  pickled; keep them to plain data.
+
+### Iterator & generators
+
+```python
+import itertools
+from collections.abc import Iterable, Iterator
+
+
+def read_lines(path: str) -> Iterator[str]:
+    with open(path) as f:
+        for line in f:                # lazy, one at a time
+            yield line.rstrip("\n")
+
+
+def non_empty(lines: Iterable[str]) -> Iterator[str]:
+    return (ln for ln in lines if ln.strip())
+
+
+def batches(
+    xs: Iterable[str], n: int
+) -> Iterator[tuple[str, ...]]:
+    return itertools.batched(xs, n)   # 3.12+
+
+
+# pipeline: nothing runs until iterated
+# for chunk in batches(non_empty(read_lines(p)), 100):
+```
+
+- **Use when:** streaming files, pagination, infinite sequences, pipelines.
+- **Watch out:** generators are single-use; a file closes only when the generator is
+  exhausted or closed.
+
+### State machine with enums and `match`
+
+```python
+from enum import StrEnum, auto
+
+
+class State(StrEnum):
+    IDLE = auto()
+    LOADING = auto()
+    DONE = auto()
+    FAILED = auto()
+
+
+class Event(StrEnum):
+    FETCH = auto()
+    OK = auto()
+    ERROR = auto()
+    RESET = auto()
+
+
+def step(s: State, e: Event) -> State:
+    match s, e:
+        case State.IDLE, Event.FETCH:
+            return State.LOADING
+        case State.LOADING, Event.OK:
+            return State.DONE
+        case State.LOADING, Event.ERROR:
+            return State.FAILED
+        case (State.DONE | State.FAILED), Event.RESET:
+            return State.IDLE
+        case _:
+            return s                  # ignore the rest
+
+
+step(State.IDLE, Event.FETCH)         # State.LOADING
+```
+
+- **Use when:** order lifecycles, connection states, wizards, parsers.
+- **Watch out:** when states carry data, use a union of dataclasses instead of an enum (as in
+  Command above).
+
+### Template method vs hooks
+
+```python
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+
+
+class Report(ABC):                    # template method
+    def render(self) -> str:
+        return f"{self.header()}\n{self.body()}"
+
+    def header(self) -> str:          # overridable default
+        return "REPORT"
+
+    @abstractmethod
+    def body(self) -> str: ...
+
+
+def render(                           # hooks: no subclass
+    body: Callable[[], str],
+    header: Callable[[], str] = lambda: "REPORT",
+) -> str:
+    return f"{header()}\n{body()}"
+
+
+render(lambda: "42 sales")
+```
+
+- **Use when:** the class form for frameworks with several related hooks; the function form
+  for one or two hooks.
+- **Watch out:** deep hierarchies of templates; each subclass must know which steps it may
+  override.
+
+## Dependency injection
+
+Pass collaborators in instead of importing and constructing them inside. Constructor
+arguments typed as `Protocol`s are the whole technique; no container or framework is needed.
+
+```python
+from datetime import UTC, datetime
+from typing import Protocol
+
+
+class Clock(Protocol):
+    def now(self) -> datetime: ...
+
+
+class Mailer(Protocol):
+    def send(self, to: str, body: str) -> None: ...
+
+
+class SystemClock:
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+
+class SmtpMailer:
+    def send(self, to: str, body: str) -> None:
+        ...                           # real SMTP call
+
+
+class Reminders:
+    def __init__(self, clock: Clock, mailer: Mailer) -> None:
+        self.clock, self.mailer = clock, mailer
+
+    def remind(self, email: str) -> None:
+        day = self.clock.now().strftime("%A")
+        self.mailer.send(email, f"Happy {day}!")
+
+
+def build_app() -> Reminders:         # composition root
+    return Reminders(SystemClock(), SmtpMailer())
+```
+
+| Technique | How | Notes |
+| :-------- | :-- | :---- |
+| Constructor injection | `__init__(self, repo: Repo)` | default choice; explicit, easy to fake |
+| Function parameters | `def handle(cmd, *, repo: Repo)` | for plain functions and handlers |
+| Defaults | `clock: Clock = SystemClock()` | fine for stateless defaults; beware shared mutable ones |
+| Composition root | one `build_app()` wires everything | the only place that knows concrete classes |
+| Framework DI | FastAPI `Depends`, pytest fixtures | per-request wiring and teardown |
+| Monkeypatching | `pytest`'s `monkeypatch` | a last resort for code you can't change |
+
+- **Watch out:** injecting ten collaborators means the class does too much; split it.
+
+## Repository & unit of work
+
+A repository hides storage behind a collection-like interface; a unit of work groups changes
+into one transaction. Domain code depends on both as `Protocol`s.
+
+```python
+from dataclasses import dataclass
+from types import TracebackType
+from typing import Protocol, Self
+
+
+@dataclass
+class Product:
+    sku: str
+    stock: int
+
+
+class ProductRepo(Protocol):
+    def get(self, sku: str) -> Product | None: ...
+    def add(self, p: Product) -> None: ...
+
+
+class MemoryRepo:
+    def __init__(self) -> None:
+        self.rows: dict[str, Product] = {}
+
+    def get(self, sku: str) -> Product | None:
+        return self.rows.get(sku)
+
+    def add(self, p: Product) -> None:
+        self.rows[p.sku] = p
+
+
+class MemoryUoW:
+    def __init__(self) -> None:
+        self.products = MemoryRepo()
+        self.committed = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        et: type[BaseException] | None,
+        e: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.rollback()               # no-op after commit
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def rollback(self) -> None:
+        pass
+
+
+def restock(uow: MemoryUoW, sku: str, n: int) -> None:
+    with uow:
+        p = uow.products.get(sku) or Product(sku, 0)
+        p.stock += n
+        uow.products.add(p)
+        uow.commit()                  # explicit commit
+```
+
+A SQL version wraps a SQLAlchemy `Session` (commit in `commit()`, `session.rollback()` in
+`rollback()`); see [Drizzle](/databases/drizzle/) for the TypeScript side.
+
+- **Use when:** domain logic should be testable without a database, or several writes must
+  succeed or fail together.
+- **Watch out:** thin CRUD apps gain little; don't wrap an ORM just to re-expose it.
+
+## Plugins & registries
+
+### Decorator registry
+
+```python
+from collections.abc import Callable
+
+type Handler = Callable[[str], str]
+HANDLERS: dict[str, Handler] = {}
+
+
+def handles(name: str) -> Callable[[Handler], Handler]:
+    def register(fn: Handler) -> Handler:
+        if name in HANDLERS:
+            raise KeyError(f"duplicate handler: {name}")
+        HANDLERS[name] = fn
+        return fn                     # unchanged
+    return register
+
+
+@handles("upper")
+def upper(s: str) -> str:
+    return s.upper()
+
+
+HANDLERS["upper"]("hi")               # 'HI'
+```
+
+Registration happens at import, so the module defining handlers must be imported somewhere.
+The class-based alternative is `__init_subclass__` (see [OOP](/python/language/oop/)).
+
+### Entry points for installed plugins
+
+Third-party packages advertise plugins in their `pyproject.toml`; the host discovers them
+with `importlib.metadata` without importing anything up front.
+
+```toml title="pyproject.toml (plugin package)"
+[project.entry-points."myapp.exporters"]
+csv = "myapp_csv:CsvExporter"
+```
+
+```python
+from importlib.metadata import entry_points
+
+for ep in entry_points(group="myapp.exporters"):
+    exporter_cls = ep.load()          # imports on demand
+    print(ep.name, exporter_cls)
+```
+
+- **Watch out:** a plugin failing to import should not crash the host; wrap `ep.load()` and
+  log the error. See [Packages](/python/engineering/packages/) for publishing.
+
+## Functional core, imperative shell
+
+Keep decisions in pure functions over plain data; push I/O (DB, HTTP, clock, randomness) to a
+thin outer layer that calls them.
+
+```python
+from dataclasses import dataclass
+from datetime import date, timedelta
+
+
+@dataclass(frozen=True)
+class Invoice:
+    id: str
+    email: str
+    due: date
+    paid: bool
+
+
+def overdue(invs: list[Invoice], today: date) -> list[str]:
+    """Core: pure, trivially testable."""
+    grace = timedelta(days=7)
+    return [i.email for i in invs
+            if not i.paid and i.due + grace < today]
+
+
+# Shell: gathers inputs, calls the core, performs effects
+# def main() -> None:
+#     invs = db.load_invoices()
+#     for email in overdue(invs, date.today()):
+#         mailer.send(email, "Your invoice is overdue")
+
+assert overdue(
+    [Invoice("1", "a@x.io", date(2026, 9, 1), False)],
+    date(2026, 9, 25),
+) == ["a@x.io"]
+```
+
+- **Use when:** always worth a try; the core needs no mocks and the shell stays small.
+- **Watch out:** passing huge data sets into the core; stream or page instead.
+
+## Choosing a pattern
+
+| Problem | Reach for |
+| :------ | :-------- |
+| exactly one shared instance | a module-level object or `@functools.cache` getter |
+| several ways to construct a class | `@classmethod` constructors returning `Self` |
+| pick an implementation from config | factory function with `match` |
+| many optional settings | keyword arguments + frozen dataclass + `replace` |
+| third-party API doesn't fit | adapter implementing your `Protocol` |
+| add logging/retry/caching to functions | function decorator with `ParamSpec` |
+| lazy or guarded access to an object | proxy (explicit `get()` or wrapper class) |
+| notify several listeners | callbacks list / signal / event bus |
+| swap an algorithm | pass a function (strategy) |
+| undo, queue, replay, audit | commands as frozen dataclasses |
+| large or infinite sequences | generators and `itertools` |
+| explicit lifecycle | `StrEnum` + `match`, or union of dataclasses |
+| framework with overridable steps | template method (ABC) or hook callables |
+| testable services | constructor injection with `Protocol`s |
+| persistence behind domain logic | repository + unit of work |
+| extension points | decorator registry, `__init_subclass__`, entry points |
+| logic tangled with I/O | functional core, imperative shell |
+
+<Note kind="warning">Anti-patterns: Java-style getters and setters, one-implementation
+`ABC`s "for testing", `Manager`/`Helper` god classes, singletons as mutable global stores,
+metaclasses where `__init_subclass__` or a decorator would do. Start with functions and
+modules; add a pattern when a concrete pain shows up.</Note>
+
+## Recipes
+
+### Retry decorator with back-off
+
+When calls to a flaky service should retry transient errors while keeping the typed signature.
+
+```python
+import functools
+import time
+from collections.abc import Callable
+from urllib.request import urlopen
+
+def retry[**P, R](
+    times: int = 3, delay: float = 0.2,
+    on: tuple[type[Exception], ...] = (ConnectionError,),
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def deco(fn: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(fn)
+        def wrapper(*a: P.args, **kw: P.kwargs) -> R:
+            for attempt in range(times - 1):
+                try:
+                    return fn(*a, **kw)
+                except on:
+                    time.sleep(delay * 2**attempt)
+            return fn(*a, **kw)       # last try: may raise
+        return wrapper
+    return deco
+
+@retry(times=5, on=(TimeoutError, ConnectionError))
+def fetch(url: str) -> bytes:
+    with urlopen(url, timeout=5) as res:
+        return bytes(res.read())
+```
+
+### Timing block that doubles as a decorator
+
+When you want durations logged around a block or a whole function; `@contextmanager` objects
+are also decorators.
+
+```python
+import logging
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+log = logging.getLogger(__name__)
+
+@contextmanager
+def timed(label: str) -> Iterator[None]:
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        ms = (time.perf_counter() - start) * 1000
+        log.info("%s took %.1f ms", label, ms)
+
+with timed("load users"):
+    users = list(range(100_000))
+
+@timed("build report")               # as a decorator
+def build_report() -> str:
+    return "ok"
+```
+
+For `async def` functions, use `@asynccontextmanager` the same way.
+
+### Registry of handlers by message type
+
+When incoming messages (webhooks, queue jobs) should route to handlers keyed by their class.
+
+```python
+from collections.abc import Callable
+from typing import Any, NamedTuple
+
+type Fn[T] = Callable[[T], None]
+HANDLERS: dict[type, list[Fn[Any]]] = {}
+
+def on[T](msg: type[T]) -> Callable[[Fn[T]], Fn[T]]:
+    def register(fn: Fn[T]) -> Fn[T]:
+        HANDLERS.setdefault(msg, []).append(fn)
+        return fn
+    return register
+
+class UserCreated(NamedTuple):
+    email: str
+
+@on(UserCreated)
+def welcome(m: UserCreated) -> None:
+    print("welcome", m.email)
+
+def dispatch(msg: object) -> None:
+    for fn in HANDLERS.get(type(msg), []):
+        fn(msg)
+
+dispatch(UserCreated("ada@example.com"))
+```
+
+### DI wiring for tests
+
+When a test should swap the clock and side effects for fakes, with no mocking library.
+
+```python
+from datetime import UTC, datetime
+from typing import Protocol
+
+class Clock(Protocol):
+    def now(self) -> datetime: ...
+
+class Greeter:
+    def __init__(self, clock: Clock) -> None:
+        self.clock = clock
+    def greet(self, name: str) -> str:
+        hour = self.clock.now().hour
+        part = "morning" if hour < 12 else "day"
+        return f"Good {part}, {name}"
+
+class FixedClock:
+    def __init__(self, at: datetime) -> None:
+        self.at = at
+    def now(self) -> datetime:
+        return self.at
+
+def test_morning() -> None:           # pytest picks this up
+    nine = datetime(2026, 9, 25, 9, tzinfo=UTC)
+    g = Greeter(FixedClock(nine))
+    assert g.greet("Ada") == "Good morning, Ada"
+```
+
+### Simple typed event bus
+
+When modules should react to domain events without importing each other.
+
+```python
+from collections.abc import Callable
+from typing import Any, NamedTuple
+
+type Sub = Callable[[Any], None]
+
+class EventBus:
+    def __init__(self) -> None:
+        self._subs: dict[type, list[Sub]] = {}
+
+    def subscribe[E](
+        self, event: type[E], fn: Callable[[E], None]
+    ) -> None:
+        self._subs.setdefault(event, []).append(fn)
+
+    def publish(self, event: object) -> None:
+        for fn in self._subs.get(type(event), []):
+            fn(event)
+
+class Shipped(NamedTuple):
+    order_id: str
+
+bus = EventBus()
+bus.subscribe(Shipped, lambda e: print("ship", e.order_id))
+bus.publish(Shipped("o-1"))
+```
+
+### Caching proxy with `functools`
+
+When an expensive client should memoise reads per instance; `@lru_cache` on a method would
+cache across instances and keep `self` alive.
+
+```python
+from functools import lru_cache
+from typing import Protocol
+
+class RatesApi(Protocol):
+    def rate(self, base: str, quote: str) -> float: ...
+
+class CachedRates:
+    """Same Protocol as the real client; drop-in."""
+
+    def __init__(self, inner: RatesApi) -> None:
+        self.rate = lru_cache(maxsize=256)(inner.rate)
+
+    def clear(self) -> None:
+        self.rate.cache_clear()
+
+class SlowApi:
+    def rate(self, base: str, quote: str) -> float:
+        return 1.1 if base == "EUR" else 1.0   # slow call
+
+rates: RatesApi = CachedRates(SlowApi())
+rates.rate("EUR", "USD")              # computed, then cached
+```
+
+Use `cachetools.TTLCache` when entries must expire, and `async-lru` for coroutines.
+
+## References
+
+- [Python docs: `functools`](https://docs.python.org/3/library/functools.html): `wraps`, `cache`, `lru_cache`, `singledispatch`, `partial`
+- [Python docs: `typing`](https://docs.python.org/3/library/typing.html): `Protocol`, `ParamSpec`, `Self`, `assert_never`
+- [Python docs: `abc`](https://docs.python.org/3/library/abc.html) and [`contextlib`](https://docs.python.org/3/library/contextlib.html)
+- [Python docs: `itertools`](https://docs.python.org/3/library/itertools.html): building blocks for iterator pipelines
+- [Python docs: `enum`](https://docs.python.org/3/library/enum.html) and [the `match` statement](https://docs.python.org/3/reference/compound_stmts.html#the-match-statement)
+- [Python docs: entry points in `importlib.metadata`](https://docs.python.org/3/library/importlib.metadata.html#entry-points)
+- [Python Packaging: Creating and discovering plugins](https://packaging.python.org/en/latest/guides/creating-and-discovering-plugins/)
+- [Python Design Patterns (Brandon Rhodes)](https://python-patterns.guide/): which GoF patterns Python already absorbs
+- [Architecture Patterns with Python (Cosmic Python)](https://www.cosmicpython.com/book/preface.html): repository, unit of work, DI, message bus
+- [Refactoring.Guru: Design patterns](https://refactoring.guru/design-patterns/python): catalogue with Python examples

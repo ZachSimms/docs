@@ -11,8 +11,10 @@ in [Colour theory](/design/principles/color-theory/).
 
 ## Cascade & specificity
 
-When two declarations set the same property on an element, the one that comes first in this
-list wins.
+When two declarations set the same property on an element, the cascade checks these steps in
+order and stops at the first one that tells them apart.
+
+<Diagram src="/images/diagrams/css-cascade.svg" label="The cascade as a ladder of seven steps checked from the top: origin and importance, context, element-attached styles, cascade layers, specificity, scope proximity, and order of appearance. A tie at one step falls through to the next." caption="The cascade: the first step with a difference decides" />
 
 | Step | Winner |
 | :--- | :----- |
@@ -23,6 +25,8 @@ list wins.
 | 5. Specificity | the higher `(id, class, type)` tuple |
 | 6. Scope proximity | the `@scope` root closer to the element |
 | 7. Order of appearance | the rule that comes later |
+
+<Diagram src="/images/diagrams/css-specificity.svg" label="Specificity of #nav .item a:hover counted in three columns: A, IDs: 1 (#nav); B, classes, attributes and pseudo-classes: 2 (.item and :hover); C, types and pseudo-elements: 1 (a). The score is 1-2-1. Below, #main scores 1-0-0 and beats .a.b.c.d.e.f.g.h.i.j.k at 0-11-0: column A already differs, so B and C are never compared." caption="Specificity: three counters compared from the left" />
 
 | Selector | Specificity |
 | :------- | :---------- |
@@ -104,6 +108,27 @@ styles/
 | Unlayered styles | act as an implicit last layer: third-party CSS can override yours, so wrap vendors in a layer |
 | Nested | `@layer a.b` or `@layer a { @layer b {} }` |
 | Anonymous | `@layer { ... }` can't be reopened or reordered later |
+
+A `1-2-0` selector in an earlier layer loses to a `0-1-0` one in a later layer:
+
+```html demo height=70 title="layers.html"
+<style>
+  @layer base, components;
+
+  @layer components {
+    .btn { background: var(--graph-2); }       /* 0-1-0 */
+  }
+  @layer base {
+    #save.btn.primary { background: var(--graph-1); }
+  }
+
+  .btn { padding: 8px 14px; border: 0; border-radius: 4px;
+    font: inherit; color: var(--bg); }
+</style>
+<button id="save" class="btn primary">
+  Green: the later layer wins
+</button>
+```
 
 ## Selectors, nesting & `@scope`
 
@@ -222,6 +247,25 @@ lets you opt out of inheritance.
 
 ## Box model & units
 
+<Diagram src="/images/diagrams/box-model.svg" label="The CSS box model: content inside padding, inside a border, inside margin" caption="The box model" />
+
+Both boxes below declare `width: 200px`; the red bar is 200px wide.
+
+```html demo height=160 title="box-sizing.html"
+<style>
+  .ruler { width: 200px; height: 4px; margin-bottom: 6px;
+    background: var(--graph-1); }
+  .box { width: 200px; padding: 12px; margin-bottom: 8px;
+    border: 6px solid var(--graph-0);
+    background: var(--chip); font-size: 13px; }
+  .content { box-sizing: content-box; }  /* 236px */
+  .border { box-sizing: border-box; }    /* 200px */
+</style>
+<div class="ruler"></div>
+<div class="box content">content-box: 236px</div>
+<div class="box border">border-box: 200px</div>
+```
+
 | Property | Note |
 | :------- | :--- |
 | `box-sizing: border-box` | `width` includes padding and border; set it globally |
@@ -290,6 +334,28 @@ img, svg, video { display: block; max-width: 100%; }
 }
 ```
 
+The same derivations, computed live from one token:
+
+```html demo height=100 title="relative-colour.html"
+<style>
+  :root { --brand: oklch(62% 0.19 255); }
+  .row { display: flex; gap: 8px; font: 11px monospace; }
+  .row div { flex: 1; }
+  .row div::before { content: ""; display: block;
+    height: 44px; margin-bottom: 4px; border-radius: 4px;
+    background: var(--c); }
+</style>
+<div class="row">
+  <div style="--c: var(--brand)">brand</div>
+  <div style="--c: oklch(from var(--brand)
+    calc(l - 0.08) c h)">l - 0.08</div>
+  <div style="--c: color-mix(in oklch,
+    var(--brand) 15%, white)">15% into white</div>
+  <div style="--c: oklch(from var(--brand)
+    l c calc(h + 180))">h + 180</div>
+</div>
+```
+
 `oklch` chroma above about 0.37 falls outside sRGB and gets gamut-mapped; keep chroma around
 0.1–0.2 for UI colours. Contrast rules are covered in
 [Colour theory](/design/principles/color-theory/).
@@ -297,6 +363,36 @@ img, svg, video { display: block; max-width: 100%; }
 ## Flexbox
 
 A one-dimensional layout: items flow along the main axis and align on the cross axis.
+
+<Diagram src="/images/diagrams/css-flex-axes.svg" label="A row flex container with three items and leftover free space. The main axis runs left to right from main-start to main-end and is controlled by justify-content; the cross axis runs top to bottom from cross-start to cross-end and is controlled by align-items. flex-direction: column swaps the axes." caption="Flex axes: justify-content on the main axis, align-items on the cross axis" />
+
+```html demo height=180 title="justify-content.html"
+<style>
+  .g { display: grid; grid-template-columns: auto 1fr;
+    gap: 6px 10px; align-items: center;
+    font: 12px monospace; }
+  .row { display: flex; gap: 4px; padding: 4px;
+    background: var(--chip); border-radius: 4px; }
+  .row i { width: 36px; height: 16px; border-radius: 3px;
+    background: var(--graph-0); }
+</style>
+<div class="g">
+  <span>flex-start</span>
+  <div class="row"><i></i><i></i><i></i></div>
+  <span>center</span>
+  <div class="row" style="justify-content: center">
+    <i></i><i></i><i></i></div>
+  <span>space-between</span>
+  <div class="row" style="justify-content: space-between">
+    <i></i><i></i><i></i></div>
+  <span>space-around</span>
+  <div class="row" style="justify-content: space-around">
+    <i></i><i></i><i></i></div>
+  <span>space-evenly</span>
+  <div class="row" style="justify-content: space-evenly">
+    <i></i><i></i><i></i></div>
+</div>
+```
 
 | Property | Values / effect |
 | :------- | :-------------- |
@@ -329,6 +425,8 @@ A one-dimensional layout: items flow along the main axis and align on the cross 
 ## Grid
 
 A two-dimensional layout: define tracks on the container and place items into them.
+
+<Diagram src="/images/diagrams/css-grid-lines.svg" label="A three-column, two-row grid. Column lines are numbered 1 to 4 across the top and -4 to -1 along the bottom; row lines 1 to 3 down the side. Column 1 is highlighted as a track, an area spans grid-column 2 / 4 in the first row, and the gap between two cells is marked." caption="Grid lines, tracks, cells, areas and gaps" />
 
 | Property | Example / effect |
 | :------- | :--------------- |
@@ -364,6 +462,28 @@ A two-dimensional layout: define tracks on the container and place items into th
 .layout > footer { grid-area: footer; }
 ```
 
+```html demo height=180 title="grid-areas.html"
+<style>
+  .layout { display: grid; gap: 6px; height: 150px;
+    grid-template:
+      "head head" auto
+      "nav  main" 1fr
+      "foot foot" auto
+      / 90px 1fr; }
+  .layout > * { padding: 6px 10px; border-radius: 4px;
+    background: color-mix(in srgb, var(--c) 25%,
+      transparent); }
+  header { grid-area: head; --c: var(--graph-0); }
+  nav    { grid-area: nav;  --c: var(--graph-2); }
+  main   { grid-area: main; --c: var(--graph-3); }
+  footer { grid-area: foot; --c: var(--graph-1); }
+</style>
+<div class="layout">
+  <header>header</header><nav>nav</nav>
+  <main>main</main><footer>footer</footer>
+</div>
+```
+
 ```css title="subgrid: card parts line up across a row"
 .cards {
   display: grid;
@@ -392,9 +512,38 @@ A two-dimensional layout: define tracks on the container and place items into th
 element and the scroller has `overflow: hidden` (use `clip`) or if the element has no room to
 move inside its parent.
 
+```html demo height=170 title="position.html"
+<style>
+  .scroller { height: 146px; overflow: auto;
+    border: 1px solid var(--muted); border-radius: 4px; }
+  .sticky { position: sticky; top: 0; z-index: 1;
+    padding: 6px 10px; background: var(--graph-0);
+    color: var(--bg); }
+  .card { position: relative; margin: 14px 10px;
+    padding: 12px 10px; border-radius: 4px;
+    background: var(--chip); }
+  .badge { position: absolute; top: -8px; right: -4px;
+    padding: 0 6px; border-radius: 9px; font-size: 12px;
+    background: var(--graph-1); color: var(--bg); }
+</style>
+<div class="scroller">
+  <div class="sticky">sticky: scroll this box</div>
+  <div class="card">relative card
+    <span class="badge">absolute</span></div>
+  <div class="card">relative card
+    <span class="badge">absolute</span></div>
+  <div class="card">relative card
+    <span class="badge">absolute</span></div>
+</div>
+```
+
 ### Stacking contexts
 
-`z-index` only competes among siblings in the same stacking context. These create a new one:
+`z-index` only competes among siblings in the same stacking context.
+
+<Diagram src="/images/diagrams/css-stacking.svg" label="Two sibling boxes in the root stacking context: A with z-index 1 contains a badge with z-index 999; B with z-index 2 overlaps A. B covers the badge, because the badge's 999 only ranks it inside A's own stacking context." caption="z-index only compares within one stacking context" />
+
+These create a new stacking context:
 
 | Trigger | Example |
 | :------ | :------ |
@@ -461,6 +610,30 @@ Components respond to their container's size, not the viewport's.
 }
 
 .card h2 { font-size: clamp(1rem, 4cqi, 1.5rem); }
+```
+
+The same card markup in a 170px slot and in a full-width slot:
+
+```html demo height=250 title="container-query.html"
+<style>
+  .slot { container-type: inline-size;
+    margin-bottom: 8px; }
+  .narrow { width: 170px; }
+  .card { display: grid; gap: 8px; padding: 8px;
+    border-radius: 6px; background: var(--chip); }
+  .img { aspect-ratio: 16 / 9; border-radius: 4px;
+    background: var(--graph-2); }
+  @container (width >= 300px) {
+    .card { grid-template-columns: 120px 1fr;
+      align-items: center; }
+  }
+</style>
+<div class="slot narrow"><div class="card">
+  <div class="img"></div><b>Stacked</b>
+</div></div>
+<div class="slot"><div class="card">
+  <div class="img"></div><b>Side by side</b>
+</div></div>
 ```
 
 | Syntax | Note |
@@ -705,20 +878,33 @@ Guard newer features with `@supports`:
 ### Centering
 Four ways, depending on the parent's layout.
 
+```html demo height=130 title="centering.html"
+<style>
+  /* grid: one child, both axes */
+  .center { display: grid; place-items: center; }
+
+  /* flex: both axes, several children in a row */
+  .row-center { display: flex;
+    justify-content: center; align-items: center; }
+
+  /* block container, vertical only (Baseline 2024) */
+  .v-center { align-content: center; }
+
+  .demo { display: grid; gap: 8px;
+    grid-template-columns: repeat(3, 1fr); }
+  .demo > div { height: 100px; border-radius: 4px;
+    border: 1px dashed var(--muted); }
+  b { padding: 4px 8px; margin: 2px; border-radius: 4px;
+    background: var(--graph-0); color: var(--bg); }
+</style>
+<div class="demo">
+  <div class="center"><b>grid</b></div>
+  <div class="row-center"><b>flex</b><b>2</b></div>
+  <div class="v-center"><b>block</b></div>
+</div>
+```
+
 ```css
-/* grid: one child, both axes */
-.center { display: grid; place-items: center; }
-
-/* block container, vertical only (Baseline 2024) */
-.v-center { align-content: center; }
-
-/* flex: both axes, several children in a row */
-.row-center {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
 /* horizontal block with a max width */
 .wrap {
   inline-size: min(100% - 2rem, 70rem);
@@ -751,17 +937,28 @@ A header, sidebar, main and footer that collapse to one column on narrow screens
 ```
 
 ### Responsive card grid
-As many columns as fit, with no media queries and no overflow on tiny screens.
+As many columns as fit, with no media queries and no overflow on tiny screens. The demo uses
+a smaller `--min` so several columns fit in the frame; resize the window to see them reflow.
 
-```css
-.grid {
-  --min: 16rem;
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fit, minmax(min(100%, var(--min)), 1fr)
-  );
-  gap: clamp(1rem, 2vw, 2rem);
-}
+```html demo height=190 title="card-grid.html"
+<style>
+  .grid {
+    --min: 16rem;
+    display: grid;
+    grid-template-columns: repeat(
+      auto-fit, minmax(min(100%, var(--min)), 1fr)
+    );
+    gap: clamp(1rem, 2vw, 2rem);
+  }
+
+  .grid { --min: 9rem; }   /* demo only */
+  .grid > div { padding: 12px; border-radius: 6px;
+    background: var(--chip); }
+</style>
+<div class="grid">
+  <div>1</div><div>2</div><div>3</div>
+  <div>4</div><div>5</div>
+</div>
 ```
 
 ### Fluid type scale
@@ -828,20 +1025,31 @@ Hidden on screen but still read by screen readers; the second rule shows skip li
 ### Truncate and line clamp
 Single-line ellipsis, or clamp to N lines.
 
-```css
-.truncate {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  min-width: 0;             /* when inside flex or grid */
-}
+```html demo height=150 title="truncate.html"
+<style>
+  .truncate {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;             /* when inside flex or grid */
+  }
 
-.clamp-3 {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
+  .clamp-3 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+
+  p { max-width: 280px; margin: 0 0 12px;
+    padding-inline: 6px; background: var(--chip); }
+</style>
+<p class="truncate">One line that is far too long to fit
+  in its box, so it ends in an ellipsis.</p>
+<p class="clamp-3">A paragraph that keeps going for several
+  lines. Line clamping stops it after the third line and
+  puts the ellipsis there, however much text follows in
+  the markup, so card previews line up.</p>
 ```
 
 ### Full-bleed layout

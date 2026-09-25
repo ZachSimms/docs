@@ -1,0 +1,759 @@
+---
+title: Software architecture
+date: 2026-09-25
+order: 2
+---
+
+How to shape a TypeScript codebase above the level of single classes: quality attributes,
+architecture styles, boundaries, DDD, modular monoliths, and how to document and enforce
+decisions. Code targets TypeScript 5.9+ on Bun. Object-level patterns live in
+[Design patterns](/typescript/design-architecture/design-patterns/), packaging in
+[Modules, packages & libraries](/typescript/design-architecture/modules-packages/), and
+distributed concerns in [System design](/infrastructure/system-design/).
+
+## Architectural characteristics
+
+The "-ilities" a design must meet. Pick the top 3 that drive decisions; the rest are
+constraints to not break.
+
+| Characteristic | Question | Measured by |
+| :------------- | :------- | :---------- |
+| Performance | how fast under normal load? | p50/p95/p99 latency, throughput |
+| Scalability | does it hold as load grows? | throughput vs resources curve |
+| Elasticity | can it absorb sudden spikes? | time to scale, errors during bursts |
+| Availability | is it up when needed? | uptime %, SLO |
+| Reliability / fault tolerance | does it keep working when parts fail? | error rate, MTTR, blast radius |
+| Security | who can do what, and is data protected? | threat model, audit findings |
+| Maintainability / modifiability | how cheap is a change? | lead time, change failure rate, churn hotspots |
+| Testability | can behaviour be checked in isolation? | test speed, coverage of logic without I/O |
+| Deployability | how often and safely can we ship? | deploy frequency, rollback time |
+| Observability | can we explain behaviour from outside? | traces, metrics, logs coverage |
+| Interoperability | does it talk to other systems cleanly? | contract tests, API versioning |
+| Evolvability | can the architecture itself change? | fitness functions passing |
+| Simplicity / cost | can the team run it? | moving parts, cloud bill, on-call load |
+
+Characteristics trade against each other: microservices buy deployability and scalability
+with simplicity and performance.
+
+## Architecture styles
+
+| Style | Shape | Use when | Avoid when |
+| :---- | :---- | :------- | :--------- |
+| Layered (n-tier) | UI → service → data layers | small CRUD apps, one team | domain logic grows; changes cut across every layer |
+| Modular monolith | one deployable, modules by business capability with enforced boundaries | default for most products and teams | teams need independent deploy/scale today |
+| Hexagonal (ports & adapters) | core defines ports; adapters implement them | logic worth testing without I/O, swappable infra | thin CRUD over a DB |
+| Clean / onion | concentric: entities, use cases, adapters, frameworks | long-lived domains, strict dependency rule | small apps (ceremony) |
+| Microservices | services own data, deploy independently | many teams, different scaling or tech needs | one team, unclear domain boundaries, no platform/ops maturity |
+| Event-driven | components react to events via a broker | decoupled workflows, fan-out, audit trails | you need simple request/response and easy debugging |
+| Serverless | functions + managed services | spiky or low traffic, glue code, small teams | long-running, latency-critical, heavy local state |
+| CQRS | separate write model and read models | reads and writes differ a lot in shape or scale | simple CRUD |
+| Event sourcing | state = fold over stored events | audit, temporal queries, complex domains | most apps: schema evolution and replay are costly |
+| Microkernel (plugins) | core + plug-in modules | editors, tools, rules engines | features aren't naturally pluggable |
+
+Start with a modular monolith; extract a service when a module has a measured reason
+(scale, team ownership, isolation). Distributed monoliths (services that must deploy
+together) are the worst of both.
+
+## Dependency rule & boundaries
+
+Source dependencies point **inward**, towards policy. The domain knows nothing about
+HTTP, SQL, queues or frameworks.
+
+```text
+  frameworks & drivers  (Bun.serve, Hono, Postgres, Stripe)
+        │ implements / calls
+  adapters              (http routes, pg repository, clients)
+        │ depends on
+  application           (use cases, ports = interfaces)
+        │ depends on
+  domain                (entities, value objects, events)
+```
+
+| Term | Meaning |
+| :--- | :------ |
+| Port | interface owned by the core (`OrderRepository`, `Clock`, `Mailer`) |
+| Driving (primary) adapter | calls into the core: HTTP route, CLI, queue consumer, test |
+| Driven (secondary) adapter | implements a port: Postgres repo, SMTP mailer, fake |
+| Dependency inversion | the core defines the interface; infra implements it |
+| Composition root | the one place that builds adapters and injects them |
+| Module public API | the `index.ts` other modules may import; everything else is private |
+
+| Allowed import | domain | application | adapters | main |
+| :------------- | :----- | :---------- | :------- | :--- |
+| domain | yes | yes | yes | yes |
+| application | no | yes | yes | yes |
+| adapters | no | no | yes | yes |
+| main (composition root) | no | no | no | yes |
+
+Read the table as "row can be imported by column".
+
+## Domain-driven design essentials
+
+| Concept | What it is | In TypeScript |
+| :------ | :--------- | :------------ |
+| Ubiquitous language | shared vocabulary of experts and code | type and function names match the words used by the business |
+| Bounded context | boundary where a model and its language are consistent | a module or package; "Order" in sales is not "Order" in shipping |
+| Context map | how contexts relate | customer/supplier, shared kernel, anti-corruption layer |
+| Entity | identity that persists through changes | object with a branded `id` |
+| Value object | defined by its values, immutable | `readonly` type + smart constructor, compare by value |
+| Aggregate | cluster changed as one unit with invariants | one root type; functions return a new aggregate |
+| Aggregate root | the only entry point to the aggregate | repository per root, not per table |
+| Domain event | something that happened, past tense | `{ type: "order.placed", ... }` discriminated union |
+| Domain service | logic that fits no single entity | pure function taking several aggregates |
+| Repository | collection-like access to aggregates | port interface in application, adapter in infra |
+| Application service / use case | orchestrates one user intent | async function with injected ports |
+| Anti-corruption layer | translator at the edge of a foreign model | mapper from a vendor DTO to your types |
+
+Aggregate rules: keep them small, reference other aggregates by ID, change one aggregate
+per transaction, and reach other aggregates through events (eventual consistency).
+
+```ts title="src/modules/orders/domain/order.ts"
+import { err, ok, type Result }
+  from "../../../shared/result";
+
+declare const brand: unique symbol;
+type Brand<T, B extends string> = T & { [brand]: B };
+
+export type OrderId = Brand<string, "OrderId">;
+export type Cents = Brand<number, "Cents">;
+
+export function cents(
+  n: number,
+): Result<Cents, "bad-amount"> {
+  return Number.isInteger(n) && n >= 0
+    ? ok(n as Cents)
+    : err("bad-amount");
+}
+
+export type OrderLine = Readonly<{
+  sku: string;
+  qty: number;
+  price: Cents;
+}>;
+
+export type Order = Readonly<{
+  id: OrderId;
+  status: "draft" | "placed";
+  lines: readonly OrderLine[];
+}>;
+
+export type OrderPlaced = Readonly<{
+  type: "order.placed";
+  orderId: OrderId;
+  total: Cents;
+  at: Date;
+}>;
+
+export type PlaceError = "empty-order" | "already-placed";
+
+export function place(
+  order: Order,
+  at: Date,
+): Result<{ order: Order; event: OrderPlaced }, PlaceError> {
+  if (order.status === "placed") {
+    return err("already-placed");
+  }
+  if (order.lines.length === 0) return err("empty-order");
+  const total = order.lines.reduce(
+    (sum, l) => sum + l.qty * l.price,
+    0,
+  ) as Cents;
+  return ok({
+    order: { ...order, status: "placed" },
+    event: {
+      type: "order.placed",
+      orderId: order.id,
+      total,
+      at,
+    },
+  });
+}
+```
+
+The aggregate is plain data plus pure functions: no I/O, no framework, trivially testable.
+
+## Modular monolith layouts
+
+Layer folders group by technical role; every feature change touches every folder.
+
+```tree title="layer folders (scales badly)"
+src/
+  controllers/
+    orders.ts
+    billing.ts
+  services/
+    orders.ts
+    billing.ts
+  repositories/
+    orders.ts
+  models/
+    order.ts
+```
+
+Feature (module) folders group by business capability; each module has a public API.
+
+```tree title="feature modules"
+src/
+  modules/
+    orders/
+      domain/          # entities, value objects, events
+      application/     # use cases + ports
+      infra/           # pg repo, in-memory repo
+      http/            # routes (driving adapter)
+      index.ts         # the module's public API
+    billing/
+      ...
+    catalog/
+      ...
+  shared/              # Result, ids, event bus: no domain
+  config.ts
+  main.ts              # composition root
+tests/
+  architecture.test.ts # fitness functions
+```
+
+```tree title="hexagonal naming inside one module"
+orders/
+  core/
+    domain/
+      order.ts
+    ports/
+      order-repository.ts   # driven port
+      place-order.ts        # driving port (use case)
+  adapters/
+    driving/
+      http-routes.ts
+      queue-consumer.ts
+    driven/
+      pg-order-repository.ts
+      stripe-payments.ts
+      in-memory-orders.ts   # for tests
+  index.ts
+```
+
+```tree title="workspace packages per bounded context"
+repo/
+  apps/
+    api/              # composition root, Bun.serve
+    worker/           # queue consumers
+  packages/
+    orders/
+      package.json    # exports: ./src/index.ts
+    billing/
+    shared-kernel/    # Result, Money, ids
+  package.json        # workspaces: apps/*, packages/*
+```
+
+```ts title="src/modules/orders/index.ts"
+// The only file other modules may import.
+export { makePlaceOrder } from "./application/place-order";
+export type { PlaceOrder } from "./application/place-order";
+export type {
+  Order,
+  OrderId,
+  OrderPlaced,
+} from "./domain/order";
+```
+
+## Enforcing boundaries
+
+| Tool | Enforces | Notes |
+| :--- | :------- | :---- |
+| `package.json` `exports` | only listed entry points resolve | per workspace package; deep imports fail to resolve |
+| TS project references | package build order, no cycles | `composite: true`, `tsc -b` |
+| ESLint `no-restricted-imports` | forbidden paths per folder | core rule, flat config `files` globs |
+| `eslint-plugin-boundaries` | element types and allowed dependencies | richer rules by folder pattern |
+| dependency-cruiser | any rule over the import graph, cycles, orphans | CI check; also draws graphs |
+| Knip | unused files, exports and dependencies | keeps public APIs honest |
+| Architecture tests | custom checks in the test suite | `bun test`, see fitness functions |
+
+```js title="eslint.config.js"
+const viaIndex = {
+  group: ["@/modules/*/*/**"],
+  message: "import another module via its index",
+};
+const pure = {
+  group: ["**/infra/**", "**/http/**",
+    "hono", "bun", "drizzle-orm*"],
+  message: "domain must stay pure",
+};
+
+export default [
+  {
+    files: ["src/modules/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error",
+        { patterns: [viaIndex] }],
+    },
+  },
+  {
+    // a later match replaces the options: repeat viaIndex
+    files: ["src/modules/*/domain/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error",
+        { patterns: [viaIndex, pure] }],
+    },
+  },
+];
+```
+
+Patterns match the import string, so the second rule catches alias imports
+(`@/modules/billing/domain/x`) but not relative ones (`../../billing/domain/x`);
+dependency-cruiser resolves real paths and catches both. Spread these after
+typescript-eslint's configs so `.ts` files parse.
+
+## Coupling & cohesion
+
+| Idea | Aim |
+| :--- | :-- |
+| Cohesion | things that change together live together (by feature, not by layer) |
+| Coupling | fewer, narrower, more stable dependencies between modules |
+| Afferent coupling `Ca` | incoming dependents: high means changes are risky |
+| Efferent coupling `Ce` | outgoing dependencies: high means fragile |
+| Instability `I = Ce / (Ca + Ce)` | 0 stable, 1 unstable; depend towards stability |
+| Stable abstractions | stable modules should be abstract (interfaces, types) |
+| Acyclic dependencies | no cycles between modules |
+
+Connascence: two parts are connascent if changing one forces a change in the other.
+Prefer weaker forms, and keep strong forms inside a module (locality).
+
+| Kind | Form (weak → strong) | Example |
+| :--- | :------------------- | :------ |
+| Static | name | calling `placeOrder` |
+| Static | type | both sides agree on `OrderId` |
+| Static | meaning (convention) | `status === 3` means shipped: use a union instead |
+| Static | position | `f(a, b, c)` argument order: use an options object |
+| Static | algorithm | both sides hash the same way |
+| Dynamic | execution order | `init()` before `use()` |
+| Dynamic | timing | race between two writers |
+| Dynamic | value | two values must change together |
+| Dynamic | identity | both must reference the same instance |
+
+## Communication between modules
+
+| Style | Coupling | Use for |
+| :---- | :------- | :------ |
+| Direct call to another module's public API | temporal + type | queries, commands needing an answer now |
+| In-process domain events | loose, same transaction boundary optional | side effects in other modules (send email) |
+| Outbox + message broker | loose, async, durable | cross-service workflows, retries |
+| HTTP/gRPC between services | temporal, network | request/response across deployables |
+| Shared database tables | tight (hidden) | avoid: each module owns its tables |
+
+Contracts at a module or service edge:
+
+| Practice | Why |
+| :------- | :-- |
+| Explicit DTOs, never domain objects on the wire | internal changes don't break callers |
+| Validate input with a schema (Zod) at the edge | inside the core, trust the types |
+| Version events and APIs; additive changes only | consumers upgrade at their pace |
+| Consumer-driven contract tests (Pact) | catch breaking changes before deploy |
+| Idempotency keys on commands | safe retries |
+| Tolerant reader | ignore unknown fields, don't require optional ones |
+
+## Errors as values at boundaries
+
+Expected business failures are values in the type (`Result`); unexpected faults (DB down,
+bugs) stay exceptions and are caught once at the edge.
+
+| Kind | Examples | Represent as | Handled |
+| :--- | :------- | :----------- | :------ |
+| Domain error | empty order, insufficient funds | `Result` with a string-literal union | mapped to 4xx at the adapter |
+| Validation error | bad JSON, missing field | Zod `safeParse` result | 400 at the adapter |
+| Infrastructure fault | timeout, connection refused | thrown `Error` with `cause` | retry or 5xx in middleware |
+| Bug | undefined access | thrown | 500, alert |
+
+```ts title="src/shared/result.ts"
+export type Ok<T> = { readonly ok: true; readonly value: T };
+export type Err<E> = {
+  readonly ok: false;
+  readonly error: E;
+};
+export type Result<T, E> = Ok<T> | Err<E>;
+
+export const ok = <T>(value: T): Ok<T> => ({
+  ok: true,
+  value,
+});
+export const err = <E>(error: E): Err<E> => ({
+  ok: false,
+  error,
+});
+```
+
+Libraries such as `neverthrow` and Effect offer richer versions; a 10-line type is
+enough for boundaries.
+
+## Configuration & composition root
+
+| Rule | Why |
+| :--- | :-- |
+| Read env once, validate, freeze | fail at startup, not on first request |
+| Pass config and ports as parameters | no hidden globals, easy tests |
+| Build the object graph in `main.ts` only | one place to see and swap wiring |
+| No DI container needed | functions and constructors are enough in TS |
+| Tests build their own small graph | in-memory adapters, fixed clock |
+
+```ts title="src/config.ts"
+import { z } from "zod";
+
+const Config = z.object({
+  DATABASE_URL: z.url(),
+  PORT: z.coerce.number().int().default(3000),
+  LOG_LEVEL: z
+    .enum(["debug", "info", "warn", "error"])
+    .default("info"),
+});
+
+export type Config = Readonly<z.infer<typeof Config>>;
+
+export function loadConfig(
+  env: Record<string, string | undefined>,
+): Config {
+  const parsed = Config.safeParse(env);
+  if (!parsed.success) {
+    throw new Error("Invalid configuration", {
+      cause: z.prettifyError(parsed.error),
+    });
+  }
+  return Object.freeze(parsed.data);
+}
+```
+
+## Documenting: ADRs & C4
+
+An **Architecture Decision Record** is a short markdown file per significant decision,
+numbered, stored in the repo (`docs/adr/0007-use-postgres.md`) and never edited after
+acceptance: a later ADR supersedes it. Template in [Recipes](#adr-template).
+
+| ADR status | Meaning |
+| :--------- | :------ |
+| Proposed | under discussion (PR open) |
+| Accepted | in force |
+| Deprecated | no longer applies, nothing replaces it |
+| Superseded by ADR-N | replaced |
+
+The **C4 model** describes a system at four zoom levels, each for a different audience.
+
+| Level | Shows | Audience |
+| :---- | :---- | :------- |
+| 1. System context | your system, its users, and external systems | everyone, non-technical included |
+| 2. Container | deployable/runnable units (apps, DBs, queues) and their protocols | developers, ops |
+| 3. Component | major components inside one container and their responsibilities | developers of that container |
+| 4. Code | classes/types for one component (usually generated or skipped) | rarely needed |
+| Supplementary | system landscape, dynamic (sequence), deployment diagrams | as needed |
+
+Tools: Structurizr DSL (diagrams as code), Mermaid C4 diagrams, IcePanel, Likec4. Keep
+levels 1 and 2 current; generate or skip level 4.
+
+## Fitness functions & migration
+
+A **fitness function** is an automated check that an architectural characteristic still
+holds: run it in CI like a test.
+
+| Characteristic | Fitness function |
+| :------------- | :--------------- |
+| Layering / boundaries | dependency-cruiser, ESLint rules, architecture tests |
+| No cycles | `depcruise --validate` with `no-circular` |
+| Performance | benchmark or load test budget (p95 under N ms) |
+| Bundle size | size-limit budget in CI |
+| API compatibility | contract tests, OpenAPI diff |
+| Security | dependency audit, SAST, secret scanning |
+| Resilience | chaos experiments in staging |
+
+```ts title="tests/architecture.test.ts"
+import { expect, test } from "bun:test";
+import { Glob } from "bun";
+
+const FORBIDDEN = /\/infra\/|\/http\/|^hono|^bun$/;
+const IMPORT = /from\s+["']([^"']+)["']/g;
+
+test("domain code imports no infrastructure", async () => {
+  const bad: string[] = [];
+  const glob = new Glob("src/modules/*/domain/**/*.ts");
+  for await (const file of glob.scan(".")) {
+    const src = await Bun.file(file).text();
+    for (const m of src.matchAll(IMPORT)) {
+      const spec = m[1] ?? "";
+      if (FORBIDDEN.test(spec)) bad.push(`${file}: ${spec}`);
+    }
+  }
+  expect(bad).toEqual([]);
+});
+```
+
+| Migration strategy | How |
+| :----------------- | :-- |
+| Strangler fig | route traffic for one capability at a time to the new system behind a facade/proxy until the old one is empty |
+| Branch by abstraction | put an interface in front of the old code, add the new implementation behind it, switch, delete old |
+| Parallel run | run old and new, compare results, serve old until they agree |
+| Expand / contract | schema: add new column, dual-write, backfill, switch reads, drop old |
+| Feature flags | ship dark, enable per cohort, remove the flag after |
+| Anti-corruption layer | translate between the legacy model and the new one at the seam |
+
+## Recipes
+
+### Port and adapters with an in-memory fake
+Define the port in the application layer; ship a real adapter and an in-memory one for tests.
+
+```ts title="src/modules/orders/application/ports.ts"
+import type { Order, OrderId, OrderPlaced }
+  from "../domain/order";
+
+export interface OrderRepository {
+  findById(id: OrderId): Promise<Order | null>;
+  save(order: Order): Promise<void>;
+}
+export interface EventPublisher {
+  publish(events: readonly OrderPlaced[]): Promise<void>;
+}
+export interface Clock {
+  now(): Date;
+}
+```
+
+```ts title="src/modules/orders/infra/in-memory-orders.ts"
+import type { Order, OrderId } from "../domain/order";
+import type { OrderRepository } from "../application/ports";
+
+export class InMemoryOrders implements OrderRepository {
+  readonly #rows = new Map<OrderId, Order>();
+
+  constructor(seed: readonly Order[] = []) {
+    for (const o of seed) this.#rows.set(o.id, o);
+  }
+  async findById(id: OrderId): Promise<Order | null> {
+    return this.#rows.get(id) ?? null;
+  }
+  async save(order: Order): Promise<void> {
+    this.#rows.set(order.id, order);
+  }
+}
+```
+
+### Use case (application service)
+One async function per user intent: load, call the domain, persist, publish.
+
+```ts title="src/modules/orders/application/place-order.ts"
+import { err, ok, type Result }
+  from "../../../shared/result";
+import { place, type Order, type OrderId, type PlaceError }
+  from "../domain/order";
+import type { Clock, EventPublisher, OrderRepository }
+  from "./ports";
+
+export type PlaceOrderError = PlaceError | "not-found";
+export type PlaceOrder = (
+  id: OrderId,
+) => Promise<Result<Order, PlaceOrderError>>;
+
+export const makePlaceOrder = (deps: {
+  orders: OrderRepository;
+  events: EventPublisher;
+  clock: Clock;
+}): PlaceOrder => async (id) => {
+  const order = await deps.orders.findById(id);
+  if (!order) return err("not-found");
+  const placed = place(order, deps.clock.now());
+  if (!placed.ok) return placed;
+  await deps.orders.save(placed.value.order);
+  await deps.events.publish([placed.value.event]);
+  return ok(placed.value.order);
+};
+```
+
+```ts title="src/modules/orders/application/place-order.test.ts"
+import { expect, test } from "bun:test";
+import type { Cents, Order, OrderId, OrderPlaced }
+  from "../domain/order";
+import { InMemoryOrders } from "../infra/in-memory-orders";
+import { makePlaceOrder } from "./place-order";
+
+const draft: Order = {
+  id: "o1" as OrderId,
+  status: "draft",
+  lines: [{ sku: "tea", qty: 2, price: 450 as Cents }],
+};
+
+test("placing a draft publishes order.placed", async () => {
+  const sent: OrderPlaced[] = [];
+  const placeOrder = makePlaceOrder({
+    orders: new InMemoryOrders([draft]),
+    events: { publish: async (e) => void sent.push(...e) },
+    clock: { now: () => new Date(0) },
+  });
+  const r = await placeOrder(draft.id);
+  expect(r.ok).toBe(true);
+  expect(sent[0]?.total).toBe(900 as Cents);
+});
+```
+
+### Result type at an HTTP boundary
+Map every domain error to a status once; `Record` over the union makes it exhaustive.
+
+```ts title="src/modules/orders/http/routes.ts"
+import type { OrderId } from "../domain/order";
+import type { PlaceOrder, PlaceOrderError }
+  from "../application/place-order";
+
+const STATUS: Record<PlaceOrderError, number> = {
+  "not-found": 404,
+  "empty-order": 422,
+  "already-placed": 409,
+};
+
+export const placeOrderRoute =
+  (placeOrder: PlaceOrder) =>
+  async (id: string): Promise<Response> => {
+    const r = await placeOrder(id as OrderId);
+    return r.ok
+      ? Response.json(r.value)
+      : Response.json(
+          { error: r.error },
+          { status: STATUS[r.error] },
+        );
+  };
+```
+
+Adding a new error to `PlaceError` fails compilation here until it has a status.
+
+### Typed domain event dispatch
+An in-process bus keyed by the event's `type`; handlers get the narrowed event.
+
+```ts title="src/shared/event-bus.ts"
+type Handler<E> = (event: E) => Promise<void>;
+type Of<E, T> = Extract<E, { type: T }>;
+
+export function createEventBus<E extends { type: string }>(
+  onError: (error: unknown, event: E) => void,
+) {
+  const handlers = new Map<E["type"], Handler<E>[]>();
+  return {
+    on<T extends E["type"]>(type: T, fn: Handler<Of<E, T>>) {
+      const h: Handler<E> = (e) => fn(e as Of<E, T>);
+      handlers.set(type, [...(handlers.get(type) ?? []), h]);
+    },
+    async publish(events: readonly E[]): Promise<void> {
+      for (const e of events) {
+        const hs = handlers.get(e.type) ?? [];
+        const rs = await Promise.allSettled(
+          hs.map((h) => h(e)),
+        );
+        for (const r of rs)
+          if (r.status === "rejected") onError(r.reason, e);
+      }
+    },
+  };
+}
+```
+
+For events that must not be lost, write them to an outbox in the same transaction (see
+[System design](/infrastructure/system-design/#transactional-outbox)).
+
+### Composition root
+Build every adapter once in `main.ts` and inject; nothing else reads `process.env`.
+
+```ts title="src/main.ts"
+import { loadConfig } from "./config";
+import { createEventBus } from "./shared/event-bus";
+import { makePlaceOrder, type OrderPlaced }
+  from "./modules/orders";
+import { InMemoryOrders }
+  from "./modules/orders/infra/in-memory-orders";
+import { placeOrderRoute }
+  from "./modules/orders/http/routes";
+
+const config = loadConfig(process.env);
+const bus = createEventBus<OrderPlaced>((error, e) =>
+  console.error("handler failed", e.type, error));
+bus.on("order.placed", async (e) => console.info(e.orderId));
+
+const place = placeOrderRoute(makePlaceOrder({
+  orders: new InMemoryOrders(), // swap for a pg adapter
+  events: bus,
+  clock: { now: () => new Date() },
+}));
+Bun.serve({
+  port: config.PORT,
+  routes: {
+    "/orders/:id/place": { POST: (r) => place(r.params.id) },
+  },
+});
+```
+
+### ADR template
+One file per decision in `docs/adr/`, numbered, reviewed in a pull request.
+
+```md title="docs/adr/0007-modular-monolith.md"
+# 7. Start as a modular monolith
+
+- Status: Accepted
+- Date: 2026-09-25
+- Deciders: platform team
+
+## Context
+Three developers, one product, domain still changing.
+We expect orders, billing and catalog to evolve apart.
+
+## Decision
+One Bun service with modules under `src/modules/*`,
+each with a public `index.ts`. Boundaries enforced by
+dependency-cruiser in CI. Each module owns its tables.
+
+## Consequences
++ One deploy, simple local dev, refactors are cheap.
++ A module can later become a service along its API.
+- Needs discipline: CI rules must stay green.
+- Shared DB instance: one module can still hog it.
+
+## Alternatives considered
+Microservices per module: rejected, no ops capacity.
+```
+
+### dependency-cruiser rules
+Fail CI when domain code imports infrastructure or a module reaches into another's internals.
+
+```js title=".dependency-cruiser.mjs"
+/** @type {import("dependency-cruiser").IConfiguration} */
+export default {
+  forbidden: [
+    { name: "domain-not-to-infra", severity: "error",
+      from: { path: "^src/modules/[^/]+/domain/" },
+      to: { path: "(/infra/|/http/|^node_modules/)" },
+    },
+    { name: "only-via-public-api", severity: "error",
+      from: { path: "^src/modules/([^/]+)/" },
+      to: {
+        path: "^src/modules/[^/]+/.+",
+        pathNot: ["^src/modules/$1/", "index\\.ts$"],
+      },
+    },
+    { name: "no-circular", severity: "error",
+      from: {}, to: { circular: true } },
+  ],
+  options: {
+    doNotFollow: { path: "node_modules" },
+    tsConfig: { fileName: "tsconfig.json" },
+  },
+};
+```
+
+```sh
+bunx depcruise src --config .dependency-cruiser.mjs
+bunx depcruise src --output-type dot | dot -T svg > deps.svg
+```
+
+dependency-cruiser 18 supports TypeScript up to 6; on TS 7, check its release notes first.
+
+## References
+
+- [Fundamentals of Software Architecture (Richards & Ford)](https://fundamentalsofsoftwarearchitecture.com/): characteristics, styles, trade-offs
+- [Hexagonal architecture (Alistair Cockburn)](https://alistair.cockburn.us/hexagonal-architecture/): the original ports and adapters article
+- [The Clean Architecture (Robert C. Martin)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html): the dependency rule
+- [Domain-Driven Design Reference (Eric Evans)](https://www.domainlanguage.com/ddd/reference/): definitions of the building blocks
+- [Martin Fowler: bounded context](https://martinfowler.com/bliki/BoundedContext.html) and [strangler fig](https://martinfowler.com/bliki/StranglerFigApplication.html): short canonical explanations
+- [C4 model](https://c4model.com/): diagram levels, notation, tooling
+- [ADR GitHub organisation](https://adr.github.io/): templates (Nygard, MADR) and tools
+- [dependency-cruiser rules reference](https://github.com/sverweij/dependency-cruiser/blob/main/doc/rules-reference.md): rule syntax, group matching
+- [ESLint no-restricted-imports](https://eslint.org/docs/latest/rules/no-restricted-imports): path and pattern restrictions
+- [connascence.io](https://connascence.io/): the connascence taxonomy
+- [Building Evolutionary Architectures](https://evolutionaryarchitecture.com/): fitness functions

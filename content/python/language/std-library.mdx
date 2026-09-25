@@ -1,0 +1,722 @@
+---
+title: Standard library
+date: 2026-09-25
+order: 6
+---
+
+A tour of the Python 3.14 standard library by job: the modules and calls you reach for before
+installing anything. Dates live in [Dates & times](/python/language/datetime/), `re` and text in
+[Strings](/python/language/strings/), `asyncio` and threads in
+[Async & concurrency](/python/language/async-concurrency/).
+
+## Files & paths
+
+`pathlib.Path` replaces most of `os.path`. Open text files with an explicit `encoding="utf-8"`.
+
+| `Path` API | Does |
+| :--------- | :--- |
+| `Path("a") / "b" / "c.txt"` | join with `/` |
+| `Path.cwd()`, `Path.home()`, `p.expanduser()` | common roots, expand `~` |
+| `p.name`, `p.stem`, `p.suffix`, `p.parent` | `c.txt`, `c`, `.txt`, `a/b` |
+| `p.with_suffix(".md")`, `p.with_stem("d")` | new path, same folder |
+| `p.resolve()`, `p.relative_to(base)` | absolute path, relative path |
+| `p.exists()`, `p.is_file()`, `p.is_dir()` | checks |
+| `p.read_text(encoding=)`, `p.write_text(s, encoding=)` | whole-file text |
+| `p.read_bytes()`, `p.write_bytes(b)` | whole-file bytes |
+| `p.open("a", encoding="utf-8")` | file object for streaming |
+| `p.mkdir(parents=True, exist_ok=True)` | `mkdir -p` |
+| `p.unlink(missing_ok=True)`, `p.rmdir()` | delete file, empty dir |
+| `p.rename(t)`, `p.replace(t)` | move; `replace` overwrites atomically on one filesystem |
+| `p.iterdir()`, `p.glob("*.py")`, `p.rglob("*.py")` | list, match, match recursively |
+| `p.walk()` | 3.12+: `(dirpath, dirnames, filenames)` like `os.walk` |
+| `p.copy(t)`, `p.copy_into(dir)` | 3.14: copy a file or whole tree |
+| `p.move(t)`, `p.move_into(dir)` | 3.14: move a file or tree, across filesystems |
+| `p.stat().st_size`, `.st_mtime` | size, modified time |
+| `p.info.is_file()` | 3.14: cached type info (free after `iterdir`) |
+
+| `shutil` / `tempfile` | Does |
+| :-------------------- | :--- |
+| `shutil.copy2(src, dst)` | copy a file with metadata |
+| `shutil.copytree(src, dst, dirs_exist_ok=True)` | copy a tree |
+| `shutil.rmtree(path)` | `rm -rf` |
+| `shutil.which("git")` | path of an executable or `None` |
+| `shutil.disk_usage("/")` | `total`, `used`, `free` |
+| `shutil.make_archive("out", "zip", root)` | zip/tar a folder; `unpack_archive` reverses it |
+| `tempfile.TemporaryDirectory()` | `with` block: a dir deleted afterwards |
+| `tempfile.NamedTemporaryFile(delete_on_close=False)` | named temp file you can reopen by name |
+| `tempfile.mkstemp(dir=d)` | low-level `(fd, path)`; you delete it |
+
+```python
+from pathlib import Path
+
+root = Path("notes")
+(root / "2026").mkdir(parents=True, exist_ok=True)
+(root / "2026" / "a.md").write_text(
+    "# A\n", encoding="utf-8"
+)
+
+for md in sorted(root.rglob("*.md")):
+    rel = md.relative_to(root)
+    first = md.read_text(encoding="utf-8").splitlines()[0]
+    print(rel, md.stat().st_size, first)
+```
+
+## Data formats
+
+| Module | Read | Write | Notes |
+| :----- | :--- | :---- | :---- |
+| `json` | `json.loads(s)`, `json.load(f)` | `json.dumps(o, indent=2)`, `json.dump(o, f)` | `default=str` for unknown types; `python -m json file` pretty-prints (3.14) |
+| `csv` | `csv.DictReader(f)` | `csv.DictWriter(f, fieldnames)` | open with `newline=""`; every value is a `str` |
+| `tomllib` | `tomllib.load(f)` (binary mode), `loads(s)` | none | read-only; write with `tomli-w` |
+| `sqlite3` | `conn.execute(sql, params).fetchall()` | `conn.execute`, `executemany` | `?` placeholders; `python -m sqlite3 app.db` shell |
+| `pickle` | `pickle.load(f)` | `pickle.dump(o, f)` | any Python object; **never unpickle untrusted data** |
+| `configparser` | `cp.read("app.ini")` | `cp.write(f)` | INI files |
+| `base64` | `b64decode(s)` | `b64encode(b)`, `urlsafe_b64encode` | bytes in, bytes out |
+| `struct` | `unpack("<IH", b)` | `pack("<IH", 1, 2)` | binary records |
+
+```python
+import json
+import tomllib
+from dataclasses import asdict, dataclass
+from datetime import datetime
+
+
+@dataclass
+class Event:
+    name: str
+    at: datetime
+
+
+text = json.dumps(
+    asdict(Event("deploy", datetime(2026, 9, 25))),
+    default=str,  # datetime -> "2026-09-25 00:00:00"
+    indent=2,
+)
+data: dict[str, object] = json.loads(text)
+
+cfg = tomllib.loads('[server]\nport = 8080\n')
+print(data["name"], cfg["server"]["port"])
+```
+
+<Note kind="warning">`pickle.load` runs code chosen by whoever wrote the bytes. Use it only for
+data you produced yourself; use JSON for anything that crosses a trust boundary.</Note>
+
+### Compression & archives
+
+| Module | Use |
+| :----- | :-- |
+| `compression.zstd` | 3.14: Zstandard; `compress(b)`, `decompress(b)`, `zstd.open(path, "wt")` |
+| `compression.gzip`, `.bz2`, `.lzma`, `.zlib` | 3.14 names for `gzip`, `bz2`, `lzma`, `zlib` (old names still work) |
+| `zipfile.ZipFile(p)` | `namelist()`, `extractall(dir)`, `writestr(name, data)` |
+| `tarfile.open(p, "r:*")` | `extractall(dir, filter="data")`; `"w:zst"` writes zstd (3.14) |
+
+```python
+from compression import zstd
+
+raw = b"hello " * 1_000
+packed = zstd.compress(raw, level=10)
+assert zstd.decompress(packed) == raw
+print(len(raw), "->", len(packed))
+```
+
+## Collections
+
+| `collections` | Use |
+| :------------ | :-- |
+| `Counter(iterable)` | counts; `most_common(n)`, `total()`, `c1 + c2`, `c1 - c2` |
+| `defaultdict(list)` | missing key gets `list()`: grouping without `setdefault` |
+| `deque(maxlen=n)` | O(1) `append`/`appendleft`/`pop`/`popleft`; bounded ring buffer |
+| `OrderedDict` | `move_to_end(k)`, `popitem(last=False)`: LRU bookkeeping |
+| `ChainMap(a, b)` | layered lookup (CLI args over env over defaults) |
+| `namedtuple("P", "x y")` | light tuple with names (`typing.NamedTuple` for types) |
+
+| Other | Use |
+| :---- | :-- |
+| `heapq.heappush(h, x)`, `heappop(h)` | min-heap on a list; 3.14 adds `heappush_max` and friends |
+| `heapq.nlargest(n, it, key=)` | top n without sorting everything |
+| `bisect.insort(a, x)`, `bisect_left(a, x)` | keep a sorted list sorted |
+
+```python
+from collections import ChainMap, Counter, defaultdict, deque
+
+words = "the cat and the hat and the bat".split()
+print(Counter(words).most_common(2))
+# [('the', 3), ('and', 2)]
+
+by_len: defaultdict[int, list[str]] = defaultdict(list)
+for w in words:
+    by_len[len(w)].append(w)
+
+recent: deque[str] = deque(maxlen=3)
+recent.extend(["a", "b", "c", "d"])  # deque(['b','c','d'])
+
+defaults = {"port": "8000", "debug": "0"}
+env = {"debug": "1"}
+cfg = ChainMap(env, defaults)
+print(cfg["port"], cfg["debug"])  # 8000 1
+```
+
+## itertools
+
+All return lazy iterators; wrap in `list()` to see them.
+
+| Function | Example | Result |
+| :------- | :------ | :----- |
+| `chain(a, b)` | `chain([1], [2, 3])` | `1 2 3` |
+| `chain.from_iterable(xs)` | flatten one level | |
+| `islice(it, stop)` | `islice(count(), 3)` | `0 1 2` |
+| `batched(it, n, strict=False)` | `batched("abcde", 2)` | `('a','b') ('c','d') ('e',)` |
+| `pairwise(it)` | `pairwise([1, 2, 3])` | `(1,2) (2,3)` |
+| `groupby(it, key)` | consecutive runs (sort by the key first) | `(key, group)` pairs |
+| `accumulate(it, fn)` | `accumulate([1, 2, 3])` | `1 3 6` |
+| `product(a, b)` | `product("ab", [0, 1])` | nested loops |
+| `permutations(it, r)`, `combinations(it, r)` | `combinations("abc", 2)` | `ab ac bc` |
+| `zip_longest(a, b, fillvalue=)` | `zip` that pads | |
+| `takewhile(p, it)`, `dropwhile(p, it)` | prefix / rest | |
+| `count(start, step)`, `cycle(it)`, `repeat(x, n)` | infinite (or `n`) streams | |
+| `starmap(fn, pairs)` | `starmap(pow, [(2, 3)])` | `8` |
+| `tee(it, n)` | split one iterator into `n` | |
+
+```python
+from itertools import batched, groupby, pairwise
+
+rows = [("a", 1), ("a", 2), ("b", 3)]
+for key, grp in groupby(rows, key=lambda r: r[0]):
+    print(key, [n for _, n in grp])  # a [1, 2], b [3]
+
+deltas = [b - a for a, b in pairwise([1, 4, 9, 16])]
+chunks = list(batched(range(7), 3))
+print(deltas, chunks)  # [3, 5, 7] [(0,1,2),(3,4,5),(6,)]
+```
+
+## functools & operator
+
+| `functools` | Use |
+| :---------- | :-- |
+| `@cache` | unbounded memo on hashable args |
+| `@lru_cache(maxsize=256)` | bounded memo; `f.cache_info()`, `f.cache_clear()` |
+| `@cached_property` | computed once per instance |
+| `partial(f, *args, **kw)` | pre-fill arguments; 3.14 `Placeholder` skips a position |
+| `reduce(fn, it, init)` | fold (prefer `sum`, `math.prod`, loops) |
+| `@singledispatch` | overload a function on the first argument's type |
+| `@wraps(fn)` | keep name, docstring, signature in decorators |
+| `@total_ordering` | fill in comparison methods from `__eq__` + one |
+| `cmp_to_key(cmp)` | old-style comparator for `sorted(key=...)` |
+
+| `operator` | Equivalent |
+| :--------- | :--------- |
+| `itemgetter("id")`, `itemgetter(0, 2)` | `lambda x: x["id"]`, a tuple of items |
+| `attrgetter("user.name")` | `lambda x: x.user.name` |
+| `methodcaller("strip")` | `lambda x: x.strip()` |
+| `add`, `mul`, `neg`, `truediv` | `+`, `*`, unary `-`, `/` as functions |
+| `is_none`, `is_not_none` | 3.14: `x is None` as a function |
+
+```python
+import time
+from collections.abc import Callable
+from functools import partial, reduce, singledispatch, wraps
+from operator import itemgetter, mul
+
+
+def timed[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+    @wraps(fn)
+    def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+        t0 = time.perf_counter()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            print(f"{fn.__name__}: {ms:.1f} ms")
+    return inner
+
+
+@singledispatch
+def show(x: object) -> str:
+    return repr(x)
+
+
+@show.register
+def _(x: list) -> str:  # type: ignore[type-arg]
+    return ", ".join(map(show, x))
+
+
+users = [{"id": 2, "n": "b"}, {"id": 1, "n": "a"}]
+print(sorted(users, key=itemgetter("id"))[0]["n"])  # a
+print(reduce(mul, [1, 2, 3, 4], 1))  # 24
+hex_int = partial(int, base=16)
+print(hex_int("ff"), show([1, "x"]))  # 255 1, 'x'
+```
+
+## contextlib
+
+| Helper | Use |
+| :----- | :-- |
+| `@contextmanager` | a `with` block from a generator: setup, `yield`, cleanup in `finally` |
+| `suppress(FileNotFoundError)` | ignore specific exceptions |
+| `closing(obj)` | call `obj.close()` on exit |
+| `ExitStack()` | a runtime-sized set of context managers; `callback(fn)` |
+| `chdir(path)` | 3.11+: temporary working directory |
+| `redirect_stdout(buf)` | capture `print` output |
+| `nullcontext(x)` | a do-nothing stand-in |
+| `asynccontextmanager`, `AsyncExitStack`, `aclosing` | async versions |
+
+```python
+import time
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager, suppress
+from pathlib import Path
+
+
+@contextmanager
+def stopwatch(label: str) -> Iterator[None]:
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        print(label, f"{time.perf_counter() - t0:.3f}s")
+
+
+with suppress(FileNotFoundError):
+    Path("gone.txt").unlink()
+
+names = ["a.txt", "b.txt"]
+with stopwatch("write"), ExitStack() as stack:
+    files = [
+        stack.enter_context(open(n, "w", encoding="utf-8"))
+        for n in names
+    ]
+    for f in files:
+        f.write("hi\n")
+```
+
+## Types: dataclasses, enum, typing
+
+`dataclasses` generates `__init__`, `__repr__` and `__eq__` from annotations: details in
+[OOP](/python/language/oop/). Type hints in general are in [Fundamentals](/python/language/fundamentals/).
+
+| Module | Reach for |
+| :----- | :-------- |
+| `@dataclass(frozen=True, slots=True, kw_only=True)` | value objects; `field(default_factory=list)`, `replace(obj, x=1)`, `asdict(obj)` |
+| `enum.Enum`, `auto()` | closed set of named values; `Color.RED.value`, `Color["RED"]`, `Color(1)` |
+| `enum.StrEnum` | 3.11+: members are strings (`"red" == Color.RED`) |
+| `enum.IntFlag`, `Flag` | bit flags: `Perm.R \| Perm.W` |
+| `typing.Literal`, `TypedDict`, `Protocol` | exact values, dict shapes, structural types |
+| `typing.Self`, `override`, `TypeIs` | fluent returns, checked overrides, narrowing helpers |
+| `typing.NamedTuple` | typed immutable records |
+| `type Alias = ...`, `def f[T]()` | 3.12+ alias and generic syntax |
+| `annotationlib` | 3.14: read lazily evaluated annotations |
+
+```python
+from dataclasses import dataclass, field, replace
+from enum import StrEnum, auto
+
+
+class Status(StrEnum):
+    OPEN = auto()  # "open"
+    DONE = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class Task:
+    title: str
+    status: Status = Status.OPEN
+    tags: tuple[str, ...] = field(default=())
+
+
+t = Task("ship it")
+done = replace(t, status=Status.DONE)
+print(done, done.status == "done")  # ... True
+```
+
+## Logging
+
+`logging.basicConfig` once at start-up; `logging.getLogger(__name__)` in every module. Libraries
+never call `basicConfig`.
+
+| API | Use |
+| :-- | :-- |
+| `basicConfig(level=, format=, handlers=, force=True)` | configure the root logger |
+| `log = getLogger(__name__)` | per-module logger, inherits root config |
+| `log.debug/info/warning/error/critical(msg, *args)` | lazy `%` formatting: `log.info("x=%s", x)` |
+| `log.exception("msg")` | `error` + traceback, inside `except` |
+| `extra={"user": uid}` | extra fields for the formatter |
+| `logging.config.dictConfig(cfg)` | full config from a dict (JSON/TOML) |
+| `handlers.RotatingFileHandler(p, maxBytes, backupCount)` | size-rotated files |
+| `handlers.QueueHandler` + `QueueListener` | log off the hot path (listener is a context manager in 3.14) |
+| `%(asctime)s %(levelname)s %(name)s %(message)s` | common format fields |
+
+```python
+import logging
+
+log = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+log.info("starting on port %d", 8080)
+try:
+    int("not a number")
+except ValueError:
+    log.exception("parse failed")  # includes traceback
+```
+
+## CLI arguments: argparse
+
+| Call | Gives |
+| :--- | :---- |
+| `ArgumentParser(description=, suggest_on_error=True)` | 3.14: "did you mean" on typos; `color=True` by default |
+| `add_argument("path")` | required positional |
+| `add_argument("-n", "--count", type=int, default=1)` | typed option |
+| `add_argument("-v", "--verbose", action="store_true")` | flag |
+| `action=argparse.BooleanOptionalAction` | `--color` / `--no-color` |
+| `action="count"` | `-vvv` gives 3 |
+| `choices=["a", "b"]` | restrict values |
+| `nargs="*"`, `"+"`, `"?"`, `2` | lists and optional values |
+| `required=True`, `metavar=`, `help=`, `dest=` | options that must be given, help text |
+| `sub = p.add_subparsers(dest="cmd", required=True)` | `git`-style subcommands |
+| `add_mutually_exclusive_group()` | one of several flags |
+| `p.parse_args(argv)` | `Namespace`; pass a list in tests |
+
+For bigger CLIs, `click` or `typer` (`uv add typer`) derive options from type hints. See the
+recipe below for argparse plus logging.
+
+## Processes, OS & the interpreter
+
+| `subprocess` | Use |
+| :----------- | :-- |
+| `run(["git", "status"], check=True)` | run, raise `CalledProcessError` on non-zero exit |
+| `capture_output=True, text=True` | `.stdout` / `.stderr` as `str` |
+| `timeout=10` | raises `TimeoutExpired` (child killed) |
+| `cwd=`, `env={**os.environ, "X": "1"}` | working dir, environment |
+| `input="data"` | feed stdin |
+| `Popen(args, stdout=PIPE)` | streaming, long-running children |
+| `shell=True` | avoid: injection risk; pass a list instead |
+
+| `os` / `sys` / `platform` | Gives |
+| :------------------------ | :---- |
+| `os.environ["HOME"]`, `os.getenv("X", "default")` | environment |
+| `os.process_cpu_count()` | 3.13+: CPUs this process may use |
+| `os.scandir(p)`, `os.walk(p)` | fast listing, tree walk |
+| `os.getpid()`, `os.kill(pid, sig)` | process ids, signals |
+| `sys.argv`, `sys.exit(code)` | CLI args, exit |
+| `sys.stdin`, `sys.stdout`, `sys.stderr` | standard streams |
+| `sys.version_info >= (3, 14)` | version checks |
+| `sys.platform` | `"darwin"`, `"linux"`, `"win32"` |
+| `sys.path`, `sys.executable`, `sys.prefix` | import path, interpreter, venv root |
+| `platform.system()`, `machine()`, `python_version()` | `"Darwin"`, `"arm64"`, `"3.14.7"` |
+
+## Randomness, hashing & IDs
+
+| API | Use |
+| :-- | :-- |
+| `random.random()`, `randint(a, b)`, `uniform(a, b)` | floats and ints (`b` inclusive) |
+| `random.choice(xs)`, `choices(xs, weights, k)`, `sample(xs, k)` | pick one, with / without replacement |
+| `random.shuffle(xs)` | in place |
+| `random.Random(42)` | seeded generator for reproducible tests |
+| `secrets.token_urlsafe(32)`, `token_hex(16)` | tokens, API keys, reset links |
+| `secrets.choice(alphabet)` | secure picks (passwords) |
+| `hashlib.sha256(b).hexdigest()` | content hash; also `sha512`, `blake2b`, `sha3_256` |
+| `hashlib.file_digest(f, "sha256")` | hash an open binary file efficiently |
+| `hashlib.scrypt`, `pbkdf2_hmac` | password hashing (or `argon2-cffi`) |
+| `hmac.new(key, msg, "sha256").hexdigest()` | sign a payload (webhooks) |
+| `hmac.compare_digest(a, b)` | constant-time comparison |
+| `uuid.uuid4()` | random UUID |
+| `uuid.uuid7()` | 3.14: time-ordered UUID, good for DB keys |
+| `python -m uuid -u uuid7` | from the shell |
+
+<Note kind="warning">`random` is predictable. Use `secrets` for anything security-related:
+tokens, passwords, nonces.</Note>
+
+```python
+import hashlib
+import hmac
+import secrets
+import uuid
+
+key = secrets.token_bytes(32)
+body = b'{"event":"paid"}'
+sig = hmac.new(key, body, hashlib.sha256).hexdigest()
+
+
+def verify(body: bytes, sig: str) -> bool:
+    good = hmac.new(key, body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(good, sig)
+
+
+print(verify(body, sig), uuid.uuid7())
+```
+
+## URLs & HTTP
+
+| API | Use |
+| :-- | :-- |
+| `urllib.parse.urlsplit(url)` | `scheme`, `netloc`, `path`, `query`, `fragment`, `hostname`, `port` |
+| `urlencode({"q": "a b", "n": 2})` | `q=a+b&n=2` |
+| `parse_qs("a=1&a=2")` | `{"a": ["1", "2"]}` |
+| `quote("a b/c", safe="")`, `unquote(s)` | percent-encoding |
+| `urljoin(base, "../x")` | resolve relative links |
+| `urllib.request.urlopen(req, timeout=)` | basic HTTP client; prefer `httpx` for real apps |
+| `python -m http.server 8000 -d dist` | static file server; 3.14 adds `--tls-cert` / `--tls-key` |
+| `http.HTTPStatus.NOT_FOUND` | status enum: `.value`, `.phrase` |
+
+```python
+import json
+from urllib.parse import urlencode, urlsplit
+from urllib.request import Request, urlopen
+
+url = "https://httpbin.org/get?" + urlencode({"q": "py"})
+parts = urlsplit(url)
+print(parts.hostname, parts.query)  # httpbin.org q=py
+
+req = Request(url, headers={"Accept": "application/json"})
+with urlopen(req, timeout=10) as res:
+    data = json.load(res)
+print(data["args"])  # {'q': 'py'}
+```
+
+## Numbers: math, statistics, decimal, fractions
+
+| API | Use |
+| :-- | :-- |
+| `math.isclose(a, b, rel_tol=1e-9)` | float comparison |
+| `math.floor`, `ceil`, `trunc`, `isqrt` | integer rounding, integer square root |
+| `math.sqrt`, `cbrt`, `hypot`, `dist(p, q)` | roots and distances |
+| `math.prod(xs)`, `fsum(xs)`, `sumprod(a, b)` | product, exact float sum, dot product |
+| `math.comb(n, k)`, `perm(n, k)`, `factorial(n)` | combinatorics |
+| `math.gcd`, `lcm`, `log(x, base)`, `log2`, `log10` | number theory, logs |
+| `math.inf`, `nan`, `isnan`, `pi`, `tau`, `e` | constants and checks |
+| `statistics.mean`, `fmean`, `median`, `mode` | averages |
+| `statistics.stdev`, `pstdev`, `quantiles(xs, n=4)` | spread (sample / population), quartiles |
+| `statistics.correlation`, `linear_regression` | quick analysis without NumPy |
+| `Decimal("0.10")` | exact base-10 maths for money; build from strings |
+| `d.quantize(Decimal("0.01"), ROUND_HALF_UP)` | round to cents |
+| `Fraction(1, 3)` | exact rationals |
+| `round(2.5)` | `2`: banker's rounding on floats |
+
+```python
+from decimal import ROUND_HALF_UP, Decimal
+from fractions import Fraction
+from statistics import mean, quantiles, stdev
+
+print(0.1 + 0.2 == 0.3)  # False
+print(Decimal("0.1") + Decimal("0.2"))  # 0.3
+
+price = Decimal("19.995")
+cents = Decimal("0.01")
+print(price.quantize(cents, ROUND_HALF_UP))  # 20.00
+
+print(Fraction(1, 3) + Fraction(1, 6))  # 1/2
+
+xs = [2, 4, 4, 4, 5, 5, 7, 9]
+print(mean(xs), round(stdev(xs), 2), quantiles(xs))
+```
+
+Heavier numeric work belongs in [NumPy](/python/data/numpy/) and [pandas](/python/data/pandas/).
+
+## Recipes
+
+### CLI with argparse and logging
+When a script needs flags, `-v` for debug output and a clean exit code.
+
+```python title="cli.py"
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+log = logging.getLogger("cli")
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(suggest_on_error=True)
+    p.add_argument("path", type=Path)
+    p.add_argument("-n", "--lines", type=int, default=5)
+    p.add_argument("-v", "--verbose", action="store_true")
+    args = p.parse_args(argv)
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=level, format="%(levelname)s %(message)s"
+    )
+    log.debug("args: %s", args)
+    if not args.path.is_file():
+        log.error("no such file: %s", args.path)
+        return 1
+    text = args.path.read_text(encoding="utf-8")
+    print(*text.splitlines()[: args.lines], sep="\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+### Walk a tree and hash files
+When you need checksums for a folder, or want to find duplicate files.
+
+```python
+import hashlib
+from collections import defaultdict
+from pathlib import Path
+
+
+def sha256(path: Path) -> str:
+    with path.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest()
+
+
+def duplicates(root: Path) -> list[list[Path]]:
+    by_hash: defaultdict[str, list[Path]] = defaultdict(list)
+    for dirpath, dirnames, filenames in root.walk():
+        dirnames[:] = [d for d in dirnames if d[0] != "."]
+        for name in filenames:
+            p = dirpath / name
+            by_hash[sha256(p)].append(p)
+    return [ps for ps in by_hash.values() if len(ps) > 1]
+
+
+for group in duplicates(Path(".")):
+    print(*group, sep="  ==  ")
+```
+
+### Read and write CSV as dicts
+When a spreadsheet export needs filtering or reshaping before it goes somewhere else.
+
+```python
+import csv
+from pathlib import Path
+
+src, dst = Path("people.csv"), Path("adults.csv")
+src.write_text("name,age\nada,36\nkid,9\n", encoding="utf-8")
+
+with src.open(newline="", encoding="utf-8") as f:
+    rows = list(csv.DictReader(f))  # list[dict[str, str]]
+
+adults = [r for r in rows if int(r["age"]) >= 18]
+
+with dst.open("w", newline="", encoding="utf-8") as f:
+    w = csv.DictWriter(f, fieldnames=["name", "age"])
+    w.writeheader()
+    w.writerows(adults)
+
+print(dst.read_text(encoding="utf-8"))
+```
+
+### Atomic file write
+When a crash halfway through writing must never leave a truncated config or state file.
+
+```python
+import os
+import tempfile
+from pathlib import Path
+
+
+def write_atomic(path: Path, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())  # data on disk first
+        os.replace(tmp, path)  # atomic on one filesystem
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+write_atomic(Path("state.json"), '{"ok": true}\n')
+```
+
+### Run a command and capture output
+When a script shells out to `git`, `ffmpeg` or `bun` and needs the output or a clear failure.
+
+```python
+import shutil
+import subprocess
+
+
+def git(*args: str) -> str:
+    if shutil.which("git") is None:
+        raise RuntimeError("git is not installed")
+    try:
+        res = subprocess.run(
+            ["git", *args],
+            capture_output=True, text=True,
+            check=True, timeout=30,
+        )
+    except subprocess.CalledProcessError as err:
+        msg = err.stderr.strip()
+        raise RuntimeError(f"git {args[0]}: {msg}") from err
+    return res.stdout.strip()
+
+
+print(git("rev-parse", "--short", "HEAD"))
+```
+
+### Memoise expensive calls
+When a pure function gets called repeatedly with the same arguments (parsing, lookups, recursion).
+
+```python
+from functools import cache, lru_cache
+
+
+@cache
+def fib(n: int) -> int:
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+
+@lru_cache(maxsize=1024)
+def normalise(sku: str) -> str:
+    return sku.strip().upper().replace(" ", "-")
+
+
+print(fib(200))
+normalise("ab 1")
+normalise("ab 1")  # served from the cache
+print(normalise.cache_info())  # hits=1 misses=1 ...
+```
+
+Arguments must be hashable (no lists or dicts). On methods, `@cache` keeps `self` alive; use
+`@cached_property` or a module-level function instead.
+
+### Local SQLite with a context manager
+When an app needs a small durable store with zero setup.
+
+```python
+import sqlite3
+from contextlib import closing
+
+with closing(sqlite3.connect("app.db")) as conn:
+    conn.row_factory = sqlite3.Row
+    with conn:  # commit, or roll back on error
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS todo"
+            "(id INTEGER PRIMARY KEY, title TEXT, done INT)"
+        )
+        conn.executemany(
+            "INSERT INTO todo(title, done) VALUES (?, ?)",
+            [("write sheet", 1), ("ship", 0)],
+        )
+    rows = conn.execute(
+        "SELECT id, title FROM todo WHERE done = ?", (0,)
+    ).fetchall()
+    for row in rows:
+        print(row["id"], row["title"])
+```
+
+`with conn:` manages the transaction but does not close the connection; `closing()` does. Always
+pass values as `?` parameters, never with f-strings.
+
+## References
+
+- [Python docs: The Python Standard Library](https://docs.python.org/3.14/library/index.html): the full module index
+- [What's new in Python 3.14](https://docs.python.org/3.14/whatsnew/3.14.html): `compression.zstd`, `uuid7`, `Path.copy`, `Placeholder`
+- [Python docs: pathlib](https://docs.python.org/3.14/library/pathlib.html), [shutil](https://docs.python.org/3.14/library/shutil.html), [tempfile](https://docs.python.org/3.14/library/tempfile.html)
+- [Python docs: json](https://docs.python.org/3.14/library/json.html), [csv](https://docs.python.org/3.14/library/csv.html), [tomllib](https://docs.python.org/3.14/library/tomllib.html), [sqlite3](https://docs.python.org/3.14/library/sqlite3.html), [compression.zstd](https://docs.python.org/3.14/library/compression.zstd.html)
+- [Python docs: collections](https://docs.python.org/3.14/library/collections.html), [itertools](https://docs.python.org/3.14/library/itertools.html) (its recipes section is worth a read), [functools](https://docs.python.org/3.14/library/functools.html)
+- [Python docs: contextlib](https://docs.python.org/3.14/library/contextlib.html), [dataclasses](https://docs.python.org/3.14/library/dataclasses.html), [enum](https://docs.python.org/3.14/library/enum.html)
+- [Python docs: Logging HOWTO](https://docs.python.org/3.14/howto/logging.html) and [argparse tutorial](https://docs.python.org/3.14/howto/argparse.html)
+- [Python docs: subprocess](https://docs.python.org/3.14/library/subprocess.html), [secrets](https://docs.python.org/3.14/library/secrets.html), [hashlib](https://docs.python.org/3.14/library/hashlib.html), [uuid](https://docs.python.org/3.14/library/uuid.html)
+- [Python docs: decimal](https://docs.python.org/3.14/library/decimal.html) and [statistics](https://docs.python.org/3.14/library/statistics.html)
+- [Python Module of the Week](https://pymotw.com/3/): worked examples for most stdlib modules

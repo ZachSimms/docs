@@ -1,0 +1,655 @@
+---
+title: scikit-learn
+date: 2026-09-25
+order: 1
+---
+
+Classical machine learning on tabular data with scikit-learn 1.9.x (Python 3.14): the estimator
+API, preprocessing, pipelines, model choice, cross-validation, tuning, metrics and persistence.
+Arrays are covered in [NumPy](/python/data/numpy/), DataFrames in [pandas](/python/data/pandas/),
+and neural networks in [PyTorch](/ml-ai/pytorch/).
+
+## Setup
+
+```sh
+uv add scikit-learn pandas skops  # or pip install in a venv
+uv run python -c "import sklearn; sklearn.show_versions()"
+```
+
+| Convention | Meaning |
+| :--------- | :------ |
+| `X` | features, shape `(n_samples, n_features)`: NumPy array, SciPy sparse, pandas or polars DataFrame |
+| `y` | target, shape `(n_samples,)` (or `(n_samples, n_outputs)`) |
+| `random_state=0` | seeds anything random (splits, trees, init); pass an int for reproducible runs |
+| `n_jobs=-1` | use every core (joblib); `None` means 1 unless set by `joblib.parallel_config` |
+| `sklearn.set_config(...)` | global switches: `transform_output`, `enable_metadata_routing`, `array_api_dispatch` |
+
+## Estimator API
+
+Every object follows the same contract: hyperparameters go in the constructor, `fit` learns from
+data and returns `self`, and whatever was learned is stored in attributes ending in `_`.
+
+| Method / attribute | On | Does |
+| :----------------- | :- | :--- |
+| `Est(**hyperparams)` | all | stores the arguments verbatim; no validation, no work |
+| `fit(X, y)` | all | learns state; returns `self` so calls chain |
+| `predict(X)` | predictors | labels (classifiers) or values (regressors) |
+| `predict_proba(X)` | most classifiers | class probabilities, shape `(n, n_classes)`, columns in `classes_` order |
+| `decision_function(X)` | linear models, SVMs | raw scores; use for ROC AUC when there is no `predict_proba` |
+| `transform(X)` | transformers | returns the transformed features |
+| `fit_transform(X, y=None)` | transformers | fit then transform in one pass (often faster); **train data only** |
+| `fit_predict(X)` | clusterers | fit and return cluster labels |
+| `score(X, y)` | predictors | accuracy (classifiers), R² (regressors) |
+| `get_params()` / `set_params(**p)` | all | read/change hyperparameters; `set_params` needs a refit |
+| `clone(est)` | all | fresh unfitted copy with the same hyperparameters |
+| `name_` (trailing underscore) | fitted | learned state: `coef_`, `classes_`, `mean_`, `n_features_in_`, `feature_names_in_` |
+
+```python title="estimator_api.py"
+import numpy as np
+from sklearn.base import clone
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(200, 3))       # (n_samples, n_features)
+y = (X[:, 0] + X[:, 1] > 0).astype(int)
+
+scaler = StandardScaler()           # hyperparameters only
+Xs = scaler.fit_transform(X)        # learn mean/std, apply
+print(scaler.mean_, scaler.scale_)  # learned: trailing _
+
+clf = LogisticRegression(C=1.0).fit(Xs, y)  # returns self
+clf.predict(Xs[:3])                 # array([1, 0, 1])
+clf.predict_proba(Xs[:3])           # (3, 2), rows sum to 1
+clf.score(Xs, y)                    # mean accuracy
+clf.coef_, clf.intercept_, clf.classes_
+
+fresh = clone(clf).set_params(C=0.1)  # unfitted copy
+```
+
+<Note kind="warning">Calling `fit_transform` (or `fit`) on test data leaks information from it. Fit
+on training data, then only `transform`/`predict` validation and test data. A `Pipeline` does
+this for you.</Note>
+
+## Splitting data
+
+```python
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,       # float = fraction, int = rows
+    stratify=y,          # keep class ratios in both parts
+    random_state=42,     # reproducible shuffle
+)
+```
+
+| Situation | Do |
+| :-------- | :- |
+| Classification | `stratify=y`, especially with rare classes |
+| Rows grouped (per user, per patient) | `GroupShuffleSplit` / `GroupKFold` so a group never spans train and test |
+| Time series | `shuffle=False` or `TimeSeriesSplit`: train on the past, test on the future |
+| Tuning hyperparameters | keep a final test set untouched; tune with CV on the training part |
+| Very small data | skip the hold-out; report cross-validated scores |
+
+## Preprocessing
+
+All live in `sklearn.preprocessing` or `sklearn.impute` and follow `fit`/`transform`.
+
+| Transformer | Does | Use when |
+| :---------- | :--- | :------- |
+| `StandardScaler` | zero mean, unit variance | linear models, SVM, kNN, PCA, neural nets |
+| `MinMaxScaler` | rescale to `[0, 1]` | bounded inputs; sensitive to outliers |
+| `RobustScaler` | median / IQR | heavy outliers |
+| `MaxAbsScaler` | divide by max `abs` | sparse data (keeps zeros) |
+| `PowerTransformer` / `QuantileTransformer` | make skewed features Gaussian-like / uniform | long tails (income, counts) |
+| `OneHotEncoder(handle_unknown="ignore")` | one column per category | nominal categories, low cardinality |
+| `OrdinalEncoder` | category to integer | ordered categories; tree models |
+| `TargetEncoder` | category to (cross-fitted) mean target | high-cardinality categories |
+| `LabelEncoder` | encode `y` labels | targets only, never features |
+| `SimpleImputer(strategy=...)` | fill with mean/median/most_frequent/constant | missing values; `add_indicator=True` keeps a "was missing" flag |
+| `KNNImputer` | fill from nearest rows | small data, correlated features |
+| `IterativeImputer` | model each feature from the others | needs `from sklearn.experimental import enable_iterative_imputer` |
+| `PolynomialFeatures` / `SplineTransformer` | interactions / smooth non-linear bases | linear models on curved data |
+| `KBinsDiscretizer` | bucket numeric features | coarse non-linearity |
+| `FunctionTransformer(np.log1p)` | wrap any function | stateless feature tweaks |
+
+Tree ensembles (`RandomForest*`, `HistGradientBoosting*`) do not need scaling, and
+`HistGradientBoosting*` handles `NaN` and categorical columns natively.
+
+## Pipelines & ColumnTransformer
+
+A `Pipeline` chains transformers and a final estimator into one estimator, so every preprocessing
+step is refit inside each CV fold and nothing from validation data leaks into training.
+
+```python title="pipeline.py"
+import numpy as np
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import (
+    OneHotEncoder,
+    StandardScaler,
+)
+
+rng = np.random.default_rng(0)
+n = 400
+df = pd.DataFrame({
+    "age": rng.integers(18, 80, n).astype(float),
+    "income": rng.lognormal(10, 0.5, n),
+    "city": rng.choice(["ams", "ber", "par"], n),
+})
+df.loc[rng.random(n) < 0.1, "age"] = np.nan
+noise = rng.lognormal(0, 0.3, n)
+target = (df["income"] * noise > 25_000).astype(int)
+
+num = make_pipeline(
+    SimpleImputer(strategy="median"), StandardScaler()
+)
+cat = OneHotEncoder(
+    handle_unknown="ignore", sparse_output=False
+)
+pre = ColumnTransformer(
+    [
+        ("num", num, ["age", "income"]),
+        ("cat", cat, ["city"]),
+    ],
+    remainder="drop",   # or "passthrough"
+)
+model = Pipeline(
+    [("pre", pre), ("clf", LogisticRegression())]
+)
+model.fit(df, target)
+```
+
+| Access | Gives |
+| :----- | :---- |
+| `model["clf"]`, `model.named_steps["clf"]` | a step |
+| `model[:-1]` | sub-pipeline of every step but the last |
+| `model.set_params(clf__C=0.5)` | nested param: `step__param`, deeper with more `__` |
+| `model.set_params(clf="passthrough")` | disable or swap a step |
+| `model[:-1].get_feature_names_out()` | output column names, e.g. `num__age`, `cat__city_ams` |
+| `make_pipeline(a, b)` | auto-names steps from class names (`standardscaler`) |
+| `make_column_selector(dtype_include="number")` | pick columns by dtype or regex |
+| `Pipeline(..., memory="cache/")` | cache fitted transformers during searches |
+
+| Leak | Fix |
+| :--- | :-- |
+| Scaling / imputing on all data, then splitting | put the transformer in the pipeline |
+| Feature selection before CV | put `SelectKBest` etc. in the pipeline |
+| Target encoding outside CV | `TargetEncoder` in the pipeline (it cross-fits internally) |
+| Shuffled CV on time series | `TimeSeriesSplit` |
+| Duplicates or same entity in train and test | group-aware splitters |
+
+## Choosing a model
+
+| Task | Estimator | Good for | Scale features? |
+| :--- | :-------- | :------- | :-------------- |
+| Baseline | `DummyClassifier` / `DummyRegressor` | the score to beat | no |
+| Regression | `LinearRegression`, `Ridge`, `Lasso`, `ElasticNet` | fast, interpretable; `Lasso` zeroes features | yes (for penalties) |
+| Classification | `LogisticRegression` | strong linear baseline, calibrated-ish probabilities | yes |
+| Both | `DecisionTreeClassifier` / `Regressor` | explainable rules; overfits alone | no |
+| Both | `RandomForestClassifier` / `Regressor` | robust default, little tuning | no |
+| Both | `HistGradientBoostingClassifier` / `Regressor` | best default on tabular data; fast on 10k+ rows; NaN and categories built in | no |
+| Both | `GradientBoostingClassifier` / `Regressor` | small data; slower than the Hist variant | no |
+| Both | `SVC` / `SVR` (RBF kernel) | small-to-medium data, non-linear boundaries; scales badly past ~10k rows | yes |
+| Both | `LinearSVC`, `SGDClassifier` / `SGDRegressor` | large or sparse (text) data | yes |
+| Both | `KNeighborsClassifier` / `Regressor` | low-dimensional, local structure | yes |
+| Classification | `GaussianNB`, `MultinomialNB` | tiny data; word counts (`MultinomialNB`) | no |
+| Clustering | `KMeans` / `MiniBatchKMeans` | round clusters, known `k` | yes |
+| Clustering | `HDBSCAN`, `DBSCAN` | arbitrary shapes, noise points, unknown `k` | yes |
+| Clustering | `AgglomerativeClustering`, `GaussianMixture` | hierarchies; soft assignments | yes |
+| Dimensionality | `PCA`, `TruncatedSVD` (sparse) | compression, decorrelation, plotting | yes |
+| Anomalies | `IsolationForest`, `LocalOutlierFactor` | outlier scores | depends |
+
+The deprecations to know about: `LogisticRegression(penalty=...)` is deprecated since 1.8. Use
+`l1_ratio` (0 is L2, 1 is L1) and `C=np.inf` for no penalty. `SVC(probability=True)` is
+deprecated in 1.9; see [calibration](#probability-calibration).
+
+## Cross-validation
+
+```python
+from sklearn.model_selection import (
+    StratifiedKFold,
+    cross_val_predict,
+    cross_val_score,
+)
+
+cv = StratifiedKFold(
+    n_splits=5, shuffle=True, random_state=0
+)
+scores = cross_val_score(
+    model, df, target, cv=cv, scoring="roc_auc"
+)
+print(f"{scores.mean():.3f} ± {scores.std():.3f}")
+oof = cross_val_predict(model, df, target, cv=cv)  # per row
+```
+
+| Splitter | Use for |
+| :------- | :------ |
+| `cv=5` (int) | `StratifiedKFold` for classifiers, `KFold` otherwise; **no shuffle** |
+| `KFold(shuffle=True)` | regression, i.i.d. rows |
+| `StratifiedKFold` | classification, keeps class ratios per fold |
+| `GroupKFold` / `StratifiedGroupKFold` | rows from one group stay in one fold (`groups=` array) |
+| `LeaveOneGroupOut` | one fold per group (per site, per subject) |
+| `TimeSeriesSplit(n_splits, gap=)` | expanding window; training always precedes test |
+| `ShuffleSplit` / `StratifiedShuffleSplit` | many random train/test splits |
+| `RepeatedStratifiedKFold` | repeats with new shuffles for tighter estimates |
+| `PredefinedSplit` | a fixed validation set expressed as CV |
+
+| Function | Returns |
+| :------- | :------ |
+| `cross_val_score` | one score per fold (one metric) |
+| `cross_validate` | dict of `test_<metric>`, `fit_time`, optionally train scores and fitted estimators |
+| `cross_val_predict` | out-of-fold predictions for every row (for plots and reports, not a score) |
+| `learning_curve` / `validation_curve` | scores vs training size / vs one hyperparameter |
+
+## Hyperparameter search
+
+| Search | Tries | Use when |
+| :----- | :---- | :------- |
+| `GridSearchCV` | every combination | few parameters, few values |
+| `RandomizedSearchCV` | `n_iter` samples from lists or distributions | many parameters; continuous ranges |
+| `HalvingGridSearchCV` | grid, successive halving | big grids; bad candidates get few resources |
+| `HalvingRandomSearchCV` | random candidates, halving | the fast default for large spaces |
+
+Halving searches are still experimental: `from sklearn.experimental import enable_halving_search_cv`.
+
+```python
+from scipy.stats import loguniform
+from sklearn.model_selection import RandomizedSearchCV
+
+search = RandomizedSearchCV(
+    model,
+    {"clf__C": loguniform(1e-3, 1e2)},  # step__param
+    n_iter=20,
+    cv=5,
+    scoring="roc_auc",
+    n_jobs=-1,
+    random_state=0,
+)
+search.fit(df, target)
+search.best_params_, search.best_score_
+best = search.best_estimator_   # refit on all data
+```
+
+| Attribute / param | Meaning |
+| :---------------- | :------ |
+| `best_params_`, `best_score_` | winning combination and its mean CV score |
+| `best_estimator_` | refit on the full training data (`refit=True`) |
+| `cv_results_` | dict of arrays; `pd.DataFrame(search.cv_results_)` |
+| `scoring={"auc": ..., "f1": ...}` | several metrics; then `refit="auc"` picks the winner |
+| `error_score="raise"` | fail loudly instead of scoring broken fits as `NaN` |
+| Param grid as a list of dicts | different grids per model or per step value |
+
+## Metrics
+
+Scorer strings follow "higher is better", so error metrics are negated: `"neg_mean_absolute_error"`.
+
+| Classification | Use when |
+| :------------- | :------- |
+| `accuracy_score` | balanced classes, equal error costs |
+| `balanced_accuracy_score` | imbalanced classes; mean of per-class recall |
+| `precision_score` | false positives are costly (spam filter) |
+| `recall_score` | false negatives are costly (disease screening) |
+| `f1_score(average=...)` | one number trading precision against recall; `macro` treats classes equally |
+| `roc_auc_score` | ranking quality across thresholds; needs scores/probabilities |
+| `average_precision_score` | PR AUC; better than ROC AUC for rare positives |
+| `log_loss`, `brier_score_loss` | quality of the probabilities themselves |
+| `matthews_corrcoef` | single balanced summary for binary imbalanced data |
+| `confusion_matrix`, `classification_report` | per-class breakdown |
+
+| Regression | Use when |
+| :--------- | :------- |
+| `mean_absolute_error` | error in target units, robust to outliers |
+| `root_mean_squared_error` | target units; punishes large errors |
+| `mean_squared_error` | the loss most models minimise |
+| `r2_score` | fraction of variance explained (1 is perfect, 0 is "predict the mean") |
+| `mean_absolute_percentage_error` | relative error; breaks near zero targets |
+| `median_absolute_error` | typical error, ignores outliers |
+
+| Clustering | Needs labels? | Measures |
+| :--------- | :------------ | :------- |
+| `silhouette_score` | no | cohesion vs separation, -1 to 1 |
+| `davies_bouldin_score` | no | lower is better |
+| `calinski_harabasz_score` | no | higher is better |
+| `adjusted_rand_score` | yes | agreement with ground truth, chance-corrected |
+| `normalized_mutual_info_score` | yes | shared information with ground truth |
+
+## Class imbalance
+
+| Lever | How |
+| :---- | :-- |
+| Stratify | `stratify=y` in splits, `StratifiedKFold` in CV |
+| Honest metric | balanced accuracy, PR AUC, recall/precision per class; never plain accuracy |
+| Reweight classes | `class_weight="balanced"` (linear, SVM, trees, `HistGradientBoosting*`) |
+| Reweight rows | `fit(X, y, sample_weight=w)` |
+| Move the threshold | `TunedThresholdClassifierCV(est, scoring="f1")` picks the cut-off by CV |
+| Fixed business threshold | `FixedThresholdClassifier(est, threshold=0.3)` |
+| Resample | imbalanced-learn's `SMOTE` etc. inside its own `imblearn.pipeline.Pipeline`, never before the split |
+
+```python
+from sklearn.model_selection import (
+    TunedThresholdClassifierCV,
+)
+
+tuned = TunedThresholdClassifierCV(
+    model.set_params(clf__class_weight="balanced"),
+    scoring="balanced_accuracy",
+    cv=5,
+).fit(df, target)
+tuned.best_threshold_, tuned.best_score_
+```
+
+## Feature importance
+
+| Method | Notes |
+| :----- | :---- |
+| `permutation_importance(est, X_val, y_val)` | model-agnostic: score drop when one column is shuffled; run on held-out data |
+| `feature_importances_` (trees) | impurity-based (MDI); biased towards high-cardinality and continuous features, computed on training data |
+| `coef_` (linear) | comparable only after scaling; correlated features share weight |
+| `PartialDependenceDisplay.from_estimator` | how predictions change with one or two features |
+| SHAP (third party) | per-prediction attributions |
+
+```python
+from sklearn.inspection import permutation_importance
+
+r = permutation_importance(
+    model, df, target,     # use a held-out set in practice
+    n_repeats=10, scoring="roc_auc", random_state=0,
+)
+ranked = sorted(
+    zip(df.columns, r.importances_mean, r.importances_std),
+    key=lambda t: -t[1],
+)
+for name, mean, std in ranked:
+    print(f"{name:8} {mean:.3f} ± {std:.3f}")
+```
+
+Permutation importance works on the raw input columns of a pipeline, so `city` is scored as one
+feature rather than per one-hot column. Correlated features hide each other's importance.
+
+## Probability calibration
+
+A classifier is calibrated when "0.8" means right about 80% of the time. Trees, boosting, SVMs
+and naive Bayes often are not.
+
+| Tool | Does |
+| :--- | :--- |
+| `CalibratedClassifierCV(est, method="sigmoid")` | Platt scaling; fine with little data |
+| `method="isotonic"` | non-parametric; needs 1000+ calibration samples |
+| `method="temperature"` | 1.8+; one parameter, preserves ranking, good for multiclass |
+| `cv=5` | fits the base model and calibrator per fold |
+| `CalibratedClassifierCV(FrozenEstimator(fitted))` | calibrate an already fitted model on new data (replaces the removed `cv="prefit"`) |
+| `CalibrationDisplay.from_estimator` | reliability diagram |
+| `brier_score_loss`, `log_loss` | compare before/after |
+
+```python
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
+from sklearn.svm import SVC
+
+X_fit, X_cal, y_fit, y_cal = train_test_split(
+    Xs, y, test_size=0.3, stratify=y, random_state=0
+)
+svc = SVC().fit(X_fit, y_fit)  # probability=True deprecated
+calibrated = CalibratedClassifierCV(
+    FrozenEstimator(svc), method="sigmoid"
+).fit(X_cal, y_cal)
+calibrated.predict_proba(Xs[:3])
+```
+
+## Saving models
+
+| Format | Load is safe? | Notes |
+| :----- | :------------ | :---- |
+| `joblib.dump` / `joblib.load` | **no** | pickle underneath: loading runs arbitrary code; efficient with big arrays |
+| `pickle` | **no** | same risk, same version constraints |
+| `skops.io.dump` / `load` | yes, with an allow-list | refuses unknown types until you trust them explicitly |
+| ONNX (`skl2onnx`) | yes | serve from other runtimes (ONNX Runtime, including the browser) |
+
+- Only unpickle files you created or fully trust.
+- Pin the scikit-learn version: loading in another version raises `InconsistentVersionWarning`
+  and may give wrong results. Save the training code and data version too.
+
+```python
+import skops.io as sio
+
+sio.dump(model, "model.skops")
+unknown = sio.get_untrusted_types(file="model.skops")
+print(unknown)               # review before trusting
+loaded = sio.load("model.skops", trusted=unknown)
+assert (loaded.predict(df) == model.predict(df)).all()
+```
+
+## Output config & routing
+
+| Feature | API | Notes |
+| :------ | :-- | :---- |
+| DataFrame output | `est.set_output(transform="pandas")` | also `"polars"`; global: `set_config(transform_output="pandas")` |
+| Metadata routing | `set_config(enable_metadata_routing=True)` | pass `sample_weight`, `groups` through pipelines and searches |
+| Request metadata | `est.set_fit_request(sample_weight=True)` | each consumer opts in; also `set_score_request` |
+| Array API | `set_config(array_api_dispatch=True)` | experimental; some estimators accept PyTorch/CuPy arrays and stay on GPU; needs `array-api-compat` and `SCIPY_ARRAY_API=1` |
+| Callbacks | `est.set_callbacks(ProgressBar())` | experimental in 1.9 (`sklearn.callback`); few estimators support it |
+| Sparse type | `set_config(sparse_interface="sparray")` | 1.9+; SciPy sparse arrays instead of matrices |
+
+```python
+import sklearn
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_validate
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+pre.set_output(transform="pandas")
+pre.fit_transform(df).head()     # named DataFrame columns
+
+with sklearn.config_context(enable_metadata_routing=True):
+    w = np.where(y == 1, 2.0, 1.0)
+    scaler = StandardScaler().set_fit_request(
+        sample_weight=False           # opt out explicitly
+    )
+    lr = (
+        LogisticRegression()
+        .set_fit_request(sample_weight=True)
+        .set_score_request(sample_weight=True)
+    )
+    routed = make_pipeline(scaler, lr)
+    routed.fit(X, y, sample_weight=w)  # reaches only LR
+    cross_validate(
+        routed, X, y, params={"sample_weight": w}
+    )
+```
+
+Unrequested metadata raises `UnsetMetadataPassedError`, so a weight is never dropped silently.
+
+## Recipes
+
+### Tabular pipeline on mixed columns
+
+When a DataFrame mixes numbers, categories and gaps: gradient boosting with native categorical support needs almost no preprocessing.
+
+```python
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+
+rng = np.random.default_rng(1)
+n = 1_000
+X = pd.DataFrame({
+    "age": rng.integers(18, 80, n).astype(float),
+    "plan": pd.Categorical(rng.choice(["free", "pro"], n)),
+    "visits": rng.poisson(5, n).astype(float),
+})
+X.loc[rng.random(n) < 0.1, "age"] = np.nan   # NaN is fine
+rule = (X["plan"] == "pro") & (X["visits"] > 4)
+y = (rule ^ (rng.random(n) < 0.05)).astype(int)  # noise
+
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, stratify=y, random_state=0
+)
+hgb = HistGradientBoostingClassifier(
+    categorical_features="from_dtype",  # category dtype
+    random_state=0,
+).fit(X_tr, y_tr)
+print(f"test accuracy {hgb.score(X_te, y_te):.3f}")
+```
+
+### Cross-validate with several metrics
+
+When one number hides trade-offs and you want train vs test scores to spot overfitting.
+
+```python
+import pandas as pd
+from sklearn.datasets import make_classification
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_validate
+
+X, y = make_classification(
+    n_samples=600, weights=[0.8], random_state=0
+)
+res = cross_validate(
+    RandomForestClassifier(random_state=0),
+    X, y,
+    cv=5,
+    scoring=["roc_auc", "balanced_accuracy", "f1"],
+    return_train_score=True,
+    n_jobs=-1,
+)
+summary = pd.DataFrame(res).mean().round(3)
+print(summary)   # fit_time, test_roc_auc, train_roc_auc...
+```
+
+### Tune a gradient boosting model
+
+When defaults are close but you want the last few points; successive halving discards bad candidates early.
+
+```python
+from scipy.stats import loguniform, randint
+from sklearn.datasets import make_classification
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.experimental import (
+    enable_halving_search_cv,  # noqa: F401 (side effect)
+)
+from sklearn.model_selection import HalvingRandomSearchCV
+
+X, y = make_classification(n_samples=2_000, random_state=0)
+space = {
+    "learning_rate": loguniform(0.01, 0.3),
+    "max_leaf_nodes": randint(8, 64),
+    "min_samples_leaf": randint(5, 50),
+    "l2_regularization": loguniform(1e-4, 1.0),
+}
+search = HalvingRandomSearchCV(
+    HistGradientBoostingClassifier(random_state=0),
+    space,
+    factor=3,              # keep the best third each round
+    scoring="roc_auc",
+    random_state=0,
+    n_jobs=-1,
+).fit(X, y)
+print(search.best_params_, round(search.best_score_, 3))
+```
+
+### Confusion matrix and classification report
+
+When you need per-class precision/recall on a held-out set, not a single score.
+
+```python
+from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+)
+from sklearn.model_selection import train_test_split
+
+X, y = make_classification(
+    n_samples=800, n_classes=3, n_informative=4,
+    random_state=0,
+)
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, stratify=y, random_state=0
+)
+pred = LogisticRegression().fit(X_tr, y_tr).predict(X_te)
+print(confusion_matrix(y_te, pred))  # rows true, cols pred
+print(classification_report(y_te, pred, digits=3))
+# plot: ConfusionMatrixDisplay.from_predictions(y_te, pred)
+```
+
+### Persist and reload a pipeline
+
+When a trained pipeline ships to another process; skops refuses types you haven't approved.
+
+```python
+from pathlib import Path
+
+import skops.io as sio
+from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+X, y = make_classification(random_state=0)
+pipe = make_pipeline(StandardScaler(), LogisticRegression())
+pipe.fit(X, y)
+
+path = Path("pipe.skops")
+sio.dump(pipe, path)
+# later, in the serving process:
+untrusted = sio.get_untrusted_types(file=path)
+assert untrusted == [], f"review: {untrusted}"
+restored = sio.load(path)
+assert (restored.predict(X) == pipe.predict(X)).all()
+```
+
+### Custom transformer
+
+When a feature step needs learned state and should work inside `Pipeline`, `clone` and grid search.
+
+```python
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.utils.validation import (
+    check_is_fitted,
+    validate_data,
+)
+
+class QuantileClipper(TransformerMixin, BaseEstimator):
+    """Clip each column to its fitted quantile range."""
+
+    def __init__(self, q: float = 0.01) -> None:
+        self.q = q          # store params as given, no logic
+
+    def fit(self, X: ArrayLike, y: object = None):
+        Xv = validate_data(self, X)   # sets n_features_in_
+        self.low_ = np.quantile(Xv, self.q, axis=0)
+        self.high_ = np.quantile(Xv, 1 - self.q, axis=0)
+        return self
+
+    def transform(self, X: ArrayLike) -> NDArray[np.float64]:
+        check_is_fitted(self)
+        Xv = validate_data(self, X, reset=False)
+        return np.clip(Xv, self.low_, self.high_)
+```
+
+`TransformerMixin` supplies `fit_transform`. Pass-through column names come from
+`OneToOneFeatureMixin`, and `sklearn.utils.estimator_checks.check_estimator` tests the contract.
+
+## References
+
+- [scikit-learn: User guide](https://scikit-learn.org/stable/user_guide.html): the canonical guide
+- [scikit-learn: API reference](https://scikit-learn.org/stable/api/index.html): every class and function
+- [scikit-learn: Common pitfalls](https://scikit-learn.org/stable/common_pitfalls.html): leakage and randomness
+- [scikit-learn: Choosing the right estimator](https://scikit-learn.org/stable/machine_learning_map.html): the flowchart
+- [scikit-learn: Cross-validation](https://scikit-learn.org/stable/modules/cross_validation.html)
+- [scikit-learn: Metrics and scoring](https://scikit-learn.org/stable/modules/model_evaluation.html)
+- [scikit-learn: Model persistence](https://scikit-learn.org/stable/model_persistence.html): joblib, skops, ONNX trade-offs
+- [scikit-learn: Metadata routing](https://scikit-learn.org/stable/metadata_routing.html)
+- [scikit-learn: Array API support](https://scikit-learn.org/stable/modules/array_api.html)
+- [scikit-learn: Release notes 1.9](https://scikit-learn.org/stable/whats_new/v1.9.html): deprecations to watch
+- [skops documentation](https://skops.readthedocs.io/en/stable/persistence.html): secure persistence
+- [imbalanced-learn](https://imbalanced-learn.org/stable/): resampling that plugs into pipelines

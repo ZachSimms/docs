@@ -628,6 +628,30 @@ async stack traces.
 
 Retry with backoff, a limited-concurrency pool and a timeout helper are in [Concurrency patterns](#concurrency-patterns).
 
+### Create a promise
+
+When wrapping a callback or event API; everywhere else an `async` function makes the promise for you.
+
+```ts
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () =>
+      reject(new Error(`Failed to load ${src}`));
+    img.src = src;
+  });
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const logo = await loadImage("/logo.png");
+await sleep(250);
+```
+
+Call `resolve` or `reject` exactly once; later calls are ignored. When the resolvers must live outside the executor, use [`Promise.withResolvers`](#promisewithresolvers-es2024).
+
 ### Deduplicate in-flight calls
 
 When several callers ask for the same resource at once and should share one request instead of firing one each.

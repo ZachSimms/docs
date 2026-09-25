@@ -172,6 +172,38 @@ repo/
   package.json
 ```
 
+## Colour, demos and diagrams
+
+`<Swatches>` draws colour chips (hex, `rgb()`, `hsl()` or `oklch()`); `weights` adds a
+proportion bar. `<Scale>` builds a 50–950 tonal scale from one OKLCH hue, and `<Contrast>`
+grades a pair against WCAG. All three are computed at build time.
+
+<Swatches title="60-30-10" colors={[{ name: "base", value: "#f4f1ea" }, { name: "primary", value: "#23395b" }, { name: "accent", value: "#e4572e" }]} weights={[60, 30, 10]} />
+
+<Scale title="Blue, hue 250" hue={250} chroma={0.14} />
+
+<Contrast fg="#767676" bg="#ffffff" />
+
+An `html` fence with `demo` in its meta also renders live, in a sandboxed frame that follows
+the site theme. `height=` sets the frame height.
+
+```html demo height=120 title="flex.html"
+<style>
+  .row { display: flex; gap: 8px; }
+  .row div { flex: 1; padding: 12px; border-radius: 4px;
+    background: var(--graph-0); color: white; }
+  .row div:nth-child(2) {
+    flex: 2; background: var(--graph-2); }
+</style>
+<div class="row">
+  <div>flex: 1</div><div>flex: 2</div><div>flex: 1</div>
+</div>
+```
+
+`<Diagram>` inlines an SVG from `public/images/diagrams/`, so it follows the theme.
+
+<Diagram src="/images/diagrams/box-model.svg" label="The CSS box model: content inside padding, inside a border, inside margin" caption="The CSS box model" />
+
 ## Tables
 
 | Token       | Value | Use for                    |

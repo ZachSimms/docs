@@ -710,6 +710,82 @@ await new Checkout(new Card()).total(999);
 
 ## Recipes
 
+### Class that extends
+
+When a subclass is a specialised version of its base: it reuses the base's state and overrides behaviour.
+
+```ts
+class Animal {
+  constructor(protected readonly name: string) {}
+
+  speak(): string {
+    return `${this.name} makes a sound`;
+  }
+}
+
+class Dog extends Animal {
+  constructor(name: string, private readonly breed: string) {
+    super(name); // must run before `this` is used
+  }
+
+  override speak(): string {
+    return `${super.speak()}: woof (${this.breed})`;
+  }
+}
+
+const pets: Animal[] = [
+  new Animal("Cat"),
+  new Dog("Rex", "labrador"),
+];
+pets.map((p) => p.speak());
+// ["Cat makes a sound",
+//  "Rex makes a sound: woof (labrador)"]
+```
+
+`super(...)` comes first in the constructor, `protected` members are visible to subclasses, and `override` (checked under `noImplicitOverride`) catches a renamed base method. See [Inheritance & override](#inheritance--override).
+
+### Class that implements
+
+When unrelated classes share a contract: each class promises the interface's shape, and callers depend only on the interface.
+
+```ts
+interface Shape {
+  area(): number;
+}
+interface Named {
+  readonly name: string;
+}
+
+class Circle implements Shape, Named {
+  readonly name = "circle";
+  constructor(private readonly r: number) {}
+
+  area(): number {
+    return Math.PI * this.r ** 2;
+  }
+}
+
+class Rect implements Shape, Named {
+  readonly name = "rect";
+  constructor(private w: number, private h: number) {}
+
+  area(): number {
+    return this.w * this.h;
+  }
+}
+
+// callers depend on the interfaces, not the classes
+const shapes: (Shape & Named)[] = [
+  new Circle(1),
+  new Rect(2, 3),
+];
+for (const s of shapes) {
+  console.log(s.name, s.area().toFixed(2));
+}
+```
+
+`implements` only checks the class; it adds no types or code ([`implements` does not change types](#implements-does-not-change-types)).
+
 ### Singleton, and why a module is usually better
 
 When exactly one lazily created instance must exist, though an exported module object usually does the job with less ceremony.

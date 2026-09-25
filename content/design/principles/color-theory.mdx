@@ -22,7 +22,7 @@ to use the colors is in [UX/UI design principles](/design/principles/ux-ui/).
 | OKLCH | lightness 0–1, chroma 0–~0.37, hue 0–360 | yes (better) | `oklch(0.55 0.2 260)` | UI palettes, scales, states |
 | CMYK | cyan, magenta, yellow, key (black) | no | none in browsers | print only; subtractive |
 
-Every CSS example in the table is the same blue, `#1c69e3`. RGB and HSL are additive, device-oriented models of sRGB. Lab, LCH, OKLab and OKLCH model human
+Every CSS example in the table is the same blue, `#1c69e3` (the HSL one to the nearest whole unit). RGB and HSL are additive, device-oriented models of sRGB. Lab, LCH, OKLab and OKLCH model human
 perception and are not tied to one gamut. Designers' RYB color wheel (red-yellow-blue, used in
 painting) puts complements in different places than RGB/OKLCH wheels: orange opposes blue in RYB,
 yellow opposes blue in RGB.
@@ -54,6 +54,15 @@ browser maps them back into range (see [Gamut](#gamut--wide-color)).
 Warm colors advance and feel energetic; cool colors recede and feel calm. Tint neutrals slightly
 warm or cool (chroma 0.005–0.02) to match the brand instead of using pure grey.
 
+<Swatches title="Hue varies (l 0.65, c 0.1)" colors={[{ name: "h 0", value: "oklch(0.65 0.1 0)" }, { name: "h 60", value: "oklch(0.65 0.1 60)" }, { name: "h 120", value: "oklch(0.65 0.1 120)" }, { name: "h 180", value: "oklch(0.65 0.1 180)" }, { name: "h 240", value: "oklch(0.65 0.1 240)" }, { name: "h 300", value: "oklch(0.65 0.1 300)" }]} />
+
+<Swatches title="Chroma varies (l 0.6, h 260)" colors={[{ name: "c 0", value: "oklch(0.6 0 260)" }, { name: "c 0.05", value: "oklch(0.6 0.05 260)" }, { name: "c 0.1", value: "oklch(0.6 0.1 260)" }, { name: "c 0.15", value: "oklch(0.6 0.15 260)" }, { name: "c 0.2", value: "oklch(0.6 0.2 260)" }]} />
+
+<Swatches title="Lightness varies (c 0.06, h 260)" colors={[{ name: "l 0.3", value: "oklch(0.3 0.06 260)" }, { name: "l 0.45", value: "oklch(0.45 0.06 260)" }, { name: "l 0.6", value: "oklch(0.6 0.06 260)" }, { name: "l 0.75", value: "oklch(0.75 0.06 260)" }, { name: "l 0.87", value: "oklch(0.87 0.06 260)" }]} />
+
+Only lightness moves contrast: the chroma row stays between 3.94:1 and 4.06:1 on white, the
+lightness row runs from 13.68:1 down to 1.48:1.
+
 ### Perceptual uniformity (why HSL lies)
 
 HSL computes lightness from the RGB channels, not from how bright the color looks:
@@ -63,7 +72,12 @@ HSL computes lightness from the RGB channels, not from how bright the color look
 | `hsl(60 100% 50%)` yellow | 50% | 0.97 | 1.07:1 |
 | `hsl(240 100% 50%)` blue | 50% | 0.45 | 8.59:1 |
 
-Same "50% lightness", completely different perceived brightness and contrast. A palette built by
+<Swatches title="HSL: every chip is lightness 50%" colors={["hsl(0 100% 50%)", "hsl(60 100% 50%)", "hsl(120 100% 50%)", "hsl(180 100% 50%)", "hsl(240 100% 50%)", "hsl(300 100% 50%)"]} />
+
+<Swatches title="OKLCH: every chip is l 0.7, c 0.11" colors={["oklch(0.7 0.11 30)", "oklch(0.7 0.11 90)", "oklch(0.7 0.11 150)", "oklch(0.7 0.11 210)", "oklch(0.7 0.11 270)", "oklch(0.7 0.11 330)"]} />
+
+Same "50% lightness", completely different perceived brightness and contrast: on white, the HSL
+row runs from 1.07:1 (yellow) to 8.59:1 (blue), while the OKLCH row stays within 2.55–2.81:1. A palette built by
 stepping HSL lightness gives uneven steps and unpredictable contrast between hues; in OKLCH, equal
 `l` steps look like equal steps, and the same step number across hues has similar contrast.
 
@@ -71,6 +85,8 @@ stepping HSL lightness gives uneven steps and unpredictable contrast between hue
 
 Angles are on the hue wheel (OKLCH `h`). Harmonies pick hues; lightness and chroma still decide
 whether the result works.
+
+<Diagram src="/images/diagrams/color-wheel.svg" label="Four OKLCH hue wheels with base hue 260 (blue) marked: complementary adds hue 80, analogous adds 230 and 290, split-complementary adds 50 and 110, triadic adds 20 and 140" caption="Harmonies from base hue 260 on the OKLCH wheel (l 0.72, c 0.11)" />
 
 | Scheme | Hues | Feel | UI use |
 | :----- | :--- | :--- | :----- |
@@ -83,7 +99,8 @@ whether the result works.
 
 ```css
 :root {
-  --base: oklch(0.6 0.15 260);
+  /* c 0.11 keeps every rotated hue inside sRGB */
+  --base: oklch(0.6 0.11 260);
   --complement: oklch(from var(--base) l c calc(h + 180));
   --split-a: oklch(from var(--base) l c calc(h + 150));
   --split-b: oklch(from var(--base) l c calc(h + 210));
@@ -91,6 +108,14 @@ whether the result works.
   --triad-b: oklch(from var(--base) l c calc(h + 240));
 }
 ```
+
+<Swatches title="Complementary: 260 + 80" colors={[{ name: "base", value: "oklch(0.6 0.11 260)" }, { name: "complement", value: "oklch(0.6 0.11 80)" }]} />
+
+<Swatches title="Analogous: 230, 260, 290" colors={[{ name: "-30", value: "oklch(0.6 0.11 230)" }, { name: "base", value: "oklch(0.6 0.11 260)" }, { name: "+30", value: "oklch(0.6 0.11 290)" }]} />
+
+<Swatches title="Split-complementary: 260, 50, 110" colors={[{ name: "base", value: "oklch(0.6 0.11 260)" }, { name: "split-a", value: "oklch(0.6 0.11 50)" }, { name: "split-b", value: "oklch(0.6 0.11 110)" }]} />
+
+<Swatches title="Triadic: 260, 20, 140" colors={[{ name: "base", value: "oklch(0.6 0.11 260)" }, { name: "triad-a", value: "oklch(0.6 0.11 20)" }, { name: "triad-b", value: "oklch(0.6 0.11 140)" }]} />
 
 ## Building a palette
 
@@ -115,6 +140,8 @@ text and a pale amber background for fills.
 | ~60% | dominant | background and surfaces (neutrals) |
 | ~30% | secondary | text, cards, navigation, secondary surfaces |
 | ~10% | accent | primary buttons, links, highlights, key data |
+
+<Swatches title="60-30-10 with this sheet's scales" colors={[{ name: "gray-100", value: "#f3f5f9" }, { name: "gray-800", value: "#252629" }, { name: "blue-600", value: "#1c69e3" }]} weights={[60, 30, 10]} />
 
 A starting ratio from interior design, not a law. The point is that the accent stays rare so it
 keeps its pull (Von Restorff effect).
@@ -149,6 +176,8 @@ be very saturated.
 }
 ```
 
+<Swatches title="blue.css, hue 260" colors={[{ name: "50", value: "#f1f5fc" }, { name: "100", value: "#e0e8f6" }, { name: "200", value: "#c1d5f6" }, { name: "300", value: "#9cbff8" }, { name: "400", value: "#70a1f2" }, { name: "500", value: "#3f82f0" }, { name: "600", value: "#1c69e3" }, { name: "700", value: "#1957bb" }, { name: "800", value: "#0f449a" }, { name: "900", value: "#0f3778" }, { name: "950", value: "#082451" }]} />
+
 These values sit inside sRGB (chroma ~90% of the max for each lightness at hue 260). For another
 hue, keep the `l` column and re-fit `c` to that hue's gamut; yellows peak light, blues peak dark.
 
@@ -168,6 +197,13 @@ hue, keep the `l` column and re-fit `c` to that hue's gamut; yellows peak light,
 }
 ```
 
+The same lightness curve on other hues: a danger red (chroma capped by the gamut at each step)
+and a cool neutral with barely any chroma.
+
+<Scale title="Danger, hue 27, chroma up to 0.2" hue={27} chroma={0.2} />
+
+<Scale title="Neutral, hue 260, chroma 0.01" hue={260} chroma={0.01} />
+
 ## Contrast
 
 ### WCAG 2.2 contrast ratios
@@ -185,11 +221,25 @@ round: 4.49:1 fails 4.5:1.
 
 | Pair | Ratio | Result |
 | :--- | :---- | :----- |
-| `#777777` on white | 4.48:1 | fails AA text |
+| `#777777` on white | 4.47:1 | fails AA text |
 | `#767676` on white | 4.54:1 | passes AA text |
-| blue-500 `#3f82f0` on white | 3.71:1 | large text and icons only |
+| blue-500 `#3f82f0` on white | 3.70:1 | large text and icons only |
 | blue-600 `#1c69e3` on white | 5.02:1 | passes AA text |
 | black on blue-500 | 5.66:1 | passes: mid tones often need dark text |
+
+Ratios are truncated, not rounded, as a checker should. From fail to AAA:
+
+<Contrast fg="#9cbff8" bg="#ffffff">blue-300 text on white</Contrast>
+
+<Contrast fg="#777777" bg="#ffffff">#777777 text on white</Contrast>
+
+<Contrast fg="#ffffff" bg="#3f82f0">White on blue-500</Contrast>
+
+<Contrast fg="#000000" bg="#3f82f0">Black on blue-500</Contrast>
+
+<Contrast fg="#ffffff" bg="#1c69e3">White on blue-600</Contrast>
+
+<Contrast fg="#0f449a" bg="#ffffff">blue-800 text on white</Contrast>
 
 ### APCA (briefly)
 
@@ -223,6 +273,12 @@ red-green types dominate.
 | Underline links in body text | or 3:1 contrast with surrounding text plus a non-color cue on hover/focus |
 | Label chart series directly | legends by color alone fail; add labels, shapes, dashes |
 | Test with simulators | Chrome DevTools, Rendering, "Emulate vision deficiencies"; Sim Daltonism (macOS) |
+
+Each pair next to a deuteranopia simulation (Machado et al. 2009, full severity):
+
+<Swatches title="Risky: red vs green collapses to two olives" colors={[{ name: "red", value: "#d62728" }, { name: "green", value: "#2ca02c" }, { name: "red, deutan", value: "#8b7c1f" }, { name: "green, deutan", value: "#968838" }]} />
+
+<Swatches title="Safer: blue vs orange stays distinct" colors={[{ name: "blue", value: "#0072b2" }, { name: "orange", value: "#e69f00" }, { name: "blue, deutan", value: "#3b67b1" }, { name: "orange, deutan", value: "#cab411" }]} />
 
 ## Meaning & psychology
 
@@ -259,8 +315,18 @@ Dark mode is a separate mapping of the scales, not an inversion.
 | Saturation | full | lower chroma; saturated colors vibrate on dark |
 | Semantic colors | 600 steps | 400 steps for text, low-alpha fills for backgrounds |
 
+<Swatches title="Light theme tokens" colors={[{ name: "bg: gray-50", value: "#f8fafe" }, { name: "surface", value: "#ffffff" }, { name: "fg: gray-950", value: "#090a0c" }, { name: "muted: gray-600", value: "#515255" }, { name: "border: gray-200", value: "#e3e5e9" }, { name: "accent: blue-600", value: "#1c69e3" }]} />
+
+<Swatches title="Dark theme tokens" colors={[{ name: "bg: gray-950", value: "#090a0c" }, { name: "surface: gray-900", value: "#161719" }, { name: "fg: gray-100", value: "#f3f5f9" }, { name: "muted: gray-400", value: "#9fa1a4" }, { name: "border: gray-800", value: "#252629" }, { name: "accent: blue-400", value: "#70a1f2" }]} />
+
 In this palette, blue-400 on gray-950 is 7.6:1 and gray-400 on gray-950 is 7.6:1. Re-check every pair,
-because mid-tone pairs that pass in light mode often fail after mapping. Use `color-scheme` so
+because mid-tone pairs that pass in light mode often fail after mapping: blue-600 kept as the dark
+mode link color drops to 3.94:1.
+
+<Contrast fg="#70a1f2" bg="#090a0c">Link in dark mode: blue-400 on gray-950</Contrast>
+
+<Contrast fg="#1c69e3" bg="#090a0c">Light-mode link carried over: blue-600 on gray-950</Contrast>
+ Use `color-scheme` so
 native controls and scrollbars follow the theme.
 
 ## Data visualization palettes
@@ -276,6 +342,12 @@ greyscale. Avoid rainbow ("jet") scales: their lightness goes up and down, which
 that aren't in the data. Encode important values with position or length first; color is the
 weakest channel.
 
+<Swatches title="Sequential: viridis, 5 stops" colors={["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"]} />
+
+<Swatches title="Diverging: ColorBrewer RdBu, 7 classes" colors={["#b2182b", "#ef8a62", "#fddbc7", "#f7f7f7", "#d1e5f0", "#67a9cf", "#2166ac"]} />
+
+<Swatches title="Avoid: jet rainbow, lightness goes up and down" colors={["#00007f", "#0000ff", "#00ffff", "#7fff7f", "#ffff00", "#ff0000", "#7f0000"]} />
+
 ```css title="okabe-ito.css"
 /* color-blind-safe categorical palette */
 :root {
@@ -289,6 +361,8 @@ weakest channel.
   --cat-8: #000000; /* black */
 }
 ```
+
+<Swatches title="Okabe–Ito categorical" colors={[{ name: "orange", value: "#e69f00" }, { name: "sky blue", value: "#56b4e9" }, { name: "bluish green", value: "#009e73" }, { name: "yellow", value: "#f0e442" }, { name: "blue", value: "#0072b2" }, { name: "vermillion", value: "#d55e00" }, { name: "reddish purple", value: "#cc79a7" }, { name: "black", value: "#000000" }]} />
 
 ## Gamut & wide color
 
@@ -344,11 +418,76 @@ Hex can't express P3 colors, and design tokens exported as hex lose them.
 }
 ```
 
+One token, six colors: `color-mix()` tints and relative-syntax variants of `--c`.
+
+```html demo height=100 title="one-token.html"
+<style>
+  .chips { --c: oklch(0.55 0.2 260);
+    display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips span { padding: 6px 10px; border-radius: 4px; }
+  .t12 { background: color-mix(in oklch, var(--c) 12%,
+    transparent); }
+  .t40 { background: color-mix(in oklch, var(--c) 40%,
+    transparent); }
+  .base { background: var(--c); color: white; }
+  .dark { background: oklch(from var(--c)
+    calc(l - 0.15) c h); color: white; }
+  .half { background: oklch(from var(--c) l c h / 50%); }
+  .comp { background: oklch(from var(--c) l 0.11
+    calc(h + 180)); color: white; }
+</style>
+<div class="chips">
+  <span class="t12">mix 12%</span>
+  <span class="t40">mix 40%</span>
+  <span class="base">base</span>
+  <span class="dark">l - 0.15</span>
+  <span class="half">alpha 50%</span>
+  <span class="comp">h + 180</span>
+</div>
+```
+
 The interpolation space changes the result: `in srgb` mixes of blue and yellow pass through grey,
 `in oklch` keeps chroma through the middle. Use `in oklab` for gradients and neutral mixes, `in oklch`
 to keep colors vivid. In relative syntax, OKLCH `l` is a number from 0 to 1, so step it by `0.05`,
 not `5%`. `contrast-color()` only picks black or white and is new: give it a fallback, and don't
 rely on it for mid-tone backgrounds. More CSS in [CSS](/design/css/css/).
+
+```html demo height=124 title="interpolation.html"
+<style>
+  .row { display: grid; grid-template-columns: 6ch 1fr;
+    gap: 8px; align-items: center; margin: 0 0 8px; }
+  .row i { height: 26px; border-radius: 4px; }
+  .srgb { background: linear-gradient(to right in srgb,
+    #0050ff, #ffe600); }
+  .oklab { background: linear-gradient(to right in oklab,
+    #0050ff, #ffe600); }
+  .oklch { background: linear-gradient(to right in oklch,
+    #0050ff, #ffe600); }
+</style>
+<p class="row">srgb <i class="srgb"></i></p>
+<p class="row">oklab <i class="oklab"></i></p>
+<p class="row">oklch <i class="oklch"></i></p>
+```
+
+`light-dark()` picks by the element's `color-scheme`, so one declaration serves both themes:
+
+```html demo height=72 title="light-dark.html"
+<style>
+  .card { padding: 10px 12px; border-radius: 6px;
+    background: light-dark(#f8fafe, #090a0c);
+    color: light-dark(#090a0c, #f3f5f9);
+    border: 1px solid light-dark(#e3e5e9, #252629); }
+  .card a { color: light-dark(#1c69e3, #70a1f2); }
+  .light { color-scheme: light; }
+  .dark { color-scheme: dark; }
+  .pair { display: grid; gap: 8px;
+    grid-template-columns: 1fr 1fr; }
+</style>
+<div class="pair">
+  <div class="card light">Light: <a href="#">link</a></div>
+  <div class="card dark">Dark: <a href="#">link</a></div>
+</div>
+```
 
 ## Tools
 
@@ -471,7 +610,7 @@ export const textOn = (bg: string): "#000000" | "#ffffff" =>
     : "#ffffff";
 
 passes("#1c69e3", "#ffffff");       // true  (5.02:1)
-passes("#3f82f0", "#ffffff");       // false (3.71:1)
+passes("#3f82f0", "#ffffff");       // false (3.70:1)
 textOn("#3f82f0");                  // "#000000" (5.66:1)
 ```
 

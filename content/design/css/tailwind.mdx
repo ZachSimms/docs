@@ -150,6 +150,34 @@ const brand = getComputedStyle(document.documentElement)
 Default colours are `oklch()` values in 26 palettes (v4.2 added `mauve`, `olive`, `mist`
 and `taupe`), each with shades from 50 to 950.
 
+<Swatches title="sky-50 to sky-950 (default theme)" colors={[{ name: "50", value: "oklch(97.7% 0.013 236.62)" }, { name: "100", value: "oklch(95.1% 0.026 236.824)" }, { name: "200", value: "oklch(90.1% 0.058 230.902)" }, { name: "300", value: "oklch(82.8% 0.111 230.318)" }, { name: "400", value: "oklch(74.6% 0.16 232.661)" }, { name: "500", value: "oklch(68.5% 0.169 237.323)" }, { name: "600", value: "oklch(58.8% 0.158 241.966)" }, { name: "700", value: "oklch(50% 0.134 242.749)" }, { name: "800", value: "oklch(44.3% 0.11 240.79)" }, { name: "900", value: "oklch(39.1% 0.09 240.876)" }, { name: "950", value: "oklch(29.3% 0.066 243.157)" }]} />
+
+<Swatches title="emerald-50 to emerald-950 (default theme)" colors={[{ name: "50", value: "oklch(97.9% 0.021 166.113)" }, { name: "100", value: "oklch(95% 0.052 163.051)" }, { name: "200", value: "oklch(90.5% 0.093 164.15)" }, { name: "300", value: "oklch(84.5% 0.143 164.978)" }, { name: "400", value: "oklch(76.5% 0.177 163.223)" }, { name: "500", value: "oklch(69.6% 0.17 162.48)" }, { name: "600", value: "oklch(59.6% 0.145 163.225)" }, { name: "700", value: "oklch(50.8% 0.118 165.612)" }, { name: "800", value: "oklch(43.2% 0.095 166.913)" }, { name: "900", value: "oklch(37.8% 0.077 168.94)" }, { name: "950", value: "oklch(26.2% 0.051 172.552)" }]} />
+
+Utilities compile to plain CSS that reads these variables. This is the v4.3 output for three
+classes (trimmed of its sRGB fallback), running live:
+
+```html demo height=120 title="generated.html"
+<style>
+  :root {
+    --spacing: 0.25rem;
+    --color-sky-500: oklch(68.5% 0.169 237.323);
+  }
+  .p-2 { padding: calc(var(--spacing) * 2); }
+  .p-4 { padding: calc(var(--spacing) * 4); }
+  .bg-sky-500 { background-color: var(--color-sky-500); }
+  .bg-sky-500\/50 {
+    background-color: color-mix(in oklab,
+      var(--color-sky-500) 50%, transparent);
+  }
+
+  div { width: fit-content; margin-bottom: 8px;
+    border-radius: 6px; font: 12px monospace; }
+</style>
+<div class="p-2 bg-sky-500">p-2 bg-sky-500</div>
+<div class="p-4 bg-sky-500/50">p-4 bg-sky-500/50</div>
+```
+
 ## Layout utilities
 
 | Area | Utilities |

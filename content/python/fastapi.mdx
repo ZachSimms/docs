@@ -1,0 +1,1009 @@
+---
+title: FastAPI
+date: 2026-09-25
+order: 4
+---
+
+FastAPI **0.141** with Pydantic **2.13** on Python 3.14: parameters, models, dependencies, errors, auth, settings,
+databases, streaming, testing and deployment. The TypeScript counterpart is [Hono](/typescript/backend/hono/).
+
+## Install & run
+
+```sh
+uv init api && cd api
+uv add "fastapi[standard]"   # CLI, uvicorn, httpx, ...
+uv run fastapi dev           # reload, 127.0.0.1:8000
+uv run fastapi run           # prod, 0.0.0.0:8000
+# pip: python -m venv .venv
+#      pip install "fastapi[standard]"
+```
+
+```python title="main.py"
+from fastapi import FastAPI
+
+app = FastAPI(title="Notes API", version="1.0.0")
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+```
+
+| Item | Detail |
+| :--- | :----- |
+| `fastapi[standard]` | adds `fastapi-cli`, `uvicorn[standard]`, `httpx`, `python-multipart`, `email-validator`, `pydantic-settings`, Jinja2 |
+| App discovery | `main.py`, `app.py`, `api.py`, then `app/main.py` ...; variable `app` or `api` |
+| Explicit entrypoint | `fastapi dev -e app.main:app`, or `[tool.fastapi] entrypoint = "app.main:app"` in `pyproject.toml` |
+| `fastapi run` flags | `--workers 4`, `--port`, `--root-path /api`, `--proxy-headers` (on by default) |
+| Docs UIs | `/docs` (Swagger UI), `/redoc`, schema at `/openapi.json` |
+| Strict JSON | bodies need `Content-Type: application/json` (`FastAPI(strict_content_type=False)` to relax) |
+
+## Path operations & parameters
+
+Where a parameter comes from is decided by its declaration: names in the path are path params, Pydantic models
+are the JSON body, and other simple types are query params. `Annotated[T, Query(...)]` adds validation and docs.
+
+```python
+from enum import StrEnum
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import (
+    Body, Cookie, FastAPI, Header, Path, Query,
+)
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+
+class Sort(StrEnum):
+    new = "new"
+    top = "top"
+
+
+@app.get("/items/{item_id}")
+async def get_item(
+    item_id: Annotated[int, Path(ge=1)],
+    q: Annotated[str | None, Query(max_length=50)] = None,
+    sort: Sort = Sort.new,                    # ?sort=top
+    tags: Annotated[list[str], Query()] = [],  # ?tags=a
+    x_request_id: Annotated[UUID | None, Header()] = None,
+    session: Annotated[str | None, Cookie()] = None,
+) -> dict[str, object]:
+    return {"id": item_id, "q": q, "sort": sort}
+
+
+class ItemIn(BaseModel):
+    name: str
+    price: float = Field(gt=0)
+
+
+@app.put("/items/{item_id}")
+async def put_item(
+    item_id: int,                           # path
+    item: ItemIn,                           # JSON body
+    note: Annotated[str, Body()] = "",      # extra body key
+) -> dict[str, object]:
+    return {"id": item_id, **item.model_dump(), "note": note}
+
+
+@app.get("/files/{path:path}")              # /files/a/b.txt
+async def read_file(path: str) -> dict[str, str]:
+    return {"path": path}
+```
+
+| Marker | Source | Notes |
+| :----- | :----- | :---- |
+| `Path(ge=1)` | `/items/{item_id}` | always required |
+| `Query(min_length, max_length, pattern, alias)` | `?q=` | default `None` makes it optional |
+| `Query()` on a `list[T]` | `?t=a&t=b` | repeated keys |
+| `Header()` | headers | `x_request_id` reads `X-Request-ID` (underscores become hyphens) |
+| `Cookie()` | cookies | |
+| `Body(embed=True)` | JSON body | wraps a single model under its name: `{"item": {...}}` |
+| `Form()`, `File()`, `UploadFile` | form / multipart | needs `python-multipart` |
+| `Annotated[Model, Query()]` | several query params as one model | `extra="forbid"` rejects unknown keys |
+| `Request` | the raw Starlette request | headers, `client`, `state`, `url` |
+
+With more than one body parameter, each is nested under its name (`{"item": {...}, "note": "..."}`).
+Order the routes from specific to general: `/users/me` must come before `/users/{id}`.
+
+## Pydantic models
+
+```python
+from datetime import datetime
+from typing import Annotated, Self
+
+from pydantic import (
+    AfterValidator, BaseModel, ConfigDict, EmailStr, Field,
+    StringConstraints, computed_field, field_validator,
+    model_validator,
+)
+
+Slug = Annotated[str, StringConstraints(
+    pattern=r"^[a-z0-9-]+$", max_length=40,
+)]
+Tag = Annotated[str, AfterValidator(str.casefold)]
+
+
+class UserBase(BaseModel):
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid",               # 422 on unknown keys
+    )
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=100)
+    handle: Slug
+    tags: list[Tag] = []
+
+
+class UserCreate(UserBase):
+    password: str = Field(min_length=12, repr=False)
+    confirm: str
+
+    @field_validator("name")
+    @classmethod
+    def not_reserved(cls, v: str) -> str:
+        if v.lower() == "admin":
+            raise ValueError("reserved name")
+        return v
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> Self:
+        if self.password != self.confirm:
+            raise ValueError("passwords differ")
+        return self
+
+
+class UserOut(UserBase):
+    model_config = ConfigDict(from_attributes=True)  # ORM
+    id: int
+    created_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def url(self) -> str:
+        return f"/users/{self.id}"
+```
+
+```python
+@app.post("/users", status_code=201, response_model=UserOut)
+async def create_user(body: UserCreate) -> dict[str, object]:
+    data = body.model_dump(exclude={"password", "confirm"})
+    return {**data, "id": 1, "created_at": datetime.now()}
+
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int) -> UserOut:  # preferred
+    ...
+```
+
+| API | Use |
+| :-- | :-- |
+| return annotation `-> Model` | validates, filters and documents the response |
+| `response_model=Model` | same, when the function returns a dict/ORM object of another type |
+| `response_model_exclude_unset=True` / `_exclude_none` | drop defaults / `None`s from the output |
+| `Field(gt, le, min_length, pattern, alias, default_factory, examples)` | constraints and metadata |
+| `@field_validator("f", mode="before")` | coerce raw input before type checks |
+| `@model_validator(mode="after")` | cross-field rules; return `self` |
+| `Annotated[T, AfterValidator(fn)]` | reusable validated type |
+| `model_dump(exclude_unset=True)` | only the fields the client sent (PATCH) |
+| `Model.model_validate(obj)` | parse dict or ORM object (`from_attributes=True`) |
+| `ConfigDict(frozen=True)`, `populate_by_name`, `alias_generator=to_camel` | immutability, camelCase JSON |
+
+Keep separate `Create`, `Update` (all fields optional) and `Out` models, so passwords never leak into responses.
+
+## Errors & status codes
+
+```python
+from fastapi import HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+
+@app.get("/things/{thing_id}")
+async def get_thing(thing_id: int) -> dict[str, int]:
+    if thing_id == 0:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="Thing not found",       # any JSON value
+            headers={"X-Reason": "missing"},
+        )
+    return {"id": thing_id}
+
+
+class DomainError(Exception):
+    def __init__(self, code: str, status: int = 400):
+        self.code, self.status = code, status
+
+
+@app.exception_handler(DomainError)
+async def domain_error(
+    request: Request, exc: DomainError,
+) -> JSONResponse:
+    return JSONResponse(
+        {"error": exc.code}, status_code=exc.status,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid(
+    request: Request, exc: RequestValidationError,
+) -> JSONResponse:
+    fields = [".".join(map(str, e["loc"]))
+              for e in exc.errors()]
+    return JSONResponse(
+        {"error": "invalid", "fields": fields},
+        status_code=422,
+    )
+```
+
+| Status | When |
+| :----- | :--- |
+| `200` | default for every method |
+| `201` | `@app.post(..., status_code=201)` for creates |
+| `204` | `status_code=204` and return `None` (no body) |
+| `401` / `403` | missing or bad credentials / authenticated but not allowed |
+| `404`, `409` | `HTTPException` from your code |
+| `422` | automatic: request failed validation (`{"detail": [...]}`) |
+| `500` | unhandled exception; the `debug=True` app shows a traceback |
+
+Set a status per request with a `response: Response` parameter (`response.status_code = 202`). Return a
+`Response` subclass (`JSONResponse`, `RedirectResponse`, `FileResponse`) to skip validation entirely.
+
+## Dependencies
+
+A dependency is any callable whose parameters FastAPI resolves like an endpoint's. Results are cached per
+request, so a sub-dependency used twice runs once.
+
+```python
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import APIKeyHeader
+
+
+async def get_db() -> AsyncIterator[Session]:  # yield dep
+    db = Session()
+    try:
+        yield db                # value injected
+        await db.commit()       # after the endpoint returns
+    except Exception:
+        await db.rollback()
+        raise                   # always re-raise
+    finally:
+        await db.close()
+
+
+class Paging:                   # class dep: __init__ params
+    def __init__(self, limit: int = 20, offset: int = 0):
+        self.limit = min(limit, 100)
+        self.offset = offset
+
+
+api_key = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def require_key(
+    key: Annotated[str | None, Depends(api_key)],  # sub-dep
+) -> str:
+    if key != "secret":
+        raise HTTPException(401, "Bad API key")
+    return key
+
+
+DbDep = Annotated[Session, Depends(get_db)]
+router = APIRouter(dependencies=[Depends(require_key)])
+
+
+@router.get("/items")
+async def list_items(
+    db: DbDep, page: Annotated[Paging, Depends()],
+) -> list[Item]:
+    return await db.list_items(page.limit, page.offset)
+```
+
+| Form | Scope |
+| :--- | :---- |
+| `x: Annotated[T, Depends(fn)]` | one parameter |
+| `Annotated[Cls, Depends()]` | class dependency: FastAPI calls `Cls(...)` |
+| `@app.get(..., dependencies=[Depends(fn)])` | run for side effects (auth, rate limit), value ignored |
+| `APIRouter(dependencies=[...])` | every route of the router |
+| `FastAPI(dependencies=[...])` | global |
+| `Depends(fn, use_cache=False)` | call again even if already resolved in this request |
+| `Depends(fn, scope="function")` | yield-dependency teardown runs before the response is sent (default: after) |
+| `Security(fn, scopes=["items:read"])` | `Depends` plus OAuth2 scopes in OpenAPI |
+
+Put reusable aliases (`DbDep`, `CurrentUser`) in `deps.py`. With the default scope, code after `yield` runs
+once the response is sent, so it can't change it.
+
+## Routers & app layout
+
+```tree title="uv project"
+api/
+  app/
+    __init__.py
+    main.py           # FastAPI(), include_router
+    config.py         # Settings
+    db.py             # engine, get_session
+    deps.py           # SessionDep, CurrentUser
+    routers/
+      __init__.py
+      users.py        # APIRouter(prefix="/users")
+      items.py
+    models/           # SQLModel tables + schemas
+      item.py
+    services/         # business logic, no FastAPI imports
+  tests/
+    conftest.py       # client fixture, overrides
+    test_items.py
+  pyproject.toml      # [tool.fastapi] entrypoint
+  uv.lock
+  Dockerfile
+```
+
+```python title="app/routers/items.py"
+from fastapi import APIRouter
+
+router = APIRouter(
+    prefix="/items",
+    tags=["items"],
+    responses={404: {"description": "Not found"}},
+)
+
+
+@router.get("/")
+async def list_items() -> list[str]:
+    return []
+```
+
+```python title="app/main.py"
+from fastapi import APIRouter, FastAPI
+
+from app.routers import items, users
+
+api = APIRouter(prefix="/api/v1")
+api.include_router(users.router)
+api.include_router(items.router)
+
+app = FastAPI(title="Notes API")
+app.include_router(api)
+```
+
+`include_router` also takes `prefix`, `tags` and `dependencies`, so one router module can be mounted twice
+(e.g. `/v1` and `/v2`). `app.mount("/static", StaticFiles(directory="static"))` serves files.
+
+## Async, threads & background tasks
+
+| Endpoint / dependency | Runs | Use for |
+| :-------------------- | :--- | :------ |
+| `async def` | on the event loop | async libraries (`httpx.AsyncClient`, asyncpg, SQLAlchemy async) |
+| `def` | in a threadpool (40 threads by default) | blocking libraries (requests, sync ORMs, file I/O) |
+| CPU-heavy work | in neither | a process pool, a task queue, or another service |
+
+One blocking call (`time.sleep`, `requests.get`) inside `async def` stalls **every** request on that worker.
+Call blocking code from async with `await anyio.to_thread.run_sync(fn, arg)` or `starlette.concurrency.run_in_threadpool`.
+
+```python
+from fastapi import BackgroundTasks
+
+
+def send_welcome(email: str) -> None:  # sync: threadpool
+    ...
+
+
+@app.post("/signup", status_code=202)
+async def signup(
+    email: EmailStr, tasks: BackgroundTasks,
+) -> dict[str, str]:
+    tasks.add_task(send_welcome, email)  # after response
+    return {"status": "queued"}
+```
+
+Background tasks run in the same process after the response is sent: fine for emails and cache warm-ups,
+but they are lost on restart. Use a queue (arq, Celery, Dramatiq, SAQ) for anything that must survive.
+
+## Lifespan, middleware & CORS
+
+```python
+from collections.abc import (
+    AsyncIterator, Awaitable, Callable,
+)
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+
+
+@asynccontextmanager
+async def lifespan(
+    app: FastAPI,
+) -> AsyncIterator[dict[str, object]]:
+    client = httpx.AsyncClient(timeout=10)  # startup
+    yield {"http": client}          # -> request.state.http
+    await client.aclose()           # shutdown
+
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
+)
+
+
+@app.middleware("http")
+async def no_cache(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+```
+
+| Middleware | Import |
+| :--------- | :----- |
+| CORS | `fastapi.middleware.cors.CORSMiddleware` |
+| gzip | `fastapi.middleware.gzip.GZipMiddleware` |
+| trusted hosts | `fastapi.middleware.trustedhost.TrustedHostMiddleware` |
+| HTTPS redirect | `fastapi.middleware.httpsredirect.HTTPSRedirectMiddleware` |
+| sessions | `starlette.middleware.sessions.SessionMiddleware` (needs `itsdangerous`) |
+| custom | `@app.middleware("http")`, or a pure ASGI class for streaming-safe code |
+
+The last middleware added is the outermost, so add CORS last. `allow_origins=["*"]` can't be combined with
+credentials. Lifespan state is shallow-copied into each request's `request.state`. The old
+`@app.on_event("startup")` is deprecated. CORS itself is explained in [Fetch API](/typescript/web-apis/fetch-api/).
+
+## Auth
+
+```sh
+uv add pyjwt "pwdlib[argon2]"
+```
+
+```python title="app/auth.py"
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import (
+    OAuth2PasswordBearer, OAuth2PasswordRequestForm,
+)
+from pwdlib import PasswordHash
+
+hasher = PasswordHash.recommended()        # argon2id
+oauth2 = OAuth2PasswordBearer(tokenUrl="/token")
+
+
+def make_token(sub: str, secret: str) -> str:
+    exp = datetime.now(UTC) + timedelta(minutes=30)
+    return jwt.encode(
+        {"sub": sub, "exp": exp}, secret, algorithm="HS256",
+    )
+
+
+@app.post("/token")
+async def login(
+    form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: DbDep, settings: SettingsDep,
+) -> Token:
+    user = await db.user_by_email(form.username)
+    if not user or not hasher.verify(
+        form.password, user.password_hash,
+    ):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    secret = settings.jwt_secret.get_secret_value()
+    return Token(access_token=make_token(user.email, secret))
+```
+
+| Scheme | Class | Reads |
+| :----- | :---- | :---- |
+| OAuth2 password + bearer | `OAuth2PasswordBearer(tokenUrl)` | `Authorization: Bearer <token>`; adds the Authorize button in `/docs` |
+| Bearer (any token) | `HTTPBearer()` | `Authorization: Bearer ...` as `HTTPAuthorizationCredentials` |
+| Basic | `HTTPBasic()` | username and password; compare with `secrets.compare_digest` |
+| API key | `APIKeyHeader(name="X-API-Key")`, `APIKeyQuery`, `APIKeyCookie` | the raw key |
+
+Pass `auto_error=False` to receive `None` instead of an automatic 401 (optional auth). JWT verification lives
+in the `current_user` dependency (recipe below); token design is covered in
+[Authentication](/typescript/backend/authentication/).
+
+## Settings
+
+```python title="app/config.py"
+from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Depends
+from pydantic import PostgresDsn, SecretStr
+from pydantic_settings import (
+    BaseSettings, SettingsConfigDict,
+)
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="APP_",         # APP_DEBUG=true
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+    debug: bool = False
+    database_url: PostgresDsn      # required
+    jwt_secret: SecretStr          # prints as **********
+    cors_origins: list[str] = []   # JSON: '["https://a.io"]'
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()  # type: ignore[call-arg]  # reads env
+
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+```
+
+Values come from init kwargs, then env vars, then `.env`, then defaults. Validation fails at first use if a
+required variable is missing, so call `get_settings()` in `lifespan` to fail at boot. Override in tests with
+`app.dependency_overrides[get_settings]`.
+
+## Databases
+
+```sh
+uv add sqlmodel "sqlalchemy[asyncio]" asyncpg  # or psycopg
+uv add alembic                                 # migrations
+```
+
+```python title="app/db.py"
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import (
+    async_sessionmaker, create_async_engine,
+)
+from sqlmodel import Field, SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+engine = create_async_engine(
+    "postgresql+asyncpg://app:secret@localhost/app",
+    pool_size=10,
+    pool_pre_ping=True,
+)
+Session = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False,
+)
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    async with Session() as session:
+        yield session
+
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+class HeroBase(SQLModel):
+    name: str = Field(index=True, max_length=100)
+    age: int | None = Field(default=None, ge=0)
+
+
+class Hero(HeroBase, table=True):      # the table
+    id: int | None = Field(default=None, primary_key=True)
+
+
+class HeroCreate(HeroBase): ...         # request body
+
+
+class HeroUpdate(SQLModel):            # PATCH body
+    name: str | None = None
+    age: int | None = None
+
+
+class HeroPublic(HeroBase):            # response
+    id: int
+```
+
+| Need | Call |
+| :--- | :--- |
+| query | `rows = await session.exec(select(Hero).where(Hero.age > 30))` |
+| by primary key | `await session.get(Hero, hero_id)` |
+| insert | `session.add(obj)`, `await session.commit()`, `await session.refresh(obj)` |
+| partial update | `obj.sqlmodel_update(body.model_dump(exclude_unset=True))` |
+| delete | `await session.delete(obj)`, then commit |
+| create tables (dev) | `await conn.run_sync(SQLModel.metadata.create_all)` in lifespan |
+| migrations | `alembic init -t async migrations`, `alembic revision --autogenerate`, `alembic upgrade head` |
+
+SQLModel is SQLAlchemy 2 + Pydantic in one class; plain SQLAlchemy 2 (`DeclarativeBase`, `Mapped[...]`) with
+separate Pydantic schemas works the same way through the session dependency. Postgres itself is covered in
+[PostgreSQL](/databases/postgres/).
+
+## OpenAPI & docs
+
+```python
+app = FastAPI(
+    title="Notes API",
+    version="1.2.0",
+    summary="Personal notes service",
+    openapi_tags=[{"name": "notes", "description": "CRUD"}],
+    docs_url="/docs",             # None disables Swagger UI
+    redoc_url=None,
+    openapi_url="/openapi.json",  # None disables all docs
+    swagger_ui_parameters={"persistAuthorization": True},
+)
+
+
+@app.get(
+    "/notes/{note_id}",
+    tags=["notes"],
+    summary="Get one note",
+    response_description="The note",
+    responses={404: {"model": ErrorOut}},
+    operation_id="getNote",
+    deprecated=False,
+)
+async def get_note(note_id: int) -> NoteOut:
+    """Markdown docstring shows up as the description."""
+    ...
+```
+
+| Option | Effect |
+| :----- | :----- |
+| `include_in_schema=False` | hide a route |
+| `Field(examples=[...])`, `Body(openapi_examples={...})` | example payloads in `/docs` |
+| `generate_unique_id_function=lambda r: r.name` | clean operation ids for client generators |
+| `separate_input_output_schemas=False` | one schema per model instead of `-Input`/`-Output` |
+| `app.openapi()` | the schema as a dict; cache a customised copy in `app.openapi_schema` |
+| `root_path="/api"` | behind a proxy that strips a prefix |
+
+Generate a TypeScript client from `/openapi.json` with `bunx openapi-typescript` or `@hey-api/openapi-ts`.
+
+## Testing
+
+```sh
+uv add --dev pytest httpx
+uv run pytest -q
+```
+
+```python title="tests/test_items.py"
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+def test_health() -> None:
+    with TestClient(app) as client:     # runs lifespan
+        r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+```
+
+```python title="tests/test_async.py"
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.main import app
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_health_async() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test",
+    ) as ac:
+        r = await ac.get("/health")
+    assert r.status_code == 200
+```
+
+| Tool | Use |
+| :--- | :-- |
+| `TestClient(app)` | sync tests; the `with` form runs lifespan |
+| `AsyncClient(transport=ASGITransport(app))` | async tests that also await other things (DB checks) |
+| `app.dependency_overrides[dep] = fake` | swap auth, DB session, settings; `.clear()` afterwards |
+| `client.post(url, json=..., data=..., files=...)` | JSON, form, multipart |
+| `client.websocket_connect("/ws")` | WebSocket tests |
+
+Starlette 1.x prefers the `httpx2` fork for `TestClient` and warns when only `httpx` is installed; the API is
+the same. Python testing in general: [Testing](/python/engineering/testing/).
+
+## Deployment
+
+| Setup | Command |
+| :---- | :------ |
+| one process (containers, k8s) | `fastapi run app/main.py --port 8000` |
+| several workers on one box | `fastapi run --workers 4` (or `uvicorn app.main:app --workers 4`) |
+| gunicorn process manager | `uv add gunicorn uvicorn-worker`, then `gunicorn app.main:app -k uvicorn_worker.UvicornWorker -w 4` |
+| behind a proxy | `--proxy-headers --forwarded-allow-ips "*"`; `--root-path /api` for prefixes |
+
+In Kubernetes run **one** worker per container and scale replicas instead. Workers don't share memory: move
+caches and rate limits to Redis. Health endpoints should stay cheap and skip auth.
+
+```dockerfile title="Dockerfile"
+FROM python:3.14-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /bin/
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
+COPY app ./app
+RUN uv sync --locked --no-dev
+USER nobody
+EXPOSE 8000
+CMD ["/app/.venv/bin/fastapi", "run", "app/main.py", \
+     "--port", "8000"]
+```
+
+Use the exec form of `CMD` so uvicorn gets `SIGTERM` and shuts down gracefully. Multi-stage builds, cache
+mounts and non-root users are in [Dockerfile](/infrastructure/containers/dockerfile/).
+
+### FastAPI vs Hono
+
+| | FastAPI | [Hono](/typescript/backend/hono/) |
+| :- | :------ | :--- |
+| Runtime | ASGI server (uvicorn) | Bun, Workers, Deno, Node |
+| Validation | Pydantic from type hints | Zod / Valibot via `validator` middleware |
+| Dependency injection | `Depends`, per-request cache, `yield` teardown | middleware + `c.set` / `c.var` |
+| OpenAPI | built in, `/docs` | `@hono/zod-openapi` |
+| Typed client | generate from OpenAPI | `hc<AppType>` RPC, no codegen |
+| Blocking code | `def` endpoints run in a threadpool | avoid; offload to workers |
+| Testing | `TestClient`, `dependency_overrides` | `app.request()`, `testClient` |
+
+## Recipes
+
+### CRUD router
+Full create/read/update/delete over a SQLModel table with the session dependency.
+
+```python
+router = APIRouter(prefix="/heroes", tags=["heroes"])
+
+
+@router.post("/", status_code=201)
+async def create(
+    body: HeroCreate, s: SessionDep,
+) -> HeroPublic:
+    hero = Hero.model_validate(body)
+    s.add(hero)
+    await s.commit()
+    await s.refresh(hero)
+    return HeroPublic.model_validate(hero)
+
+
+async def get_or_404(hero_id: int, s: SessionDep) -> Hero:
+    if (hero := await s.get(Hero, hero_id)) is None:
+        raise HTTPException(404, "Hero not found")
+    return hero
+
+
+HeroDep = Annotated[Hero, Depends(get_or_404)]
+
+
+@router.get("/{hero_id}")
+async def read(hero: HeroDep) -> HeroPublic:
+    return HeroPublic.model_validate(hero)
+
+
+@router.patch("/{hero_id}")
+async def update(
+    hero: HeroDep, body: HeroUpdate, s: SessionDep,
+) -> HeroPublic:
+    hero.sqlmodel_update(body.model_dump(exclude_unset=True))
+    await s.commit()
+    await s.refresh(hero)
+    return HeroPublic.model_validate(hero)
+
+
+@router.delete("/{hero_id}", status_code=204)
+async def delete(hero: HeroDep, s: SessionDep) -> None:
+    await s.delete(hero)
+    await s.commit()
+```
+
+### Pagination params and a generic page
+Validated `limit`/`offset` from the query string and one typed envelope for every list endpoint.
+
+```python
+from typing import Annotated
+
+from fastapi import Query
+from pydantic import BaseModel, Field
+from sqlmodel import col, func, select
+
+
+class PageParams(BaseModel):
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
+class Page[T](BaseModel):
+    items: list[T]
+    total: int
+
+
+PageDep = Annotated[PageParams, Query()]
+
+
+@router.get("/")
+async def list_heroes(
+    p: PageDep, s: SessionDep,
+) -> Page[HeroPublic]:
+    total = (await s.exec(
+        select(func.count()).select_from(Hero))).one()
+    rows = await s.exec(select(Hero).order_by(col(Hero.id))
+                        .offset(p.offset).limit(p.limit))
+    items = [HeroPublic.model_validate(h) for h in rows]
+    return Page(items=items, total=total)
+```
+
+### Request ID and timing middleware
+Tag every request for log correlation and report how long it took.
+
+```python
+import time
+import uuid
+
+
+@app.middleware("http")
+async def request_context(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    rid = request.headers.get("x-request-id")
+    rid = rid or str(uuid.uuid4())
+    request.state.request_id = rid
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Request-ID"] = rid
+    response.headers["Server-Timing"] = f"app;dur={ms:.1f}"
+    return response
+```
+
+### Current user and role check
+Decode the bearer token once per request and gate routes by role.
+
+```python
+async def current_user(
+    token: Annotated[str, Depends(oauth2)],
+    db: DbDep, settings: SettingsDep,
+) -> User:
+    denied = HTTPException(401, "Invalid token",
+                           {"WWW-Authenticate": "Bearer"})
+    key = settings.jwt_secret.get_secret_value()
+    try:
+        claims = jwt.decode(token, key, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        raise denied from None
+    user = await db.user_by_email(claims.get("sub", ""))
+    if user is None or user.disabled:
+        raise denied
+    return user
+
+
+CurrentUser = Annotated[User, Depends(current_user)]
+
+
+def require_role(role: str) -> Callable[[User], User]:
+    def check(user: CurrentUser) -> User:
+        if role not in user.roles:
+            raise HTTPException(403, "Forbidden")
+        return user
+    return check
+
+
+@app.delete("/admin/cache", dependencies=[
+    Depends(require_role("admin"))])
+async def clear_cache() -> None: ...
+```
+
+### File upload
+Accept multipart uploads with a form field, a type check and a size cap.
+
+```python
+from fastapi import File, Form, UploadFile
+
+MAX_BYTES = 5 * 1024 * 1024
+
+
+@app.post("/avatars", status_code=201)
+async def upload_avatar(
+    file: Annotated[UploadFile, File()],
+    alt: Annotated[str, Form(max_length=200)] = "",
+) -> dict[str, object]:
+    if file.content_type not in {"image/png", "image/jpeg"}:
+        raise HTTPException(415, "PNG or JPEG only")
+    data = await file.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise HTTPException(413, "Max 5 MB")
+    name = file.filename or "upload"
+    return {"name": name, "size": len(data), "alt": alt}
+```
+
+`UploadFile` spools to disk above 1 MB; several files use `list[UploadFile]`.
+
+### Server-Sent Events
+Stream progress or LLM tokens to `EventSource` (FastAPI 0.135+); a plain generator without
+`response_class` streams JSON Lines instead.
+
+```python
+from collections.abc import AsyncIterable
+
+import anyio
+from fastapi.sse import EventSourceResponse, ServerSentEvent
+
+
+class Progress(BaseModel):
+    step: int
+    done: bool
+
+
+@app.get("/jobs/{job_id}/events",
+         response_class=EventSourceResponse)
+async def job_events(
+    job_id: str,
+    last_event_id: Annotated[int | None, Header()] = None,
+) -> AsyncIterable[ServerSentEvent]:
+    start = (last_event_id or 0) + 1
+    for step in range(start, 6):
+        await anyio.sleep(1)
+        yield ServerSentEvent(
+            data=Progress(step=step, done=step == 5),
+            event="progress", id=str(step),
+        )
+```
+
+FastAPI sends keep-alive pings every 15 s and sets `Cache-Control: no-cache` and `X-Accel-Buffering: no`.
+Other streams: `StreamingResponse(gen(), media_type=...)`. Client side: [Streaming](/typescript/backend/streaming/).
+
+### Override a dependency in tests
+Replace auth and the database session with fakes for a whole test module.
+
+```python title="tests/conftest.py"
+from collections.abc import Iterator
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.deps import current_user, get_session
+from app.main import app
+from app.models import User
+
+
+@pytest.fixture
+def client(session: FakeSession) -> Iterator[TestClient]:
+    app.dependency_overrides[current_user] = lambda: User(
+        id=1, email="t@example.com", roles=["admin"],
+    )
+    app.dependency_overrides[get_session] = lambda: session
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+```
+
+The override's own parameters are resolved as dependencies too, so an override can depend on other
+dependencies (or on a request header in the test).
+
+## References
+
+- [FastAPI docs](https://fastapi.tiangolo.com/): [tutorial](https://fastapi.tiangolo.com/tutorial/), [dependencies with yield](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/), [bigger applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/), [async](https://fastapi.tiangolo.com/async/)
+- FastAPI: [OAuth2 with JWT](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/), [Server-Sent Events](https://fastapi.tiangolo.com/tutorial/server-sent-events/), [settings](https://fastapi.tiangolo.com/advanced/settings/), [SQL databases](https://fastapi.tiangolo.com/tutorial/sql-databases/)
+- FastAPI: [testing](https://fastapi.tiangolo.com/tutorial/testing/), [async tests](https://fastapi.tiangolo.com/advanced/async-tests/), [testing dependencies](https://fastapi.tiangolo.com/advanced/testing-dependencies/), [Docker](https://fastapi.tiangolo.com/deployment/docker/), [release notes](https://fastapi.tiangolo.com/release-notes/)
+- [Pydantic docs](https://docs.pydantic.dev/latest/): [models](https://docs.pydantic.dev/latest/concepts/models/), [validators](https://docs.pydantic.dev/latest/concepts/validators/), [fields](https://docs.pydantic.dev/latest/concepts/fields/), [settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
+- [Starlette](https://starlette.dev/): middleware, responses, `TestClient`
+- [SQLModel](https://sqlmodel.tiangolo.com/) and [SQLAlchemy 2 asyncio](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html), [Alembic](https://alembic.sqlalchemy.org/)
+- [Uvicorn: deployment](https://uvicorn.dev/deployment/)
+- [PyJWT](https://pyjwt.readthedocs.io/) and [pwdlib](https://frankie567.github.io/pwdlib/)
+- [MDN: Server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events), [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS)

@@ -1,0 +1,808 @@
+---
+title: OOP
+date: 2026-09-25
+order: 4
+---
+
+Classes, the data model (dunder methods), properties, inheritance and the MRO, ABCs versus
+`Protocol`, dataclasses, slots, enums, typed records and generic classes in Python 3.14.
+The TypeScript take is in [Object-oriented programming](/typescript/language/oop/); pattern
+catalogues are in [Design patterns](/python/engineering/design-patterns/).
+
+## Classes
+
+```python title="account.py"
+from typing import ClassVar, Self
+
+
+class Account:
+    rate: ClassVar[float] = 0.02   # class attribute
+    count = 0                      # also shared
+
+    def __init__(self, owner: str, balance: float = 0):
+        self.owner = owner         # instance attributes
+        self.balance = balance
+        Account.count += 1
+
+    def deposit(self, amount: float) -> Self:
+        self.balance += amount
+        return self                # enables chaining
+
+    def transfer(self, to: Account, amt: float) -> None:
+        # 3.14: annotations are lazy, so `Account`
+        # needs no quotes inside its own body
+        self.balance -= amt
+        to.deposit(amt)
+
+
+acc = Account("zach", 50).deposit(25)
+```
+
+| Member | Syntax | Notes |
+| :----- | :----- | :---- |
+| Instance attribute | `self.x = v` in `__init__` | per object, stored in `obj.__dict__` |
+| Class attribute | `x = v` in the class body | shared; `obj.x` falls back to it on lookup |
+| Annotation only | `x: int` | declares a type, creates nothing (dataclasses read it) |
+| `ClassVar` | `x: ClassVar[int] = 0` | tells checkers and dataclasses it is class-level |
+| Method | `def m(self, ...)` | plain function; `obj.m` is a bound method |
+| Class method | `@classmethod def m(cls)` | gets the class; alternative constructors |
+| Static method | `@staticmethod def m()` | no `self`/`cls`; a namespaced function |
+| Property | `@property def x(self)` | computed attribute, optional setter |
+| Protected by convention | `_x` | "internal"; nothing enforces it |
+| Name-mangled | `__x` | stored as `_Cls__x`; avoids subclass clashes, not privacy |
+| Constructor | `__new__` then `__init__` | `__init__` initialises; returns `None` |
+
+`self` is just the first positional parameter: `obj.m(1)` is `type(obj).m(obj, 1)`. Nothing
+is private; there are no access modifiers.
+
+### Class attributes and mutation
+
+```python
+class Bad:
+    tags: list[str] = []            # ONE list for all
+
+a, b = Bad(), Bad()
+a.tags.append("x")
+b.tags                               # ['x'] (shared!)
+
+class Good:
+    def __init__(self) -> None:
+        self.tags: list[str] = []    # one per instance
+```
+
+Assigning `obj.x = v` always creates an instance attribute that shadows the class one;
+mutating through `obj.x.append` changes the shared object.
+
+## Data model (dunder methods)
+
+Special methods hook your class into syntax and built-ins. Look-ups go through the type,
+not the instance, so assign them in the class body.
+
+| Method | Triggered by | Notes |
+| :----- | :----------- | :---- |
+| `__repr__` | `repr(x)`, REPL, `f"{x!r}"` | unambiguous; ideally looks like the constructor call |
+| `__str__` | `str(x)`, `print`, `f"{x}"` | falls back to `__repr__` |
+| `__format__` | `f"{x:spec}"`, `format()` | parse your own format spec |
+| `__eq__` | `==`, `!=` | return `NotImplemented` for foreign types; defining it sets `__hash__ = None` |
+| `__hash__` | `hash()`, dict keys, sets | equal objects must hash equal; only for immutable values |
+| `__lt__` `__le__` `__gt__` `__ge__` | `<`, `<=`, `>`, `>=`, `sorted` | `@functools.total_ordering` derives the rest from `__eq__` + one |
+| `__bool__` | `if x`, `bool(x)` | falls back to `__len__`, then `True` |
+| `__len__` | `len(x)` | non-negative `int` |
+| `__iter__` | `for`, `list(x)`, unpacking | return an iterator; a generator method is easiest |
+| `__next__` | `next(it)` | raise `StopIteration` when done |
+| `__getitem__` | `x[k]`, `x[a:b]` | receives a `slice` for slicing |
+| `__setitem__` / `__delitem__` | `x[k] = v`, `del x[k]` | mutable containers |
+| `__contains__` | `k in x` | falls back to iterating |
+| `__call__` | `x(...)` | instances behave like functions |
+| `__enter__` / `__exit__` | `with x as y:` | a truthy `__exit__` return swallows the exception |
+| `__aenter__` / `__aexit__` | `async with` | async context managers |
+| `__add__` / `__radd__` / `__iadd__` | `a + b`, `b + a`, `a += b` | same trio for `-`, `*`, `@`, `/`, `\|`, … |
+| `__getattr__` | failed attribute look-up | fallback only (`__getattribute__` sees every access) |
+| `__init_subclass__` | a subclass being defined | registries, validation of subclasses |
+| `__set_name__` | descriptor assigned in a class body | learns its attribute name |
+| `__class_getitem__` | `Cls[int]` | how generics subscript |
+| `__replace__` | `copy.replace(x, **kw)` | 3.13+; dataclasses and namedtuples have it |
+
+```python title="vector.py"
+from collections.abc import Iterator
+from functools import total_ordering
+from math import hypot
+
+
+@total_ordering
+class Vec:
+    __match_args__ = ("x", "y")
+
+    def __init__(self, x: float, y: float) -> None:
+        self.x, self.y = x, y
+
+    def __repr__(self) -> str:
+        return f"Vec({self.x!r}, {self.y!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Vec):
+            return NotImplemented
+        return (self.x, self.y) == (other.x, other.y)
+
+    def __hash__(self) -> int:
+        return hash((self.x, self.y))
+
+    def __lt__(self, other: Vec) -> bool:
+        return abs(self) < abs(other)
+
+    def __abs__(self) -> float:
+        return hypot(self.x, self.y)
+
+    def __add__(self, other: Vec) -> Vec:
+        return Vec(self.x + other.x, self.y + other.y)
+
+    def __iter__(self) -> Iterator[float]:
+        yield self.x
+        yield self.y
+
+
+x, y = Vec(1, 2) + Vec(2, 2)      # __add__, __iter__
+sorted([Vec(3, 4), Vec(1, 0)])    # __lt__
+Vec(1, 1) >= Vec(0, 1)            # from total_ordering
+```
+
+<Note kind="tip">Most of this is boilerplate that `@dataclass(frozen=True, order=True)`
+writes for you. Hand-write dunders when the semantics differ from "compare all fields".</Note>
+
+## Properties, class & static methods
+
+```python
+from functools import cached_property
+from typing import Self
+
+
+class Temperature:
+    def __init__(self, celsius: float) -> None:
+        self._c = celsius
+
+    @property
+    def fahrenheit(self) -> float:       # t.fahrenheit
+        return self._c * 1.8 + 32
+
+    @fahrenheit.setter
+    def fahrenheit(self, f: float) -> None:
+        self._c = (f - 32) / 1.8
+
+    @cached_property
+    def label(self) -> str:              # computed once
+        return f"{self._c:.1f}°C"
+
+    @classmethod
+    def from_kelvin(cls, k: float) -> Self:
+        return cls(k - 273.15)           # subclass-aware
+
+    @staticmethod
+    def valid(c: float) -> bool:
+        return c >= -273.15
+```
+
+| Decorator | First arg | Use for |
+| :-------- | :-------- | :------ |
+| `@property` | `self` | read-only computed attribute; add `.setter` / `.deleter` |
+| `@functools.cached_property` | `self` | expensive value computed on first access, stored in `__dict__` (not with `__slots__`) |
+| `@classmethod` | `cls` | alternative constructors (`from_json`), factory hooks that respect subclasses |
+| `@staticmethod` | none | helper that belongs with the class but needs no state; a module function is often better |
+
+Start with a plain attribute; switch it to a `@property` later without changing callers.
+There is no need for Java-style `get_x()` methods.
+
+## Inheritance, `super()` & the MRO
+
+```python
+from typing import override
+
+
+class Animal:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def speak(self) -> str:
+        return f"{self.name} makes a sound"
+
+
+class Dog(Animal):
+    def __init__(self, name: str, breed: str) -> None:
+        super().__init__(name)        # call the parent
+        self.breed = breed
+
+    @override                         # checker verifies
+    def speak(self) -> str:
+        return f"{super().speak()}: woof"
+
+
+isinstance(Dog("Rex", "lab"), Animal)  # True
+issubclass(Dog, Animal)                # True
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Multiple inheritance | `class C(A, B)` is allowed; attribute look-up follows the MRO |
+| `super()` | "next class in the MRO of `type(self)`", not "my parent" |
+| Parent `__init__` | never called automatically; call `super().__init__(...)` yourself |
+| `@typing.override` | 3.12+; checkers error if nothing in a base is overridden |
+| `@typing.final` | on a class or method: checkers forbid subclassing or overriding |
+| Built-ins | subclass `dict`/`list` only for small tweaks; `collections.UserDict` or composition otherwise |
+
+### C3 linearisation (MRO)
+
+The MRO lists a class, then its bases left to right, keeping every class before its own
+bases. Each class appears once, so cooperative `super()` calls reach every class exactly once.
+
+```python
+class A:
+    def hi(self) -> str:
+        return "A"
+
+class B(A):
+    def hi(self) -> str:
+        return "B>" + super().hi()
+
+class C(A):
+    def hi(self) -> str:
+        return "C>" + super().hi()
+
+class D(B, C):
+    def hi(self) -> str:
+        return "D>" + super().hi()
+
+D().hi()                          # 'D>B>C>A'
+[k.__name__ for k in D.__mro__]
+# ['D', 'B', 'C', 'A', 'object']
+```
+
+Cooperative classes take `**kwargs` and forward what they don't use to `super().__init__`.
+An inconsistent order such as `class E(A, B)` where `B` subclasses `A` raises `TypeError`.
+
+### Mixins
+
+Small classes that add one capability and hold no `__init__` state, listed **before** the
+main base: `class Api(JsonMixin, LoggingMixin, BaseHandler)`. Prefer composition once a mixin
+needs its own state.
+
+## ABCs vs `Protocol`
+
+```python
+from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
+
+
+class Shape(ABC):                 # nominal: must subclass
+    @abstractmethod
+    def area(self) -> float: ...
+
+    def describe(self) -> str:    # shared implementation
+        return f"area {self.area():.2f}"
+
+
+class Square(Shape):
+    def __init__(self, side: float) -> None:
+        self.side = side
+
+    def area(self) -> float:
+        return self.side**2
+
+
+@runtime_checkable
+class SupportsClose(Protocol):    # structural, like a
+    def close(self) -> None: ...  # TS interface
+
+
+class Conn:                       # no base class needed
+    def close(self) -> None:
+        pass
+
+
+def shutdown(r: SupportsClose) -> None:
+    r.close()
+
+
+shutdown(Conn())                         # type-checks
+isinstance(Conn(), SupportsClose)        # True
+```
+
+| | `abc.ABC` + `@abstractmethod` | `typing.Protocol` |
+| :- | :---------------------------- | :---------------- |
+| Typing | nominal: must inherit | structural: any matching shape |
+| Enforced | at runtime: `TypeError` on instantiating with missing methods | by the type checker only |
+| Shared code | yes, concrete methods and `__init__` | possible, but only for explicit subclasses |
+| `isinstance` | yes | only with `@runtime_checkable` (checks names, not signatures) |
+| Third-party classes | need `Shape.register(Cls)` | fit automatically |
+| TS analogue | `abstract class` | `interface` |
+| Reach for it when | a family shares code | describing what a function needs from its argument |
+
+The standard library ships ready-made ABCs in `collections.abc` (`Iterable`, `Mapping`,
+`Sequence`, `Callable`, …): subclass `Mapping` and implement three methods to get the rest.
+
+## Dataclasses
+
+```python
+from dataclasses import (
+    KW_ONLY, InitVar, asdict, dataclass, field, replace,
+)
+
+
+@dataclass(slots=True)
+class Order:
+    id: str
+    items: list[str] = field(default_factory=list)
+    _: KW_ONLY                        # fields below: kw-only
+    net: float = 0.0
+    note: str = field(default="", repr=False)
+    tax: InitVar[float] = 0.2         # init-only, not stored
+    gross: float = field(init=False)  # computed
+
+    def __post_init__(self, tax: float) -> None:
+        if self.net < 0:
+            raise ValueError("net must be >= 0")
+        self.gross = round(self.net * (1 + tax), 2)
+
+
+o = Order("o1", ["pen"], net=10)
+o  # Order(id='o1', items=['pen'], net=10, gross=12.0)
+asdict(o)            # {'id': 'o1', 'items': ['pen'], ...}
+replace(o, id="o2")  # new copy; reruns __post_init__
+```
+
+| `@dataclass(...)` option | Default | Effect |
+| :----------------------- | :------ | :----- |
+| `init` / `repr` / `eq` | `True` | generate `__init__`, `__repr__`, `__eq__` |
+| `order` | `False` | `__lt__` etc., comparing fields as tuples |
+| `frozen` | `False` | assignment raises `FrozenInstanceError`; hashable |
+| `slots` | `False` | generate `__slots__`: smaller, faster, no new attributes |
+| `kw_only` | `False` | every field keyword-only (`KW_ONLY` marker does it per field) |
+| `unsafe_hash` | `False` | force a `__hash__` on a mutable class |
+| `match_args` | `True` | `__match_args__` for positional `case Order(id)` patterns |
+| `weakref_slot` | `False` | add `__weakref__` when `slots=True` |
+
+| `field(...)` argument | Use |
+| :-------------------- | :-- |
+| `default_factory=list` | fresh mutable default per instance (a bare `[]` is rejected) |
+| `init=False` | computed in `__post_init__`, not a constructor argument |
+| `repr=False` / `compare=False` | hide secrets from `repr`, skip in `==` and ordering |
+| `kw_only=True` | this field only |
+| `metadata={...}` / `doc="..."` | free-form data for libraries; `doc` is new in 3.14 |
+
+### Frozen dataclasses
+
+```python
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True, slots=True)
+class Slug:
+    raw: str
+    value: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        clean = self.raw.strip().lower().replace(" ", "-")
+        # frozen: bypass __setattr__ once, in init only
+        object.__setattr__(self, "value", clean)
+
+
+s = Slug(" Hello World ")
+s.value                    # 'hello-world'
+{s}                        # hashable: usable in sets
+```
+
+`frozen` stops rebinding fields, not mutation of a list inside one: use `tuple` and
+`frozenset` fields for deep immutability. Need validation and parsing of untrusted input?
+Use Pydantic; dataclasses do no type checking at runtime.
+
+## `__slots__` & descriptors
+
+### `__slots__`
+
+```python
+class Point:
+    __slots__ = ("x", "y")        # no per-instance __dict__
+
+    def __init__(self, x: float, y: float) -> None:
+        self.x, self.y = x, y
+
+
+p = Point(1, 2)
+# p.z = 3  -> AttributeError: no attribute 'z'
+```
+
+| Effect | Detail |
+| :----- | :----- |
+| Memory | no `__dict__` per instance: large savings with millions of objects |
+| Speed | slightly faster attribute access |
+| Typos | assigning an undeclared attribute raises `AttributeError` |
+| Inheritance | every class in the chain needs `__slots__`, or instances regain a `__dict__` |
+| Costs | no `cached_property`, no weak references unless `"__weakref__"` is listed |
+
+Prefer `@dataclass(slots=True)` to hand-written slots.
+
+### Descriptors
+
+An object with `__get__` / `__set__` stored as a class attribute controls access to that
+attribute on every instance. `property`, `classmethod`, `staticmethod` and methods themselves
+are descriptors.
+
+```python
+class Positive:
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.attr = "_" + name        # 'price' -> '_price'
+
+    def __get__(self, obj: object, owner: type) -> float:
+        value: float = getattr(obj, self.attr)
+        return value
+
+    def __set__(self, obj: object, value: float) -> None:
+        if value <= 0:
+            raise ValueError(f"{self.attr[1:]} must be > 0")
+        setattr(obj, self.attr, value)
+
+
+class Product:
+    price = Positive()                # reusable validation
+    qty = Positive()
+
+    def __init__(self, price: float, qty: int) -> None:
+        self.price, self.qty = price, qty
+
+
+Product(9.99, 2)
+# Product(0, 1) -> ValueError: price must be > 0
+```
+
+## Enums
+
+```python
+from enum import Enum, Flag, StrEnum, auto
+
+
+class Status(StrEnum):            # members are str
+    DRAFT = auto()                # value 'draft'
+    PUBLISHED = auto()
+
+
+class Color(Enum):
+    RED = 1
+    GREEN = 2
+
+    @property
+    def hex(self) -> str:         # enums can have methods
+        return {1: "#f00", 2: "#0f0"}[self.value]
+
+
+class Perm(Flag):                 # combinable bit flags
+    READ = auto()                 # 1
+    WRITE = auto()                # 2
+    EXEC = auto()                 # 4
+
+
+rw = Perm.READ | Perm.WRITE
+Perm.WRITE in rw                  # True
+Status("draft") is Status.DRAFT   # by value
+Color["RED"].hex                  # by name: '#f00'
+[c.name for c in Color]           # ['RED', 'GREEN']
+f"{Status.DRAFT}"                 # 'draft' (StrEnum)
+```
+
+| Class | Members are | Use for |
+| :---- | :---------- | :------ |
+| `Enum` | unique objects, compared by identity | closed sets of states; `Color.RED != 1` |
+| `StrEnum` | `str` subclasses; `auto()` gives the lower-case name | JSON, DB columns, CLI choices |
+| `IntEnum` | `int` subclasses | interop with numeric codes (HTTP status is `http.HTTPStatus`) |
+| `Flag` / `IntFlag` | bit flags supporting `\|`, `&`, `~`, `in` | permission sets, options |
+
+| Tool | Does |
+| :--- | :--- |
+| `auto()` | next value (1, 2, … for `Enum`; powers of two for `Flag`) |
+| `@enum.unique` | error on aliases (two names, one value) |
+| `@enum.verify(...)` | stricter checks: `UNIQUE`, `CONTINUOUS`, `NAMED_FLAGS` |
+| `_missing_(cls, value)` | classmethod hook for lenient look-up (e.g. case-insensitive) |
+| `match status:` / `case Status.DRAFT:` | exhaustive branching; checkers flag missing cases with `assert_never` |
+
+## `NamedTuple` & `TypedDict`
+
+```python
+from typing import NamedTuple, NotRequired, ReadOnly
+from typing import TypedDict
+
+
+class Point(NamedTuple):          # immutable tuple
+    x: float
+    y: float = 0.0
+
+
+p = Point(1.5)
+x, y = p                          # unpacks like a tuple
+p._replace(y=2)                   # Point(x=1.5, y=2)
+p._asdict()                       # {'x': 1.5, 'y': 0.0}
+
+
+class UserDict(TypedDict):        # a plain dict at runtime
+    id: ReadOnly[int]             # 3.13+
+    name: str
+    email: NotRequired[str]       # key may be missing
+
+
+u: UserDict = {"id": 1, "name": "Ada"}
+u["name"] = "Ada L."              # ok
+```
+
+| Type | Runtime object | Mutable | Best for |
+| :--- | :------------- | :------ | :------- |
+| `@dataclass` | your class | yes (or `frozen`) | domain objects with behaviour |
+| `NamedTuple` | `tuple` subclass | no | small records, returning several values, CSV rows |
+| `TypedDict` | `dict` | yes | typing JSON and `**kwargs` that stay dicts |
+| Pydantic `BaseModel` | your class | yes | validating untrusted input (see [FastAPI](/python/fastapi/)) |
+| Plain class | your class | yes | invariants, custom dunders, encapsulated state |
+
+`TypedDict` is TS's object type: checked statically, never validated at runtime.
+`total=False` makes every key optional; `Required[...]` opts single keys back in.
+
+## Generic classes & `Self`
+
+```python
+from collections.abc import Callable
+from typing import Protocol, Self
+
+
+class Box[T]:                         # PEP 695 (3.12+)
+    def __init__(self, value: T) -> None:
+        self.value = value
+
+    def map[U](self, f: Callable[[T], U]) -> Box[U]:
+        return Box(f(self.value))
+
+
+class HasId(Protocol):
+    id: str
+
+
+class Repo[T: HasId]:                 # upper bound
+    def __init__(self) -> None:
+        self._rows: dict[str, T] = {}
+
+    def add(self, row: T) -> Self:
+        self._rows[row.id] = row
+        return self
+
+
+class Cache[K, V = str]:              # default (3.13+)
+    ...
+
+
+type Pair[T] = tuple[T, T]            # generic alias
+Box(2).map(str).value                 # checker: str
+```
+
+| Feature | Syntax |
+| :------ | :----- |
+| Type parameter | `class Box[T]:` |
+| Upper bound | `class Repo[T: HasId]:` |
+| Constrained | `class Num[T: (int, float)]:` (exactly one of them) |
+| Default | `class Cache[V = str]:` |
+| Variadic / params | `class Shape[*Ts]:`, `class Hook[**P]:` |
+| Variance | inferred from usage; no `in`/`out` annotations |
+| Pre-3.12 form | `T = TypeVar("T")` + `class Box(Generic[T])` |
+| `Self` | return type of fluent methods and `@classmethod` constructors; subclasses keep their type |
+
+Type parameters exist only for checkers (mypy, pyright, ty); `Box[int](1)` is still accepted
+at runtime and nothing is enforced.
+
+## TypeScript ↔ Python
+
+| TypeScript | Python |
+| :--------- | :----- |
+| `class A { constructor(x) {} }` | `class A:` + `def __init__(self, x):` |
+| `this` (implicit) | `self` (explicit first parameter) |
+| `private` / `#x` | `_x` convention / `__x` name mangling |
+| `readonly x` | `@property` without setter, or `@dataclass(frozen=True)` |
+| `static x` / `static m()` | class attribute / `@classmethod` or `@staticmethod` |
+| `get x()` / `set x(v)` | `@property` / `@x.setter` |
+| `extends Base` (single) | `class A(Base):` (multiple allowed, MRO) |
+| `super(x)` / `super.m()` | `super().__init__(x)` / `super().m()` |
+| `override` keyword | `@typing.override` |
+| `abstract class` | `class A(ABC)` + `@abstractmethod` |
+| `interface` (structural) | `typing.Protocol` |
+| `implements I` | nothing needed; optionally subclass the `Protocol` |
+| `class Box<T>` | `class Box[T]:` |
+| `T extends U` | `T: U` |
+| `this` return type | `typing.Self` |
+| `enum` / string-literal union | `Enum` / `StrEnum` / `Literal["a", "b"]` |
+| object type `{ a: string }` | `TypedDict` |
+| `[x, y]` tuple type | `tuple[int, str]` / `NamedTuple` |
+| `toString()` | `__str__` / `__repr__` |
+| `[Symbol.iterator]()` | `__iter__` |
+| `using` + `[Symbol.dispose]()` | `with` + `__enter__` / `__exit__` |
+| `@decorator` (TC39) | `@decorator` (any callable; stable for decades) |
+| `instanceof` | `isinstance(x, Cls)` |
+
+## Recipes
+
+### Value object with a frozen dataclass
+
+When equality by content and immutability matter (money, email, ranges).
+
+```python
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Literal
+
+type Currency = Literal["EUR", "GBP", "USD"]
+CENT = Decimal("0.01")
+
+@dataclass(frozen=True, slots=True, order=True)
+class Money:
+    amount: Decimal
+    currency: Currency
+
+    def __post_init__(self) -> None:
+        if self.amount != self.amount.quantize(CENT):
+            raise ValueError("max 2 decimal places")
+
+    def __add__(self, other: Money) -> Money:
+        if other.currency != self.currency:
+            raise TypeError("currency mismatch")
+        total = self.amount + other.amount
+        return Money(total, self.currency)
+
+a = Money(Decimal("0.10"), "EUR")
+b = Money(Decimal("0.20"), "EUR")
+assert a + b == Money(Decimal("0.30"), "EUR")
+```
+
+### Base class with `super()` and overrides
+
+When subclasses share construction and behaviour but specialise one step.
+
+```python
+from typing import override
+
+class Notifier:
+    def __init__(self, sender: str) -> None:
+        self.sender = sender
+
+    def format(self, msg: str) -> str:
+        return f"[{self.sender}] {msg}"
+
+    def send(self, msg: str) -> str:
+        return self.format(msg)
+
+class SlackNotifier(Notifier):
+    def __init__(self, sender: str, channel: str) -> None:
+        super().__init__(sender)
+        self.channel = channel
+
+    @override
+    def format(self, msg: str) -> str:
+        return f"#{self.channel} {super().format(msg)}"
+
+SlackNotifier("ci", "deploys").send("green")
+# '#deploys [ci] green'
+```
+
+### Implementing a `Protocol`
+
+When a function should accept anything with the right methods, without a shared base.
+
+```python
+from typing import Protocol
+
+class Storage(Protocol):
+    def get(self, key: str) -> bytes | None: ...
+    def put(self, key: str, data: bytes) -> None: ...
+
+class MemoryStorage:                  # no inheritance
+    def __init__(self) -> None:
+        self._d: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self._d.get(key)
+
+    def put(self, key: str, data: bytes) -> None:
+        self._d[key] = data
+
+def cache_page(s: Storage, url: str, html: str) -> None:
+    s.put(url, html.encode())
+
+cache_page(MemoryStorage(), "/", "<h1>hi</h1>")
+```
+
+### Context-manager class
+
+When a resource must be released on every exit path; `contextlib.contextmanager` is the
+shorter form for simple cases.
+
+```python
+import time
+from types import TracebackType
+from typing import Self
+
+class Timer:
+    def __enter__(self) -> Self:
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:                        # None: don't swallow
+        self.elapsed = time.perf_counter() - self.start
+
+with Timer() as t:
+    sum(range(1_000_000))
+print(f"{t.elapsed * 1000:.1f} ms")
+```
+
+### Custom exception hierarchy
+
+When callers branch on failure kind, e.g. to map domain errors to HTTP status codes.
+
+```python
+class AppError(Exception):
+    status = 500
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+class NotFound(AppError):
+    status = 404
+
+class Conflict(AppError):
+    status = 409
+
+def to_status(err: Exception) -> int:
+    return err.status if isinstance(err, AppError) else 500
+
+try:
+    raise NotFound("user 7 not found", code="USER_404")
+except AppError as e:
+    status = to_status(e)             # 404
+```
+
+Chain causes with `raise NotFound(...) from err`; add context with `e.add_note("...")`.
+
+### Registry via `__init_subclass__`
+
+When defining a subclass should be enough to register it (parsers, commands, plugins).
+
+```python
+from typing import ClassVar
+
+class Exporter:
+    registry: ClassVar[dict[str, type[Exporter]]] = {}
+    ext: ClassVar[str]
+
+    def __init_subclass__(
+        cls, *, ext: str, **kw: object
+    ) -> None:
+        super().__init_subclass__(**kw)
+        cls.ext = ext
+        Exporter.registry[ext] = cls
+
+    def export(self, rows: list[dict[str, str]]) -> str:
+        raise NotImplementedError
+
+class CsvExporter(Exporter, ext="csv"):
+    def export(self, rows: list[dict[str, str]]) -> str:
+        return "\n".join(",".join(r.values()) for r in rows)
+
+Exporter.registry["csv"]().export([{"a": "1"}])  # '1'
+```
+
+## References
+
+- [Python tutorial: Classes](https://docs.python.org/3/tutorial/classes.html): scopes, inheritance, iterators, private names
+- [Python reference: Data model](https://docs.python.org/3/reference/datamodel.html): every special method and when it's called
+- [`dataclasses`](https://docs.python.org/3/library/dataclasses.html): options, `field()`, `__post_init__`, `replace`
+- [`enum`](https://docs.python.org/3/library/enum.html) and the [Enum HOWTO](https://docs.python.org/3/howto/enum.html)
+- [`abc`](https://docs.python.org/3/library/abc.html) and [`collections.abc`](https://docs.python.org/3/library/collections.abc.html): abstract base classes and mixin methods
+- [`typing`](https://docs.python.org/3/library/typing.html): `Protocol`, `Self`, `override`, `TypedDict`, `NamedTuple`
+- [Descriptor HOWTO](https://docs.python.org/3/howto/descriptor.html): how attribute look-up really works
+- [The Python MRO](https://docs.python.org/3/howto/mro.html): the C3 algorithm, worked through
+- [What's new in Python 3.14](https://docs.python.org/3/whatsnew/3.14.html): deferred annotations (PEP 649)
+- [Typing spec: Protocols](https://typing.python.org/en/latest/spec/protocol.html) and [PEP 695](https://peps.python.org/pep-0695/): generics syntax

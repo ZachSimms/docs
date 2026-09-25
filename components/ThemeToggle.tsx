@@ -1,82 +1,18 @@
 /**
  * @file Light/dark theme switch.
  *
- * Client component. Reads the active theme from `localStorage` and the OS
- * preference through `useSyncExternalStore`, writes the user's choice back to
- * `localStorage` and `<html data-theme>`, and renders a monochrome sun or
+ * Client component. Reads the active theme through `useTheme` (localStorage
+ * and the OS preference), writes the user's choice back with `applyTheme`, and renders a monochrome sun or
  * moon pinned to the top of the viewport. Pressing `d` anywhere (outside a
  * text field) toggles too. The rules live in `lib/theme.ts`.
  */
 
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
+import { applyTheme, currentTheme, useTheme } from "@/components/useTheme";
 import { THEME_KEY, isPlainKey } from "@/lib/keys";
-import { STORAGE_KEY, THEME_ATTRIBUTE, nextTheme, resolveTheme, type Theme } from "@/lib/theme";
-
-/** Window event fired after {@link applyTheme}, so every subscriber re-reads the theme. */
-const CHANGE_EVENT = "themechange";
-/** Media query for the OS dark-mode preference. */
-const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-/** The raw stored value, or `null` when storage is empty or inaccessible. */
-function readStored(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** Whether the OS currently prefers dark; `false` where `matchMedia` is unavailable. */
-function prefersDark(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches;
-}
-
-/**
- * `useSyncExternalStore` subscription: re-render on OS preference changes,
- * on {@link applyTheme} in this tab, and on `storage` events from other tabs.
- *
- * @returns The unsubscribe function.
- */
-function subscribe(onChange: () => void): () => void {
-  const media = typeof window.matchMedia === "function" ? window.matchMedia(DARK_QUERY) : undefined;
-  media?.addEventListener("change", onChange);
-  window.addEventListener(CHANGE_EVENT, onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    media?.removeEventListener("change", onChange);
-    window.removeEventListener(CHANGE_EVENT, onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-/** Client snapshot: the theme currently in effect. */
-function getSnapshot(): Theme {
-  return resolveTheme(readStored(), prefersDark());
-}
-
-/** Server snapshot: unknown, so SSR and the first client render agree on "no icon". */
-function getServerSnapshot(): Theme | null {
-  return null;
-}
-
-/**
- * Make `theme` the active theme: persist it, set `<html data-theme>` so the
- * CSS switches immediately, and notify subscribers.
- *
- * Persisting can fail (private mode, storage disabled); the theme still
- * applies for the current page in that case.
- */
-export function applyTheme(theme: Theme): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // Private mode or storage disabled: the choice still applies for this page.
-  }
-  document.documentElement.setAttribute(THEME_ATTRIBUTE, theme);
-  window.dispatchEvent(new Event(CHANGE_EVENT));
-}
+import { nextTheme } from "@/lib/theme";
 
 /** Crescent moon, filled with `currentColor`; shown in light mode ("switch to dark"). */
 function MoonIcon() {
@@ -117,18 +53,18 @@ function SunIcon() {
  * never guesses the theme.
  */
 export function ThemeToggle() {
-  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const theme = useTheme();
   const target = theme === null ? null : nextTheme(theme);
   const title = target ? `Switch to ${target} mode` : "Toggle theme";
 
-  const onClick = () => applyTheme(nextTheme(theme ?? getSnapshot()));
+  const onClick = () => applyTheme(nextTheme(theme ?? currentTheme()));
 
   // `d` toggles from anywhere except text fields and modifier chords.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!isPlainKey(event, THEME_KEY)) return;
       event.preventDefault();
-      applyTheme(nextTheme(getSnapshot()));
+      applyTheme(nextTheme(currentTheme()));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

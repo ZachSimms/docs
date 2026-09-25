@@ -1,0 +1,574 @@
+---
+title: Physics fundamentals
+date: 2026-09-25
+order: 1
+---
+
+Formulas for first-year physics in one place: mechanics, waves, fluids, heat, electromagnetism,
+optics and pointers into modern physics, with SI units throughout. Constant values are in
+[constants, units and conversions](/maths/constants-units-conversions/), symbols in
+[notation](/maths/notation/), and the algebra in [math fundamentals](/maths/math-fundamentals/).
+
+## Units and dimensions
+
+Every equation must balance in dimensions as well as numbers. Write the dimension of a quantity
+as $[\,\cdot\,]$ built from $\mathsf{M}$ (mass), $\mathsf{L}$ (length), $\mathsf{T}$ (time),
+$\mathsf{I}$ (current) and $\Theta$ (temperature). The SI base units and derived-unit
+definitions are on the [constants and units](/maths/constants-units-conversions/) sheet.
+
+| Quantity       | Dimension                                   | SI unit          |
+| :------------- | :------------------------------------------ | :--------------- |
+| velocity       | $\mathsf{L\,T^{-1}}$                        | m/s              |
+| acceleration   | $\mathsf{L\,T^{-2}}$                        | m/s²             |
+| force          | $\mathsf{M\,L\,T^{-2}}$                     | N = kg·m/s²      |
+| energy, work   | $\mathsf{M\,L^2\,T^{-2}}$                   | J = N·m          |
+| power          | $\mathsf{M\,L^2\,T^{-3}}$                   | W = J/s          |
+| pressure       | $\mathsf{M\,L^{-1}\,T^{-2}}$                | Pa = N/m²        |
+| momentum       | $\mathsf{M\,L\,T^{-1}}$                     | kg·m/s = N·s     |
+| charge         | $\mathsf{I\,T}$                             | C = A·s          |
+| voltage        | $\mathsf{M\,L^2\,T^{-3}\,I^{-1}}$           | V = J/C          |
+| resistance     | $\mathsf{M\,L^2\,T^{-3}\,I^{-2}}$           | Ω = V/A          |
+| magnetic field | $\mathsf{M\,T^{-2}\,I^{-1}}$                | T = N/(A·m)      |
+| angle, strain  | dimensionless                               | rad, none        |
+
+| Check                      | Rule                                                              |
+| :------------------------- | :---------------------------------------------------------------- |
+| adding, subtracting, $=$   | every term has the same dimension                                 |
+| inside $\sin$, $e^x$, $\ln$ | argument is dimensionless ($\omega t$, $t/\tau$, $x/x_0$)        |
+| guessing a law             | $T = C\,L^a g^b$ with $[T] = \mathsf{T}$ forces $a = \tfrac12$, $b = -\tfrac12$: $T \propto \sqrt{L/g}$ |
+| units in calculations      | convert to SI first (km/h to m/s: divide by $3.6$)                |
+
+### Vectors quickly
+
+| Operation               | Formula                                                                      |
+| :---------------------- | :--------------------------------------------------------------------------- |
+| components from polar   | $v_x = v\cos\theta$, $v_y = v\sin\theta$                                     |
+| magnitude, direction    | $v = \sqrt{v_x^2 + v_y^2}$, $\theta = \operatorname{atan2}(v_y, v_x)$        |
+| add, subtract           | component-wise                                                               |
+| dot product (scalar)    | $\vec a \cdot \vec b = ab\cos\theta$: work, flux, power                      |
+| cross product (vector)  | $\lVert \vec a \times \vec b \rVert = ab\sin\theta$, right-hand rule: torque, Lorentz force |
+
+## Which equation?
+
+| You have or want                                   | Reach for                                           | Section         |
+| :------------------------------------------------- | :-------------------------------------------------- | :-------------- |
+| constant acceleration, time not given              | $v^2 = u^2 + 2as$                                   | Kinematics      |
+| forces on a body, want acceleration                | $\sum \vec F = m\vec a$ on a free-body diagram      | Newton's laws   |
+| speeds at two heights, no time, no friction        | $K_1 + U_1 = K_2 + U_2$                             | Energy          |
+| collision or explosion                             | $\sum \vec p$ conserved                             | Momentum        |
+| spinning body under a torque                       | $\tau = I\alpha$                                    | Rotation        |
+| spinning body changes shape                        | $I_1\omega_1 = I_2\omega_2$                         | Rotation        |
+| orbit period against radius                        | $T^2 = 4\pi^2 r^3 / GM$                             | Gravitation     |
+| mass on a spring or pendulum period                | $T = 2\pi\sqrt{m/k}$, $T = 2\pi\sqrt{L/g}$          | Osc. and waves  |
+| wave speed, frequency, wavelength                  | $v = f\lambda$                                      | Osc. and waves  |
+| moving source or observer changes pitch            | Doppler                                             | Osc. and waves  |
+| pressure at a depth                                | $p = p_0 + \rho g h$                                | Fluids          |
+| floating or sinking                                | $F_b = \rho_\text{fluid} V_\text{sub} g$            | Fluids          |
+| flow speeds up in a narrowing pipe                 | $A_1v_1 = A_2v_2$ then Bernoulli                    | Fluids          |
+| heating or melting a substance                     | $Q = mc\Delta T$, $Q = mL$                          | Thermodynamics  |
+| gas pressure, volume and temperature               | $pV = nRT$                                          | Thermodynamics  |
+| best possible engine efficiency                    | $\eta_C = 1 - T_c/T_h$                              | Thermodynamics  |
+| current in a circuit                               | $V = IR$ plus Kirchhoff's rules                     | E&M            |
+| capacitor voltage over time                        | $V_C = V_0(1 - e^{-t/RC})$                          | E&M            |
+| charged particle in a magnetic field               | $r = mv/qB$                                         | E&M            |
+| changing flux, want voltage                        | $\mathcal{E} = -N\,d\Phi_B/dt$                      | E&M            |
+| light crossing a boundary                          | $n_1\sin\theta_1 = n_2\sin\theta_2$                 | Optics          |
+| where a lens puts the image                        | $1/f = 1/d_o + 1/d_i$                               | Optics          |
+| photon energy, particle wavelength                 | $E = hf$, $\lambda = h/p$                           | Modern physics  |
+
+## Kinematics
+
+$v = \dfrac{dx}{dt}$, $a = \dfrac{dv}{dt}$; displacement is the area under $v(t)$, change in
+velocity the area under $a(t)$.
+
+### Constant acceleration (SUVAT)
+
+$s$ displacement, $u$ initial velocity, $v$ final velocity, $a$ acceleration, $t$ time. Pick the
+equation that leaves out the variable you neither know nor want.
+
+| Equation                          | Missing |
+| :-------------------------------- | :------ |
+| $v = u + at$                      | $s$     |
+| $s = ut + \tfrac12 at^2$          | $v$     |
+| $s = vt - \tfrac12 at^2$          | $u$     |
+| $v^2 = u^2 + 2as$                 | $t$     |
+| $s = \tfrac12(u + v)\,t$          | $a$     |
+
+Free fall: $a = -g$ with $g = 9.81\ \text{m/s}^2$ (up positive).
+
+### Projectile (no air resistance)
+
+Horizontal and vertical motion are independent; only $y$ accelerates.
+
+$$
+x = v_0\cos\theta\,t, \qquad y = v_0\sin\theta\,t - \tfrac12 g t^2, \qquad
+y = x\tan\theta - \frac{g x^2}{2 v_0^2\cos^2\theta}
+$$
+
+| Level ground result | Formula                                    |
+| :------------------ | :----------------------------------------- |
+| time of flight      | $T = \dfrac{2v_0\sin\theta}{g}$            |
+| maximum height      | $H = \dfrac{v_0^2\sin^2\theta}{2g}$        |
+| range               | $R = \dfrac{v_0^2\sin 2\theta}{g}$, largest at $45^\circ$ |
+| speed at apex       | $v_0\cos\theta$ (vertical part is zero)    |
+
+Relative velocity: $\vec v_{A/C} = \vec v_{A/B} + \vec v_{B/C}$.
+
+## Newton's laws and forces
+
+| Law    | Statement                                                                 |
+| :----- | :------------------------------------------------------------------------ |
+| first  | no net force: velocity constant (inertial frames)                         |
+| second | $\sum \vec F = m\vec a = \dfrac{d\vec p}{dt}$                             |
+| third  | $\vec F_{AB} = -\vec F_{BA}$: equal, opposite, on **different** bodies    |
+
+### Free-body diagrams
+
+1. Isolate one body; draw it as a dot or box.
+2. Draw every force **on** it: weight, normal, tension, friction, spring, drag, applied.
+3. Choose axes along the acceleration (along an incline: $x$ down the slope).
+4. Write $\sum F_x = ma_x$ and $\sum F_y = ma_y$; solve.
+5. Several bodies: one diagram each, linked by shared tension or contact forces.
+
+### Common forces
+
+| Force            | Formula                                           | Direction                           |
+| :--------------- | :------------------------------------------------ | :---------------------------------- |
+| weight           | $W = mg$                                          | down                                |
+| normal           | from $\sum F_\perp = 0$ ($mg\cos\theta$ on a slope) | perpendicular to the surface       |
+| static friction  | $f_s \le \mu_s N$                                 | opposes impending slip              |
+| kinetic friction | $f_k = \mu_k N$                                   | opposes sliding                     |
+| spring (Hooke)   | $F = -kx$                                         | towards equilibrium                 |
+| drag (fast)      | $F_D = \tfrac12 \rho C_D A v^2$                   | against velocity                    |
+| centripetal      | $F_c = \dfrac{mv^2}{r} = m\omega^2 r$             | towards the centre                  |
+
+On an incline of angle $\theta$: along the slope $mg\sin\theta$, into it $mg\cos\theta$;
+sliding with friction gives $a = g(\sin\theta - \mu_k\cos\theta)$. Springs in series:
+$1/k = \sum 1/k_i$; in parallel: $k = \sum k_i$.
+
+### Circular motion
+
+| Quantity               | Formula                                         |
+| :--------------------- | :---------------------------------------------- |
+| speed, period          | $v = \omega r = \dfrac{2\pi r}{T}$              |
+| centripetal accel.     | $a_c = \dfrac{v^2}{r} = \omega^2 r$             |
+| flat curve, friction   | $v_\text{max} = \sqrt{\mu_s g r}$               |
+| banked curve, no friction | $\tan\theta = \dfrac{v^2}{rg}$               |
+| top of vertical loop   | $v_\text{min} = \sqrt{gr}$                      |
+
+Centripetal force is not a new force: it is the net inward part of the forces already on the
+diagram.
+
+## Work, energy and power
+
+| Quantity                | Formula                                                 | Unit |
+| :---------------------- | :------------------------------------------------------ | :--- |
+| work (constant force)   | $W = \vec F \cdot \vec d = Fd\cos\theta$                | J    |
+| work (varying force)    | $W = \int \vec F \cdot d\vec r$                         | J    |
+| kinetic energy          | $K = \tfrac12 mv^2 = \dfrac{p^2}{2m}$                   | J    |
+| gravitational PE (near surface) | $U_g = mgh$                                     | J    |
+| elastic PE              | $U_s = \tfrac12 kx^2$                                   | J    |
+| work-energy theorem     | $W_\text{net} = \Delta K$                               | J    |
+| force from potential    | $F_x = -\dfrac{dU}{dx}$                                 | N    |
+| power                   | $P = \dfrac{dW}{dt} = \vec F \cdot \vec v$              | W    |
+| efficiency              | $\eta = P_\text{out}/P_\text{in}$                       | none |
+
+Conservation of energy, with $W_\text{nc}$ the work by non-conservative forces (friction,
+drag, a motor):
+
+$$
+K_1 + U_1 + W_\text{nc} = K_2 + U_2
+$$
+
+Friction on a flat path: $W_\text{nc} = -\mu_k N d$. A drop from rest through height $h$:
+$v = \sqrt{2gh}$.
+
+## Momentum and collisions
+
+| Quantity         | Formula                                                    |
+| :--------------- | :--------------------------------------------------------- |
+| momentum         | $\vec p = m\vec v$                                         |
+| impulse          | $\vec J = \int \vec F\,dt = \vec F_\text{avg}\Delta t = \Delta \vec p$ |
+| conservation     | no external net force: $\sum \vec p_\text{before} = \sum \vec p_\text{after}$ |
+| centre of mass   | $\vec r_\text{cm} = \dfrac{\sum m_i \vec r_i}{\sum m_i}$, $\ \vec F_\text{ext} = M\vec a_\text{cm}$ |
+
+| Collision              | Momentum  | Kinetic energy | 1D result ($m_2$ at rest)                       |
+| :--------------------- | :-------- | :------------- | :---------------------------------------------- |
+| elastic                | conserved | conserved      | $v_1' = \dfrac{m_1 - m_2}{m_1 + m_2}v_1$, $\ v_2' = \dfrac{2m_1}{m_1 + m_2}v_1$ |
+| inelastic              | conserved | some lost      | need one more fact, such as the coefficient of restitution |
+| perfectly inelastic   | conserved | most lost      | stick together: $v' = \dfrac{m_1 v_1}{m_1 + m_2}$ |
+
+Coefficient of restitution: $e = \dfrac{v_2' - v_1'}{v_1 - v_2}$ ($1$ elastic, $0$ stuck).
+
+## Rotation
+
+| Linear                 | Rotational                      | Link                                  |
+| :--------------------- | :------------------------------ | :------------------------------------ |
+| $x$ (m)                | $\theta$ (rad)                  | arc $s = r\theta$                     |
+| $v$                    | $\omega$ (rad/s)                | $v = \omega r$                        |
+| $a$                    | $\alpha$ (rad/s²)               | $a_t = \alpha r$                      |
+| $m$                    | $I$ (kg·m²)                     | $I = \sum m_i r_i^2$                  |
+| $F$                    | $\tau$ (N·m)                    | $\vec\tau = \vec r \times \vec F$, $\ \tau = rF\sin\phi$ |
+| $F = ma$               | $\tau_\text{net} = I\alpha$     |                                       |
+| $p = mv$               | $L = I\omega$ (kg·m²/s)         | $\vec L = \vec r \times \vec p$       |
+| $K = \tfrac12 mv^2$    | $K = \tfrac12 I\omega^2$        |                                       |
+| $P = Fv$               | $P = \tau\omega$                |                                       |
+
+SUVAT carries over with $\theta, \omega_0, \omega, \alpha, t$. Static equilibrium:
+$\sum \vec F = 0$ and $\sum \vec \tau = 0$ about any point. Rolling without slipping:
+$v = \omega R$, $K = \tfrac12 mv^2 + \tfrac12 I\omega^2$. With no external torque, $L$ is
+conserved.
+
+### Moments of inertia
+
+| Body (mass $M$)                           | Axis                          | $I$                          |
+| :---------------------------------------- | :---------------------------- | :--------------------------- |
+| point mass at distance $r$                | any                           | $Mr^2$                       |
+| thin ring or thin-walled cylinder         | central axis                  | $MR^2$                       |
+| solid disc or cylinder                    | central axis                  | $\tfrac12 MR^2$              |
+| thick-walled cylinder                     | central axis                  | $\tfrac12 M(R_1^2 + R_2^2)$  |
+| solid sphere                              | diameter                      | $\tfrac25 MR^2$              |
+| thin spherical shell                      | diameter                      | $\tfrac23 MR^2$              |
+| thin rod, length $L$                      | centre, perpendicular         | $\tfrac1{12} ML^2$           |
+| thin rod, length $L$                      | end, perpendicular            | $\tfrac13 ML^2$              |
+| rectangular plate $a \times b$            | centre, perpendicular to plate | $\tfrac1{12} M(a^2 + b^2)$  |
+
+Parallel-axis theorem: $I = I_\text{cm} + Md^2$. Perpendicular-axis (flat plates):
+$I_z = I_x + I_y$.
+
+## Gravitation
+
+| Quantity                 | Formula                                         |
+| :----------------------- | :---------------------------------------------- |
+| Newton's law             | $F = \dfrac{GMm}{r^2}$, attractive              |
+| field strength           | $g = \dfrac{GM}{r^2}$ ($9.81\ \text{m/s}^2$ at Earth's surface) |
+| potential energy         | $U = -\dfrac{GMm}{r}$ (zero at infinity)        |
+| circular orbit speed     | $v = \sqrt{GM/r}$                               |
+| escape speed             | $v_\text{esc} = \sqrt{2GM/r}$ ($11.2\ \text{km/s}$ from Earth) |
+| Kepler's third law       | $T^2 = \dfrac{4\pi^2}{GM}r^3$ ($r$ = semi-major axis for ellipses) |
+| orbital energy           | $E = -\dfrac{GMm}{2r}$                          |
+
+Kepler: orbits are ellipses with the Sun at a focus; the radius sweeps equal areas in equal
+times (angular momentum is conserved); $T^2 \propto a^3$.
+
+## Oscillations and waves
+
+### Simple harmonic motion
+
+Simple harmonic motion (SHM): restoring force proportional to displacement,
+$\ddot x = -\omega^2 x$.
+
+$$
+x(t) = A\cos(\omega t + \phi), \quad v(t) = -A\omega\sin(\omega t + \phi), \quad
+a(t) = -\omega^2 x
+$$
+
+| Quantity              | Formula                                               |
+| :-------------------- | :---------------------------------------------------- |
+| angular frequency     | $\omega = 2\pi f = 2\pi/T$                            |
+| mass on spring        | $\omega = \sqrt{k/m}$, $\ T = 2\pi\sqrt{m/k}$         |
+| simple pendulum (small angle) | $\omega = \sqrt{g/L}$, $\ T = 2\pi\sqrt{L/g}$ |
+| physical pendulum     | $T = 2\pi\sqrt{I/(mgd)}$, $d$ = pivot to centre of mass |
+| maxima                | $v_\text{max} = A\omega$, $\ a_\text{max} = A\omega^2$ |
+| energy                | $E = \tfrac12 kA^2 = \tfrac12 kx^2 + \tfrac12 mv^2$   |
+| speed at $x$          | $v = \omega\sqrt{A^2 - x^2}$                          |
+| damped (light)        | $x = Ae^{-bt/2m}\cos(\omega' t)$, $\ \omega' = \sqrt{\omega^2 - (b/2m)^2}$ |
+
+With $A = \omega = 1$ and $\phi = 0$: velocity leads displacement by a quarter cycle and
+acceleration is always opposite to displacement.
+
+<Graph title="SHM: x, v and a (A = ω = 1)" curves={[{ fn: "cos", label: "x = cos t" }, { fn: "sin", a: -1, label: "v = −sin t" }, { fn: "cos", a: -1, label: "a = −cos t" }]} domain={[0, 6.2832]} range={[-1.5, 1.5]} ticks="pi" />
+
+Driven oscillator: resonance when the driving frequency is near $\omega_0$; lighter damping
+gives a taller, narrower peak.
+
+### Waves and sound
+
+| Quantity                  | Formula                                                      |
+| :------------------------ | :----------------------------------------------------------- |
+| wave speed                | $v = f\lambda = \lambda/T$                                   |
+| travelling wave           | $y = A\sin(kx - \omega t)$, $\ k = 2\pi/\lambda$, $\ v = \omega/k$ |
+| string                    | $v = \sqrt{F_T/\mu}$, $\mu$ = mass per length                |
+| sound in air              | $v \approx 331 + 0.6\,T_{^\circ\text{C}}$, about $343\ \text{m/s}$ at 20 °C |
+| intensity                 | $I = P/(4\pi r^2)$ from a point source                        |
+| sound level               | $\beta = 10\log_{10}(I/I_0)$ dB, $\ I_0 = 10^{-12}\ \text{W/m}^2$ |
+| beats                     | $f_\text{beat} = \lvert f_1 - f_2 \rvert$                    |
+
+### Doppler effect (sound)
+
+$$
+f' = f\,\frac{v \pm v_o}{v \mp v_s}
+$$
+
+Top signs when observer and source move **towards** each other: the observed frequency
+rises. $v$ is the speed of sound in the medium. Light, for $v \ll c$:
+$\Delta f / f \approx v_r / c$.
+
+### Superposition and standing waves
+
+| Situation                         | Condition or modes                                         |
+| :-------------------------------- | :--------------------------------------------------------- |
+| constructive interference         | path difference $\Delta = m\lambda$                        |
+| destructive interference          | $\Delta = (m + \tfrac12)\lambda$                           |
+| double slit, bright fringes       | $d\sin\theta = m\lambda$, spacing $\Delta y = \lambda L/d$ |
+| single slit, first dark fringe    | $a\sin\theta = \lambda$                                    |
+| string fixed both ends, open pipe | $\lambda_n = 2L/n$, $\ f_n = nv/2L$, $n = 1, 2, 3, \ldots$ |
+| pipe closed one end               | $\lambda_n = 4L/n$, $\ f_n = nv/4L$, $n = 1, 3, 5, \ldots$ |
+
+## Fluids
+
+| Quantity                  | Formula                                                          |
+| :------------------------ | :--------------------------------------------------------------- |
+| density, pressure         | $\rho = m/V$, $\ p = F/A$ (1 atm $= 101.325$ kPa)                |
+| hydrostatic pressure      | $p = p_0 + \rho g h$; gauge pressure is $p - p_\text{atm}$       |
+| Pascal (hydraulic press)  | $F_1/A_1 = F_2/A_2$                                              |
+| buoyancy (Archimedes)     | $F_b = \rho_\text{fluid} V_\text{sub} g$                         |
+| floating fraction         | $V_\text{sub}/V = \rho_\text{object}/\rho_\text{fluid}$          |
+| continuity                | $A_1 v_1 = A_2 v_2$ (volume flow $Q = Av$)                       |
+| Bernoulli (along a streamline) | $p + \tfrac12\rho v^2 + \rho g h = \text{const}$            |
+| Torricelli                | $v = \sqrt{2gh}$ out of a hole at depth $h$                      |
+| Poiseuille (laminar pipe) | $Q = \dfrac{\pi r^4 \Delta p}{8\eta L}$                          |
+| Reynolds number           | $Re = \rho v D/\eta$; pipes are laminar below about 2000         |
+
+Bernoulli assumes steady, incompressible, non-viscous flow. The atmosphere is the compressible,
+rotating case: see [numerical weather modelling](/physics/numerical-weather-modeling/).
+
+## Thermodynamics
+
+| Quantity                    | Formula                                                     |
+| :-------------------------- | :---------------------------------------------------------- |
+| temperature                 | $T_\text{K} = T_{^\circ\text{C}} + 273.15$                  |
+| linear expansion            | $\Delta L = \alpha L\,\Delta T$                             |
+| heat to change temperature  | $Q = mc\,\Delta T$ ($c_\text{water} \approx 4186$ J/(kg·K)) |
+| latent heat (phase change)  | $Q = mL$                                                    |
+| conduction                  | $P = kA\,\Delta T / d$                                      |
+| radiation                   | $P = \varepsilon\sigma A T^4$                               |
+| ideal gas                   | $pV = nRT = Nk_BT$                                          |
+| mean kinetic energy         | $\langle K \rangle = \tfrac32 k_B T$, $\ v_\text{rms} = \sqrt{3k_BT/m}$ |
+| internal energy, monatomic  | $U = \tfrac32 nRT$                                          |
+
+### Laws
+
+| Law    | Statement                                                                  |
+| :----- | :------------------------------------------------------------------------- |
+| zeroth | two bodies each in equilibrium with a third are in equilibrium with each other |
+| first  | $\Delta U = Q - W$ ($Q$ into the system, $W$ done **by** it)               |
+| second | total entropy of an isolated system never decreases; heat flows hot to cold |
+| third  | entropy approaches a minimum as $T \to 0$; absolute zero is unreachable    |
+
+### Ideal gas processes
+
+| Process    | Constant   | Work by gas $W$                             | Note                              |
+| :--------- | :--------- | :------------------------------------------ | :-------------------------------- |
+| isobaric   | $p$        | $p\,\Delta V$                               | $Q = nC_p\Delta T$                |
+| isochoric  | $V$        | $0$                                         | $Q = \Delta U = nC_V\Delta T$     |
+| isothermal | $T$        | $nRT\ln(V_2/V_1)$                           | $\Delta U = 0$, $Q = W$           |
+| adiabatic  | $pV^\gamma$ | $\dfrac{p_1V_1 - p_2V_2}{\gamma - 1}$      | $Q = 0$, $\gamma = C_p/C_V$       |
+
+$C_p - C_V = R$; monatomic $\gamma = 5/3$, diatomic (air) $\gamma \approx 7/5$.
+
+### Entropy and heat engines
+
+| Quantity                    | Formula                                                  |
+| :-------------------------- | :------------------------------------------------------- |
+| entropy change (reversible) | $\Delta S = \int dQ/T$; at constant $T$: $\Delta S = Q/T$ |
+| engine efficiency           | $\eta = W/Q_h = 1 - Q_c/Q_h$                             |
+| Carnot (maximum) efficiency | $\eta_C = 1 - T_c/T_h$ (kelvin)                          |
+| refrigerator COP            | $K = Q_c/W$, $\ K_C = T_c/(T_h - T_c)$                   |
+| heat pump COP               | $Q_h/W$, $\ T_h/(T_h - T_c)$                             |
+
+## Electricity and magnetism
+
+### Electrostatics
+
+| Quantity                     | Formula                                                   | Unit  |
+| :--------------------------- | :-------------------------------------------------------- | :---- |
+| Coulomb's law                | $F = k\dfrac{q_1q_2}{r^2}$, $\ k = \dfrac{1}{4\pi\varepsilon_0}$ | N |
+| field                        | $\vec E = \vec F/q$; point charge $E = kq/r^2$            | N/C = V/m |
+| potential                    | $V = kq/r$; $\ \Delta U = q\Delta V$                      | V     |
+| field from potential         | $E_x = -\dfrac{dV}{dx}$; parallel plates $E = V/d$        | V/m   |
+| Gauss's law                  | $\oint \vec E \cdot d\vec A = Q_\text{enc}/\varepsilon_0$ |       |
+| capacitance                  | $C = Q/V$; parallel plates $C = \varepsilon_0 \kappa A/d$ | F     |
+| energy in a capacitor        | $U = \tfrac12 CV^2 = \dfrac{Q^2}{2C}$                     | J     |
+
+Energy unit: $1\ \text{eV} = 1.602 \times 10^{-19}\ \text{J}$, the energy an electron gains
+across 1 V.
+
+### Circuits
+
+| Quantity                    | Formula                                                  |
+| :-------------------------- | :------------------------------------------------------- |
+| current                     | $I = dQ/dt$ (A)                                          |
+| Ohm's law                   | $V = IR$                                                 |
+| resistance of a wire        | $R = \rho L/A$                                           |
+| power                       | $P = IV = I^2R = V^2/R$                                  |
+| resistors in series         | $R = R_1 + R_2 + \cdots$ (same current)                 |
+| resistors in parallel       | $\dfrac1R = \dfrac1{R_1} + \dfrac1{R_2} + \cdots$ (same voltage) |
+| capacitors in series        | $\dfrac1C = \dfrac1{C_1} + \dfrac1{C_2} + \cdots$        |
+| capacitors in parallel      | $C = C_1 + C_2 + \cdots$                                 |
+| real battery                | $V = \mathcal{E} - Ir$                                   |
+| AC RMS                      | $V_\text{rms} = V_0/\sqrt2$, $\ I_\text{rms} = I_0/\sqrt2$ |
+
+Kirchhoff: currents into a junction sum to zero (charge); voltage changes around any closed
+loop sum to zero (energy).
+
+RC circuit, time constant $\tau = RC$ (63% of the way after one $\tau$, over 99% after $5\tau$):
+
+$$
+\text{charging: } V_C = V_0\left(1 - e^{-t/RC}\right), \qquad
+\text{discharging: } V_C = V_0\,e^{-t/RC}, \qquad I = \frac{V_0}{R}e^{-t/RC}
+$$
+
+### Magnetism and induction
+
+| Quantity                        | Formula                                                  |
+| :------------------------------ | :------------------------------------------------------- |
+| Lorentz force                   | $\vec F = q(\vec E + \vec v \times \vec B)$              |
+| force on a wire                 | $\vec F = I\vec L \times \vec B$                         |
+| radius in a uniform field       | $r = \dfrac{mv}{qB}$, $\ f = \dfrac{qB}{2\pi m}$ (cyclotron) |
+| long straight wire              | $B = \dfrac{\mu_0 I}{2\pi r}$ (circles, right-hand grip) |
+| solenoid                        | $B = \mu_0 n I$, $n$ = turns per metre                   |
+| flux                            | $\Phi_B = \vec B \cdot \vec A = BA\cos\theta$ (Wb)       |
+| Faraday + Lenz                  | $\mathcal{E} = -N\dfrac{d\Phi_B}{dt}$; induced current opposes the change |
+| motional emf                    | $\mathcal{E} = BLv$                                      |
+| generator                       | $\mathcal{E} = NBA\omega\sin\omega t$                    |
+| transformer (ideal)             | $V_s/V_p = N_s/N_p = I_p/I_s$                            |
+| inductor                        | $\mathcal{E} = -L\,dI/dt$, energy $\tfrac12 LI^2$, RL $\tau = L/R$ |
+
+Maxwell's equations tie all of this together and predict light at speed
+$c = 1/\sqrt{\mu_0\varepsilon_0}$.
+
+## Optics
+
+| Quantity                | Formula                                                          |
+| :---------------------- | :--------------------------------------------------------------- |
+| reflection              | $\theta_i = \theta_r$ (from the normal)                          |
+| refractive index        | $n = c/v$; in a medium $\lambda_n = \lambda/n$, $f$ unchanged    |
+| Snell's law             | $n_1\sin\theta_1 = n_2\sin\theta_2$                              |
+| critical angle          | $\sin\theta_c = n_2/n_1$ (needs $n_1 > n_2$; beyond it: total internal reflection) |
+| thin lens and mirror    | $\dfrac1f = \dfrac1{d_o} + \dfrac1{d_i}$                         |
+| magnification           | $m = -\dfrac{d_i}{d_o} = \dfrac{h_i}{h_o}$                       |
+| spherical mirror        | $f = R/2$                                                        |
+| lensmaker               | $\dfrac1f = (n - 1)\left(\dfrac1{R_1} - \dfrac1{R_2}\right)$     |
+| lens power              | $P = 1/f$ in dioptres ($f$ in metres)                            |
+| diffraction grating     | $d\sin\theta = m\lambda$                                         |
+
+| Sign convention (real is positive) | Positive                          | Negative                     |
+| :--------------------------------- | :-------------------------------- | :--------------------------- |
+| $f$                                | converging lens, concave mirror   | diverging lens, convex mirror |
+| $d_i$                              | real image                        | virtual image                |
+| $m$                                | upright                           | inverted                     |
+
+## Modern physics
+
+Pointers only; each line opens a whole subject.
+
+| Idea                       | Formula                                                          |
+| :------------------------- | :--------------------------------------------------------------- |
+| mass-energy                | $E = mc^2$; $\ E^2 = (pc)^2 + (mc^2)^2$                          |
+| Lorentz factor             | $\gamma = 1/\sqrt{1 - v^2/c^2}$                                  |
+| time dilation, length contraction | $\Delta t = \gamma\Delta t_0$, $\ L = L_0/\gamma$         |
+| photon energy              | $E = hf = hc/\lambda$; $hc \approx 1240\ \text{eV·nm}$           |
+| photon momentum            | $p = E/c = h/\lambda$                                            |
+| photoelectric effect       | $K_\text{max} = hf - \phi$                                       |
+| de Broglie wavelength      | $\lambda = h/p = h/mv$                                           |
+| uncertainty                | $\Delta x\,\Delta p \ge \hbar/2$                                 |
+| hydrogen levels            | $E_n = -13.6\ \text{eV}/n^2$                                     |
+| Wien's law                 | $\lambda_\text{max}T = 2.898 \times 10^{-3}\ \text{m·K}$         |
+| radioactive decay          | $N = N_0e^{-\lambda t}$, $\ t_{1/2} = \ln 2/\lambda$             |
+
+## Worked examples
+
+### Projectile range
+
+A ball leaves level ground at $v_0 = 20$ m/s, $\theta = 30^\circ$. Find flight time, range and
+peak height.
+
+$$
+\begin{aligned}
+v_x &= 20\cos 30^\circ = 17.32\ \text{m/s}, \qquad v_y = 20\sin 30^\circ = 10.0\ \text{m/s} \\
+T &= \frac{2v_y}{g} = \frac{2(10.0)}{9.81} = 2.04\ \text{s} \\
+R &= v_xT = 17.32 \times 2.039 = 35.3\ \text{m} \quad \left(= \tfrac{v_0^2\sin 60^\circ}{g}\right) \\
+H &= \frac{v_y^2}{2g} = \frac{100}{19.62} = 5.10\ \text{m}
+\end{aligned}
+$$
+
+### Block sliding down a rough incline
+
+$m = 5.0$ kg on a $30^\circ$ slope, $\mu_k = 0.20$. Axes: $x$ down the slope.
+
+$$
+\begin{aligned}
+N &= mg\cos\theta = 5.0(9.81)(0.866) = 42.5\ \text{N} \\
+f_k &= \mu_k N = 0.20(42.5) = 8.50\ \text{N} \\
+ma &= mg\sin\theta - f_k = 24.5 - 8.50 = 16.0\ \text{N} \\
+a &= 16.0/5.0 = 3.21\ \text{m/s}^2
+\end{aligned}
+$$
+
+### Car power from kinetic energy
+
+A 1200 kg car reaches 100 km/h from rest in 8.0 s. Average power, ignoring losses:
+
+$$
+v = \frac{100}{3.6} = 27.8\ \text{m/s}, \quad
+K = \tfrac12(1200)(27.8)^2 = 4.63 \times 10^5\ \text{J}, \quad
+P = \frac{K}{t} = 57.9\ \text{kW}
+$$
+
+### Elastic and sticky collisions
+
+$m_1 = 2.0$ kg at $3.0$ m/s hits $m_2 = 1.0$ kg at rest.
+
+| Case                | After                                                               | $K$ before → after |
+| :------------------ | :------------------------------------------------------------------ | :----------------- |
+| perfectly inelastic | $v' = \dfrac{2.0(3.0)}{3.0} = 2.0$ m/s                              | 9.0 J → 6.0 J      |
+| elastic             | $v_1' = \tfrac{1}{3}(3.0) = 1.0$ m/s, $\ v_2' = \tfrac{4}{3}(3.0) = 4.0$ m/s | 9.0 J → 9.0 J |
+
+Check momentum: $2.0(1.0) + 1.0(4.0) = 6.0\ \text{kg·m/s}$ both times.
+
+### Geostationary orbit radius
+
+Period one sidereal day, $T = 86\,164$ s; $GM_\oplus = 3.986 \times 10^{14}\ \text{m}^3/\text{s}^2$.
+
+$$
+r = \left(\frac{GM T^2}{4\pi^2}\right)^{1/3}
+= \left(\frac{3.986 \times 10^{14}\,(86\,164)^2}{39.48}\right)^{1/3}
+= 4.22 \times 10^7\ \text{m}
+$$
+
+Altitude above the equator: $42\,164 - 6378 \approx 35\,786$ km. Orbital speed
+$2\pi r/T = 3.07$ km/s.
+
+### RC charging
+
+$R = 10\ \text{k}\Omega$, $C = 100\ \mu\text{F}$, supply $5.0$ V.
+
+$$
+\tau = RC = (10^4)(10^{-4}) = 1.0\ \text{s}, \qquad
+V_C(2\ \text{s}) = 5.0\left(1 - e^{-2}\right) = 4.32\ \text{V}
+$$
+
+Time to reach 99%: $1 - e^{-t/\tau} = 0.99 \Rightarrow t = \tau\ln 100 = 4.6$ s.
+
+### Thin lens image
+
+Converging lens $f = 10$ cm, object at $d_o = 15$ cm.
+
+$$
+\frac{1}{d_i} = \frac{1}{10} - \frac{1}{15} = \frac{1}{30}
+\ \Rightarrow\ d_i = 30\ \text{cm}, \qquad m = -\frac{30}{15} = -2
+$$
+
+Real, inverted, twice the size, on the far side of the lens.
+
+## References
+
+- [OpenStax: University Physics Volume 1](https://openstax.org/details/books/university-physics-volume-1): mechanics, waves, oscillations; source of the sign conventions used here
+- [OpenStax: University Physics Volume 2](https://openstax.org/details/books/university-physics-volume-2): thermodynamics, electricity and magnetism
+- [OpenStax: University Physics Volume 3](https://openstax.org/details/books/university-physics-volume-3): optics and modern physics
+- [HyperPhysics](http://hyperphysics.phy-astr.gsu.edu/hbase/hframe.html): concept map with a calculator on most formula pages
+- [The Feynman Lectures on Physics](https://www.feynmanlectures.caltech.edu/): the reasoning behind the formulas, free online
+- [NIST: CODATA fundamental physical constants](https://physics.nist.gov/cuu/Constants/): authoritative values for $G$, $h$, $e$, $k_B$
+- [NIST SP 330: The International System of Units](https://www.nist.gov/pml/special-publication-330): SI base and derived units
+- [Constants, units and conversions](/maths/constants-units-conversions/) and [notation](/maths/notation/): companion sheets

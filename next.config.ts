@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
 
 /** Absolute path of the local remark plugin (Next runs with the project root as cwd). */
 const REMARK_FILE_TREE = path.join(process.cwd(), "lib", "remark-file-tree.ts");
+/** Absolute path of the ```html demo plugin (see `lib/remark-demo.ts`). */
+const REMARK_DEMO = path.join(process.cwd(), "lib", "remark-demo.ts");
 
 // Plugin names are strings (and options plain data) so the config stays serializable for Turbopack.
 const withMDX = createMDX({
@@ -29,6 +31,8 @@ const withMDX = createMDX({
       // Local plugin: ```tree fences → <FileTree>. Absolute, because @next/mdx
       // resolves plugin names from each MDX file's own directory.
       REMARK_FILE_TREE,
+      // Local plugin: ```html demo fences keep their code and gain a live <Demo>.
+      REMARK_DEMO,
       "remark-gfm",
       "remark-frontmatter",
       "remark-mdx-frontmatter",

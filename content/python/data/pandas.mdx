@@ -1,0 +1,735 @@
+---
+title: pandas
+date: 2026-09-25
+order: 2
+---
+
+Labelled tables with pandas 3.0: I/O, selection, dtypes, Copy-on-Write, group-by, joins,
+reshaping and time series. The arrays underneath are covered in [NumPy](/python/data/numpy/).
+
+## Core objects
+
+| Object | What it is |
+| :----- | :--------- |
+| `pd.Series` | 1-D values with one dtype plus an index (labels) and a `name` |
+| `pd.DataFrame` | dict of Series sharing one row index; each column has its own dtype |
+| `pd.Index` | immutable labels for rows (`df.index`) or columns (`df.columns`); hash lookups |
+| `pd.RangeIndex` | default `0..n-1` index; stores only start, stop, step |
+| `pd.DatetimeIndex` | index of timestamps; unlocks `resample` and date slicing |
+| `pd.MultiIndex` | several index levels (from multi-key `groupby`, `pivot_table`, `stack`) |
+
+```sh
+uv add pandas pyarrow          # pip install pandas pyarrow
+uv add "pandas[excel,postgresql]"   # optional extras
+```
+
+The examples below use this frame.
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    "date": pd.to_datetime([
+        "2026-01-03", "2026-01-03", "2026-01-10",
+        "2026-02-01", "2026-02-07", "2026-02-07",
+    ]),
+    "region": ["north", "south", "north",
+               "south", "north", "west"],
+    "product": ["tea", "tea", "coffee",
+                "coffee", "tea", "coffee"],
+    "units": [3, 5, 2, 7, 4, 1],
+    "price": [2.5, 2.5, 4.0, 4.0, 2.5, 4.0],
+})
+
+s = pd.Series([10, 20], index=["a", "b"], name="n")
+s["b"]                    # 20
+pd.DataFrame([{"x": 1, "y": 2}, {"x": 3}])  # y is NaN
+pd.DataFrame.from_dict({"a": [1, 2]}, orient="index")
+df.to_dict("records")[0]["region"]   # 'north'
+df["units"].to_numpy()    # [3 5 2 7 4 1] (read-only)
+```
+
+## Reading & writing
+
+| Read / write | Key params |
+| :----------- | :--------- |
+| `pd.read_csv(p)` / `df.to_csv(p, index=False)` | `sep`, `usecols`, `dtype`, `parse_dates`, `index_col`, `na_values`, `nrows`, `chunksize`, `engine="pyarrow"`, `dtype_backend` |
+| `pd.read_parquet(p)` / `df.to_parquet(p)` | `columns=`, `filters=` (row-group pruning), `engine="pyarrow"`, `compression="zstd"` |
+| `pd.read_json(p)` / `df.to_json(p)` | `orient="records"`, `lines=True` for NDJSON, `date_format="iso"` |
+| `pd.read_excel(p)` / `df.to_excel(p)` | `sheet_name=` (`None` for all sheets, returns a dict), `header`, `skiprows`; needs `openpyxl` |
+| `pd.read_sql(q, con)` / `df.to_sql(name, con)` | `params=`, `parse_dates`, `chunksize`; `if_exists="append"`, `index=False`, `method="multi"` |
+| `pd.read_clipboard()`, `pd.read_html(url)` | quick grabs from a spreadsheet / web table |
+| `df.to_markdown()` | Markdown table (needs `tabulate`) |
+
+```python
+df.to_csv("sales.csv", index=False)
+df.to_parquet("sales.parquet", index=False)
+
+sales = pd.read_csv(
+    "sales.csv",
+    usecols=["date", "region", "units"],
+    dtype={"region": "category", "units": "int32"},
+    parse_dates=["date"],
+    na_values=["", "n/a"],
+)
+sales.dtypes.to_dict()
+# {'date': dtype('<M8[us]'), 'region': CategoricalDtype(
+#  categories=['north', 'south', 'west'], ordered=False,
+#  categories_dtype=str), 'units': dtype('int32')}
+
+pd.read_parquet(
+    "sales.parquet",
+    columns=["region", "units"],
+    filters=[("units", ">", 3)],
+).shape                                 # (3, 2)
+
+df.to_json("sales.jsonl", orient="records",
+           lines=True, date_format="iso")
+pd.read_json("sales.jsonl", lines=True).shape  # (6, 5)
+```
+
+```python title="sql.py"
+import sqlite3
+
+with sqlite3.connect(":memory:") as con:
+    df.to_sql("sales", con, index=False)
+    big = pd.read_sql(
+        "SELECT region, units FROM sales WHERE units > ?",
+        con,
+        params=(3,),
+    )
+big.region.tolist()             # ['south', 'south', 'north']
+```
+
+Pass a DB-API connection for SQLite, or a SQLAlchemy engine or ADBC connection for other
+databases. Always bind values with `params=`, never with f-strings.
+
+## Inspecting
+
+| Call | Shows |
+| :--- | :---- |
+| `df.head(n)`, `df.tail(n)`, `df.sample(n)` | first / last / random rows |
+| `df.shape`, `len(df)` | `(rows, cols)`, row count |
+| `df.info()` | dtypes, non-null counts, memory |
+| `df.describe()` | count, mean, std, quartiles of numeric columns (`include="all"` for all) |
+| `df.dtypes`, `df.columns`, `df.index` | column types, labels |
+| `s.value_counts(normalize=True, dropna=False)` | frequency table, largest first |
+| `s.nunique()`, `s.unique()` | distinct count / values |
+| `df.isna().sum()` | missing values per column |
+| `df.duplicated().sum()` | fully duplicated rows |
+| `df.memory_usage(deep=True)` | bytes per column, strings included |
+| `df.corr(numeric_only=True)` | correlation matrix |
+
+```python
+df.info()
+```
+
+```text
+<class 'pandas.DataFrame'>
+RangeIndex: 6 entries, 0 to 5
+Data columns (total 5 columns):
+ #   Column   Non-Null Count  Dtype
+---  ------   --------------  -----
+ 0   date     6 non-null      datetime64[us]
+ 1   region   6 non-null      str
+ 2   product  6 non-null      str
+ 3   units    6 non-null      int64
+ 4   price    6 non-null      float64
+dtypes: datetime64[us](1), float64(1), int64(1), str(2)
+memory usage: 428.0 bytes
+```
+
+```python
+df["region"].value_counts()
+# region
+# north    3
+# south    2
+# west     1
+# Name: count, dtype: int64
+df["units"].describe()[["mean", "50%", "max"]].tolist()
+# [3.6666666666666665, 3.5, 7.0]
+```
+
+## Selecting
+
+| Syntax | Selects | Notes |
+| :----- | :------ | :---- |
+| `df["units"]`, `df.units` | one column as a Series | attribute form fails on names with spaces or clashes |
+| `df[["region", "units"]]` | columns as a DataFrame | list in, frame out |
+| `df[mask]` | rows where a boolean Series is true | combine with `&`, `\|`, `~` and parentheses |
+| `df.loc[rows, cols]` | by **label** | slices include the end label |
+| `df.iloc[rows, cols]` | by **position** | slices exclude the end, like Python |
+| `df.at[3, "units"]`, `df.iat[3, 0]` | one scalar | fastest scalar get/set |
+| `df.query("units > @n and region == 'north'")` | rows by expression | `@var` reads a local; backticks for odd names |
+| `df[df["region"].isin(["north", "west"])]` | membership | `~` for "not in" |
+| `s.between(2, 5)` | inclusive range mask | `inclusive="left"` etc. |
+| `df.select_dtypes("number")` | columns by dtype | also `include="str"`, `exclude=` |
+| `df.filter(like="pri")`, `df.filter(regex="^u")` | columns by name | on labels, not values |
+
+```python
+df.loc[df["units"] > 4, ["region", "units"]]
+#   region  units
+# 1  south      5
+# 3  south      7
+df.iloc[:2, -1].tolist()          # [2.5, 2.5]
+df.loc[1:3, "units"].tolist()     # [5, 2, 7] end included
+n = 3
+df.query("units >= @n and product == 'tea'").index.tolist()
+# [0, 1, 4]
+df.set_index("region").loc["south", "units"].tolist()
+# [5, 7]
+```
+
+Set values with a single `loc` call: `df.loc[mask, "col"] = v`. See Copy-on-Write below for
+why `df[mask]["col"] = v` does nothing.
+
+## Transforming columns
+
+| Tool | Use for |
+| :--- | :------ |
+| `df["c"] = df["a"] * df["b"]` | vectorised arithmetic; the fastest option |
+| `df.assign(c=...)` | returns a new frame; chain-friendly |
+| `pd.col("a") * pd.col("b")` | 3.0 column expression for `assign`, `loc`, `[]` (no lambda) |
+| `np.where(cond, a, b)`, `s.where(cond, other)` | two-way choice; `s.mask` is the inverse |
+| `s.case_when([(c1, v1), (c2, v2)])` | first matching condition wins; others keep `s` |
+| `s.map({"a": 1})`, `s.map(func)` | lookup / element-wise function; unmapped keys become NaN |
+| `s.replace({"old": "new"})` | swap values, keeps unmatched |
+| `pd.cut(s, bins)`, `pd.qcut(s, 4)` | bucket by edges / by quantiles |
+| `df.rename(columns={...})`, `df.drop(columns=[...])` | rename / drop |
+| `df.pipe(func, arg)` | call your own `func(df, arg)` inside a chain |
+| `df.apply(f, axis=1)` | last resort: a Python call per row, 100x+ slower |
+
+```python
+import numpy as np
+
+out = df.assign(
+    revenue=pd.col("units") * pd.col("price"),
+    big=lambda d: d["units"] >= 4,
+    size=lambda d: np.where(d["units"] > 4, "L", "S"),
+    code=df["region"].map({"north": "N", "south": "S"}),
+)
+out[["revenue", "big", "size", "code"]].head(3)
+#    revenue    big size code
+# 0      7.5  False    S    N
+# 1     12.5   True    L    S
+# 2      8.0  False    S    N
+pd.cut(df["units"], bins=[0, 2, 5, 10],
+       labels=["low", "mid", "high"]).tolist()
+# ['mid', 'mid', 'low', 'high', 'mid', 'low']
+```
+
+### Method chaining
+
+Each step returns a new frame, so a whole pipeline reads top to bottom with no temporaries.
+
+```python
+report = (
+    df
+    .query("units > 1")
+    .assign(revenue=pd.col("units") * pd.col("price"))
+    .groupby("region", as_index=False)
+    .agg(revenue=("revenue", "sum"))
+    .sort_values("revenue", ascending=False)
+    .reset_index(drop=True)
+)
+report.to_dict("list")
+# {'region': ['south', 'north'], 'revenue': [40.5, 25.5]}
+```
+
+Wrap the chain in parentheses, one method per line. Debug by commenting lines out or with
+`.pipe(lambda d: print(d.shape) or d)`.
+
+## Missing data
+
+| Marker | Appears in |
+| :----- | :--------- |
+| `np.nan` | float columns and the default `str` dtype |
+| `pd.NA` | nullable dtypes: `Int64`, `Float64`, `boolean`, `string` |
+| `pd.NaT` | datetime and timedelta columns |
+| `None` | only in `object` columns; converted to one of the above elsewhere |
+
+| Call | Does |
+| :--- | :--- |
+| `s.isna()`, `s.notna()` | mask of missing values (catches all four markers) |
+| `df.dropna(subset=["a"], how="any", thresh=n)` | drop rows (`axis=1` for columns) |
+| `df.fillna({"a": 0, "b": "?"})` | per-column fill values |
+| `s.ffill(limit=2)`, `s.bfill()` | carry the last / next valid value |
+| `s.interpolate()` | linear fill (`method="time"` on a `DatetimeIndex`) |
+| `s.fillna(s.median())` | impute with a statistic |
+| `a.combine_first(b)` | fill holes in `a` from `b` |
+| `s.sum()`, `s.mean()` | skip missing by default (`skipna=False` to propagate) |
+
+```python
+m = pd.DataFrame({"a": [1, None, 3],
+                  "b": ["x", None, "z"]})
+m.dtypes.tolist()
+# [dtype('float64'), <StringDtype(na_value=nan)>]
+m.isna().sum().tolist()     # [1, 1]
+m.fillna({"a": 0, "b": "?"}).values.tolist()
+# [[1.0, 'x'], [0.0, '?'], [3.0, 'z']]
+m["a"].ffill().tolist()     # [1.0, 1.0, 3.0]
+m["a"].interpolate().tolist()  # [1.0, 2.0, 3.0]
+pd.Series([1, None], dtype="Int64").tolist()  # [1, <NA>]
+```
+
+`NaN == NaN` is `False` and `pd.NA == 1` is `pd.NA`, so always test with `isna()`.
+
+## Dtypes
+
+| dtype | Missing | Notes |
+| :---- | :------ | :---- |
+| `int64`, `float64`, `bool` | none / `NaN` | NumPy-backed; an int column with a hole becomes `float64` |
+| `Int64`, `Float64`, `boolean` | `pd.NA` | nullable: ints stay ints when values are missing |
+| `str` | `NaN` | **default for text in 3.0** (was `object`); Arrow-backed when pyarrow is installed |
+| `"string"` | `pd.NA` | opt-in text dtype with `NA` semantics |
+| `category` | `NaN` | small set of repeated values; saves memory, fixes an order |
+| `datetime64[us]` | `NaT` | 3.0 infers the unit (`s`, `ms`, `us`, `ns`); `datetime64[us, UTC]` with a zone |
+| `timedelta64[us]` | `NaT` | durations |
+| `period[M]` | `NaT` | calendar spans (`2026-01` as a month) |
+| `int64[pyarrow]`, `pd.ArrowDtype(...)` | `pd.NA` | Arrow-backed; nested lists and structs |
+| `object` | anything | arbitrary Python objects; slow, avoid |
+
+```python
+t = pd.Series(["3", "x", "5"])
+pd.to_numeric(t, errors="coerce").tolist()  # [3.0, nan, 5.0]
+t.astype("category").cat.categories.tolist()
+# ['3', '5', 'x']
+pd.Series([1, None]).convert_dtypes().dtype      # Int64
+df.convert_dtypes(dtype_backend="pyarrow").dtypes["units"]
+# int64[pyarrow]
+pd.read_csv("sales.csv", engine="pyarrow",
+            dtype_backend="pyarrow").dtypes["region"]
+# string[pyarrow]
+size = pd.CategoricalDtype(["S", "M", "L"], ordered=True)
+(pd.Series(["M", "L"]).astype(size) > "S").tolist()
+# [True, True]
+```
+
+<Note kind="warning">3.0 datetimes default to microseconds, so `ts.astype("int64")` is 1000x
+smaller than before. Convert with `.dt.as_unit("ns")` first if you need epoch nanoseconds.</Note>
+
+## Copy-on-Write
+
+Copy-on-Write is always on in 3.0. Every indexing result and every method result behaves
+like a copy; pandas shares memory until one side is written, then copies.
+
+| Pattern | pandas 3.0 |
+| :------ | :--------- |
+| `df.loc[df.a > 1, "b"] = 0` | works: one `loc` call on the frame itself |
+| `df[df.a > 1]["b"] = 0` | chained assignment: never updates `df` (`ChainedAssignmentError` warning) |
+| `df["b"][0] = 0` | same: use `df.loc[0, "b"] = 0` |
+| `sub = df[["a"]]; sub.loc[0, "a"] = 9` | changes `sub` only; `df` untouched |
+| `df2 = df.reset_index(); df2.iloc[0, 0] = 9` | `df` untouched; no defensive `.copy()` needed |
+| `s.to_numpy()` / `df.values` | read-only view; `.copy()` it before writing |
+| `inplace=True` | no memory benefit; prefer reassignment |
+| `SettingWithCopyWarning` | gone |
+
+```python
+d = pd.DataFrame({"a": [1, 2, 3], "b": [0, 0, 0]})
+d[d["a"] > 1]["b"] = 9      # ChainedAssignmentError warning
+d["b"].tolist()             # [0, 0, 0] unchanged
+d.loc[d["a"] > 1, "b"] = 9
+d["b"].tolist()             # [0, 9, 9]
+
+sub = d[["a"]]
+sub.loc[0, "a"] = 100       # copies now, d is untouched
+d.loc[0, "a"]               # 1
+```
+
+## Group by
+
+Split rows by key, apply a function per group, combine the results.
+
+| Method | Output shape | Use for |
+| :----- | :----------- | :------ |
+| `.agg(...)` / `.sum()`, `.mean()` | one row per group | summaries |
+| `.transform("sum")` | same rows as input | group stats beside each row |
+| `.filter(lambda g: ...)` | subset of input rows | keep or drop whole groups |
+| `.apply(func)` | anything | last resort (Python per group) |
+| `.size()` / `.count()` | per group | rows incl. missing / non-null per column |
+| `.cumcount()`, `.rank()`, `.shift()`, `.diff()` | same rows | position or change within group |
+| `.head(n)`, `.nth(0)` | subset rows | first rows per group |
+
+| Option | Effect |
+| :----- | :----- |
+| `as_index=False` | keys stay columns (else they become the index) |
+| `dropna=False` | keep a group for missing keys |
+| `sort=False` | groups in order of appearance (faster) |
+| `observed=True` | default: only category values that occur |
+| `pd.Grouper(key="date", freq="ME")` | group by time bucket |
+
+```python
+g = df.groupby("region")
+g["units"].sum().to_dict()
+# {'north': 9, 'south': 12, 'west': 1}
+
+df.groupby(["region", "product"], as_index=False).agg(
+    n=("units", "size"),
+    units=("units", "sum"),
+    avg_price=("price", "mean"),
+)
+#   region product  n  units  avg_price
+# 0  north  coffee  1      2        4.0
+# 1  north     tea  2      7        2.5
+# 2  south  coffee  1      7        4.0
+# 3  south     tea  1      5        2.5
+# 4   west  coffee  1      1        4.0
+
+df.assign(share=df["units"] / g["units"].transform("sum"))
+df.groupby("region").filter(lambda x: len(x) > 1).shape
+# (5, 5)
+```
+
+## Merge, join & concat
+
+| `how=` | Keeps | SQL |
+| :----- | :---- | :-- |
+| `"inner"` (default) | keys in both | `INNER JOIN` |
+| `"left"` | all left rows; right cols NaN if unmatched | `LEFT JOIN` |
+| `"right"` | all right rows | `RIGHT JOIN` |
+| `"outer"` | union of keys, sorted | `FULL OUTER JOIN` |
+| `"cross"` | every pair (no `on=`) | `CROSS JOIN` |
+| `"left_anti"` | left rows with no match (3.0) | `WHERE NOT EXISTS` |
+| `"right_anti"` | right rows with no match (3.0) | |
+
+| Param | Does |
+| :---- | :--- |
+| `on="k"`, `left_on=`, `right_on=` | join columns (`left_index=True` for the index) |
+| `suffixes=("_l", "_r")` | rename clashing non-key columns |
+| `validate="many_to_one"` | raise if keys aren't unique where expected (`"1:1"`, `"1:m"`, `"m:1"`) |
+| `indicator=True` | adds `_merge`: `left_only`, `right_only`, `both` |
+
+```python
+prices = pd.DataFrame({"product": ["tea", "cake"],
+                       "list_price": [3.0, 5.0]})
+m = df.merge(prices, on="product", how="left",
+             validate="many_to_one", indicator=True)
+m["_merge"].value_counts().to_dict()
+# {'left_only': 3, 'both': 3, 'right_only': 0}
+
+prices.merge(df[["product"]].drop_duplicates(),
+             on="product", how="left_anti")
+#   product  list_price
+# 1    cake         5.0
+
+pd.concat([df.head(2), df.tail(1)], ignore_index=True).shape
+# (3, 6)
+left = df.set_index("region")[["units"]]
+right = pd.DataFrame({"mgr": ["Ana", "Bo"]},
+                     index=["north", "south"])
+left.join(right).mgr.tolist()     # index join
+# ['Ana', 'Bo', 'Ana', 'Bo', 'Ana', nan]
+```
+
+`pd.concat(frames, axis=1)` aligns on the index; `keys=["a", "b"]` labels the sources.
+`pd.merge_asof(left, right, on="time", by="id")` joins each row to the latest earlier match
+(both sorted by `on`).
+
+## Reshaping
+
+```text
+long (tidy)                     wide
+date   region units    pivot    date    north south
+01-03  north  3        ----->   01-03   3     5
+01-03  south  5        <-----   01-10   2     NaN
+01-10  north  2         melt
+```
+
+| Call | Does |
+| :--- | :--- |
+| `df.pivot(index=, columns=, values=)` | long to wide; errors on duplicate pairs |
+| `df.pivot_table(index=, columns=, values=, aggfunc="sum", fill_value=0, margins=True)` | long to wide, aggregating duplicates |
+| `df.melt(id_vars=, value_vars=, var_name=, value_name=)` | wide to long |
+| `df.stack()` / `df.unstack()` | move the innermost column level to rows / back |
+| `pd.crosstab(a, b, normalize="index")` | counts (or shares) of two factors |
+| `s.explode()` | one row per element of list-valued cells |
+| `pd.get_dummies(s, prefix="p")` | one-hot columns |
+
+```python
+wide = df.pivot_table(index="region", columns="product",
+                      values="units", aggfunc="sum",
+                      fill_value=0)
+wide
+# product  coffee  tea
+# region
+# north         2    7
+# south         7    5
+# west          1    0
+wide.stack().loc["north"].to_dict()
+# {'coffee': 2, 'tea': 7}
+pd.crosstab(df["region"], df["product"]).loc["west"].tolist()
+# [1, 0]
+```
+
+## Sorting & ranking
+
+| Call | Does |
+| :--- | :--- |
+| `df.sort_values(["a", "b"], ascending=[True, False])` | multi-key sort |
+| `sort_values(..., na_position="first")` | where missing values go (default last) |
+| `sort_values("s", key=lambda c: c.str.lower())` | sort by a transformed key |
+| `df.sort_index()` | by index labels |
+| `df.nlargest(3, "units")`, `nsmallest` | top / bottom n without a full sort |
+| `s.rank(method="dense", ascending=False)` | rank values |
+| `s.rank(pct=True)` | percentile rank 0 to 1 |
+
+| `method=` | Ties `[10, 20, 20, 30]` get |
+| :-------- | :-------------------------- |
+| `"average"` (default) | `1, 2.5, 2.5, 4` |
+| `"min"` | `1, 2, 2, 4` (sports ranking) |
+| `"max"` | `1, 3, 3, 4` |
+| `"first"` | `1, 2, 3, 4` (order of appearance) |
+| `"dense"` | `1, 2, 2, 3` (no gaps) |
+
+```python
+df.sort_values(["region", "units"],
+               ascending=[True, False])["units"].tolist()
+# [4, 3, 2, 7, 5, 1]
+df.nlargest(2, "units")["units"].tolist()   # [7, 5]
+pd.Series([10, 20, 20, 30]).rank(method="min").tolist()
+# [1.0, 2.0, 2.0, 4.0]
+```
+
+## Time series
+
+| Call | Does |
+| :--- | :--- |
+| `pd.to_datetime(s, format="%Y-%m-%d", errors="coerce")` | parse; bad values become `NaT` |
+| `pd.to_datetime(s, unit="s", utc=True)` | epoch seconds to UTC timestamps |
+| `pd.date_range("2026-01-01", periods=7, freq="D")` | fixed-frequency index |
+| `ts.loc["2026-01"]`, `ts.loc["2026-01-05":"2026-01-09"]` | partial-string slicing (sorted index) |
+| `ts.resample("W").sum()` | downsample into buckets |
+| `ts.asfreq("D")` | reindex to a frequency, leaving gaps as NaN |
+| `ts.shift(1)`, `ts.diff()`, `ts.pct_change()` | lag, change, relative change |
+| `ts.rolling(3).mean()`, `ts.rolling("7D").sum()` | fixed-count / time-based window |
+| `ts.ewm(span=10).mean()`, `ts.expanding().max()` | exponential / cumulative window |
+| `tz_localize("Europe/Oslo")`, `tz_convert("UTC")` | attach / change time zone |
+
+| Alias | Means | Alias | Means |
+| :---- | :---- | :---- | :---- |
+| `D` | calendar day | `h` | hour (3.0: lowercase) |
+| `B` | business day | `min`, `s`, `ms` | minute, second, millisecond |
+| `W`, `W-MON` | week (ending Sunday / Monday) | `MS`, `ME` | month start / end |
+| `QS`, `QE` | quarter start / end | `YS`, `YE` | year start / end |
+
+`M`, `Q`, `Y`, `H`, `T` and `S` were removed as aliases; use `ME`, `QE`, `YE`, `h`,
+`min` and `s`.
+
+```python
+ts = df.set_index("date")["units"]
+ts.resample("ME").sum().to_dict()
+# {Timestamp('2026-01-31 00:00:00'): 10,
+#  Timestamp('2026-02-28 00:00:00'): 12}
+ts.loc["2026-02"].tolist()          # [7, 4, 1]
+daily = ts.groupby(level=0).sum().asfreq("D", fill_value=0)
+daily.rolling("7D").sum().tail(2).tolist()   # [7.0, 12.0]
+
+utc = pd.Timestamp("2026-03-29 00:30", tz="UTC")
+utc.tz_convert("Europe/Oslo")
+# 2026-03-29 01:30:00+01:00 (CET; DST starts 01:00 UTC)
+```
+
+Store and compute in UTC; convert to local time only for display. Time zones come from
+the stdlib `zoneinfo` in 3.0 (`pytz` is optional).
+
+## String & datetime accessors
+
+| `.str` | Does |
+| :----- | :--- |
+| `.str.lower()`, `.str.strip()`, `.str.title()` | case and whitespace |
+| `.str.contains("x", case=False, regex=False)` | substring mask; `na=False` treats missing as no match |
+| `.str.startswith(("a", "b"))` | prefix mask |
+| `.str.replace(r"\s+", " ", regex=True)` | regex replace (`regex=False` is the default) |
+| `.str.split(",", expand=True)` | split into columns |
+| `.str.extract(r"(?P<num>\d+)")` | named groups become columns |
+| `.str.len()`, `.str[:3]`, `.str.zfill(5)` | length, slice, pad |
+| `.str.cat(sep=", ")` | join all values |
+
+| `.dt` | Does |
+| :---- | :--- |
+| `.dt.year`, `.dt.month`, `.dt.day`, `.dt.hour` | parts as numbers |
+| `.dt.day_name()`, `.dt.dayofweek` | `"Monday"`; `0` = Monday |
+| `.dt.date`, `.dt.normalize()` | drop the time (objects / midnight timestamps) |
+| `.dt.floor("h")`, `.dt.round("15min")` | snap to a unit |
+| `.dt.to_period("M")` | month period (`2026-01`) |
+| `.dt.strftime("%d %b")` | format as text |
+| `.dt.tz_localize(tz)`, `.dt.tz_convert(tz)` | zones on a column |
+| `.dt.total_seconds()`, `.dt.days` | on timedeltas |
+
+```python
+emails = pd.Series([" Ana@X.io", "bo@y.com", None])
+clean = emails.str.strip().str.lower()
+clean.str.split("@").str[1].tolist()
+# ['x.io', 'y.com', nan]
+clean.str.contains(".io", regex=False).tolist()
+# [True, False, False]
+pd.Series(["ab-12", "cd-7"]).str.extract(
+    r"(?P<code>[a-z]+)-(?P<n>\d+)"
+).to_dict("list")
+# {'code': ['ab', 'cd'], 'n': ['12', '7']}
+
+df["date"].dt.day_name().unique().tolist()
+# ['Saturday', 'Sunday']
+df["date"].dt.to_period("M").astype(str).unique().tolist()
+# ['2026-01', '2026-02']
+```
+
+## Performance
+
+| Tip | Why |
+| :-- | :-- |
+| Vectorise; avoid `iterrows`, `apply(axis=1)` | Python per row is 100-1000x slower than column ops |
+| `itertuples()` if you must loop | much faster than `iterrows` |
+| Read only what you need: `usecols=`, `columns=`, `nrows=` | less parsing and memory |
+| `engine="pyarrow"` in `read_csv` | multithreaded parsing |
+| Parquet instead of CSV | typed, compressed, column-pruned, much faster |
+| `category` for low-cardinality text | integer codes instead of strings |
+| Downcast: `pd.to_numeric(s, downcast="integer")` | `int8`/`int32` instead of `int64` |
+| `groupby(..., sort=False, observed=True)` | skips sorting and unused categories |
+| `.to_numpy()` for heavy NumPy maths | drops index alignment overhead |
+| Build a list of frames, `pd.concat` once | appending in a loop is quadratic |
+| `chunksize=` or Polars/DuckDB when data exceeds RAM | pandas holds everything in memory |
+
+### pandas vs Polars vs SQL
+
+| Task | pandas | Polars | SQL |
+| :--- | :----- | :----- | :-- |
+| Filter | `df[df.x > 1]` | `df.filter(pl.col("x") > 1)` | `WHERE x > 1` |
+| New column | `df.assign(y=pd.col("x") * 2)` | `df.with_columns(y=pl.col("x") * 2)` | `SELECT x * 2 AS y` |
+| Group | `df.groupby("k").agg(n=("x", "sum"))` | `df.group_by("k").agg(n=pl.col("x").sum())` | `GROUP BY k` |
+| Join | `a.merge(b, on="k", how="left")` | `a.join(b, on="k", how="left")` | `LEFT JOIN b USING (k)` |
+| Sort | `sort_values("x")` | `sort("x")` | `ORDER BY x` |
+| Window | `groupby("k").x.transform("sum")` | `pl.col("x").sum().over("k")` | `SUM(x) OVER (PARTITION BY k)` |
+| Execution | eager, mostly single-threaded | lazy optimiser, multithreaded | planner in the database |
+| Index | row labels, alignment | none | none (keys) |
+| Best at | exploration, ecosystem, time series | large local data, speed | data already in a database |
+
+DuckDB can run SQL directly over pandas frames and Parquet files: `duckdb.sql("SELECT ...
+FROM df")`. For SQL itself see [PostgreSQL](/databases/postgres/).
+
+## Recipes
+
+### Top-N per group
+The biggest rows within each category, like "top 2 sales per region".
+
+```python
+top2 = (
+    df.sort_values("units", ascending=False)
+      .groupby("region", sort=False)
+      .head(2)
+      .sort_values(["region", "units"],
+                   ascending=[True, False])
+)
+top2[["region", "units"]].values.tolist()
+# [['north', 4], ['north', 3], ['south', 7],
+#  ['south', 5], ['west', 1]]
+```
+
+### Percent of total within group
+Each row's share of its group's sum, kept beside the row.
+
+```python
+pct = df.assign(
+    pct=lambda d: d["units"]
+    / d.groupby("region")["units"].transform("sum")
+    * 100
+)
+pct.loc[pct.region == "north", "pct"].round(1).tolist()
+# [33.3, 22.2, 44.4]
+```
+
+### Dedupe keeping the latest
+Keep one row per key: the most recent by timestamp.
+
+```python
+events = pd.DataFrame({
+    "user": ["a", "b", "a", "b"],
+    "ts": pd.to_datetime(["2026-01-01", "2026-01-02",
+                          "2026-01-05", "2026-01-03"]),
+    "plan": ["free", "free", "pro", "team"],
+})
+latest = (events.sort_values("ts")
+                .drop_duplicates("user", keep="last")
+                .sort_values("user"))
+latest["plan"].tolist()     # ['pro', 'team']
+```
+
+### Fill gaps in a time series
+Make a regular daily series from irregular readings, then fill.
+
+```python
+r = pd.Series(
+    [10.0, 14.0, 11.0],
+    index=pd.to_datetime(["2026-03-01", "2026-03-03",
+                          "2026-03-06"]),
+)
+full = r.asfreq("D")                 # missing days: NaN
+full.interpolate(method="time").tolist()
+# [10.0, 12.0, 14.0, 13.0, 12.0, 11.0]
+full.ffill(limit=1).isna().sum()     # 1 (Mar 5 stays NaN)
+full.fillna(0).tolist()
+# [10.0, 0.0, 14.0, 0.0, 0.0, 11.0]
+```
+
+### Join and flag unmatched rows
+Left-join a lookup table, then report keys that found no match.
+
+```python
+orders = pd.DataFrame({"sku": ["A1", "B2", "C3"],
+                       "qty": [2, 1, 5]})
+catalog = pd.DataFrame({"sku": ["A1", "C3"],
+                        "name": ["mug", "pen"]})
+j = orders.merge(catalog, on="sku", how="left",
+                 indicator=True, validate="m:1")
+j["matched"] = j.pop("_merge").eq("both")
+j[~j["matched"]]["sku"].tolist()      # ['B2']
+orders.merge(catalog[["sku"]], on="sku",
+             how="left_anti")
+#   sku  qty
+# 1  B2    1
+```
+
+### Pivot to wide and back
+Spread a long table into one column per category, then melt it back to tidy rows.
+
+```python
+wide = (df.pivot_table(index="date", columns="region",
+                       values="units", aggfunc="sum")
+          .reset_index())
+wide.columns.name = None
+wide.columns.tolist()   # ['date', 'north', 'south', 'west']
+
+long = wide.melt(id_vars="date", var_name="region",
+                 value_name="units").dropna()
+long.shape                           # (6, 3)
+```
+
+### Read a large CSV in chunks
+Aggregate a file bigger than memory, one chunk at a time.
+
+```python
+from collections.abc import Iterator
+
+totals: pd.Series = pd.Series(dtype="int64")
+reader: Iterator[pd.DataFrame] = pd.read_csv(
+    "sales.csv", usecols=["region", "units"],
+    chunksize=100_000,
+)
+for chunk in reader:
+    part = chunk.groupby("region")["units"].sum()
+    totals = totals.add(part, fill_value=0)
+totals.astype("int64").to_dict()
+# {'north': 9, 'south': 12, 'west': 1}
+```
+
+## References
+
+- pandas docs: [User guide](https://pandas.pydata.org/docs/user_guide/index.html), [API reference](https://pandas.pydata.org/docs/reference/index.html), [What's new in 3.0](https://pandas.pydata.org/docs/whatsnew/v3.0.0.html): string dtype, Copy-on-Write, datetime units, removed aliases
+- pandas docs: [Copy-on-Write](https://pandas.pydata.org/docs/user_guide/copy_on_write.html), [Indexing and selecting data](https://pandas.pydata.org/docs/user_guide/indexing.html), [Group by](https://pandas.pydata.org/docs/user_guide/groupby.html)
+- pandas docs: [Merge, join, concatenate](https://pandas.pydata.org/docs/user_guide/merging.html), [Reshaping and pivot tables](https://pandas.pydata.org/docs/user_guide/reshaping.html), [Time series](https://pandas.pydata.org/docs/user_guide/timeseries.html) (offset aliases table)
+- pandas docs: [Working with missing data](https://pandas.pydata.org/docs/user_guide/missing_data.html), [PyArrow functionality](https://pandas.pydata.org/docs/user_guide/pyarrow.html), [IO tools](https://pandas.pydata.org/docs/user_guide/io.html), [Scaling to large datasets](https://pandas.pydata.org/docs/user_guide/scale.html)
+- pandas docs: [Comparison with SQL](https://pandas.pydata.org/docs/getting_started/comparison/comparison_with_sql.html), [Installation extras](https://pandas.pydata.org/docs/getting_started/install.html)
+- [Polars user guide](https://docs.pola.rs/): the expression API compared above
+- [DuckDB Python API](https://duckdb.org/docs/stable/clients/python/overview): SQL over DataFrames and Parquet
+- Tom Augspurger, [Modern pandas](https://tomaugspurger.net/posts/modern-1-intro/): method chaining and idioms (pre-3.0 but still relevant)
+- [pandas-stubs](https://github.com/pandas-dev/pandas-stubs): type stubs for mypy and pyright

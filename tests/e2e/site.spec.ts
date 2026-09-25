@@ -64,7 +64,7 @@ test.describe("navigation", () => {
     await expect(page).toHaveURL(/\/physics\/$/);
     await expect(page).toHaveTitle("Physics - Zach");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Physics");
-    await expect(page.locator("main nav a")).toHaveCount(1);
+    await expect(page.locator("main nav a")).toHaveCount(3); // two sheets + the overview
     await expect(page.locator("main nav span").first()).toHaveText("00.");
 
     await page.locator("footer a", { hasText: "../" }).click();
@@ -253,7 +253,7 @@ test.describe("mdx showcase", () => {
   test("/design/overview/ renders every supported construct", async ({ page }) => {
     await page.goto("/design/overview/");
     const main = page.locator("main");
-    await expect(main.locator("h2")).toHaveCount(12);
+    await expect(main.locator("h2")).toHaveCount(13);
     await expect(main.locator("h3#third-level-heading")).toHaveCount(1);
     await expect(main.locator("strong")).toHaveCount(2);
     await expect(main.locator("del")).toHaveText("struck");
@@ -611,15 +611,15 @@ test.describe("typescript topic and directories", () => {
   test("every reference sheet renders with a table of contents that fits its rail", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"])',
+        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(61);
+    expect(hrefs).toHaveLength(81);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -657,8 +657,10 @@ test.describe("new topics", () => {
       "Linux/",
       "Containers/",
       "Kubernetes/",
+      "Ansible",
       "Grafana",
       "Communication networks",
+      "System design",
     ]);
   });
 
@@ -941,3 +943,125 @@ test.describe("coming-soon pages", () => {
   });
 });
 
+
+test.describe("visuals", () => {
+  test("swatches, a tonal scale and a contrast pair render real colours", async ({ page }) => {
+    await page.goto("/design/overview/");
+    const bar = page.locator(".swatch-bar span");
+    await expect(bar).toHaveCount(3);
+    await expect(bar.first()).toHaveCSS("background-color", "rgb(244, 241, 234)");
+    const ratio = await bar.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+    expect(ratio[0]! / ratio[2]!).toBeCloseTo(6, 0);
+    await expect(page.getByRole("list", { name: "Blue, hue 250" }).locator("li")).toHaveCount(11);
+    await expect(page.locator(".contrast figcaption")).toContainText("4.54:1");
+  });
+
+  test("an html demo fence renders live in a sandboxed frame that follows the theme", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/design/overview/");
+    await hydrated(page);
+    const frameEl = page.getByTitle("Live demo: flex.html");
+    await frameEl.scrollIntoViewIfNeeded();
+    await expect(frameEl).toHaveAttribute("sandbox", "");
+    const frame = page.frameLocator('iframe[title="Live demo: flex.html"]');
+    await expect(frame.locator(".row > div")).toHaveCount(3);
+    await expect(frame.locator(".row")).toHaveCSS("display", "flex");
+    await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(242, 242, 242)");
+    await page.keyboard.press("d");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(22, 22, 22)");
+  });
+
+  test("clicking a link inside a demo leaves the demo in place", async ({ page }) => {
+    await page.goto("/design/principles/color-theory/");
+    const frameEl = page.locator("iframe[title*='light-dark']").first();
+    await frameEl.scrollIntoViewIfNeeded();
+    const frame = frameEl.contentFrame();
+    await expect(frame.locator(".card")).toHaveCount(2);
+    await frame.locator(".card a").first().click();
+    await page.waitForTimeout(500);
+    await expect(frame.locator(".card")).toHaveCount(2);
+    await expect(frame.locator("main h2")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/design\/principles\/color-theory\/$/);
+  });
+
+  test("diagram labels keep the font size the SVG asks for", async ({ page }) => {
+    await page.goto("/design/principles/ux-ui/");
+    const small = page.locator("figure.diagram text", { hasText: "box beats spacing" });
+    const big = page.locator("figure.diagram text", { hasText: "common region" });
+    await small.scrollIntoViewIfNeeded();
+    const size = (el: Element) => parseFloat(getComputedStyle(el).fontSize);
+    expect(await small.evaluate(size)).toBeLessThan(await big.evaluate(size));
+  });
+
+  test("swatch labels line up under their chips", async ({ page }) => {
+    await page.goto("/design/css/tailwind/");
+    const item = page.locator("figure.swatches li").first();
+    await item.scrollIntoViewIfNeeded();
+    const [chipLeft, labelLeft] = await item.evaluate((li) => [
+      li.querySelector(".swatch-chip")!.getBoundingClientRect().left,
+      li.querySelector(".swatch-value")!.getBoundingClientRect().left,
+    ]);
+    expect(labelLeft).toBeGreaterThanOrEqual(chipLeft - 0.5);
+  });
+
+  test("diagrams are inline SVG coloured by the theme palette", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/design/overview/");
+    const diagram = page.getByRole("img", { name: /box model/i });
+    await expect(diagram.locator("svg")).toBeVisible();
+    await expect(diagram.locator("rect.d-fill-0")).toHaveCSS("fill", "rgb(31, 111, 235)");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(diagram.locator("rect.d-fill-0")).toHaveCSS("fill", "rgb(88, 166, 255)");
+  });
+
+  test("the design sheets use colour chips, live demos and diagrams", async ({ page }) => {
+    for (const href of ["/design/principles/color-theory/", "/design/css/css/"]) {
+      await page.goto(href);
+      const visuals = page.locator("main :is(.swatches, .contrast, .demo, .diagram)");
+      expect(await visuals.count(), href).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test("react-hooks shows the hook flow chart with its credit", async ({ page }) => {
+    await page.goto("/typescript/react/react-hooks/");
+    await expect(page.locator("main h2", { hasText: "Lifecycle flow" })).toBeVisible();
+    const chart = page.getByRole("img", { name: /React Hook Flow Diagram/ });
+    await chart.scrollIntoViewIfNeeded();
+    await expect(chart).toBeVisible();
+    await expect
+      .poll(() => chart.evaluate((img: HTMLImageElement) => img.naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(page.locator("main a[href='https://github.com/donavon/hook-flow']").first()).toBeVisible();
+  });
+});
+
+test.describe("python, physics and ml-ai", () => {
+  test("python lists its directories, FastAPI, then the overview", async ({ page }) => {
+    await page.goto("/python/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toEqual([
+      "/python/language/",
+      "/python/engineering/",
+      "/python/data/",
+      "/python/fastapi/",
+      "/python/overview/",
+    ]);
+  });
+
+  test("physics and ml-ai list their sheets before the overview", async ({ page }) => {
+    for (const [topic, first] of [
+      ["physics", "/physics/fundamentals/"],
+      ["ml-ai", "/ml-ai/scikit-learn/"],
+    ] as const) {
+      await page.goto(`/${topic}/`);
+      const links = page.locator("main nav a");
+      await expect(links.first()).toHaveAttribute("href", first);
+      await expect(links.last()).toHaveAttribute("href", `/${topic}/overview/`);
+    }
+  });
+});

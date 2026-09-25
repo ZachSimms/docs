@@ -97,6 +97,9 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `<Steps><Step title="…">…</Step></Steps>`                               | `01.` `02.` numbered procedure                                   |
 | `<Cards><Card title href description /></Cards>`                        | `> title` links with descriptions                                |
 | ` ```tree title="…" ` fence with a 2-space outline                       | directory tree with guide lines (`dir/` bold, `# comment` dim)  |
+| `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | colour chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
+| ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
+| `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
 | `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
 | `##` / `###` headings                                                   | table of contents in the right margin (wide viewports)           |
 
@@ -130,6 +133,8 @@ Available in every sheet without an import. All are rendered in the site's own i
 - Client components: `SearchPalette.tsx`, `SearchLink.tsx`, `ThemeToggle.tsx`, `NumberedList.tsx` (list pages as
   keyboard/mouse menus), `ParentLink.tsx` (pinned `../`, Esc/←/h), `Toc.tsx`, `Tabs.tsx`
 - `components/FileTree.tsx` + `lib/file-tree.ts` + `lib/remark-file-tree.ts` (```` ```tree ```` fences)
+- `components/Swatches.tsx` + `lib/color.ts` (colour chips), `components/Demo.tsx` + `lib/remark-demo.ts`
+  (```` ```html demo ```` fences), `components/Diagram.tsx` + `lib/diagram.ts` (SVGs in `public/images/diagrams/`)
 - `lib/search.ts` (index builder), `lib/search-rank.ts` (isomorphic ranking), `lib/theme.ts`, `lib/images.ts`,
   `lib/keys.ts` (keyboard shortcuts), `lib/toc.ts`
 - `mdx-components.tsx` maps MDX `a` and `img` to the house style; inline code is styled by CSS
@@ -148,6 +153,9 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
   Jansson. They remain his work; this repository only adapts them (colour variables, dark mode, tables,
   code blocks and other additions).
 - **Unit circle image:** `public/images/unit_circle.jpg`, source: google images
+- **React Hook Flow Diagram:** `public/images/typescript/hook-flow.png`, © 2019 Donavon West,
+  from [donavon/hook-flow](https://github.com/donavon/hook-flow), MIT License (full text next to it in
+  `hook-flow.LICENSE`).
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.
 

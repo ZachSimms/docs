@@ -1,0 +1,814 @@
+---
+title: Drizzle ORM
+date: 2026-09-25
+order: 3
+---
+
+Drizzle ORM **0.45.x** (current stable, with `drizzle-kit` 0.31) on PostgreSQL from Bun: schema, migrations,
+queries, relations, transactions and types. Drizzle **1.0 is still a release candidate** (`drizzle-orm@rc`), and
+orm.drizzle.team now documents the RC by default; the differences are listed under [Drizzle 1.0 RC](#drizzle-10-rc).
+SQL itself lives in [PostgreSQL](/databases/postgres/), and modelling in [DB design & schemas](/databases/db-design/).
+
+## Install & connect
+
+```sh
+bun add drizzle-orm                # + a driver (below)
+bun add -d drizzle-kit             # CLI: migrations, studio
+bun add drizzle-zod zod            # optional: zod schemas
+# npm i drizzle-orm pg  ·  pnpm add -D drizzle-kit
+```
+
+| Driver | Install | Import `drizzle` from | Notes |
+| :----- | :------ | :-------------------- | :---- |
+| Bun SQL | nothing, it's built in | `drizzle-orm/bun-sql` | Bun only; pooled; tagged-template client |
+| node-postgres | `pg @types/pg` | `drizzle-orm/node-postgres` | most compatible; Node and Bun |
+| postgres.js | `postgres` | `drizzle-orm/postgres-js` | fast; `prepare: false` behind PgBouncer |
+| Neon serverless | `@neondatabase/serverless` | `drizzle-orm/neon-http` | HTTP, edge runtimes; `db.batch()` |
+| PGlite | `@electric-sql/pglite` | `drizzle-orm/pglite` | Postgres in WASM: tests, local dev |
+
+```ts title="src/db/index.ts"
+import { drizzle } from "drizzle-orm/bun-sql";
+import * as schema from "./schema";
+
+const url = process.env.DATABASE_URL;
+if (!url) throw new Error("DATABASE_URL is not set");
+
+export const db = drizzle({
+  connection: { url, max: 10 },
+  schema,                  // enables db.query.*
+  casing: "snake_case",    // authorId -> author_id
+  logger: process.env.NODE_ENV !== "production",
+});
+export type DB = typeof db;
+```
+
+```ts title="node-postgres / postgres.js"
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
+});
+export const db = drizzle({ client: pool, schema });
+
+// postgres.js: drizzle({ client: postgres(url), schema })
+```
+
+`casing: "snake_case"` lets you omit column names (`text()` instead of `text("author_id")`); set it in
+**both** the client and `drizzle.config.ts`, or the generated SQL and runtime queries disagree.
+
+## Config & layout
+
+```ts title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./src/db/schema/index.ts", // file, dir or glob
+  out: "./drizzle",                  // migrations folder
+  casing: "snake_case",
+  dbCredentials: { url: process.env.DATABASE_URL! },
+  strict: true,      // push asks before every statement
+  verbose: true,     // push prints the SQL
+});
+```
+
+| Option | Use |
+| :----- | :-- |
+| `schemaFilter: ["public"]` | limit `push`/`pull` to Postgres schemas |
+| `tablesFilter: ["app_*"]` | glob of tables `push`/`pull` may touch |
+| `extensionsFilters: ["postgis"]` | ignore tables an extension owns |
+| `migrations: { table, schema }` | where the applied-migrations log lives (default `drizzle.__drizzle_migrations`) |
+| `entities: { roles: true }` | manage roles (and RLS policies) too |
+
+drizzle-kit loads `.env` from the working directory by itself. Bun does the same for your app; on Node use
+`node --env-file=.env`.
+
+### Project layout
+
+```tree title="Bun API with Drizzle"
+drizzle/                # generated migrations, committed
+  0000_init.sql
+  meta/
+    _journal.json
+src/
+  db/
+    schema/
+      columns.ts        # shared column groups
+      tables.ts         # pgTable, pgEnum
+      relations.ts
+      index.ts          # re-exports tables + relations
+    index.ts            # drizzle() client
+    seed.ts
+  routes/
+    posts.ts            # queries live near their callers
+drizzle.config.ts
+.env                    # DATABASE_URL
+```
+
+Split `tables.ts` per domain (`users.ts`, `billing.ts`) as it grows; drizzle-kit takes a folder or glob.
+
+## Schema
+
+### Column types
+
+| Builder | Postgres | TS type |
+| :------ | :------- | :------ |
+| `integer()`, `smallint()` | `integer`, `smallint` | `number` |
+| `bigint({ mode: "number" \| "bigint" })` | `bigint` | `number` / `bigint` |
+| `serial()` | `serial` (legacy: prefer identity) | `number` |
+| `numeric({ precision, scale })` | `numeric` | `string` (exact) |
+| `real()`, `doublePrecision()` | `real`, `float8` | `number` |
+| `text()`, `varchar({ length })` | `text`, `varchar(n)` | `string` |
+| `text({ enum: [...] })` | `text` (type-level only) | union of literals |
+| `boolean()` | `boolean` | `boolean` |
+| `uuid()` | `uuid` | `string` |
+| `timestamp({ withTimezone: true })` | `timestamptz` | `Date` (`mode: "string"` for ISO) |
+| `date({ mode: "date" \| "string" })` | `date` | `Date` / `string` |
+| `interval()`, `time()` | `interval`, `time` | `string` |
+| `jsonb().$type<T>()` | `jsonb` | `T` (not validated) |
+| `integer().array()` | `integer[]` | `number[]` |
+| `pgEnum("role", [...])` | `CREATE TYPE ... AS ENUM` | union of literals |
+| `vector({ dimensions })` | pgvector `vector(n)` | `number[]` |
+
+### Modifiers
+
+| Modifier | Effect |
+| :------- | :----- |
+| `.notNull()` | `NOT NULL`; makes the TS type non-nullable |
+| `.primaryKey()` | `PRIMARY KEY` (implies not null) |
+| `.generatedAlwaysAsIdentity()` | `GENERATED ALWAYS AS IDENTITY`; omitted from inserts |
+| `.default(v)` / ``.default(sql`...`)`` | SQL `DEFAULT` |
+| `.defaultNow()`, `.defaultRandom()` | `DEFAULT now()`, `DEFAULT gen_random_uuid()` |
+| `.$defaultFn(() => v)` | value computed in JS at insert (no SQL default) |
+| `.$onUpdate(() => v)` | value computed in JS on every update |
+| `.unique()` | `UNIQUE` constraint |
+| `.references(() => t.id, { onDelete })` | foreign key: `cascade`, `set null`, `restrict`, `no action` |
+| ``.generatedAlwaysAs(sql`...`)`` | stored generated column |
+| `.$type<T>()` | narrow the TS type (no runtime effect) |
+
+### Tables, enums, indexes, constraints
+
+```ts title="src/db/schema/tables.ts"
+import { sql } from "drizzle-orm";
+import {
+  boolean, check, index, integer, jsonb, pgEnum,
+  pgTable, primaryKey, text, uuid, varchar,
+} from "drizzle-orm/pg-core";
+import { timestamps } from "./columns";
+
+export const role = pgEnum("role", ["admin", "member"]);
+
+export const users = pgTable("users", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  publicId: uuid().notNull().unique().defaultRandom(),
+  email: varchar({ length: 320 }).notNull().unique(),
+  name: text().notNull(),
+  role: role().notNull().default("member"),
+  prefs: jsonb().$type<{ theme: "light" | "dark" }>(),
+  ...timestamps,
+}, (t) => [
+  index("users_name_idx").on(sql`lower(${t.name})`),
+]);
+
+export const posts = pgTable("posts", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  authorId: integer().notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text().notNull(),
+  slug: text().notNull()
+    .$defaultFn(() => crypto.randomUUID().slice(0, 8)),
+  published: boolean().notNull().default(false),
+  views: integer().notNull().default(0),
+  ...timestamps,
+}, (t) => [
+  index("posts_author_idx")
+    .on(t.authorId, t.createdAt.desc()),
+  index("posts_live_idx").on(t.slug)
+    .where(sql`${t.deletedAt} is null`),
+  check("posts_views_ck", sql`${t.views} >= 0`),
+]);
+
+export const tags = pgTable("tags", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  name: text().notNull().unique(),
+});
+
+export const postTags = pgTable("post_tags", {
+  postId: integer().notNull()
+    .references(() => posts.id, { onDelete: "cascade" }),
+  tagId: integer().notNull()
+    .references(() => tags.id, { onDelete: "cascade" }),
+}, (t) => [primaryKey({ columns: [t.postId, t.tagId] })]);
+```
+
+| Extra config (third argument) | SQL |
+| :---------------------------- | :-- |
+| `index("n").on(a, b.desc())` | `CREATE INDEX` (btree) |
+| ``uniqueIndex("n").on(sql`lower(${t.email})`)`` | unique expression index |
+| ``index().on(c).where(sql`...`)`` | partial index |
+| `index().using("gin", t.doc)` | GIN, GiST, BRIN, HNSW, ... |
+| `primaryKey({ columns: [a, b] })` | composite primary key |
+| `unique().on(a, b).nullsNotDistinct()` | composite unique constraint |
+| `foreignKey({ columns, foreignColumns }).onDelete("cascade")` | multi-column or named FK |
+| ``check("n", sql`...`)`` | `CHECK` constraint |
+| `pgPolicy("n", { for, to, using })` | RLS policy (enables RLS) |
+
+A self-referencing FK needs an explicit return type: `parentId: integer().references((): AnyPgColumn => items.id)`.
+Views: `pgView("v").as((qb) => qb.select()...)`; materialized: `pgMaterializedView`.
+
+## Relations
+
+`relations()` only feeds `db.query.*`; it creates no SQL. FKs still come from `.references()`.
+
+```ts title="src/db/schema/relations.ts"
+import { relations } from "drizzle-orm";
+import { postTags, posts, tags, users } from "./tables";
+
+export const usersRelations = relations(
+  users,
+  ({ many }) => ({ posts: many(posts) }),
+);
+
+export const postsRelations = relations(
+  posts,
+  ({ one, many }) => ({
+    author: one(users, {
+      fields: [posts.authorId],
+      references: [users.id],
+    }),
+    postTags: many(postTags),
+  }),
+);
+
+export const postTagsRelations = relations(
+  postTags,
+  ({ one }) => ({
+    post: one(posts, {
+      fields: [postTags.postId],
+      references: [posts.id],
+    }),
+    tag: one(tags, {
+      fields: [postTags.tagId],
+      references: [tags.id],
+    }),
+  }),
+);
+```
+
+Keep tables and relations in separate files and re-export both from `schema/index.ts`: a relations
+file that imports from the barrel it is re-exported by gives a circular import at `drizzle-kit` time.
+Two relations between the same tables need a shared `relationName` on both sides.
+
+### Drizzle 1.0 RC
+
+| Area | 0.45 (stable) | 1.0 RC |
+| :--- | :------------ | :----- |
+| Relations | `relations(table, ...)` per table | one `defineRelations(schema, (r) => ...)` |
+| Client option | `drizzle({ schema })` | `drizzle({ relations })` |
+| `findMany` filters | callbacks: `where: (t, { eq }) => ...` | objects: `where: { name: { ilike: "a%" } }` |
+| Many-to-many | via the junction table's relations | `.through(junction.col)` on `from`/`to` skips the junction |
+| Zod / Valibot | `drizzle-zod` package | `drizzle-orm/zod` (built in) |
+| Migrations folder | `meta/_journal.json` + snapshots | one folder per migration, no journal; convert with `drizzle-kit up` |
+
+```ts title="schema.ts (drizzle-orm@rc)"
+import { defineRelations } from "drizzle-orm";
+
+export const relations = defineRelations(
+  { users, posts },
+  (r) => ({
+    users: { posts: r.many.posts() },
+    posts: {
+      author: r.one.users({
+        from: r.posts.authorId,
+        to: r.users.id,
+      }),
+    },
+  }),
+);
+// db.query.users.findMany({ where: { id: 1 },
+//   orderBy: { id: "desc" }, with: { posts: true } })
+```
+
+## drizzle-kit & migrations
+
+| Command | Does | When |
+| :------ | :--- | :--- |
+| `generate --name x` | diff schema vs last snapshot, write SQL migration | every schema change |
+| `generate --custom --name x` | empty migration for hand-written SQL | backfills, `CONCURRENTLY` indexes |
+| `migrate` | apply pending migrations, log them in `__drizzle_migrations` | CI / deploy |
+| `push` | diff schema vs **live** DB and apply, no files | prototyping, local DB |
+| `pull` (alias `introspect`) | DB to `schema.ts` + `relations.ts` | adopting an existing DB |
+| `studio` | web data browser (local.drizzle.studio) | dev |
+| `check` | validate migration history for conflicts | CI, after merges |
+| `drop` | delete a generated migration and its snapshot | before it is applied (gone in 1.0) |
+| `up` | upgrade old snapshot formats | after a kit upgrade |
+| `export` | print the full schema as SQL | review, other tools |
+
+```sh
+bunx drizzle-kit generate --name add_posts # read the SQL
+bunx drizzle-kit migrate
+bunx drizzle-kit push --strict --verbose     # dev only
+bunx drizzle-kit studio --port 4983
+```
+
+Workflow: edit schema, then `generate`, then read and fix the SQL, commit schema + migration, and run `migrate` in
+deploy. Don't mix `push` and `migrate` against the same database. Renames prompt interactively (rename vs
+drop+add), so run `generate` locally, not in CI.
+
+```ts title="scripts/migrate.ts"
+import { drizzle } from "drizzle-orm/bun-sql";
+import { migrate } from "drizzle-orm/bun-sql/migrator";
+
+const db = drizzle(process.env.DATABASE_URL!);
+await migrate(db, { migrationsFolder: "./drizzle" });
+await db.$client.close();
+```
+
+Big-table changes (`CREATE INDEX CONCURRENTLY`, `NOT VALID` constraints) need hand edits: see
+[expand / contract](/databases/db-design/).
+
+## Select & filters
+
+```ts
+import {
+  and, asc, desc, eq, ilike, isNull,
+} from "drizzle-orm";
+
+const all = await db.select().from(users);  // User[]
+
+const [one] = await db
+  .select({ id: users.id, email: users.email })
+  .from(users)
+  .where(eq(users.email, "ada@example.com"))
+  .limit(1);                  // { id; email } | undefined
+
+const page = await db
+  .select()
+  .from(posts)
+  .where(
+    and(
+      eq(posts.published, true),
+      isNull(posts.deletedAt),
+      q ? ilike(posts.title, `%${q}%`) : undefined,
+    ),
+  )
+  .orderBy(desc(posts.createdAt), asc(posts.id))
+  .limit(20)
+  .offset(40);
+```
+
+| Operator | SQL |
+| :------- | :-- |
+| `eq(c, v)`, `ne(c, v)` | `=`, `<>` |
+| `gt`, `gte`, `lt`, `lte` | `>`, `>=`, `<`, `<=` |
+| `and(...)`, `or(...)`, `not(x)` | combine; `undefined` args are skipped |
+| `inArray(c, [..])`, `notInArray` | `IN (...)`; an empty array gives `false` |
+| `isNull(c)`, `isNotNull(c)` | `IS NULL` |
+| `like`, `ilike`, `notIlike` | pattern match |
+| `between(c, a, b)` | `BETWEEN` |
+| `exists(subquery)` | `EXISTS (...)` |
+| `arrayContains`, `arrayContained`, `arrayOverlaps` | `@>`, `<@`, `&&` |
+| `` sql`...` `` | anything else |
+
+`.$dynamic()` returns a builder you can pass to helpers that add `where`/`limit` conditionally. A subquery is
+`db.select().from(x).as("sq")`; CTEs are `db.$with("name").as(query)` then `db.with(cte).select()...`.
+
+## Insert, update, delete
+
+```ts
+const [ada] = await db
+  .insert(users)
+  .values({ email: "ada@example.com", name: "Ada" })
+  .returning();                     // full row
+
+await db.insert(users).values([     // multi-row
+  { email: "bob@example.com", name: "Bob" },
+  { email: "cy@example.com", name: "Cy", role: "admin" },
+]);
+
+const bumped = await db
+  .update(posts)
+  .set({ views: sql`${posts.views} + 1` })
+  .where(eq(posts.id, 1))
+  .returning({ id: posts.id, views: posts.views });
+
+await db.delete(posts).where(inArray(posts.id, [4, 5]));
+```
+
+### Upsert
+
+```ts
+await db.insert(tags).values({ name })
+  .onConflictDoNothing({ target: tags.name });
+
+await db
+  .insert(users)
+  .values(rows)                       // one or many
+  .onConflictDoUpdate({
+    target: users.email,              // or [a, b]
+    set: { name: sql`excluded.name` },
+    setWhere: sql`${users.deletedAt} is null`,
+  })
+  .returning({ id: users.id });
+```
+
+`excluded.<col>` takes the **SQL** column name (snake case). `$onUpdate` columns are also set on the update
+branch. A `where` on the target matches a partial unique index.
+
+## Joins
+
+```ts
+import { alias } from "drizzle-orm/pg-core";
+
+const rows = await db
+  .select({ title: posts.title, author: users.name })
+  .from(posts)
+  .innerJoin(users, eq(posts.authorId, users.id))
+  .where(eq(users.role, "admin"));
+
+const all = await db
+  .select()
+  .from(users)
+  .leftJoin(posts, eq(posts.authorId, users.id));
+// { users: User; posts: Post | null }[]
+
+const t = alias(tags, "t");           // self-join / rename
+const tagged = await db
+  .select({ post: posts.title, tag: t.name })
+  .from(posts)
+  .innerJoin(postTags, eq(postTags.postId, posts.id))
+  .innerJoin(t, eq(t.id, postTags.tagId));
+```
+
+| Join | Nullable side in the result |
+| :--- | :-------------------------- |
+| `innerJoin` | none |
+| `leftJoin` | joined table |
+| `rightJoin` | base table |
+| `fullJoin` | both |
+| `crossJoin`, `leftJoinLateral`, `innerJoinLateral` | lateral subqueries |
+
+Joins return flat rows keyed by table name; group them in JS, or use relational queries for nested output.
+
+## Relational queries
+
+```ts
+const authors = await db.query.users.findMany({
+  columns: { id: true, name: true },
+  where: (u, { eq }) => eq(u.role, "admin"),
+  orderBy: (u, { asc }) => [asc(u.name)],
+  limit: 10,
+  with: {
+    posts: {
+      columns: { title: true },
+      where: (p, { eq }) => eq(p.published, true),
+      with: { postTags: { with: { tag: true } } },
+    },
+  },
+});
+// authors[0]?.posts[0]?.postTags[0]?.tag.name
+
+const post = await db.query.posts.findFirst({
+  where: eq(posts.slug, "hello"),
+  with: { author: true },
+});           // (Post & { author: User }) | undefined
+```
+
+| Option | Use |
+| :----- | :-- |
+| `columns: { a: true }` / `{ b: false }` | include / exclude columns |
+| `with: { rel: true \| { ... } }` | nest relations, any depth |
+| `where`, `orderBy`, `limit`, `offset` | top level; `limit` also works on nested `many` |
+| ``extras: { n: sql`...`.as("n") }`` | computed fields |
+
+Each call compiles to **one** SQL statement (lateral joins with JSON aggregation), so there is no N+1.
+
+## Aggregations & `sql`
+
+```ts
+import {
+  avg, count, countDistinct, gt, max, sql, sum,
+} from "drizzle-orm";
+
+const perAuthor = await db
+  .select({
+    authorId: posts.authorId,
+    n: count(),                  // number
+    views: sum(posts.views),     // string | null
+    avgViews: avg(posts.views),  // string | null
+    last: max(posts.createdAt),
+  })
+  .from(posts)
+  .groupBy(posts.authorId)
+  .having(({ n }) => gt(n, 5));
+
+const live = await db.$count(
+  posts,
+  eq(posts.published, true),
+);                               // number
+const authors = countDistinct(posts.authorId);
+```
+
+```ts
+const ranked = await db
+  .select({
+    id: posts.id,
+    rank: sql<number>`ts_rank(
+      to_tsvector('english', ${posts.title}),
+      websearch_to_tsquery('english', ${q})
+    )`.mapWith(Number).as("rank"),
+  })
+  .from(posts)
+  .orderBy(desc(sql`rank`));
+
+const res = await db.execute(sql`select now() as now`);
+```
+
+| `sql` helper | Does |
+| :----------- | :--- |
+| `` sql`... ${value}` `` | value becomes a bound parameter |
+| `` sql`... ${table.col}` `` | column/table become quoted identifiers |
+| `` sql<T>`...` `` | sets the TS type only; no runtime cast |
+| `.mapWith(Number)` / `.mapWith(col)` | runtime decode (raw `count(*)` and sums arrive as strings) |
+| `.as("alias")` | name it for `orderBy`/subqueries |
+| `sql.raw(str)` | unescaped SQL: never with user input |
+| `sql.identifier(name)` | quoted dynamic identifier |
+| ``sql.join(parts, sql`, `)`` | join fragments |
+| `sql.empty()`, `.append(...)` | build a statement incrementally |
+
+## Prepared statements
+
+```ts
+const postById = db
+  .select()
+  .from(posts)
+  .where(eq(posts.id, sql.placeholder("id")))
+  .prepare("post_by_id");            // named: server-side
+
+const byRole = db.query.users
+  .findMany({
+    where: (u, { eq }) =>
+      eq(u.role, sql.placeholder("role")),
+    limit: sql.placeholder("limit"),
+  })
+  .prepare("users_by_role");
+
+const [p] = await postById.execute({ id: 1 });
+const admins = await byRole.execute({
+  role: "admin",
+  limit: 10,
+});
+```
+
+Preparing skips query building on every call; the name makes Postgres cache the plan per connection.
+Placeholders are not type-checked, so wrap the statement in a typed function.
+
+## Transactions
+
+```ts
+const result = await db.transaction(async (tx) => {
+  const [src] = await tx
+    .select({ views: posts.views })
+    .from(posts)
+    .where(eq(posts.id, from))
+    .for("update");                   // row lock
+  if (!src || src.views < 10) tx.rollback(); // throws
+  await tx.update(posts)
+    .set({ views: sql`${posts.views} - 10` })
+    .where(eq(posts.id, from));
+  return tx.transaction(async (sp) => // SAVEPOINT
+    sp.$count(posts),
+  );
+}, { isolationLevel: "serializable" });
+```
+
+| Detail | Behaviour |
+| :----- | :-------- |
+| throw inside the callback | `ROLLBACK`, error re-thrown |
+| `tx.rollback()` | throws `TransactionRollbackError` |
+| nested `tx.transaction()` | savepoint; its failure rolls back only the savepoint |
+| options | `isolationLevel`, `accessMode: "read only"`, `deferrable` |
+| `.for("update" \| "share", { skipLocked, noWait })` | row locks on a select |
+
+Use `tx`, not `db`, inside the callback: `db` runs on another connection, outside the transaction. Retry
+`serializable` transactions on SQLSTATE `40001`.
+
+## Types & validation
+
+```ts
+import type {
+  InferInsertModel, InferSelectModel,
+} from "drizzle-orm";
+import {
+  createInsertSchema, createSelectSchema, createUpdateSchema,
+} from "drizzle-zod";
+import { z } from "zod";
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+type Same = InferSelectModel<typeof users>; // User
+type Role = User["role"];      // "admin" | "member"
+
+export const insertUser = createInsertSchema(users, {
+  email: (s) => s.email(),
+  name: (s) => s.trim().min(1).max(100),
+}).pick({ email: true, name: true, role: true });
+export const selectUser = createSelectSchema(users);
+export const patchUser =
+  createUpdateSchema(users);    // all optional
+export type InsertUser = z.infer<typeof insertUser>;
+```
+
+| Type | Contains |
+| :--- | :------- |
+| `$inferSelect` | every column; nullable columns are `T \| null` |
+| `$inferInsert` | required = not null without default; generated identity columns left out |
+| `getTableColumns(t)` | the column map, for spreading into `select({ ... })` |
+| `drizzle-zod` refine callback | receives the generated zod schema for that column |
+
+drizzle-zod 0.8 accepts zod 3.25+ or 4. It also has `createSchemaFactory({ coerce: { date: true } })` for form
+and query-string input. Drizzle 1.0 moves it to `drizzle-orm/zod`.
+
+## Drizzle vs Prisma vs raw SQL
+
+| | Drizzle | Prisma 7 | Raw SQL (`Bun.sql`, postgres.js) |
+| :- | :------ | :------- | :------------------------------- |
+| Schema source | TS files | `schema.prisma` DSL | the database |
+| Types | inferred, no codegen | generated client | hand-written generics |
+| Query style | SQL-shaped builder + relational API | object API | SQL strings |
+| Migrations | drizzle-kit SQL files | Prisma Migrate SQL files | any tool (dbmate, Atlas) |
+| Runtime | thin, no engine | TS client + driver adapter | none |
+| Edge / serverless | yes (HTTP drivers) | yes (adapters) | driver dependent |
+| Escape hatch | `sql` template anywhere | `$queryRaw` | n/a |
+| Best for | SQL-literate TS teams | teams wanting a high-level model | small services, hot paths, complex SQL |
+
+Mixing is fine: Drizzle for CRUD and types, ``db.execute(sql`...`)`` for window functions, recursive CTEs and
+the rest of [PostgreSQL](/databases/postgres/).
+
+## Recipes
+
+### Paginated list with total
+Offset pagination for admin tables; switch to keyset pagination ([PostgreSQL](/databases/postgres/)) for deep pages.
+
+```ts
+export async function listPosts(page = 1, size = 20) {
+  const where = and(
+    eq(posts.published, true),
+    isNull(posts.deletedAt),
+  );
+  const [items, [{ total } = { total: 0 }]] =
+    await Promise.all([
+      db.select().from(posts).where(where)
+        .orderBy(desc(posts.createdAt), desc(posts.id))
+        .limit(size).offset((page - 1) * size),
+      db.select({ total: count() }).from(posts).where(where),
+    ]);
+  return { items, total, pages: Math.ceil(total / size) };
+}
+```
+
+### Reusable `withTimestamps` columns
+Spread the same audit columns into every table.
+
+```ts title="src/db/schema/columns.ts"
+import { timestamp } from "drizzle-orm/pg-core";
+
+export const timestamps = {
+  createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+  deletedAt: timestamp({ withTimezone: true }),
+};
+// pgTable("x", { id: ..., ...timestamps })
+```
+
+`$onUpdate` only fires for Drizzle updates; use a trigger ([PostgreSQL](/databases/postgres/)) if other clients write.
+
+### Soft delete
+Hide rows instead of deleting them; pair with a partial index on `deleted_at is null`.
+
+```ts
+import type { PgColumn } from "drizzle-orm/pg-core";
+
+export const live = (deletedAt: PgColumn): SQL =>
+  isNull(deletedAt);
+
+export async function softDelete(id: number) {
+  await db.update(posts)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(posts.id, id), live(posts.deletedAt)));
+}
+
+export const listLive = () =>
+  db.select().from(posts).where(live(posts.deletedAt));
+```
+
+### Batch upsert
+Sync rows from an import or webhook, keyed on a unique column.
+
+```ts
+export async function upsertUsers(
+  rows: { email: string; name: string }[],
+) {
+  if (rows.length === 0) return [];
+  return db.insert(users).values(rows)
+    .onConflictDoUpdate({
+      target: users.email,
+      set: { name: sql`excluded.name` },
+    })
+    .returning({ id: users.id, email: users.email });
+}
+```
+
+### Transaction with rollback
+All-or-nothing writes; any throw (or `tx.rollback()`) undoes everything.
+
+```ts
+import { TransactionRollbackError } from "drizzle-orm";
+
+try {
+  await db.transaction(async (tx) => {
+    const [u] = await tx.insert(users)
+      .values({ email, name }).returning();
+    if (!u) return tx.rollback();
+    await tx.insert(posts)
+      .values({ authorId: u.id, title: "Welcome" });
+  });
+} catch (err) {
+  if (!(err instanceof TransactionRollbackError)) throw err;
+}
+```
+
+### Seed script
+Reset and fill a dev database; run with `bun src/db/seed.ts`.
+
+```ts title="src/db/seed.ts"
+import { sql } from "drizzle-orm";
+import { db } from "./index";
+import { posts, users } from "./schema";
+
+if (process.env.NODE_ENV === "production") {
+  throw new Error("refusing to seed production");
+}
+await db.transaction(async (tx) => {
+  await tx.execute(sql`truncate ${users}, ${posts}
+    restart identity cascade`);
+  const people = await tx.insert(users).values(
+    Array.from({ length: 10 }, (_, i) => ({
+      email: `user${i}@example.com`,
+      name: `User ${i}`,
+    })),
+  ).returning({ id: users.id });
+  await tx.insert(posts).values(
+    people.map(({ id }) => ({
+      authorId: id,
+      title: `Post ${id}`,
+    })),
+  );
+});
+```
+
+For large, realistic fake data, `drizzle-seed` generates rows from the schema with a fixed seed.
+
+### Validated insert with zod
+Parse untrusted input at the edge, then insert the typed result.
+
+```ts
+import { createInsertSchema } from "drizzle-zod";
+
+const insertUser = createInsertSchema(users, {
+  email: (s) => s.email(),
+  name: (s) => s.trim().min(1).max(100),
+}).pick({ email: true, name: true });
+
+export async function createUser(input: unknown) {
+  const parsed = insertUser.safeParse(input);
+  if (!parsed.success) {
+    const error = parsed.error.issues;
+    return { ok: false as const, error };
+  }
+  const [row] = await db.insert(users)
+    .values(parsed.data).returning();
+  return { ok: true as const, user: row! };
+}
+```
+
+## References
+
+- [Drizzle ORM docs](https://orm.drizzle.team/docs/overview): written for the 1.0 RC; most query and schema pages also apply to 0.45
+- [Drizzle: PostgreSQL column types](https://orm.drizzle.team/docs/column-types/pg) and [indexes & constraints](https://orm.drizzle.team/docs/indexes-constraints)
+- [Drizzle: Select](https://orm.drizzle.team/docs/select), [Insert](https://orm.drizzle.team/docs/insert), [Joins](https://orm.drizzle.team/docs/joins), [Transactions](https://orm.drizzle.team/docs/transactions), [`sql` operator](https://orm.drizzle.team/docs/sql)
+- [Drizzle: Relational queries v1 to v2](https://orm.drizzle.team/docs/relations-v1-v2): the 0.45 `relations()` API next to `defineRelations`; [Upgrade to v1](https://orm.drizzle.team/docs/upgrade-v1)
+- [drizzle-kit overview](https://orm.drizzle.team/docs/kit-overview) and [migrations fundamentals](https://orm.drizzle.team/docs/migrations)
+- [Drizzle: Connect to Bun SQL](https://orm.drizzle.team/docs/connect-bun-sql)
+- [drizzle-zod](https://orm.drizzle.team/docs/zod)
+- [Drizzle ORM releases on GitHub](https://github.com/drizzle-team/drizzle-orm/releases)
+- [PostgreSQL 18: INSERT ... ON CONFLICT](https://www.postgresql.org/docs/18/sql-insert.html#SQL-ON-CONFLICT)
+- [Prisma ORM docs](https://www.prisma.io/docs/orm)
