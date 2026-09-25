@@ -52,7 +52,7 @@ export default function InfoPage() {
         <li>&quot;The devil doesn&apos;t come dressed in a red cape with pointed horns. He comes as everything you&apos;ve ever wished for.&quot; - Theo Von</li>
         <li>&quot;Do not fear death, but rather the unlived life. You don&apos;t have to live forever. You just have to live.&quot; - Natalie Babbitt</li>
         <li>&quot;And if you gaze long into an abyss, the abyss also gazes into you.&quot; - Friedrich Nietzsche</li>
-        <li>&quot;A ship is always safe at the shore, but that is not what it is built for.&quot; - Albert Einstein</li>
+        <li>&quot;A ship in harbor is safe, but that is not what ships are built for.&quot; - John A. Shedd</li>
       </ul>
       <p>The Inspiration:</p>
       <ul>
@@ -60,10 +60,10 @@ export default function InfoPage() {
         <li>Viktor Frankl</li>
         <li>Jocko Willink</li>
         <li>Elon Musk</li>
-        <li>Micael Jordan</li>
+        <li>Michael Jordan</li>
         <li>Steve Jobs</li>
         <li>DJ Shipley</li>
-        <li>Richard Feyynman</li>
+        <li>Richard Feynman</li>
         <li>Cam Hanes</li>
         <li>Marcus Aurelius</li>
         <li>David Goggins</li>
