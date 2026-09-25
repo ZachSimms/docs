@@ -4,7 +4,14 @@
  * that fit the code box.
  */
 import { describe, expect, it } from "bun:test";
-import { listGroupSheets, listTopicEntries, readSheetBody, type SheetRef } from "@/lib/content";
+import {
+  listAllSheets,
+  listGroupSheets,
+  listTopicEntries,
+  readSheetBody,
+  type SheetRef,
+} from "@/lib/content";
+import { readImageDimensions } from "@/lib/images";
 import { buildSearchIndex } from "@/lib/search";
 import { drawTreeLine, parseTree, renderTreeLines } from "@/lib/file-tree";
 import { extractToc } from "@/lib/toc";
@@ -235,5 +242,54 @@ describe("search index", () => {
     }
     expect(urls).toContain("/typescript/web-apis/fetch-api/");
     expect(urls).toContain("/typescript/react/typescript-react/");
+  });
+});
+
+/** Maths sheets: numbered book-style headings are kept as they are, but each ends with its sources. */
+const MATHS_SHEETS = ["math-fundamentals", "reading-graphs", "constants-units-conversions", "notation"];
+
+describe("content/maths", () => {
+  it("lists its sheets in order, with the coming-soon overview last", () => {
+    expect(listTopicEntries("maths").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
+  });
+
+  for (const slug of MATHS_SHEETS) {
+    it(`${slug} ends with a References section and keeps code lines short`, () => {
+      const body = readSheetBody({ topic: "maths", slug });
+      const sections = extractToc(body).filter((e) => e.depth === 2);
+      expect(sections.at(-1)?.text).toBe("References");
+      expect(body.split("## References")[1]).toMatch(/^- \[.+\]\(https:\/\/.+\)/m);
+      expect(longCodeLines(body)).toEqual([]);
+    });
+  }
+});
+
+/** Topic overviews that have no real content yet: a heading and the meme, nothing else. */
+const COMING_SOON = ["maths", "physics", "biology", "ml-ai", "python", "cpp", "robotics", "writing"];
+/** The shared meme on every coming-soon page. */
+const COMING_SOON_IMAGE = "/images/coming-soon.png";
+
+describe("coming-soon pages", () => {
+  for (const topic of COMING_SOON) {
+    it(`${topic}/overview is just a Coming soon heading and the meme`, () => {
+      const body = readSheetBody({ topic, slug: "overview" }).trim();
+      expect(extractToc(body).map((e) => e.text)).toEqual(["Coming soon"]);
+      const lines = body.split("\n").filter((line) => line.trim() !== "");
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toMatch(new RegExp(`^!\\[.+\\]\\(${COMING_SOON_IMAGE}\\)$`));
+    });
+  }
+
+  it("the meme exists under public/ with real dimensions", () => {
+    const size = readImageDimensions(COMING_SOON_IMAGE);
+    expect(size?.width).toBeGreaterThan(0);
+    expect(size?.height).toBeGreaterThan(0);
+  });
+
+  it("no sheet still carries the old placeholder text", () => {
+    const stale = listAllSheets().filter((sheet) =>
+      readSheetBody(sheet).includes("Replace this stub with real content"),
+    );
+    expect(stale.map(label)).toEqual([]);
   });
 });

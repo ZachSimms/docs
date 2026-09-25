@@ -73,21 +73,22 @@ test.describe("navigation", () => {
   });
 
   test("sheet page renders MDX in house style and ../ returns to its topic", async ({ page }) => {
-    await page.goto("/python/overview/");
-    await expect(page).toHaveTitle("Overview - Zach");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Overview");
+    await page.goto("/databases/postgres/");
+    await expect(page).toHaveTitle("PostgreSQL - Zach");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("PostgreSQL");
     await expect(page.locator("main > p").first()).toHaveText("-");
 
-    await expect(page.locator("main pre")).toHaveCount(1);
-    await expect(page.locator("main pre")).toHaveCSS("background-color", "rgb(229, 229, 229)");
-    await expect(page.locator("main table")).toHaveCount(1);
-    await expect(page.locator("main ul li")).toHaveCount(3);
-    await expect(page.locator("main table code")).toHaveText("inline");
-    await expect(page.locator("main time")).toHaveText("2026-09-04");
+    expect(await page.locator("main pre").count()).toBeGreaterThan(1);
+    await expect(page.locator("main pre").first()).toHaveCSS(
+      "background-color",
+      "rgb(229, 229, 229)",
+    );
+    expect(await page.locator("main table").count()).toBeGreaterThan(1);
+    await expect(page.locator("main time")).toHaveText("2026-09-25");
     await expect(page.locator("main")).not.toContainText("title:");
 
     await page.locator("footer a", { hasText: "../" }).click();
-    await expect(page).toHaveURL(/\/python\/$/);
+    await expect(page).toHaveURL(/\/databases\/$/);
   });
 
   test("/sheets/ lists every sheet as NN. topic/slug", async ({ page }) => {
@@ -130,10 +131,13 @@ test.describe("syntax highlighting", () => {
   test("fenced code is tokenised by Shiki with dual-theme variables; inline code keeps the chip", async ({
     page,
   }) => {
-    await page.goto("/python/overview/");
+    await page.goto("/databases/postgres/");
     const tokens = page.locator("main pre code span[style*='--shiki-light']");
     expect(await tokens.count()).toBeGreaterThan(0);
-    await expect(page.locator("main pre")).toHaveCSS("background-color", "rgb(229, 229, 229)");
+    await expect(page.locator("main pre").first()).toHaveCSS(
+      "background-color",
+      "rgb(229, 229, 229)",
+    );
     const inline = page.locator("main table code").first();
     await expect(inline).toHaveCSS("background-color", "rgb(221, 221, 221)");
   });
@@ -218,9 +222,9 @@ test.describe("dark mode", () => {
 
   test("follows the OS preference when nothing is stored", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "dark" });
-    await page.goto("/python/overview/");
+    await page.goto("/databases/postgres/");
     await expect(page.locator("body")).toHaveCSS("background-color", "rgb(22, 22, 22)");
-    await expect(page.locator("main pre")).toHaveCSS("background-color", "rgb(31, 31, 31)");
+    await expect(page.locator("main pre").first()).toHaveCSS("background-color", "rgb(31, 31, 31)");
     await expect(page.getByRole("button", { name: /toggle theme/i })).toHaveAttribute(
       "data-target",
       "light",
@@ -369,7 +373,7 @@ test.describe("mdx showcase", () => {
   test("maths reference sheets render their tables and formulas", async ({ page }) => {
     await page.goto("/maths/math-fundamentals/");
     const main = page.locator("main");
-    expect(await main.locator("h2").count()).toBe(24);
+    expect(await main.locator("h2").count()).toBe(25); // 1.1–1.24 + References
     expect(await main.locator("table").count()).toBeGreaterThanOrEqual(25);
     expect(await main.locator(".katex").count()).toBeGreaterThan(300);
     await expect(main.locator('h2[id="11-solving-equations"]')).toHaveText("1.1 Solving equations");
@@ -386,6 +390,7 @@ test.describe("mdx showcase", () => {
       "Vectors notation",
       "Mechanics notation",
       "Calculus notation",
+      "References",
     ]);
 
     await page.goto("/maths/constants-units-conversions/");
@@ -393,6 +398,7 @@ test.describe("mdx showcase", () => {
       "Fundamental constants of Nature",
       "Units",
       "Other units and conversions",
+      "References",
     ]);
     await expect(page.locator("main")).toContainText("2.997");
     await expect(page.locator("main")).toContainText("exact");
@@ -407,7 +413,7 @@ test.describe("mdx showcase", () => {
 
     const toc = page.getByRole("navigation", { name: "Contents" });
     await expect(toc).toBeVisible();
-    await expect(toc.locator("a")).toHaveCount(24);
+    await expect(toc.locator("a")).toHaveCount(25);
     await expect(toc.locator("a").first()).toHaveAttribute("href", "#11-solving-equations");
 
     const [tocBox, mainBox] = await Promise.all([
@@ -456,8 +462,10 @@ test.describe("mdx showcase", () => {
   });
 
   test("sheets with a single heading get no table of contents", async ({ page }) => {
-    await page.goto("/python/overview/");
+    await page.goto("/databases/postgres/");
     await expect(page.getByRole("navigation", { name: "Contents" })).toHaveCount(1);
+    await page.goto("/python/overview/");
+    await expect(page.getByRole("navigation", { name: "Contents" })).toHaveCount(0);
     await page.goto("/info/");
     await expect(page.getByRole("navigation", { name: "Contents" })).toHaveCount(0);
   });
@@ -500,7 +508,7 @@ test.describe("mdx showcase", () => {
   test("the graph-reading sheet plots every operation with several constants", async ({ page }) => {
     await page.goto("/maths/reading-graphs/");
     const main = page.locator("main");
-    await expect(main.locator("h2")).toHaveCount(10);
+    await expect(main.locator("h2")).toHaveCount(11); // ten sections + References
     expect(await main.locator("figure.graph").count()).toBeGreaterThanOrEqual(20);
     const powers = main.locator("figure.graph", { hasText: "y = cˣ" });
     await expect(powers.locator("path.graph-curve")).toHaveCount(4);
@@ -532,8 +540,8 @@ test.describe("mdx showcase", () => {
     await expect(page.locator("main nav a").first()).toHaveText("Math fundamentals");
     await expect(page.locator("main nav span").first()).toHaveText("00.");
     await expect(page.locator("main nav span").last()).toHaveText("04.");
-    await page.getByRole("link", { name: "Overview" }).click();
-    await expect(page).toHaveURL(/\/maths\/overview\/$/);
+    await page.getByRole("link", { name: "Math fundamentals" }).click();
+    await expect(page).toHaveURL(/\/maths\/math-fundamentals\/$/);
     const display = page.locator("main .katex-display");
     expect(await display.count()).toBeGreaterThanOrEqual(4);
     await expect(page.locator("main .katex-mathml math").first()).toBeAttached();
@@ -706,10 +714,15 @@ test.describe("keyboard", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
 
+    // After each step, wait for the new page's pinned ../ (the Esc handler) before pressing again.
+    const backTo = (href: string) => expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
+    await backTo("/typescript/language/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
+    await backTo("/typescript/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/typescript\/$/);
+    await backTo("/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach");
@@ -749,24 +762,30 @@ test.describe("arrow keys move in and out of levels", () => {
     await page.goto("/typescript/");
     await hydrated(page);
     const active = page.locator("main nav a[data-active]");
+    // Wait for each new page's pinned ../ before pressing keys, so its handlers are mounted.
+    const backTo = (href: string) => expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
 
     await page.keyboard.press("ArrowDown");
     await expect(active).toHaveText("Language/");
     await page.keyboard.press("ArrowRight");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
+    await backTo("/typescript/");
 
     await page.keyboard.press("j");
     await page.keyboard.press("j");
     await expect(active).toHaveText("Objects");
     await page.keyboard.press("ArrowRight");
     await expect(page).toHaveURL(/\/typescript\/language\/objects\/$/);
+    await backTo("/typescript/language/");
 
     await page.keyboard.press("ArrowLeft");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
     await expect(active).toHaveText("Objects");
+    await backTo("/typescript/");
     await page.keyboard.press("ArrowLeft");
     await expect(page).toHaveURL(/\/typescript\/$/);
     await expect(active).toHaveText("Language/");
+    await backTo("/");
     await page.keyboard.press("ArrowRight");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
   });
@@ -895,6 +914,30 @@ test.describe("top bar", () => {
       .evaluate((el) => el.getBoundingClientRect().bottom);
     const heading = await page.locator("h2#combinators").boundingBox();
     expect(heading!.y).toBeGreaterThanOrEqual(bandBottom - 1);
+  });
+});
+
+test.describe("coming-soon pages", () => {
+  test("an unwritten topic overview shows a Coming soon heading and the meme", async ({ page }) => {
+    for (const topic of ["python", "maths", "physics"]) {
+      await page.goto(`/${topic}/overview/`);
+      const main = page.locator("main");
+      await expect(main.locator("h2")).toHaveText(["Coming soon"]);
+      const meme = main.getByRole("img", { name: /under construction/i });
+      await expect(meme).toBeVisible();
+      await expect(meme).toHaveAttribute("width", "800");
+      expect(await meme.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+      await expect(main).not.toContainText("Replace this stub");
+    }
+  });
+
+  test("maths sheets end with their references", async ({ page }) => {
+    await page.goto("/maths/constants-units-conversions/");
+    await expect(page.locator("main h2").last()).toHaveText("References");
+    await expect(page.locator("main h2").last().locator("~ ul a").first()).toHaveAttribute(
+      "href",
+      /physics\.nist\.gov/,
+    );
   });
 });
 

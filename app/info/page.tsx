@@ -81,7 +81,7 @@ export default function InfoPage() {
 
       <p>-</p>
       <p>
-        {">"} <DottedLink href="/sheets/">Cheatsheets</DottedLink>
+        {">"} <DottedLink href="/sheets/">Sheet List</DottedLink>
       </p>
       <p>-</p>
       <p className="keys">

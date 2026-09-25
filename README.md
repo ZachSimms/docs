@@ -147,8 +147,7 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
   `app/globals.css` are reproduced from [williamjansson.com](https://williamjansson.com/) by William
   Jansson. They remain his work; this repository only adapts them (colour variables, dark mode, tables,
   code blocks and other additions).
-- **Unit circle image:** `public/images/unit_circle.jpg`, source: _TODO: add the original source and
-  licence_.
+- **Unit circle image:** `public/images/unit_circle.jpg`, source: google images
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.
 
