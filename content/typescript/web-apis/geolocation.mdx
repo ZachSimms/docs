@@ -1,0 +1,340 @@
+---
+title: Geolocation
+date: 2026-09-25
+order: 17
+---
+
+`navigator.geolocation` for one-off and continuous positions: options, the coordinate and error types,
+permissions, privacy, and distance maths. Support data is from MDN as of September 2026.
+
+## Support & requirements
+
+| Feature                                         | Status (MDN)                   | Notes                                     |
+| :---------------------------------------------- | :----------------------------- | :---------------------------------------- |
+| `getCurrentPosition`, `watchPosition`, `clearWatch` | Baseline widely available (2015) | every browser                       |
+| Permissions API `"geolocation"`                 | all current engines            | Safari 16+; `change` never fires in Safari |
+| `GeolocationPosition.toJSON()`                  | Chrome 126, Firefox 129, Safari 18 | lets `JSON.stringify(pos)` work      |
+| `<geolocation>` element                         | Chromium 144+                  | a browser-owned "use my location" button  |
+
+| Requirement              | Detail                                                             |
+| :----------------------- | :----------------------------------------------------------------- |
+| secure context           | HTTPS or `localhost`; on HTTP the call fails with `PERMISSION_DENIED` |
+| Permissions Policy       | `geolocation`; cross-origin iframes need `allow="geolocation"`     |
+| visible page             | no background tracking; updates stop when the tab or app is hidden |
+| user prompt              | shown on the first call; no separate "request" method              |
+
+## API
+
+| Member                                              | Returns   | Notes                                       |
+| :-------------------------------------------------- | :-------- | :------------------------------------------ |
+| `getCurrentPosition(success, error?, options?)`     | `void`    | one fix; callbacks, not a promise           |
+| `watchPosition(success, error?, options?)`          | `number`  | watch ID; success fires on every change     |
+| `clearWatch(id)`                                    | `void`    | stops a watch; always call it on cleanup    |
+
+```ts
+navigator.geolocation.getCurrentPosition(
+  (pos) => {
+    const { latitude, longitude, accuracy } = pos.coords;
+    console.log(latitude, longitude, `±${accuracy} m`);
+  },
+  (err) => console.error(err.code, err.message),
+  { enableHighAccuracy: false, timeout: 10_000 },
+);
+```
+
+## Options
+
+| Option               | Type      | Default    | Meaning                                                  |
+| :------------------- | :-------- | :--------- | :------------------------------------------------------- |
+| `enableHighAccuracy` | `boolean` | `false`    | ask for GPS-grade fixes; slower and uses more battery    |
+| `timeout`            | ms        | `Infinity` | max wait for a fix; the clock starts after the permission prompt |
+| `maximumAge`         | ms        | `0`        | accept a cached fix this old; `Infinity` = any cached fix |
+
+| Goal                             | Options                                                   |
+| :------------------------------- | :-------------------------------------------------------- |
+| "near me" search, city-level     | `{ maximumAge: 600_000, timeout: 5_000 }`                 |
+| show a pin on a map              | `{ enableHighAccuracy: false, timeout: 10_000 }`          |
+| turn-by-turn, run tracking       | `watchPosition` with `{ enableHighAccuracy: true, maximumAge: 0 }` |
+| instant answer if one is cached  | `{ maximumAge: Infinity, timeout: 0 }`: `TIMEOUT` if none |
+
+## Position & coordinates
+
+`GeolocationPosition` has `coords: GeolocationCoordinates` and `timestamp` (epoch ms).
+
+| Field              | Type             | Unit / meaning                                                 |
+| :----------------- | :--------------- | :------------------------------------------------------------- |
+| `latitude`         | `number`         | degrees, WGS 84, −90 to 90                                     |
+| `longitude`        | `number`         | degrees, WGS 84, −180 to 180                                   |
+| `accuracy`         | `number`         | metres; radius with 95% confidence                             |
+| `altitude`         | `number \| null` | metres above the WGS 84 ellipsoid (not sea level)              |
+| `altitudeAccuracy` | `number \| null` | metres, 95% confidence                                         |
+| `heading`          | `number \| null` | degrees clockwise from true north; `NaN` when `speed` is 0     |
+| `speed`            | `number \| null` | metres per second                                              |
+
+`null` means the device can't measure it, typical for `altitude`, `heading` and `speed` on laptops.
+The fields are getters on the prototype, so `{ ...pos.coords }` is `{}`. Copy the fields you need
+or call `pos.toJSON()` before storing or posting a position.
+
+| Decimal places | Precision at the equator | Good for              |
+| :------------- | :----------------------- | :-------------------- |
+| 1              | ~11 km                   | region                |
+| 2              | ~1.1 km                  | town, analytics       |
+| 3              | ~110 m                   | neighbourhood         |
+| 4              | ~11 m                    | street, building      |
+| 5              | ~1.1 m                   | tree, door            |
+| 6              | ~0.11 m                  | more than any phone gives |
+
+## Errors
+
+The error callback gets a `GeolocationPositionError`.
+
+| `code` | Constant               | Cause                                                                |
+| :----- | :--------------------- | :------------------------------------------------------------------- |
+| `1`    | `PERMISSION_DENIED`    | user or OS said no, insecure context, or blocked by Permissions Policy |
+| `2`    | `POSITION_UNAVAILABLE` | no fix: no GPS signal, location services off, provider error        |
+| `3`    | `TIMEOUT`              | no fix within `timeout`                                              |
+
+`message` is for logs only; its text varies by browser. Without an error callback, failures are
+silent. On macOS and Windows, a denied **OS-level** location permission for the browser also surfaces
+as code 1 or 2, so tell users to check system settings too.
+
+## Permissions
+
+```ts
+const status = await navigator.permissions.query({
+  name: "geolocation",
+});
+// "granted" | "denied" | "prompt"
+status.addEventListener("change", () => {
+  console.log(status.state); // never fires in Safari
+});
+```
+
+| State     | UI to show                                                            |
+| :-------- | :-------------------------------------------------------------------- |
+| `prompt`  | a "Use my location" button; call the API from its click handler       |
+| `granted` | locate straight away if the feature needs it                          |
+| `denied`  | manual fallback (postcode or city search) and a "how to re-enable" hint |
+
+Browsers remember the choice per origin. Safari may re-prompt per session or per day depending on
+the user's setting; Chrome embargoes an origin after repeated dismissals. iOS and Android let users
+grant **approximate** location only; the API still works, with `accuracy` in kilometres.
+
+## Accuracy & battery
+
+| Source          | Typical accuracy | Notes                                        |
+| :-------------- | :--------------- | :------------------------------------------- |
+| GNSS (GPS etc.) | 3–10 m outdoors  | needs `enableHighAccuracy`; slow first fix, drains battery |
+| Wi-Fi           | 15–50 m          | the usual source indoors and on laptops      |
+| cell towers     | 100 m–few km     | phones without Wi-Fi                         |
+| IP address      | city or worse    | desktop fallback; VPNs make it wrong         |
+
+- Check `accuracy` before trusting a fix: drop points with a large radius when drawing a track.
+- `watchPosition` may fire often with tiny changes; throttle, or ignore moves smaller than `accuracy`.
+- Stop watching when the view closes or the page is hidden; see [Page Visibility](/typescript/web-apis/page-visibility/).
+- The first high-accuracy fix can take tens of seconds; show a coarse fix first, then refine.
+
+## Privacy
+
+| Practice                                   | Why                                                    |
+| :----------------------------------------- | :----------------------------------------------------- |
+| ask only from a user action                | prompts on load get denied, and denial sticks          |
+| say why before the prompt                  | "Find stores near you" beats a bare browser dialog     |
+| round before sending or storing            | 2–3 decimals is enough for "nearby" and is far less identifying |
+| keep it client-side when possible          | sort or filter on the device, send only the result     |
+| don't log raw coordinates                  | precise location is personal data (GDPR, CCPA)         |
+| offer a manual alternative                 | search by city or postcode for users who say no        |
+| use server-side IP geolocation for country | no prompt needed for locale or currency defaults       |
+
+## Typing in TS
+
+| Type                          | Notes                                                       |
+| :---------------------------- | :---------------------------------------------------------- |
+| `GeolocationPosition`         | `coords`, `timestamp`, `toJSON()`                           |
+| `GeolocationCoordinates`      | fields above; nullable ones typed `number \| null`          |
+| `GeolocationPositionError`    | `code: number` plus static constants                        |
+| `PositionOptions`             | the options object                                          |
+| `PositionCallback`, `PositionErrorCallback` | callback types                                |
+
+```ts
+function describe(err: GeolocationPositionError): string {
+  switch (err.code) {
+    case GeolocationPositionError.PERMISSION_DENIED:
+      return "Location access is off";
+    case GeolocationPositionError.POSITION_UNAVAILABLE:
+      return "Couldn't find your location";
+    case GeolocationPositionError.TIMEOUT:
+      return "Finding your location took too long";
+    default:
+      return err.message;
+  }
+}
+```
+
+`navigator.geolocation` is typed as always present; it is, but in an insecure context every call
+fails, so check `window.isSecureContext` for a better message.
+
+## Distance & bearing
+
+The haversine formula gives great-circle distance on a sphere of radius $R$ (mean Earth radius
+6,371 km). It is within about 0.5% of the ellipsoidal answer, fine for "3.2 km away".
+
+$$
+a = \sin^2\!\frac{\Delta\varphi}{2} + \cos\varphi_1 \cos\varphi_2 \sin^2\!\frac{\Delta\lambda}{2},
+\qquad d = 2R \operatorname{atan2}\!\left(\sqrt{a}, \sqrt{1-a}\right)
+$$
+
+$\varphi$ is latitude and $\lambda$ longitude, both in radians. Initial bearing from point 1 to 2:
+
+$$
+\theta = \operatorname{atan2}\!\left(\sin\Delta\lambda \cos\varphi_2,\;
+\cos\varphi_1 \sin\varphi_2 - \sin\varphi_1 \cos\varphi_2 \cos\Delta\lambda\right)
+$$
+
+| Rule of thumb                       | Value                         |
+| :---------------------------------- | :---------------------------- |
+| 1° of latitude                      | ~111.2 km everywhere          |
+| 1° of longitude                     | ~111.3 km × `cos(latitude)`   |
+| 0.001° of latitude                  | ~111 m                        |
+
+For routes, areas or survey-grade distances, use a library (Turf.js, `geographiclib`) or PostGIS; see
+[Postgres](/databases/postgres/).
+
+## Recipes
+
+### Promisified getCurrentPosition
+`await` a position, with cancellation through an `AbortSignal`.
+
+```ts title="get-position.ts"
+export function getPosition(
+  options: PositionOptions = {},
+  signal?: AbortSignal,
+): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!window.isSecureContext) {
+      reject(new Error("Geolocation needs HTTPS"));
+      return;
+    }
+    signal?.throwIfAborted();
+    signal?.addEventListener("abort", () =>
+      reject(signal.reason),
+    );
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      reject, // GeolocationPositionError
+      options,
+    );
+  });
+}
+```
+
+The underlying request can't be cancelled; abort only stops you waiting for it.
+
+### Watch with cleanup
+Track movement and return a disposer, so callers can't leak the watch.
+
+```ts
+type Fix = { lat: number; lng: number; accuracy: number };
+
+export function watchLocation(
+  onFix: (fix: Fix) => void,
+  onError: (err: GeolocationPositionError) => void,
+  maxAccuracy = 100, // metres
+): () => void {
+  const id = navigator.geolocation.watchPosition(
+    ({ coords }) => {
+      if (coords.accuracy > maxAccuracy) return;
+      onFix({
+        lat: coords.latitude,
+        lng: coords.longitude,
+        accuracy: coords.accuracy,
+      });
+    },
+    onError,
+    { enableHighAccuracy: true, maximumAge: 5_000 },
+  );
+  return () => navigator.geolocation.clearWatch(id);
+}
+```
+
+### Watch from a React hook
+The same watch tied to a component's lifetime.
+
+```tsx
+import { useEffect, useState } from "react";
+
+export function useGeolocation(options?: PositionOptions) {
+  const [pos, setPos] = useState<GeolocationPosition>();
+  const [error, setError] =
+    useState<GeolocationPositionError>();
+
+  useEffect(() => {
+    const id = navigator.geolocation.watchPosition(
+      setPos,
+      setError,
+      options,
+    );
+    return () => navigator.geolocation.clearWatch(id);
+    // pass a stable (memoised) options object
+  }, [options]);
+
+  return { pos, error };
+}
+```
+
+### Haversine distance
+Distance in metres between two points, for "2.4 km away" labels or sorting by nearest.
+
+```ts title="haversine.ts"
+export type LatLng = { lat: number; lng: number };
+
+const R = 6_371_008.8; // mean Earth radius, metres
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+export function distanceM(a: LatLng, b: LatLng): number {
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) *
+      Math.cos(rad(b.lat)) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// London to Paris: ~343.5 km
+distanceM(
+  { lat: 51.5074, lng: -0.1278 },
+  { lat: 48.8566, lng: 2.3522 },
+);
+```
+
+### Sort places by distance
+Nearest-first list after a single fix; the maths runs on the device.
+
+```ts
+import { distanceM, type LatLng } from "./haversine.ts";
+import { getPosition } from "./get-position.ts";
+
+type Place = LatLng & { name: string };
+
+export async function nearest(places: Place[], n = 5) {
+  const { coords } = await getPosition({
+    maximumAge: 600_000,
+    timeout: 8_000,
+  });
+  const me = { lat: coords.latitude, lng: coords.longitude };
+  return places
+    .map((p) => ({ ...p, metres: distanceM(me, p) }))
+    .sort((a, b) => a.metres - b.metres)
+    .slice(0, n);
+}
+```
+
+## References
+
+- MDN: [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API), [`getCurrentPosition()`](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/getCurrentPosition), [`GeolocationCoordinates`](https://developer.mozilla.org/en-US/docs/Web/API/GeolocationCoordinates), [`GeolocationPositionError`](https://developer.mozilla.org/en-US/docs/Web/API/GeolocationPositionError): fields, errors, compat
+- MDN: [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API), [`<geolocation>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/geolocation)
+- [W3C Geolocation](https://www.w3.org/TR/geolocation/): the spec, including when `timeout` starts
+- MDN: [Using the Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API/Using_the_Geolocation_API): worked examples
+- Chris Veness, [Movable Type: lat/long calculations](https://www.movable-type.co.uk/scripts/latlong.html): haversine, bearing, midpoint

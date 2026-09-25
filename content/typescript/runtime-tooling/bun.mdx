@@ -1,0 +1,1069 @@
+---
+title: Bun
+date: 2026-09-25
+order: 1
+---
+
+Bun 1.4.x (1.4.2, Sept 2026) as runtime, package manager, bundler and test runner, plus its built-in
+server, file, shell, SQL, Redis, S3 and hashing APIs. 1.4 is a Rust rewrite of the engine layer with the
+same public API as 1.3. See [Node.js](/typescript/runtime-tooling/node/) for the Node side and
+[pnpm & monorepos](/typescript/runtime-tooling/pnpm-monorepos/) for pnpm.
+
+## Install & upgrade
+
+```sh
+curl -fsSL https://bun.com/install | bash   # macOS/Linux
+powershell -c "irm bun.sh/install.ps1|iex"  # Windows
+brew install oven-sh/bun/bun                # Homebrew
+npm install -g bun                          # via npm
+
+bun upgrade                  # latest; brew: brew upgrade bun
+bun upgrade --canary         # nightly build
+bun upgrade --stable         # back from canary
+bun --version                # 1.4.2
+bun --revision               # version + commit
+```
+
+| Docker image | Base |
+| :----------- | :--- |
+| `oven/bun:1.4` | Debian, full |
+| `oven/bun:1.4-slim` | Debian slim |
+| `oven/bun:1.4-alpine` | Alpine (musl) |
+| `oven/bun:1.4-distroless` | distroless, no shell |
+
+Record the project's version as `"packageManager": "bun@1.4.2"` in `package.json`; the
+`oven-sh/setup-bun@v2` CI action installs that version by default. Pin images to `oven/bun:1.4.2-alpine`
+and so on.
+
+## CLI
+
+| Command | Does | npm / pnpm equivalent |
+| :------ | :--- | :-------------------- |
+| `bun file.ts` / `bun run file.ts` | run a file (TS/JSX transpiled on the fly) | `node file.ts`, `tsx file.ts` |
+| `bun run dev` / `bun dev` | run a `package.json` script | `npm run dev` |
+| `bun run --parallel build test` | several scripts at once, prefixed output | `npm-run-all -p` |
+| `bun x vite` / `bunx vite` | run a package bin, installing if needed | `npx`, `pnpm dlx` |
+| `bunx --bun vite` | force Bun's runtime even if the bin says `node` | none |
+| `bun exec 'FOO=1 bun run x'` | run a string with the cross-platform Bun Shell | none |
+| `bun repl` | REPL | `node` |
+| `bun install` / `bun i` | install from `package.json` | `npm install` |
+| `bun ci` | install, fail if `bun.lock` is out of date | `npm ci` |
+| `bun add zod` / `bun add -d @types/bun` | add dep / devDep (`-E` exact, `--optional`, `--peer`) | `npm i`, `pnpm add` |
+| `bun add zod --filter api` | add to one workspace | `pnpm --filter api add zod` |
+| `bun remove zod` / `bun rm` | remove a dep | `npm uninstall` |
+| `bun update` / `bun update -i` / `--latest` | update within ranges / pick interactively / ignore ranges | `pnpm update -i -L` |
+| `bun outdated` | list outdated deps | `npm outdated` |
+| `bun audit` / `bun audit fix` | vulnerabilities / upgrade to fixed versions | `npm audit fix` |
+| `bun why zod` / `bun info zod` | why installed / registry metadata | `npm explain`, `npm view` |
+| `bun dedupe` / `bun prune` | drop duplicate versions / extraneous packages | `npm dedupe`, `npm prune` |
+| `bun link` / `bun link pkg` | register / consume a local package | `npm link` |
+| `bun publish` | pack and publish (resolves `workspace:` and `catalog:`) | `npm publish` |
+| `bun patch pkg` / `bun patch --commit pkg` | edit a dependency, save a patch | `pnpm patch` |
+| `bun pm ls` / `pm cache rm` / `pm trust x` | package-manager utilities | `npm ls`, `pnpm store prune` |
+| `bun pm version minor` | bump version, commit and tag | `npm version minor` |
+| `bun init` / `bun init --react=tailwind` | new project (TS, `tsconfig`, `bunfig`) | `npm init` |
+| `bun create vite my-app` | run `create-vite` | `npm create vite` |
+| `bun build ./src/index.ts --outdir dist` | bundle | `esbuild` |
+| `bun test` | run tests | `vitest`, `jest` |
+
+| Runtime flag | Effect |
+| :----------- | :----- |
+| `--watch` | restart the process when an imported file changes |
+| `--hot` | reload modules in place, keep the process (and `Bun.serve`) alive |
+| `--filter 'pkg-*'` / `-F` | run a script in matching workspaces |
+| `--env-file=.env.prod` / `--no-env-file` | pick `.env` files / skip auto-loading |
+| `--bun` / `-b` | make `node` in scripts resolve to Bun |
+| `--smol` | smaller heap, more frequent GC |
+| `--inspect` / `--inspect-brk` | debugger (open the printed debug.bun.sh URL) |
+| `--cpu-prof` / `--cpu-prof-md` / `--heap-prof` | profiles (`.cpuprofile`, Markdown report, heap) |
+| `-e 'code'` / `-p 'expr'` | eval / eval and print |
+| `--no-orphans` | exit with the parent, kill descendants on exit |
+| `--port=4000` | default port for `Bun.serve` |
+
+## Project setup
+
+```sh
+bun init -y            # package.json, tsconfig, index.ts
+bun init --react       # React app with Bun's dev server
+bun add -d @types/bun  # types for the Bun global and bun:*
+```
+
+```tree title="Typical Bun app"
+my-app/
+  src/
+    index.ts           # entry: Bun.serve(...)
+    db.ts
+    routes/
+  test/
+    setup.ts           # [test].preload
+    users.test.ts
+  public/              # static assets
+  .env                 # auto-loaded
+  .env.local           # auto-loaded, not in git
+  bun.lock             # text lockfile, commit it
+  bunfig.toml          # optional Bun config
+  package.json
+  tsconfig.json
+```
+
+### `tsconfig.json`
+
+Bun transpiles TS and JSX itself and never type-checks. Run `bunx tsc --noEmit` (or `tsgo`) in CI.
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
+  }
+}
+```
+
+| TS feature | In Bun |
+| :--------- | :----- |
+| Enums, namespaces, parameter properties | supported (full transpile, unlike Node's type stripping) |
+| Decorators | TC39 standard by default; legacy if `experimentalDecorators` is on |
+| `paths` in `tsconfig` | honoured at runtime and by the bundler |
+| `.ts` in import specifiers | allowed |
+| Top-level `await` | yes, in ESM |
+| `import x from "./a.toml"` | also `.json`, `.jsonc`, `.json5`, `.yaml`, `.txt`, `.html`, `.sqlite` |
+| `import.meta.dir` / `.file` / `.path` / `.main` | directory, file name, full path, is-entrypoint |
+
+### `bunfig.toml`
+
+```toml title="bunfig.toml"
+preload = ["./src/instrument.ts"]  # before any bun run
+# env = false                      # no automatic .env
+
+[install]
+exact = true                 # bun add saves "1.2.3"
+linker = "isolated"          # or "hoisted"
+minimumReleaseAge = 259200   # seconds (3 days)
+minimumReleaseAgeExcludes = ["@types/bun"]
+
+[install.scopes."@acme"]      # private registry
+url = "https://npm.acme.dev/"
+token = "$ACME_NPM_TOKEN"     # env var reference
+
+[test]
+preload = ["./test/setup.ts"]
+coverage = true
+coverageThreshold = 0.8
+coverageSkipTestFiles = true
+
+[run]
+bun = true                   # "node" in scripts runs Bun
+```
+
+A global `~/.bunfig.toml` is merged under the local one, except for `bun run`, which reads only the
+project file.
+
+## Package manager
+
+| Topic | Behaviour |
+| :---- | :-------- |
+| Lockfile | `bun.lock`, text JSONC, diff-friendly; commit it. Old binary `bun.lockb` migrates with `bun install --save-text-lockfile --frozen-lockfile --lockfile-only` |
+| Migration | first `bun install` imports `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml` |
+| CI | `bun ci` (`= bun install --frozen-lockfile`) fails if the lockfile would change |
+| Linker | `isolated` (pnpm-style, strict) is the default for new workspaces; `hoisted` (npm-style) for single packages and pre-1.3.2 lockfiles |
+| Global store | `[install] globalStore = true`: isolated installs symlink into one shared store |
+| Production | `bun install --production` or `--omit dev` |
+| Offline | `--offline` uses only the cache; `--prefer-offline` skips metadata refresh |
+| Supply chain | `minimumReleaseAge` (seconds) delays fresh releases; `[install.security] scanner` plugs in a scanner |
+| `.npmrc` | read for registry and auth, like npm |
+
+### Lifecycle scripts
+
+Bun does not run dependency `postinstall` scripts unless the package is trusted. A built-in list covers
+popular npm packages (`esbuild`, `sharp`, …); git, file and tarball deps always need listing.
+
+```json title="package.json"
+{
+  "trustedDependencies": ["esbuild", "@prisma/engines"],
+  "ignoreScripts": ["sharp"],
+  "nativeDependencies": ["esbuild"]
+}
+```
+
+| Command | Does |
+| :------ | :--- |
+| `bun pm untrusted` | list deps whose scripts were blocked |
+| `bun pm trust esbuild` / `--all` | run their scripts and add to `trustedDependencies` |
+| `bun add esbuild --trust` | add and trust in one go |
+| `bun install --ignore-scripts` | skip the project's own scripts too |
+
+Writing `trustedDependencies` **replaces** the default list, so re-add anything you still need.
+
+### Overrides
+
+```json title="package.json"
+{
+  "overrides": {
+    "qs": "6.13.0",
+    "express": { "qs": "6.13.0" },
+    "lodash@<4.17.21": "4.17.21"
+  }
+}
+```
+
+Only the root `package.json` counts. Yarn `resolutions` and pnpm's `a>b` form are accepted as well.
+
+## Workspaces & catalogs
+
+```json title="package.json (root)"
+{
+  "name": "acme",
+  "private": true,
+  "workspaces": {
+    "packages": ["apps/*", "packages/*"],
+    "catalog": {
+      "react": "^19.2.0",
+      "zod": "^4.5.0"
+    },
+    "catalogs": {
+      "testing": { "happy-dom": "^20.0.0" }
+    }
+  }
+}
+```
+
+```json title="packages/ui/package.json"
+{
+  "name": "@acme/ui",
+  "dependencies": {
+    "@acme/utils": "workspace:*",
+    "react": "catalog:",
+    "happy-dom": "catalog:testing"
+  }
+}
+```
+
+```tree title="Bun workspace"
+acme/
+  apps/
+    api/
+      src/index.ts
+      package.json      # depends on @acme/db
+    web/
+      package.json
+  packages/
+    db/
+      src/index.ts
+      package.json      # "name": "@acme/db"
+    ui/
+      package.json
+  bun.lock              # one lockfile for the repo
+  bunfig.toml
+  package.json          # "workspaces" + catalogs
+  tsconfig.json
+```
+
+| Command | Does |
+| :------ | :--- |
+| `bun install` | installs every workspace, links `workspace:` deps |
+| `bun install --filter 'api...'` | only `api` and what it depends on |
+| `bun add zod --catalog` | add to the root catalog, reference as `catalog:` |
+| `bun --filter '*' build` | run `build` everywhere, in dependency order |
+| `bun --filter 'web...' build` | `web` plus its workspace deps |
+| `bun --filter '...^ui' test` | only packages that depend on `ui` |
+| `bun run --parallel --filter '*' dev` | all `dev` scripts at once |
+| `bun --workspaces test` | every workspace from `"workspaces"` |
+
+On publish, `workspace:*` becomes the exact version, `workspace:^` becomes `^x.y.z`, and `catalog:`
+becomes the catalog range. Filters take names, `./paths` and `{dir}` like pnpm.
+
+## Environment variables
+
+Loaded automatically, later files winning: `.env`, `.env.{NODE_ENV}`, `.env.local` (skipped when
+`NODE_ENV=test`), `.env.{NODE_ENV}.local`. Values expand `$OTHER` references; escape with `\$`.
+
+| API | Notes |
+| :-- | :---- |
+| `process.env.X`, `Bun.env.X`, `import.meta.env.X` | same object |
+| `bun --env-file=.env.staging app.ts` | replace the default set (repeatable) |
+| `bun --no-env-file app.ts` / `env = false` | disable auto-loading (prod containers) |
+| `bun --print process.env` | dump what Bun sees |
+| `BUN_OPTIONS="--smol"` | prepend flags to every `bun` call |
+
+```ts title="env.d.ts"
+declare module "bun" {
+  interface Env {
+    DATABASE_URL: string;       // now string, not optional
+    PORT?: string;
+  }
+}
+```
+
+The declaration only changes types. Validate at startup (e.g. with Zod) so a missing variable fails fast.
+
+## HTTP server
+
+`Bun.serve` takes Web `Request`s and returns `Response`s. `routes` handles exact, `:param` and `*`
+matches; `fetch` is the fallback. For middleware and validation, run [Hono](/typescript/backend/hono/)
+on top.
+
+```ts title="server.ts"
+type User = { id: string; name: string };
+const users = new Map<string, User>();
+
+const server = Bun.serve({
+  port: 3000,             // default: $BUN_PORT/$PORT/3000
+  routes: {
+    "/health": new Response("ok"),        // static response
+    "/favicon.ico": Bun.file("./favicon.ico"),
+    "/users/:id": (req) => {             // req.params typed
+      const user = users.get(req.params.id);
+      return user
+        ? Response.json(user)
+        : new Response("not found", { status: 404 });
+    },
+    "/users": {                          // per-method
+      GET: () => Response.json([...users.values()]),
+      POST: async (req) => {
+        const body = (await req.json()) as User;
+        users.set(body.id, body);
+        return Response.json(body, { status: 201 });
+      },
+    },
+    "/api/*": Response.json({ error: "no route" }, {
+      status: 404,
+    }),
+  },
+  fetch() {                              // fallback
+    return new Response("not found", { status: 404 });
+  },
+  error(err) {                           // thrown errors
+    console.error(err);
+    return new Response("internal error", { status: 500 });
+  },
+});
+
+console.log(`listening on ${server.url}`);
+```
+
+| Option / method | Notes |
+| :-------------- | :---- |
+| `port`, `hostname` | `port: 0` picks a free port; default host `0.0.0.0` |
+| `unix: "/tmp/app.sock"` | listen on a Unix socket |
+| `idleTimeout` | seconds, default 10, max 255; `server.timeout(req, 0)` for SSE |
+| `maxRequestBodySize` | bytes, default 128 MiB |
+| `development` | on unless `NODE_ENV=production`: error pages, HMR for HTML imports |
+| `import page from "./index.html"` | full-stack: route `"/": page` bundles the frontend |
+| `"/static/*": { dir: "./public" }` | serve a directory (Range, ETag, 304) |
+| `http2: true` / `http3: true` | experimental, needs `tls` |
+| `server.stop()` / `stop(true)` | drain in-flight requests / close all now |
+| `server.reload({ routes, fetch })` | swap handlers without restarting |
+| `server.requestIP(req)` | `{ address, port }` or `null` |
+| `server.pendingRequests` | in-flight count |
+| `export default { fetch, routes }` | `bun server.ts` serves it without calling `Bun.serve` |
+
+### WebSockets
+
+Upgrade in `fetch`, handle events once per server, and use topics for pub/sub. Protocol details live in
+[WebSockets](/typescript/backend/websockets/).
+
+```ts
+type Data = { room: string; user: string };
+
+Bun.serve({
+  fetch(req, server) {
+    const url = new URL(req.url);
+    const ok = server.upgrade(req, {
+      data: {
+        room: url.searchParams.get("room") ?? "lobby",
+        user: crypto.randomUUID(),
+      },
+    });
+    return ok
+      ? undefined
+      : new Response("upgrade failed", { status: 400 });
+  },
+  websocket: {
+    data: {} as Data,            // types ws.data
+    open(ws) {
+      ws.subscribe(ws.data.room);
+    },
+    message(ws, msg) {
+      ws.publish(ws.data.room, `${ws.data.user}: ${msg}`);
+    },
+    close(ws) {
+      ws.unsubscribe(ws.data.room);
+    },
+  },
+});
+```
+
+`ws.publish` skips the sender; `server.publish(topic, msg)` reaches everyone. Other handlers: `drain`,
+`error`; options: `perMessageDeflate`, `idleTimeout`, `maxPayloadLength`.
+
+### TLS and static directories
+
+```ts
+Bun.serve({
+  port: 443,
+  tls: {
+    key: Bun.file("./key.pem"),     // contents, not paths
+    cert: Bun.file("./cert.pem"),
+  },
+  routes: {
+    "/static/*": { dir: "./public" },  // 1.4: dir route
+  },
+  fetch: () => new Response("hi"),
+});
+```
+
+Pass an array of `tls` objects with `serverName` for SNI. `ca` replaces the trusted roots.
+
+## Files & shell
+
+`Bun.file` returns a lazy `Blob`; `Bun.write` picks the fastest syscall (`copy_file_range`, `sendfile`,
+`clonefile`). Use `node:fs` for directories. More in [File I/O](/typescript/backend/file-io/).
+
+```ts
+const file = Bun.file("data.json");     // lazy, no I/O yet
+await file.exists();                    // boolean
+file.size;                        // bytes (0 if missing)
+file.type;                              // MIME type
+const cfg = (await file.json()) as { port: number };
+const text = await Bun.file("notes.md").text();
+const bytes = await Bun.file("img.png").bytes();
+                                  // Uint8Array
+
+await Bun.write("out.txt", "hello\n");  // string
+await Bun.write("copy.png", Bun.file("img.png")); // copy
+await Bun.write(
+  "page.html",
+  await fetch("https://example.com"),
+);                                       // Response body
+await Bun.file("out.txt").delete();
+
+const log = Bun.file("app.log").writer(); // FileSink
+log.write("line 1\n");
+log.write("line 2\n");
+await log.end();                        // flush + close
+
+const glob = new Bun.Glob("src/**/*.ts");
+for await (const path of glob.scan(".")) {
+  console.log(path);
+}
+```
+
+| Also | Notes |
+| :--- | :---- |
+| `Bun.stdin`, `Bun.stdout`, `Bun.stderr` | `BunFile`s; `for await (const line of console)` reads stdin lines |
+| `file.stream()` | `ReadableStream<Uint8Array>` for big files |
+| `file.slice(0, 1024)` | byte range, still lazy |
+| `Bun.file(path, { type })` | override the MIME type |
+| `Bun.write(Bun.stdout, file)` | `cat` in one line |
+| `Bun.mmap(path)` | memory-map a file as `Uint8Array` |
+
+### `Bun.$` shell
+
+A cross-platform, bash-like shell as a tagged template. Interpolated values are escaped, so user input
+can't inject commands.
+
+```ts
+import { $ } from "bun";
+
+const branch = (await $`git branch --show-current`.text())
+  .trim();
+const files = await $`ls *.ts`.quiet();  // Buffers
+const pkg = await $`cat package.json`.json();
+for await (const line of $`git log --oneline -5`.lines()) {
+  console.log(line);
+}
+
+const name = "my file; rm -rf /";        // escaped, safe
+await $`touch ${name}`.cwd("/tmp");
+await $`echo $FOO`.env({ ...process.env, FOO: "bar" });
+
+const res = await $`exit 3`.nothrow().quiet();
+res.exitCode;                             // 3, no throw
+await $`bun build ./src/index.ts > dist/out.js`;
+```
+
+| API | Does |
+| :-- | :--- |
+| `.text()`, `.json()`, `.lines()`, `.blob()` | read stdout (implies `.quiet()`) |
+| `.quiet()` | don't echo output; result has `stdout`/`stderr` Buffers |
+| `.nothrow()` / `$.throws(false)` | don't throw on a non-zero exit (per call / globally) |
+| `.cwd(dir)` / `$.cwd(dir)` | working directory |
+| `.env(obj)` / `$.env(obj)` | environment |
+| `` $`cmd < ${file}` `` | redirect from a `BunFile`, `Response`, `Blob` or buffer |
+| `$.escape(str)`, `$.braces("a{1,2}")` | escape by hand / brace expansion |
+| Builtins | `cd ls rm mkdir mv cat touch echo pwd which seq basename dirname exit` |
+
+### Subprocesses
+
+```ts
+const proc = Bun.spawn(["git", "status", "--short"], {
+  cwd: ".",
+  stdout: "pipe",
+  stderr: "pipe",
+  env: { ...process.env, GIT_PAGER: "cat" },
+});
+const out = await new Response(proc.stdout).text();
+const code = await proc.exited;           // exit code
+
+const { stdout, exitCode } = Bun.spawnSync(["ls", "-la"]);
+console.log(stdout.toString(), exitCode, out, code);
+```
+
+`Bun.spawn` also takes `stdin` (a `BunFile`, `Response`, `"pipe"`), `ipc(message)` for Bun-to-Bun
+messaging, `signal` and `timeout`. `node:child_process` works too.
+
+## SQL & SQLite
+
+`Bun.sql` is one tagged-template client for Postgres, MySQL/MariaDB and SQLite. Values become bound
+parameters. Postgres specifics live in [Postgres](/databases/postgres/).
+
+```ts
+import { sql, SQL } from "bun";
+
+// Postgres via DATABASE_URL / POSTGRES_URL / PG* env vars
+type User = { id: number; email: string; name: string };
+
+const email = "a@example.com";
+const rows = await sql<User[]>`
+  SELECT id, email, name FROM users
+  WHERE email = ${email}            -- bound parameter
+  LIMIT ${10}
+`;
+
+const input = { email: "b@example.com", name: "Bea" };
+const [created] = await sql<User[]>`
+  INSERT INTO users ${sql(input)} RETURNING *
+`;                                 // object -> (cols) VALUES
+await sql`INSERT INTO users ${sql([input, input])}`;
+await sql`UPDATE users SET ${sql(input, "name")}
+          WHERE id = ${1}`;        // pick columns
+await sql`SELECT * FROM users WHERE id IN ${sql([1, 2])}`;
+await sql`SELECT * FROM ${sql("users")}`; // identifier
+
+await sql.begin(async (tx) => {    // BEGIN ... COMMIT
+  await tx`UPDATE acct SET bal = bal - 10 WHERE id = 1`;
+  await tx`UPDATE acct SET bal = bal + 10 WHERE id = 2`;
+});                                // throw -> ROLLBACK
+
+const pg = new SQL({
+  url: "postgres://app:secret@localhost:5432/app",
+  max: 20,                         // pool size
+  idleTimeout: 30,                 // seconds
+});
+const mysql = new SQL("mysql://root:pw@localhost/app");
+const lite = new SQL("sqlite://app.db");
+await pg.close();
+console.log(rows, created, mysql, lite);
+```
+
+| Helper | Does |
+| :----- | :--- |
+| `` sql`...`.values() `` | rows as arrays |
+| `` sql`...`.simple() `` | multi-statement, no parameters (migrations) |
+| `sql.file("q.sql", [a, b])` | run a file with `$1`, `$2` |
+| `sql.unsafe(str, params?)` | raw SQL, no escaping: never with user input |
+| `tx.savepoint(async (sp) => ...)` | nested rollback point |
+| `sql.array([1, 2])` | Postgres `ARRAY[...]` literal |
+| `sql.reserve()` | pin one pooled connection (`release()` it) |
+| `await sql.listen("ch", cb)` / `sql.notify` | Postgres `LISTEN` / `NOTIFY` |
+| `bun --sql-preconnect app.ts` | open the pool at startup |
+
+### `bun:sqlite`
+
+Synchronous and fast; the usual choice for local files, tests and embedded apps.
+
+```ts
+import { Database } from "bun:sqlite";
+
+const db = new Database("app.db", {
+  create: true,
+  strict: true,         // bind { id } instead of { $id }
+});
+db.run("PRAGMA journal_mode = WAL;");
+db.run(`CREATE TABLE IF NOT EXISTS todos (
+  id INTEGER PRIMARY KEY, title TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0)`);
+
+type Todo = { id: number; title: string; done: number };
+
+const byId = db.query<Todo, { id: number }>(
+  "SELECT * FROM todos WHERE id = $id",
+);                      // cached prepared statement
+byId.get({ id: 1 });    // Todo | null
+db.query<Todo, []>("SELECT * FROM todos").all(); // Todo[]
+const add = db.prepare(
+  "INSERT INTO todos (title) VALUES (?)",
+);
+const { lastInsertRowid, changes } = add.run("Write docs");
+
+const addMany = db.transaction((titles: string[]) => {
+  for (const t of titles) add.run(t);
+  return titles.length;
+});
+addMany(["a", "b", "c"]);   // all-or-nothing
+db.close();
+console.log(lastInsertRowid, changes);
+```
+
+| Statement method | Returns |
+| :--------------- | :------ |
+| `.all(params)` | every row |
+| `.get(params)` | first row or `null` |
+| `.run(params)` | `{ lastInsertRowid, changes }` |
+| `.values(params)` | rows as arrays |
+| `.iterate(params)` | lazy iterator |
+| `.as(Class)` | rows as class instances |
+
+`new Database(":memory:")` for tests, `{ readonly: true }` to open read-only, `{ safeIntegers: true }`
+for `bigint` columns. `node:sqlite` is also available.
+
+## Redis & S3
+
+```ts
+import { redis, RedisClient } from "bun";
+
+// default client reads REDIS_URL / VALKEY_URL
+await redis.set("greeting", "hi");
+await redis.get("greeting");          // string | null
+await redis.set("session:1", "data", "EX", 3600);
+await redis.incr("hits");
+await redis.expire("hits", 60);
+await redis.hmset("user:1", ["name", "Ada", "role", "dev"]);
+await redis.hget("user:1", "name");
+await redis.send("LPUSH", ["queue", "job-1"]); // any cmd
+
+const pub = new RedisClient("redis://localhost:6379");
+const sub = await pub.duplicate(); // subscriber: own conn
+await sub.subscribe("events", (message, channel) => {
+  console.log(channel, message);
+});
+await pub.publish("events", "deployed");
+pub.close();
+```
+
+Redis 7.2+ and Valkey. Connects lazily, auto-pipelines, reconnects with backoff; `rediss://` for TLS.
+Commands without a typed method go through `send(cmd, args)`.
+
+```ts
+import { s3, S3Client } from "bun";
+
+// Bun.s3 reads S3_* then AWS_* env vars
+const obj = s3.file("reports/2026-09.json");  // lazy
+await obj.write(JSON.stringify({ ok: true }), {
+  type: "application/json",
+});
+const data = (await obj.json()) as { ok: boolean };
+await obj.exists();
+const url = obj.presign({ expiresIn: 3600 }); // sync
+await obj.delete();
+
+const r2 = new S3Client({
+  accessKeyId: process.env.R2_KEY,
+  secretAccessKey: process.env.R2_SECRET,
+  bucket: "assets",
+  endpoint: "https://ACCOUNT.r2.cloudflarestorage.com",
+});
+await r2.write("hello.txt", "hi");     // upload
+const list = await r2.list({ prefix: "img/", maxKeys: 100 });
+console.log(data, url, list.contents?.length);
+```
+
+An `S3File` is a `Blob`: `text()`, `json()`, `bytes()`, `stream()`, `slice()`. Large writes go multipart
+through `obj.writer({ partSize })`. Works with AWS S3, R2, MinIO, Spaces, B2 and GCS. Route handlers can
+return `new Response(s3file)`, which redirects to a presigned URL.
+
+## Passwords & hashing
+
+```ts
+const hash = await Bun.password.hash("hunter2");  // argon2id
+await Bun.password.verify("hunter2", hash);        // true
+
+await Bun.password.hash("hunter2", {
+  algorithm: "bcrypt",
+  cost: 12,                 // 4-31
+});
+
+Bun.hash("some key");       // wyhash, bigint, not crypto
+const hasher = new Bun.CryptoHasher("sha256");
+hasher.update("hello");
+hasher.digest("hex");       // string
+new Bun.CryptoHasher("sha256", "secret-key") // HMAC
+  .update("payload")
+  .digest("base64");
+crypto.randomUUID();        // web crypto global
+Bun.randomUUIDv7();         // time-ordered UUID
+```
+
+| API | Use for |
+| :-- | :------ |
+| `Bun.password.hash` / `verify` | passwords (argon2id default, bcrypt); salts and algorithm live in the hash string |
+| `hashSync` / `verifySync` | scripts only: blocks the thread |
+| `Bun.CryptoHasher` | SHA-1/2/3, BLAKE2, MD5; HMAC with a key argument |
+| `Bun.hash`, `Bun.hash.xxHash3`, `crc32` | fast non-crypto hashing (cache keys, sharding) |
+| `crypto.subtle` | Web Crypto: see [Web Crypto](/typescript/web-apis/web-crypto/) |
+| `node:crypto` | `createHash`, `randomBytes`, `scrypt`, `timingSafeEqual` |
+
+For session and token design, see [Authentication](/typescript/backend/authentication/).
+
+## Bundler & executables
+
+```ts title="build.ts"
+const result = await Bun.build({
+  entrypoints: ["./src/index.tsx"],
+  outdir: "./dist",
+  target: "browser",        // "browser" | "bun" | "node"
+  format: "esm",            // "esm" | "cjs" | "iife"
+  splitting: true,          // shared chunks
+  minify: true,
+  sourcemap: "linked",
+  external: ["react", "react-dom"],
+  define: {
+    __VERSION__: JSON.stringify("1.2.0"),
+  },
+  env: "PUBLIC_*",          // inline PUBLIC_* env vars
+  naming: "[dir]/[name]-[hash].[ext]",
+});
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
+}
+for (const out of result.outputs) {
+  console.log(out.kind, out.path, out.size);
+}
+```
+
+| CLI | Does |
+| :-- | :--- |
+| `bun build src/index.ts --outdir dist` | bundle for the browser (default target) |
+| `--target=bun` / `--target=node` | server bundle; `bun` keeps `Bun.*` and `bun:*` |
+| `--packages=external` | leave `node_modules` imports alone |
+| `--watch` | rebuild on change |
+| `bun build ./index.html --outdir dist` | HTML entry: bundles its scripts and CSS |
+| `--react-compiler` | run the React Compiler |
+| `--feature=BETA` | `feature("BETA")` from `bun:bundle` becomes `true`; dead branches removed |
+| `--drop=console` | strip calls |
+| `--metafile=meta.json` / `--metafile-md` | bundle analysis |
+| `--no-bundle` | transpile one file only |
+
+The bundler doesn't type-check or emit `.d.ts`: use `tsc --emitDeclarationOnly` for libraries.
+
+### Single-file executables
+
+```sh
+bun build ./src/cli.ts --compile --outfile mycli
+bun build ./src/cli.ts --compile --minify --bytecode \
+  --sourcemap --target=bun-linux-x64 --outfile mycli
+bun build ./src/server.ts --compile \
+  --asset ./public --outfile server        # embed files
+bun build ./index.html --compile --target=browser \
+  --outdir dist                            # one HTML file
+```
+
+| Target | Platform |
+| :----- | :------- |
+| `bun-linux-x64`, `bun-linux-arm64` | glibc Linux |
+| `bun-linux-x64-musl`, `bun-linux-arm64-musl` | Alpine |
+| `bun-darwin-arm64`, `bun-darwin-x64` | macOS |
+| `bun-windows-x64`, `bun-windows-arm64` | Windows (`.exe`; `--windows-icon`) |
+
+The binary embeds the Bun runtime (tens of MB). It auto-loads `.env` and `bunfig.toml` at runtime unless
+you pass `--no-compile-autoload-dotenv` / `--no-compile-autoload-bunfig`. Embedded files are read with
+`Bun.file` or `node:fs` under `/$bunfs/`.
+
+## Testing
+
+`bun test` finds `*.test.ts`, `*_test.ts`, `*.spec.ts` (and JS/JSX) and runs a Jest-compatible API.
+General strategy lives in [Testing](/typescript/testing/).
+
+```ts title="math.test.ts"
+import {
+  afterEach, beforeAll, describe, expect, mock, spyOn,
+  setSystemTime, test,
+} from "bun:test";
+import { add, fetchUser } from "./math.ts";
+
+describe("add", () => {
+  test("sums", () => {
+    expect(add(1, 2)).toBe(3);
+  });
+  test.each([[1, 1, 2], [2, 3, 5]])(
+    "%i + %i = %i",
+    (a, b, sum) => expect(add(a, b)).toBe(sum),
+  );
+});
+
+test("mocks and spies", async () => {
+  const cb = mock((n: number) => n * 2);
+  cb(2);
+  expect(cb).toHaveBeenCalledWith(2);
+  expect(cb.mock.calls).toEqual([[2]]);
+
+  const spy = spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({ id: "1", name: "Ada" }),
+  );
+  await expect(fetchUser("1")).resolves.toEqual({
+    id: "1",
+    name: "Ada",
+  });
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+
+test("snapshot", () => {
+  expect({ theme: "dark", size: 2 }).toMatchSnapshot();
+  expect(add(2, 2)).toMatchInlineSnapshot(`4`);
+});
+
+beforeAll(() => setSystemTime(new Date("2026-01-01")));
+afterEach(() => mock.restore());   // undo spyOn
+
+test.todo("edge cases", () => {});
+test.skipIf(process.platform === "win32")("posix", () => {});
+test("slow", async () => {}, { timeout: 10_000, retry: 2 });
+```
+
+| Matchers | |
+| :------- | :- |
+| Equality | `toBe`, `toEqual`, `toStrictEqual`, `toMatchObject` |
+| Truthiness | `toBeTruthy`, `toBeNull`, `toBeUndefined`, `toBeDefined` |
+| Numbers | `toBeGreaterThan`, `toBeCloseTo`, `toBeNaN` |
+| Strings / arrays | `toMatch`, `toContain`, `toHaveLength`, `toContainEqual` |
+| Errors / async | `toThrow`, `resolves`, `rejects` |
+| Mocks | `toHaveBeenCalled`, `toHaveBeenCalledWith`, `toHaveBeenCalledTimes`, `toHaveReturnedWith` |
+| Snapshots | `toMatchSnapshot`, `toMatchInlineSnapshot`, `toThrowErrorMatchingSnapshot` |
+| Asymmetric | `expect.any(Number)`, `expect.stringContaining`, `expect.objectContaining` |
+
+| Mocking | Notes |
+| :------ | :---- |
+| `mock(fn)` / `jest.fn()` | mock function with `.mock.calls`, `mockReturnValue`, `mockImplementation` |
+| `spyOn(obj, "m")` | wrap a method; `mockRestore()` or `mock.restore()` |
+| `mock.module("./db.ts", () => ({ ... }))` | replace a module, even already imported ones; put it in a preload to win the race |
+| `setSystemTime(date)` / `jest.useFakeTimers()` | freeze `Date`; fake `setTimeout`, advance with `jest.advanceTimersByTime` |
+
+| CLI | Does |
+| :-- | :--- |
+| `bun test auth` | files whose path contains `auth` |
+| `-t "sums"` | tests whose name matches |
+| `--watch` | rerun on change |
+| `--coverage` / `--coverage-reporter=lcov` | coverage (text / lcov) |
+| `-u` / `--update-snapshots` | rewrite snapshots |
+| `--preload ./test/setup.ts` | setup file (also `[test] preload`) |
+| `--parallel` / `--parallel=4` | files across worker processes (implies `--isolate`) |
+| `--isolate` | fresh global per file |
+| `--shard=1/3` | split across CI machines |
+| `--changed` / `--changed=main` | only tests affected by git changes |
+| `--bail`, `--timeout=10000`, `--retry=2` | stop early, per-test timeout, retry flaky tests |
+| `--randomize --seed=42` | shuffle order |
+| `--reporter=junit --reporter-outfile=junit.xml` | CI reports |
+
+For DOM tests, preload `@happy-dom/global-registrator` (`GlobalRegistrator.register()`) and use Testing
+Library as usual.
+
+## Node.js compatibility
+
+Bun implements the Node API surface and runs most npm packages unchanged (Next.js 16, Vitest,
+Playwright, Prisma, gRPC, OpenTelemetry). It passes about 97% of Node's own suite for `fs`, `http`,
+`stream`, `zlib`.
+
+| Area | Status |
+| :--- | :----- |
+| `node:fs`, `path`, `events`, `stream`, `buffer`, `url`, `os`, `zlib`, `http`, `net`, `dns`, `readline`, `sqlite` | full |
+| `node:child_process`, `worker_threads`, `cluster` | full; HTTP load balancing across cluster workers is Linux-only |
+| `node:crypto` | BoringSSL: no `secp256k1`, `ed448`, `chacha20-poly1305`; `crypto.argon2()` throws |
+| `node:async_hooks` | `AsyncLocalStorage` works; `createHook` is a stub |
+| `node:vm`, `v8`, `inspector`, `perf_hooks` | partial (JavaScriptCore, not V8) |
+| `node:test` | runs under `bun test`; no `--test` CLI mode: use `bun:test` |
+| `node:sea` | not implemented: use `bun build --compile` |
+| N-API addons (`.node`) | supported |
+| `process.versions.bun` | set: detect Bun at runtime (or `typeof Bun !== "undefined"`) |
+
+<Note kind="tip">Scripts whose shebang says `node` run on Node even inside `bun run`. Add `--bun` (or
+`[run] bun = true`) to push the whole tool onto Bun, e.g. `bun --bun next build`.</Note>
+
+| Bun-first | Node-portable alternative |
+| :-------- | :------------------------ |
+| `Bun.serve` | `node:http`, Hono (runs on both) |
+| `Bun.file` / `Bun.write` | `node:fs/promises` |
+| `Bun.$` | `node:child_process`, `execa` |
+| `bun:sqlite` | `node:sqlite` (`DatabaseSync`) |
+| `Bun.sql` | `postgres`, `pg` |
+| `Bun.password` | `argon2`, `bcrypt` packages |
+| `bun:test` | `node:test`, Vitest |
+
+## Recipes
+
+### HTTP server with graceful shutdown
+Deployments send `SIGTERM`: stop taking connections, let in-flight requests finish, then exit.
+
+```ts title="server.ts"
+const server = Bun.serve({
+  port: Number(process.env.PORT ?? 3000),
+  routes: {
+    "/health": new Response("ok"),
+    "/api/items/:id": {
+      GET: (req) => Response.json({ id: req.params.id }),
+      DELETE: () => new Response(null, { status: 204 }),
+    },
+  },
+  fetch: () => new Response("not found", { status: 404 }),
+});
+
+let closing = false;
+async function shutdown(signal: string) {
+  if (closing) return;
+  closing = true;
+  console.log(`${signal}: draining`);
+  const force = setTimeout(() => process.exit(1), 10_000);
+  await server.stop();      // waits for in-flight requests
+  clearTimeout(force);
+  process.exit(0);
+}
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+```
+
+### Release script with `Bun.$`
+Replaces a bash script with typed, cross-platform code that fails on the first error.
+
+```ts title="scripts/release.ts"
+import { $ } from "bun";
+
+const dirty = await $`git status --porcelain`.text();
+if (dirty.trim()) {
+  console.error("working tree not clean");
+  process.exit(1);
+}
+
+const level = Bun.argv[2] ?? "patch"; // bun release.ts minor
+await $`bun test`;
+await $`bun run build`;
+await $`bun pm version ${level} -m ${"release: v%s"}`;
+const { version } = await Bun.file("package.json").json();
+await $`git push --follow-tags`;
+console.log(`released v${version}`);
+```
+
+### SQLite repository
+A small typed CRUD layer over `bun:sqlite` with cached statements; pass `":memory:"` in tests.
+
+```ts title="todos.ts"
+import { Database } from "bun:sqlite";
+
+type Todo = { id: number; title: string; done: number };
+
+export function todoRepo(path = "todos.db") {
+  const db = new Database(path, { strict: true }); // creates
+  db.run(`CREATE TABLE IF NOT EXISTS todos (id INTEGER
+    PRIMARY KEY, title TEXT NOT NULL, done INT DEFAULT 0)`);
+  const byId = (sql: string) =>
+    db.query<Todo, { id: number }>(sql);
+  const all = db.query<Todo, []>("SELECT * FROM todos");
+  const one = byId("SELECT * FROM todos WHERE id = $id");
+  const add = db.query<Todo, { title: string }>(
+    "INSERT INTO todos (title) VALUES ($title) RETURNING *");
+  const done = byId(
+    "UPDATE todos SET done = 1 WHERE id = $id RETURNING *");
+  const del = byId("DELETE FROM todos WHERE id = $id");
+  return {
+    list: () => all.all(),
+    find: (id: number) => one.get({ id }),
+    create: (title: string) => add.get({ title }),
+    complete: (id: number) => done.get({ id }),
+    remove: (id: number) => del.run({ id }).changes > 0,
+  };
+}
+```
+
+### Cross-compiled CLI binaries
+Ship one self-contained binary per platform from a single machine, no runtime needed on the target.
+
+```ts title="scripts/compile.ts"
+const targets = [
+  "bun-linux-x64",
+  "bun-linux-arm64",
+  "bun-darwin-arm64",
+  "bun-windows-x64",
+] as const;
+
+for (const target of targets) {
+  const out = await Bun.build({
+    entrypoints: ["./src/cli.ts"],
+    compile: { target, outfile: `./bin/mycli-${target}` },
+    minify: true,
+    sourcemap: "linked",
+    bytecode: true,               // faster startup
+    define: { VERSION: JSON.stringify("1.0.0") },
+  });
+  if (!out.success) throw new AggregateError(out.logs);
+}
+```
+
+### Workspace from scratch
+A Bun monorepo with an app consuming a shared package through `workspace:*`.
+
+```sh
+mkdir acme && cd acme && bun init -y
+mkdir -p apps/api packages/utils
+cd packages/utils && bun init -y && cd ../..
+cd apps/api && bun init -y && cd ../..
+# root package.json: "private": true,
+#   "workspaces": ["apps/*", "packages/*"]
+# packages/utils/package.json: "name": "@acme/utils"
+bun add @acme/utils@workspace:* --filter api
+bun install                     # links + one bun.lock
+bun --filter '*' test           # run tests everywhere
+bun --filter api dev            # one app
+```
+
+### Read a huge file line by line
+Streams the file in chunks, so memory stays flat whatever the file size.
+
+```ts
+async function* lines(path: string) {
+  const stream = Bun.file(path)
+    .stream()
+    .pipeThrough(new TextDecoderStream());
+  let buf = "";
+  for await (const chunk of stream) {
+    buf += chunk;
+    const parts = buf.split(/\r?\n/);
+    buf = parts.pop() ?? "";         // keep partial line
+    yield* parts;
+  }
+  if (buf) yield buf;
+}
+
+let errors = 0;
+for await (const line of lines("huge.log")) {
+  if (line.includes("ERROR")) errors++;
+}
+console.log(`${errors} errors`);
+```
+
+## References
+
+- [MDN: Request](https://developer.mozilla.org/en-US/docs/Web/API/Request) and [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response): the objects `Bun.serve` speaks
+- [MDN: Blob](https://developer.mozilla.org/en-US/docs/Web/API/Blob): what `Bun.file` and `S3File` extend
+- [MDN: ReadableStream](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream): streaming bodies and files
+- [Bun docs](https://bun.com/docs): runtime, package manager, bundler, test runner
+- [Bun 1.4 release notes](https://bun.com/blog/bun-v1.4): Rust rewrite, new APIs and flags
+- [Bun: HTTP server](https://bun.com/docs/runtime/http/server) and [routing](https://bun.com/docs/runtime/http/routing)
+- [Bun: SQL](https://bun.com/docs/runtime/sql), [SQLite](https://bun.com/docs/runtime/sqlite), [Redis](https://bun.com/docs/runtime/redis), [S3](https://bun.com/docs/runtime/s3)
+- [Bun: Shell](https://bun.com/docs/runtime/shell): builtins, redirection, escaping
+- [Bun: bunfig.toml](https://bun.com/docs/runtime/bunfig): every config key
+- [Bun: Workspaces](https://bun.com/docs/pm/workspaces) and [catalogs](https://bun.com/docs/pm/catalogs)
+- [Bun: Single-file executables](https://bun.com/docs/bundler/executables)
+- [Bun: Node.js compatibility](https://bun.com/docs/runtime/nodejs-compat): per-module status
+- [Bun: Test runner](https://bun.com/docs/test)

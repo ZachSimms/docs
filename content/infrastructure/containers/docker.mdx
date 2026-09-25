@@ -1,0 +1,647 @@
+---
+title: Docker
+date: 2026-09-25
+order: 1
+---
+
+Running, wiring and inspecting containers with the Docker CLI and Compose. Targets Docker Engine 29.x,
+Docker Desktop 4.9x and Compose v5 (the successor to Compose v2, same `docker compose` command).
+Writing images lives in [Dockerfile](/infrastructure/containers/dockerfile/).
+
+## Concepts
+
+| Term | What it is |
+| :--- | :--------- |
+| Image | read-only stack of layers plus config (entrypoint, env, user); addressed by `name:tag` or `@sha256:` digest |
+| Layer | content-addressed filesystem diff; shared between images and cached by the builder |
+| Container | an image plus a thin writable layer, running as isolated processes (namespaces, cgroups) |
+| Registry | server that stores images: Docker Hub, GHCR, ECR, Artifact Registry, a private `registry:3` |
+| Repository | named set of tags in a registry, e.g. `ghcr.io/acme/api` |
+| Volume | Docker-managed storage that outlives containers |
+| Bind mount | a host path mounted into a container |
+| Network | virtual network with its own DNS; containers on it reach each other by name |
+| Manifest list / index | one tag pointing at per-platform images (`linux/amd64`, `linux/arm64`) |
+| Context | which daemon the CLI talks to (`docker context ls`, `use`) |
+
+Engine 29 uses the containerd image store by default on new installs, which is what lets a local
+daemon hold multi-platform images and attestations.
+
+## Running containers
+
+```sh
+docker run -d --name api -p 3000:3000 \
+  -e NODE_ENV=production --restart unless-stopped \
+  ghcr.io/acme/api:1.4.2
+```
+
+| Flag | Effect |
+| :--- | :----- |
+| `-d` | detach, print the container ID |
+| `-it` | interactive + TTY, for shells and REPLs |
+| `--rm` | delete the container when it exits |
+| `--name api` | fixed name, also its DNS name on user-defined networks |
+| `-p 8080:80` | publish container port 80 on host port 8080 (all interfaces) |
+| `-p 127.0.0.1:8080:80` | publish on loopback only |
+| `-P` | publish every `EXPOSE`d port on random host ports |
+| `-v vol:/data` | named volume |
+| `-v "$PWD":/app` | bind mount (use `--mount` for strict, explicit syntax) |
+| `-e KEY=val` / `-e KEY` | set / pass through an env var |
+| `--env-file .env` | load `KEY=val` lines |
+| `-w /app` | working directory |
+| `-u 1000:1000` | run as UID:GID |
+| `--network app` | attach to a network |
+| `--entrypoint sh` | override `ENTRYPOINT` (args after the image replace `CMD`) |
+| `--init` | run a tiny init (tini) as PID 1 to forward signals and reap zombies |
+| `--platform linux/amd64` | pick a platform (emulated if it differs from the host) |
+| `--pull always` | re-check the registry before starting |
+| `--add-host h:host-gateway` | map a hostname to the host's IP |
+| `--gpus all` | expose GPUs (NVIDIA Container Toolkit) |
+
+### Inspecting and interacting
+
+| Command | Use |
+| :------ | :-- |
+| `docker ps` / `ps -a` | running / all containers |
+| `docker ps -q -f status=exited` | IDs of exited containers (filters: `name=`, `label=`, `ancestor=`) |
+| `docker logs -f --tail 100 api` | follow the last 100 lines; `--since 10m`, `-t` timestamps |
+| `docker exec -it api sh` | shell in a running container; `-u root`, `-e`, `-w` |
+| `docker inspect api` | full JSON: mounts, networks, state, health |
+| `docker inspect -f '{{.State.Status}}' api` | one field via a Go template |
+| `docker stats --no-stream` | CPU, memory, net, block I/O snapshot |
+| `docker top api` | processes inside |
+| `docker port api` | published port mappings |
+| `docker cp api:/app/out.log .` | copy out (or `./f api:/tmp/` to copy in) |
+| `docker diff api` | files changed in the writable layer |
+| `docker events --since 1h` | daemon event stream |
+| `docker update --memory 1g api` | change limits and restart policy live |
+
+### Container lifecycle
+
+```text
+create ──► created ──start──► running ──stop/kill──► exited ──rm──► gone
+                               │  ▲                     │
+                          pause│  │unpause        start │ (restart)
+                               ▼  │                     ▼
+                              paused                 running
+```
+
+| Command | What happens |
+| :------ | :----------- |
+| `docker create` | build the container, don't start it |
+| `docker start` / `-a` | start (and attach) |
+| `docker stop -t 30 api` | `SIGTERM` (or the image's `STOPSIGNAL`), `SIGKILL` after the timeout (default 10 s) |
+| `docker kill -s HUP api` | send a signal now (default `SIGKILL`) |
+| `docker restart api` | stop + start |
+| `docker pause` / `unpause` | freeze with the cgroup freezer |
+| `docker wait api` | block until exit, print the exit code |
+| `docker rm -f api` | kill and remove; `-v` also drops anonymous volumes |
+
+| Exit code | Meaning |
+| :-------- | :------ |
+| `0` | clean exit |
+| `1` | app error |
+| `125` | `docker run` itself failed (bad flag, name taken) |
+| `126` / `127` | command not executable / not found |
+| `137` | `SIGKILL`: OOM kill (`State.OOMKilled`) or stop timeout |
+| `143` | `SIGTERM` honoured |
+
+## Images, builds & registries
+
+| Command | Use |
+| :------ | :-- |
+| `docker images` | local images; `--filter dangling=true` |
+| `docker pull node:24-slim` | fetch; `--platform linux/arm64` |
+| `docker tag api ghcr.io/acme/api:1.4.2` | add a name to an existing image |
+| `docker push ghcr.io/acme/api:1.4.2` | upload (needs `docker login`) |
+| `docker rmi api:old` | untag / delete; `-f` if in use |
+| `docker history api` | layers and the instruction that made each |
+| `docker save api -o api.tar` / `load -i` | move images without a registry |
+| `docker image inspect api` | config, digest, platform |
+| `docker login ghcr.io` | store registry credentials (`--password-stdin`) |
+
+| Build command | Use |
+| :------------ | :-- |
+| `docker build -t api .` | build from `./Dockerfile` with BuildKit |
+| `-f docker/Dockerfile.prod` | other Dockerfile |
+| `--target build` | stop at a stage |
+| `--build-arg VERSION=1.4.2` | set an `ARG` |
+| `--secret id=npmrc,src=.npmrc` | mount a secret into `RUN` steps |
+| `--ssh default` | forward the SSH agent |
+| `--no-cache` / `--pull` | ignore cache / refresh base images |
+| `--progress=plain` | full log output |
+| `--check` | run build checks only (lint) |
+| `--output type=local,dest=out` | export files instead of an image |
+| `--cache-to type=registry,ref=…,mode=max` | share cache via a registry (`type=gha` in GitHub Actions) |
+| `docker buildx ls` / `create --use` | list / add builders |
+| `docker buildx bake` | build targets from `docker-bake.hcl` or a compose file |
+| `docker buildx imagetools inspect img` | show a remote manifest list |
+| `docker buildx du` / `prune` | build cache usage / cleanup |
+
+### Tags and names
+
+| Reference | Resolves to |
+| :-------- | :---------- |
+| `node` | `docker.io/library/node:latest` |
+| `acme/api:1.4` | `docker.io/acme/api:1.4` |
+| `ghcr.io/acme/api:1.4.2` | GitHub Container Registry |
+| `123456789012.dkr.ecr.eu-west-1.amazonaws.com/api` | AWS ECR |
+| `europe-docker.pkg.dev/proj/repo/api` | Google Artifact Registry |
+| `api@sha256:…` | one immutable image; tags can move, digests can't |
+
+Push an exact version plus moving aliases (`1.4.2`, `1.4`, `1`) and a commit tag (`sha-3f9c2e1`).
+`latest` is only the default tag name, not "newest"; don't deploy it. Log in to Docker Hub even for
+public images, because anonymous pulls are rate-limited.
+
+```sh
+echo "$GITHUB_TOKEN" | docker login ghcr.io \
+  -u "$GITHUB_ACTOR" --password-stdin
+```
+
+## Volumes & mounts
+
+| Kind | Syntax | Lives | Use for |
+| :--- | :----- | :---- | :------ |
+| Named volume | `-v pgdata:/var/lib/postgresql` | Docker-managed | databases, anything that must persist |
+| Anonymous volume | `-v /data` or image `VOLUME` | until `rm -v` / prune | throwaway state |
+| Bind mount | `-v ./src:/app/src` | host path | dev source code, config files |
+| tmpfs | `--tmpfs /tmp:size=64m` | memory | scratch space with `--read-only` |
+| Image mount | `--mount type=image,source=img,target=/x` | another image | read-only data from an image |
+
+```sh
+docker volume create pgdata
+docker volume ls
+docker volume inspect pgdata
+docker run --rm -v pgdata:/v alpine du -sh /v
+
+# explicit form; fails if the host path is missing
+docker run --mount \
+  type=bind,src="$PWD"/config,dst=/etc/app,readonly \
+  api
+```
+
+| Gotcha | Fix |
+| :----- | :-- |
+| Bind mount hides files baked into the image at that path | mount a subfolder, or use a named volume |
+| Named volume is seeded from the image only when empty | delete the volume to re-seed |
+| `-v ./x:/y` with a missing `./x` creates a root-owned dir | use `--mount`, which errors instead |
+| Permission denied as non-root | match UIDs (`-u "$(id -u):$(id -g)"`) or `chown` in the image |
+| Slow bind mounts on macOS | keep `node_modules` in a volume, or sync with Compose `watch` |
+| Suffixes | `:ro` read-only; `:z` / `:Z` SELinux relabel |
+
+## Networking
+
+| Driver | Behaviour |
+| :----- | :-------- |
+| `bridge` (default network) | NAT'd private network; **no DNS between containers** |
+| user-defined `bridge` | same, plus embedded DNS (`127.0.0.11`): containers resolve each other by name and alias |
+| `host` | share the host's network stack; no port mapping (Linux; opt-in setting on Docker Desktop) |
+| `none` | loopback only |
+| `overlay` | multi-host networks (Swarm) |
+| `macvlan` / `ipvlan` | container gets its own address on the LAN |
+
+```sh
+docker network create app
+docker run -d --name db --network app postgres:18
+docker run --rm --network app postgres:18 \
+  pg_isready -h db            # "db" resolves via DNS
+docker network connect app api    # add a 2nd network
+docker network inspect app
+```
+
+| Need | How |
+| :--- | :-- |
+| Container → container | same user-defined network, use the container or service name |
+| Extra DNS names | `--network-alias search` (Compose: `aliases:`) |
+| Container → host | `host.docker.internal` (Desktop); on Linux add `--add-host host.docker.internal:host-gateway` |
+| Host → container | publish with `-p`; `EXPOSE` alone publishes nothing |
+| Share another container's network | `--network container:api` (debug sidecars) |
+| Keep a DB off the LAN | `-p 127.0.0.1:5432:5432`, or don't publish at all |
+
+<Note kind="warning">On Linux, published ports are wired through Docker's own firewall rules and are
+reachable even when `ufw` or `firewalld` says the port is closed. Bind to `127.0.0.1` unless the port
+really should be public.</Note>
+
+## Environment & secrets
+
+| Mechanism | Scope | Notes |
+| :-------- | :---- | :---- |
+| `-e` / `environment:` | container runtime | shows in `docker inspect`, not for secrets |
+| `--env-file` / `env_file:` | container runtime | plain `KEY=value` lines, no shell expansion |
+| `.env` next to `compose.yaml` | Compose **interpolation** only | fills `${VAR}` in the YAML, not the container |
+| Compose `secrets:` | file at `/run/secrets/<name>` | from a `file:` or host `environment:` |
+| Build `--secret` | one `RUN` step | never lands in a layer ([Dockerfile](/infrastructure/containers/dockerfile/#run-mounts)) |
+| `ARG` / `ENV` in a Dockerfile | baked into the image | visible in `docker history`: never secrets |
+
+```yaml title="compose.yaml"
+services:
+  api:
+    image: ghcr.io/acme/api:1.4.2
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}   # default
+      API_URL: ${API_URL:?set API_URL} # required
+      DB_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+```
+
+Compose resolves variables from the shell first, then `.env` (or `--env-file`). Write `$$` for a
+literal dollar sign. Many official images (Postgres, MySQL) read `*_FILE` variants of their secrets.
+
+## Resources, restarts & health
+
+| `docker run` | Compose | Effect |
+| :----------- | :------ | :----- |
+| `-m 512m` | `mem_limit: 512m` / `deploy.resources.limits.memory` | hard memory cap; exceeding it means OOM kill (137) |
+| `--memory-reservation 256m` | `mem_reservation` | soft floor under memory pressure |
+| `--cpus 1.5` | `cpus: 1.5` / `deploy.resources.limits.cpus` | CPU quota |
+| `--cpuset-cpus 0,1` | `cpuset` | pin to cores |
+| `--pids-limit 200` | `pids_limit` | stop fork bombs |
+| `--ulimit nofile=65536:65536` | `ulimits:` | file descriptors |
+| `--shm-size 1g` | `shm_size` | `/dev/shm` (Chromium, Playwright, Postgres) |
+
+| Restart policy | Restarts when |
+| :------------- | :------------ |
+| `no` (default) | never |
+| `on-failure[:5]` | non-zero exit, up to N times |
+| `always` | any exit, and when the daemon starts, even after a manual stop |
+| `unless-stopped` | like `always`, except after `docker stop` |
+
+### Healthchecks
+
+```sh
+docker run -d --name api \
+  --health-cmd 'curl -fsS localhost:3000/health || exit 1' \
+  --health-interval 30s --health-timeout 3s \
+  --health-retries 3 --health-start-period 20s \
+  --health-start-interval 2s \
+  api
+docker inspect -f '{{.State.Health.Status}}' api
+```
+
+Status goes `starting` → `healthy` / `unhealthy`. Plain Docker only **reports** it: an unhealthy
+container is not restarted. Compose uses it for `depends_on: condition: service_healthy`; Swarm and
+Kubernetes (with their own probes) act on it. The command runs inside the container, so the tool
+(`curl`, `wget`, `pg_isready`) must exist in the image.
+
+## Compose
+
+```tree title="compose project"
+my-app/
+  compose.yaml            # base definition
+  compose.override.yaml   # dev tweaks, auto-merged
+  compose.prod.yaml       # applied via a second -f
+  .env                    # interpolation vars, gitignored
+  .env.example
+  secrets/
+    db_password.txt       # at /run/secrets/db_password
+  api/
+    Dockerfile
+    .dockerignore
+    src/
+  db/
+    init/
+      001-schema.sql      # run once on an empty data dir
+```
+
+| Top-level key | Holds |
+| :------------ | :---- |
+| `name` | project name (default: directory name; `-p` / `COMPOSE_PROJECT_NAME` override) |
+| `services` | containers to run |
+| `volumes` / `networks` | named volumes and networks (a `default` network is created for you) |
+| `secrets` / `configs` | files mounted into services |
+| `include` | pull in other compose files, each resolved relative to itself |
+| `models` | AI models served by Docker Model Runner |
+| `version` | obsolete, ignored with a warning; delete it |
+
+| Service key | Purpose |
+| :---------- | :------ |
+| `image` / `build` | run an image / build one (`context`, `dockerfile`, `target`, `args`, `secrets`, `platforms`) |
+| `command` / `entrypoint` | override `CMD` / `ENTRYPOINT` |
+| `ports` / `expose` | publish to the host / document for other services |
+| `volumes` | `name:/path`, `./host:/path:ro`, or long form |
+| `environment` / `env_file` | container env (`environment` wins) |
+| `depends_on` | start order and readiness conditions |
+| `healthcheck` | `test`, `interval`, `timeout`, `retries`, `start_period`, `start_interval` |
+| `restart` | restart policy |
+| `profiles` | only start when that profile is active |
+| `develop.watch` | file sync / rebuild rules for `watch` |
+| `deploy.resources` | CPU and memory limits and reservations |
+| `init`, `user`, `read_only`, `cap_drop`, `tmpfs` | runtime hardening |
+| `extra_hosts` | e.g. `host.docker.internal:host-gateway` |
+| `post_start` / `pre_stop` | lifecycle hook commands in the container |
+| `pre_start` | init containers that must exit 0 before the service starts (Compose 5.3+) |
+| `pull_policy` | `always`, `missing`, `never`, `build`, `daily`, `weekly` |
+
+### `depends_on` conditions
+
+```yaml
+services:
+  api:
+    depends_on:
+      db:
+        condition: service_healthy   # waits for healthcheck
+        restart: true   # restart api when db is recreated
+      migrate:
+        condition: service_completed_successfully
+      cache:
+        condition: service_started   # the short-form default
+        required: false  # only warn if it isn't running
+```
+
+### Profiles
+
+```yaml
+services:
+  api: { build: ./api }          # no profile: always starts
+  adminer:
+    image: adminer
+    profiles: [debug]
+```
+
+```sh
+docker compose --profile debug up -d
+COMPOSE_PROFILES=debug,tools docker compose up -d
+docker compose run --rm adminer   # run starts it anyway
+```
+
+### Overrides and merging
+
+| Mechanism | Behaviour |
+| :-------- | :-------- |
+| `compose.override.yaml` | merged over `compose.yaml` automatically |
+| `-f a.yaml -f b.yaml` | explicit list, later files win; disables auto-override |
+| `COMPOSE_FILE=a.yaml:b.yaml` | same, from the environment |
+| Merge rules | single values replace; `ports`, `volumes`, `environment` merge by key |
+| `!reset []` / `!override` | YAML tags to clear or replace a value instead of merging |
+| `extends` | inherit one service from another (same or another file) |
+| `docker compose config` | print the fully merged, interpolated model |
+
+### Watch (dev sync)
+
+| `action` | On change |
+| :------- | :-------- |
+| `sync` | copy files into the running container (`target`) |
+| `rebuild` | rebuild the image and recreate the container |
+| `restart` | restart the container |
+| `sync+restart` | copy, then restart (config files) |
+| `sync+exec` | copy, then run `exec.command` inside |
+
+Rules take `path`, `target`, `ignore` and `include` patterns (`.dockerignore` syntax), plus
+`initial_sync`. Start it with `docker compose up --watch`, or `docker compose watch` to keep sync
+events out of the app logs.
+
+## Compose CLI
+
+| Command | Use |
+| :------ | :-- |
+| `up -d` | create and start everything in the background |
+| `up -d --build` | rebuild images first |
+| `up --wait` | block until services are running/healthy (CI) |
+| `up --watch` | start plus file watching |
+| `up -d --force-recreate --remove-orphans` | fresh containers, drop services no longer in the file |
+| `up -d --scale worker=3` | run N replicas (no fixed `container_name` or host port) |
+| `down` | stop and remove containers and networks |
+| `down -v --rmi local` | also named volumes and locally built images |
+| `ps` / `ps -a` | project containers |
+| `logs -f --tail 50 api` | follow one service |
+| `exec api sh` | shell into a running service (`-T` without a TTY in CI) |
+| `run --rm api bun run migrate` | one-off container; `--no-deps`, `--service-ports` |
+| `build --no-cache api` | rebuild one service |
+| `pull` / `push` | fetch / publish service images |
+| `restart api` / `stop` / `start` | lifecycle without recreating |
+| `config` | validated, merged YAML; `--services`, `--quiet` |
+| `watch` | file sync / rebuild only |
+| `cp api:/app/out.txt .` | copy files |
+| `top` / `stats` / `events` | processes / usage / event stream |
+| `ls` | all Compose projects on this daemon |
+| `-p name` / `-f file` / `--env-file` | global: project name, file, env file |
+
+## Multi-platform builds
+
+| Approach | Notes |
+| :------- | :---- |
+| QEMU emulation | default on Docker Desktop; simple but slow for heavy compiles |
+| Cross-compilation | `FROM --platform=$BUILDPLATFORM` + `TARGETOS`/`TARGETARCH` args; native speed (Go, Rust, Bun `--compile`) |
+| Native nodes | `docker buildx create --append` with an arm64 and an amd64 machine, or a cloud builder |
+
+```sh
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/acme/api:1.4.2 --push .
+```
+
+With the containerd image store (default in Engine 29), `--load` can keep a multi-platform image
+locally. On the classic store, create a `docker-container` builder and `--push` instead. Apple
+silicon builds `linux/arm64` by default, which won't run on most x86 servers, so always set
+`--platform` for images you ship.
+
+## Security
+
+| Practice | How |
+| :------- | :-- |
+| Non-root process | `USER` in the image, or `-u 10001:10001` / Compose `user:` |
+| Read-only root fs | `--read-only --tmpfs /tmp` (Compose `read_only: true`, `tmpfs:`) |
+| Drop capabilities | `--cap-drop ALL --cap-add NET_BIND_SERVICE` |
+| No privilege escalation | `--security-opt no-new-privileges` |
+| Avoid `--privileged` | it disables almost every isolation feature |
+| Never mount `/var/run/docker.sock` | socket access equals root on the host |
+| Rootless daemon | `dockerd-rootless-setuptool.sh install`: the daemon itself runs unprivileged |
+| User namespaces | `userns-remap` in `daemon.json` maps container root to a high host UID |
+| Minimal base images | slim, distroless or Docker Hardened Images (`dhi.io`) |
+| Pin and scan | pin digests, scan in CI, rebuild often for patched bases |
+| Resource limits | memory, CPU and PID limits stop one container starving the host |
+
+```sh
+docker scout quickview api:1.4.2   # summary + base image
+docker scout cves api:1.4.2 \
+  --only-severity critical,high --exit-code
+docker scout recommendations api:1.4.2  # better bases
+```
+
+## Debugging
+
+| Symptom | Try |
+| :------ | :-- |
+| Exits immediately | `docker logs api`; `docker inspect -f '{{.State.ExitCode}}' api` |
+| Need a shell in a bad image | `docker run --rm -it --entrypoint sh img` |
+| Image has no shell (distroless) | `docker debug api` (Docker Desktop): brings its own toolbox, works on images and stopped containers |
+| Network problem | `docker run --rm -it --network container:api nicolaka/netshoot` |
+| Killed at random | `docker inspect -f '{{.State.OOMKilled}}' api`, raise `-m` |
+| Slow or stuck stop | app ignores `SIGTERM` as PID 1: add `--init` or a signal handler |
+| "works in the build, not at runtime" | `docker history --no-trunc img`, `docker diff api` |
+| Build step fails | `docker build --progress=plain --no-cache .` |
+| Compose service won't start | `docker compose config`, then `docker compose logs api` |
+| Which daemon am I on? | `docker context ls`, `docker info` |
+
+```sh
+docker debug api          # shell with vim, curl, htop…
+docker debug --command 'ls -la /app' api
+docker exec -u root -it api sh   # when it has a shell
+docker logs --since 5m -t api 2>&1 | grep -i error
+```
+
+## Disk cleanup
+
+| Command | Removes |
+| :------ | :------ |
+| `docker system df -v` | nothing: shows usage by images, containers, volumes, cache |
+| `docker container prune` | stopped containers |
+| `docker image prune` | dangling (untagged) images |
+| `docker image prune -a --filter until=168h` | all unused images older than a week |
+| `docker volume prune` | unused **anonymous** volumes; `-a` includes named ones |
+| `docker network prune` | unused networks |
+| `docker builder prune` | build cache; `--keep-storage 10GB` |
+| `docker system prune` | stopped containers, unused networks, dangling images, build cache |
+| `docker system prune -a --volumes` | everything unused, including volumes: the nuclear option |
+
+## Alternatives
+
+| Tool | Platform | Notes |
+| :--- | :------- | :---- |
+| Docker Desktop | macOS, Windows, Linux | GUI, Scout, Debug, Model Runner; paid licence for larger companies |
+| OrbStack | macOS | fast, light drop-in Docker engine plus Linux VMs and local Kubernetes; paid for commercial use |
+| Colima | macOS, Linux | free, Lima VM running dockerd or containerd: `colima start --cpu 4 --memory 8` |
+| Podman | Linux, macOS, Windows | daemonless and rootless by default; `alias docker=podman`, `podman compose`, pods |
+| Rancher Desktop | macOS, Windows, Linux | free, Kubernetes-first, dockerd or containerd (`nerdctl`) |
+
+All of them speak the same image format and registries, so images and Dockerfiles carry over.
+Switch the CLI's target with `docker context use colima` (or `orbstack`).
+
+## Recipes
+
+### Postgres + app with a healthcheck
+The API starts only after Postgres accepts connections, and restarts when the database is recreated.
+
+```yaml title="compose.yaml"
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes: [pgdata:/var/lib/postgresql]
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/app
+    ports: ["3000:3000"]
+    depends_on:
+      db: { condition: service_healthy, restart: true }
+volumes:
+  pgdata:
+```
+
+Postgres 18+ images keep data under `/var/lib/postgresql/18/docker`, so mount the volume at
+`/var/lib/postgresql`, not the old `.../data`. More in [Postgres](/databases/postgres/).
+
+### One-off container for a CLI
+Run a tool without installing it, against the current directory, as your own user.
+
+```sh
+docker run --rm -it -v "$PWD":/work -w /work \
+  -u "$(id -u):$(id -g)" oven/bun:1 bun --version
+
+docker run --rm -i hadolint/hadolint < Dockerfile
+
+# join a Compose project's network: <project>_default
+docker run --rm -it --network my-app_default \
+  postgres:18 psql postgres://app:app@db/app
+
+alias jq='docker run --rm -i ghcr.io/jqlang/jq'
+```
+
+### Cleanup
+Reclaim disk from a laptop that has been building images for months.
+
+```sh
+docker system df
+docker container prune -f
+docker image prune -a -f --filter until=168h
+docker builder prune -f --keep-storage 10GB
+docker volume ls -f dangling=true   # review first!
+docker volume prune -f
+# one project, including its volumes
+docker compose down -v --remove-orphans --rmi local
+```
+
+### Copy files out of a container or image
+Grab logs, build artefacts or a config file.
+
+```sh
+docker cp api:/app/logs/app.log ./app.log
+docker cp api:/app/logs - | tar -t   # stream as tar
+
+# from an image without running it
+id=$(docker create ghcr.io/acme/api:1.4.2)
+docker cp "$id":/app/dist ./dist
+docker rm "$id"
+
+# straight from a build stage, no image at all
+docker build --target build \
+  --output type=local,dest=./out .
+```
+
+### Multi-arch build and push
+Ship one tag that runs on x86 servers and ARM (Graviton, Apple silicon).
+
+```sh
+docker buildx create --name multi \
+  --driver docker-container --use --bootstrap
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/acme/api:1.4.2 \
+  -t ghcr.io/acme/api:1.4 \
+  --cache-to type=registry,ref=ghcr.io/acme/api:cache \
+  --cache-from type=registry,ref=ghcr.io/acme/api:cache \
+  --push .
+docker buildx imagetools inspect ghcr.io/acme/api:1.4.2
+```
+
+### Compose watch for a Bun dev server
+Edit on the host; files sync into the container and `bun --watch` reloads. Lockfile changes rebuild.
+
+```yaml title="compose.yaml"
+services:
+  api:
+    build: { context: ., target: dev }
+    command: bun --watch src/index.ts
+    ports: ["3000:3000"]
+    env_file: [.env]
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: rebuild
+          path: package.json
+        - action: rebuild
+          path: bun.lock
+```
+
+```sh
+docker compose up --watch
+```
+
+The `dev` stage installs all dependencies; see the [Bun Dockerfile](/infrastructure/containers/dockerfile/#bun-app)
+recipe and [Bun](/typescript/runtime-tooling/bun/).
+
+## References
+
+- Docker Docs: [Engine CLI reference](https://docs.docker.com/reference/cli/docker/), [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/), [Engine 29 release notes](https://docs.docker.com/engine/release-notes/29/)
+- Docker Docs: [Volumes](https://docs.docker.com/engine/storage/volumes/), [Bind mounts](https://docs.docker.com/engine/storage/bind-mounts/), [Networking](https://docs.docker.com/engine/network/), [Packet filtering and firewalls](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
+- Docker Docs: [Resource constraints](https://docs.docker.com/engine/containers/resource_constraints/), [Restart policies](https://docs.docker.com/engine/containers/start-containers-automatically/), [Rootless mode](https://docs.docker.com/engine/security/rootless/)
+- Docker Docs: [Compose file reference](https://docs.docker.com/reference/compose-file/), [Compose Watch](https://docs.docker.com/compose/how-tos/file-watch/), [Startup order](https://docs.docker.com/compose/how-tos/startup-order/), [Merging files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/), [Profiles](https://docs.docker.com/compose/how-tos/profiles/)
+- Docker Docs: [Multi-platform builds](https://docs.docker.com/build/building/multi-platform/), [Cache backends](https://docs.docker.com/build/cache/backends/), [Docker Scout](https://docs.docker.com/scout/), [Docker Debug](https://docs.docker.com/reference/cli/docker/debug/)
+- [Compose Specification](https://github.com/compose-spec/compose-spec) and [Compose releases](https://github.com/docker/compose/releases)
+- [Postgres image docs](https://hub.docker.com/_/postgres) (PGDATA change in 18), [Docker Hardened Images](https://docs.docker.com/dhi/)
+- [Podman](https://podman.io/docs), [OrbStack](https://docs.orbstack.dev/), [Colima](https://github.com/abiosoft/colima)

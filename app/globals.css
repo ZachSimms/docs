@@ -1,0 +1,884 @@
+/* Reproduced from williamjansson.com (home + post stylesheets merged), colours lifted into variables. */
+
+:root {
+  --lh: 1.5em;
+  --bg: #f2f2f2;
+  --fg: #000;
+  --chip: #ddd;
+  --pre-bg: #e5e5e5;
+  --pre-border: #d5d5d5;
+  --sel-bg: #ddd;
+  --sel-fg: #000;
+  --pre-sel-bg: #777;
+  --pre-sel-fg: #f2f2f2;
+  --dot-mobile: #888;
+  --graph-0: #1f6feb;
+  --graph-1: #cf222e;
+  --graph-2: #1a7f37;
+  --graph-3: #8250df;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161616;
+    --fg: #e6e6e6;
+    --chip: #333;
+    --pre-bg: #1f1f1f;
+    --pre-border: #333;
+    --sel-bg: #444;
+    --sel-fg: #fff;
+    --pre-sel-bg: #ccc;
+    --pre-sel-fg: #161616;
+    --dot-mobile: #777;
+    --graph-0: #58a6ff;
+    --graph-1: #ff7b72;
+    --graph-2: #3fb950;
+    --graph-3: #d2a8ff;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #161616;
+  --fg: #e6e6e6;
+  --chip: #333;
+  --pre-bg: #1f1f1f;
+  --pre-border: #333;
+  --sel-bg: #444;
+  --sel-fg: #fff;
+  --pre-sel-bg: #ccc;
+  --pre-sel-fg: #161616;
+  --dot-mobile: #777;
+  --graph-0: #58a6ff;
+  --graph-1: #ff7b72;
+  --graph-2: #3fb950;
+  --graph-3: #d2a8ff;
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+ul {
+  list-style: none;
+}
+
+::selection {
+  background: var(--sel-bg);
+  color: var(--sel-fg);
+}
+
+html {
+  margin: 0 0 0 calc(100vw - 100%);
+  /* Anchor jumps (#heading) stop below the fixed top bar instead of under it. */
+  scroll-padding-top: 4em;
+  -webkit-text-size-adjust: 100%;
+  height: 100%;
+}
+
+body {
+  font: 1em/var(--lh) monospace;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 16vh 2em 0;
+  display: grid;
+  grid: 1fr / minmax(auto, 90ch);
+  justify-content: center;
+  height: 100%;
+}
+
+a {
+  display: inline-block;
+  padding: 0.16666em;
+  margin-left: -0.16666em;
+  text-decoration: none;
+}
+
+a.inline {
+  margin: 0;
+  padding: 0;
+}
+
+/* Buttons that look exactly like links (footer controls). */
+button.link {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-block;
+  padding: 0.16666em;
+  margin-left: -0.16666em;
+}
+
+a i,
+button.link i {
+  border-bottom: 1px dotted;
+}
+
+a:active i,
+button.link:active i {
+  border: none;
+}
+
+h1,
+h2,
+p,
+pre,
+nav,
+table {
+  margin-bottom: var(--lh);
+}
+
+h1 a {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+nav,
+.v {
+  margin-top: -0.16666em;
+}
+
+.v a {
+  padding-right: 1em;
+  padding-left: 1em;
+  margin-left: -1em;
+}
+
+.highlight,
+:not(pre)>code {
+  background: var(--chip);
+  padding: 0 3px;
+}
+
+.strike,
+.strike a {
+  text-decoration: line-through;
+}
+
+img {
+  width: 100%;
+  height: auto;
+}
+
+ul {
+  margin: 0 0 var(--lh) 2ch;
+}
+
+ol {
+  margin: 0 0 var(--lh) 3ch;
+}
+
+li>ul,
+li>ol {
+  margin-bottom: 0;
+}
+
+ul li {
+  text-indent: -2ch;
+}
+
+ul li:before {
+  content: "* ";
+}
+
+pre {
+  background: var(--pre-bg);
+  border: 1px solid var(--pre-border);
+  padding: calc(var(--lh) / 2);
+  overflow: auto;
+  border-radius: 3px;
+}
+
+pre ::selection {
+  background: var(--pre-sel-bg);
+  color: var(--pre-sel-fg);
+}
+
+/* rehype-pretty-code emits --shiki-light / --shiki-dark per token; pick one per theme. */
+code[data-theme*=" "] span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) code[data-theme*=" "] span {
+    color: var(--shiki-dark);
+  }
+}
+
+:root[data-theme="dark"] code[data-theme*=" "] span {
+  color: var(--shiki-dark);
+}
+
+/* Code block extras: title bar, full-width lines, highlighted ranges, line numbers. */
+figure[data-rehype-pretty-code-figure] {
+  margin-bottom: var(--lh);
+}
+
+figure[data-rehype-pretty-code-figure] pre {
+  margin-bottom: 0;
+}
+
+figcaption[data-rehype-pretty-code-title] {
+  background: var(--pre-bg);
+  border: 1px solid var(--pre-border);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  padding: 0 calc(var(--lh) / 2);
+}
+
+figcaption[data-rehype-pretty-code-title]+pre {
+  border-radius: 0 0 3px 3px;
+}
+
+pre code {
+  display: grid;
+}
+
+/* <FileTree>: directories bold, guide lines and comments dimmed. */
+.file-tree .ft-dir {
+  font-weight: bold;
+}
+
+.file-tree .ft-guide,
+.file-tree .ft-comment {
+  opacity: 0.55;
+}
+
+pre code [data-line] {
+  margin: 0 calc(var(--lh) / -2);
+  padding: 0 calc(var(--lh) / 2);
+}
+
+pre code [data-highlighted-line] {
+  background: var(--chip);
+}
+
+code[data-line-numbers] {
+  counter-reset: line;
+}
+
+code[data-line-numbers]>[data-line]::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 1ch;
+  margin-right: 2ch;
+  text-align: right;
+  opacity: 0.5;
+}
+
+code[data-line-numbers-max-digits="2"]>[data-line]::before {
+  width: 2ch;
+}
+
+code[data-line-numbers-max-digits="3"]>[data-line]::before {
+  width: 3ch;
+}
+
+/* Additions in the same idiom, for cheatsheet content. */
+
+h2 {
+  margin-top: var(--lh);
+  font-size: large;
+}
+
+table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* block tables would otherwise grow a vertical scrollbar on sub-pixel overflow */
+  scrollbar-width: thin;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.15em 2ch 0.15em 0;
+  vertical-align: top;
+}
+
+th {
+  border-bottom: 1px dotted;
+}
+
+/* A faint dotted rule between body rows so wrapped cells read as one row. */
+tbody tr+tr td {
+  border-top: 1px dotted var(--pre-border);
+}
+
+blockquote {
+  padding-left: 2ch;
+  border-left: 1px dotted;
+  margin-bottom: var(--lh);
+}
+
+h2,
+h3,
+h4 {
+  font-weight: bold;
+}
+
+h3 {
+  margin-bottom: var(--lh);
+}
+
+hr {
+  border: 0;
+  border-top: 1px dotted;
+  margin-bottom: var(--lh);
+}
+
+b,
+strong {
+  font-weight: bold;
+}
+
+em,
+.note aside {
+  font-style: italic;
+}
+
+del {
+  text-decoration: line-through;
+}
+
+/* GFM task lists render as [ ] / [x] instead of native checkboxes. */
+.contains-task-list {
+  margin-left: 0;
+}
+
+.contains-task-list li {
+  text-indent: 0;
+}
+
+.contains-task-list li:before {
+  content: none;
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  margin: 0;
+}
+
+input[type="checkbox"]::before {
+  content: "[ ] ";
+}
+
+input[type="checkbox"]:checked::before {
+  content: "[x] ";
+}
+
+/* GFM footnotes. */
+.footnotes {
+  margin-top: var(--lh);
+}
+
+.footnotes ol {
+  margin-left: 4ch;
+}
+
+.footnotes li {
+  list-style: decimal;
+}
+
+/* Footnote references read as [1] on the baseline instead of a raised superscript. */
+sup {
+  vertical-align: baseline;
+  font-size: 1em;
+}
+
+sup a {
+  padding: 0;
+  margin: 0;
+}
+
+sup a::before {
+  content: "[";
+}
+
+sup a::after {
+  content: "]";
+}
+
+/* <Note> aside and <details>. */
+.note {
+  padding-left: 2ch;
+  border-left: 1px dotted;
+  margin-bottom: var(--lh);
+}
+
+.note p {
+  margin: 0;
+}
+
+.note-body> :last-child {
+  margin-bottom: 0;
+}
+
+.note[data-kind="warning"],
+.note[data-kind="error"] {
+  border-left-style: solid;
+}
+
+/* <Steps>: zero-padded counters hanging in a 4ch gutter. */
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0 0 var(--lh) 4ch;
+}
+
+.steps>li {
+  position: relative;
+  text-indent: 0;
+  margin-bottom: var(--lh);
+}
+
+.steps>li::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero) ".";
+  position: absolute;
+  left: -4ch;
+}
+
+.steps>li> :last-child {
+  margin-bottom: 0;
+}
+
+.step-title {
+  margin: 0;
+}
+
+/* <Cards>: "> title" lines with an indented description. */
+.cards {
+  margin-bottom: var(--lh);
+}
+
+.card-desc {
+  margin: 0 0 0 2ch;
+}
+
+/* <Tabs>: a line of link-styled buttons; the active one is underlined solid. */
+.tabs {
+  margin-bottom: var(--lh);
+}
+
+.tabs-list {
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+.tabs-list [role="tab"][aria-selected="true"] i {
+  border-bottom-style: solid;
+}
+
+.tabs [role="tabpanel"]> :last-child {
+  margin-bottom: 0;
+}
+
+details {
+  margin-bottom: var(--lh);
+}
+
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary::before {
+  content: "> ";
+}
+
+details[open] summary::before {
+  content: "v ";
+}
+
+kbd {
+  background: var(--chip);
+  padding: 0 3px;
+}
+
+/* /info/ shortcut list: the padding spaces align the actions in one column. */
+.keys {
+  white-space: pre;
+}
+
+/* <Graph>: monochrome SVG plots; two "small" ones fit side by side. */
+.graph {
+  margin: 0 0 var(--lh);
+  width: 100%;
+}
+
+.graph svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.graph figcaption {
+  margin-top: 0.25em;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 2ch;
+}
+
+.graph-legend {
+  white-space: nowrap;
+}
+
+.graph-curve-0 {
+  stroke: var(--graph-0);
+  color: var(--graph-0);
+}
+
+.graph-curve-1 {
+  stroke: var(--graph-1);
+  color: var(--graph-1);
+}
+
+.graph-curve-2 {
+  stroke: var(--graph-2);
+  color: var(--graph-2);
+}
+
+.graph-curve-3 {
+  stroke: var(--graph-3);
+  color: var(--graph-3);
+}
+
+.graph-swatch {
+  font-weight: bold;
+}
+
+.graphs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 2ch;
+  margin-bottom: var(--lh);
+}
+
+.graphs .graph {
+  margin-bottom: calc(var(--lh) / 2);
+  min-width: 0;
+  /* grid items default to min-content width; the legend must not widen the cell */
+}
+
+@media (max-width: 600px) {
+  .graphs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* KaTeX: display maths gets the page rhythm and scrolls sideways if wide; colours follow the theme. */
+.katex-display {
+  margin: 0 0 var(--lh);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.16666em 0;
+}
+
+.katex {
+  font-size: 1.15em;
+}
+
+/* Table rows that carry maths (fractions, roots) need more vertical room,
+   and maths inside a cell is sized closer to the surrounding monospace text. */
+tr:has(.katex) td,
+tr:has(.katex) th {
+  padding-top: 0.35em;
+  padding-bottom: 0.35em;
+}
+
+td .katex,
+th .katex {
+  font-size: 1.05em;
+}
+
+footer {
+  padding: calc(var(--lh) * 2) 0 8vh;
+}
+
+footer p {
+  margin: 0;
+}
+
+/* Theme toggle: a fixed rail with the same column grid as <body>, so the button
+   sits on the right edge of the content column rather than the viewport. */
+/* Also the top bar: a full-width band in the page colour behind `../` and the toggle
+   (the back rail sits on top of it), fading out over its last 1em so content scrolling
+   up disappears smoothly instead of showing through the controls. */
+.theme-toggle-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin-left: calc(100vw - 100%);
+  padding: 1.5em 2em 1em;
+  background: linear-gradient(var(--bg) calc(100% - 1em), transparent);
+  display: grid;
+  grid: auto / minmax(auto, 90ch);
+  justify-content: center;
+  pointer-events: none;
+}
+
+.theme-toggle {
+  justify-self: end;
+  pointer-events: auto;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25em;
+  margin-right: -0.25em;
+  color: inherit;
+}
+
+.theme-toggle svg {
+  display: block;
+}
+
+.theme-toggle:focus-visible {
+  outline: 1px dotted currentColor;
+}
+
+@media (max-device-width: 600px) {
+  .theme-toggle-rail {
+    padding-top: 2em;
+    justify-content: start;
+  }
+}
+
+/* Back link pinned to the top-left of the content column (mirror of the theme toggle rail). */
+.back-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin-left: calc(100vw - 100%);
+  padding: 1.5em 2em 0;
+  display: grid;
+  grid: auto / minmax(auto, 90ch);
+  justify-content: center;
+  pointer-events: none;
+}
+
+.back-rail a {
+  justify-self: start;
+  pointer-events: auto;
+  line-height: 1;
+  padding: 0.25em 0.16666em;
+  margin-left: -0.16666em;
+  background: var(--bg);
+}
+
+@media (max-device-width: 600px) {
+  .back-rail {
+    padding-top: 2em;
+    justify-content: start;
+  }
+}
+
+/* Table of contents: a fixed rail sharing the body grid, with the list pushed
+   into the right margin beside the content column. Hidden when it would not fit. */
+.toc-rail {
+  position: fixed;
+  top: 16vh;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  margin-left: calc(100vw - 100%);
+  padding: 0 2em;
+  display: grid;
+  grid: auto / minmax(auto, 90ch);
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Frame in the right margin: holds the scrolling list and its ^ / v indicators. */
+.toc-frame {
+  position: relative;
+  left: 100%;
+  /* 2ch of the 4ch gap is the list's padding, so `>` markers sit inside its scroll box. */
+  margin-left: 2ch;
+  width: 30ch;
+  margin-top: -0.16666em;
+}
+
+.toc {
+  position: relative;
+  padding-left: 2ch;
+  max-height: calc(84vh - 4em);
+  overflow-y: auto;
+  /* No scrollbar: fades and ^ / v indicators show there is more (see .toc-more). */
+  scrollbar-width: none;
+  pointer-events: auto;
+  margin: 0;
+}
+
+.toc::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fade whichever edge has entries hidden beyond it. */
+.toc[data-more-down] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 3em), transparent);
+}
+
+.toc[data-more-up] {
+  mask-image: linear-gradient(to top, #000 calc(100% - 3em), transparent);
+}
+
+.toc[data-more-up][data-more-down] {
+  mask-image: linear-gradient(to bottom, transparent, #000 3em, #000 calc(100% - 3em), transparent);
+}
+
+/* ^ / v in the marker gutter at the top / bottom edge; click to scroll the list. */
+.toc-more {
+  position: absolute;
+  /* Above the list, which comes later in the DOM and would otherwise take the click. */
+  z-index: 1;
+  left: 0;
+  width: 2ch;
+  padding: 0.16666em 0;
+  /* Covers a `>` marker that has scrolled under the indicator. */
+  background: var(--bg);
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  text-align: left;
+}
+
+.toc-more-up {
+  top: 0;
+}
+
+.toc-more-down {
+  bottom: 0;
+}
+
+.toc a {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toc a.toc-sub {
+  margin-left: calc(2ch - 0.16666em);
+  /* The indent eats into the column, so long sub-headings ellipsise instead of overflowing. */
+  max-width: calc(100% - 2ch + 0.16666em);
+}
+
+/* The section being read: bold, solid underline and a `>` in the gutter; while
+   reading a `###`, its `##` keeps the `>` too. */
+.toc a[aria-current="location"] {
+  font-weight: bold;
+}
+
+.toc a[aria-current="location"] i {
+  border-bottom-style: solid;
+}
+
+/* `>` markers: absolutely placed at the row's start, pulled 2ch into the gutter. */
+.toc a[aria-current="location"]::before,
+.toc a[data-parent-active]::before,
+nav[data-menu] span[data-active]::before {
+  content: ">";
+  position: absolute;
+  transform: translateX(-2ch);
+}
+
+/* List pages double as menus (↑/↓, j/k, Enter, hover): same marks as the TOC. */
+nav[data-menu] a[data-active] i {
+  border-bottom-style: solid;
+}
+
+nav[data-menu] a[data-active]:focus-visible {
+  outline: none;
+}
+
+/* The rail sits ~32ch (≈250px) right of the 90ch column, so it needs a viewport of
+   about 90ch + 2 × 32ch ≈ 1205px; below that it would be clipped, so hide it. */
+@media (max-width: 1239px) {
+  .toc-rail {
+    display: none;
+  }
+}
+
+/* Search palette: a page of the site laid over the current one. */
+
+.search {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 16vh 2em 0;
+  display: grid;
+  grid: 1fr / minmax(auto, 90ch);
+  justify-content: center;
+}
+
+.search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  width: calc(100% - 2ch);
+  caret-color: currentColor;
+}
+
+/* Theme text colour, dimmed, so the hint follows light and dark mode. */
+.search input::placeholder {
+  color: currentColor;
+  opacity: 0.5;
+}
+
+.search .results {
+  margin: -0.16666em 0 var(--lh);
+}
+
+.search .results a[aria-selected="true"] i {
+  border-bottom-style: solid;
+}
+
+body[data-search-open] {
+  overflow: hidden;
+}
+
+@media (max-device-width: 600px) {
+  body {
+    padding-top: 2em;
+    justify-content: start;
+  }
+
+  .search {
+    padding-top: 2em;
+    justify-content: start;
+  }
+
+  footer {
+    padding-bottom: 2em;
+  }
+
+  pre {
+    max-width: calc(100vw - 4em);
+  }
+
+  a i,
+  button.link i {
+    border-color: var(--dot-mobile);
+  }
+}

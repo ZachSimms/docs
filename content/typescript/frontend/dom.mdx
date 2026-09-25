@@ -1,0 +1,603 @@
+---
+title: DOM manipulation
+date: 2026-09-25
+order: 1
+---
+
+Selecting, walking, building and measuring the document with the standard DOM APIs, typed with
+TypeScript's `lib.dom`. Events live on their own sheet: [Events](/typescript/frontend/events/).
+
+## Selecting
+
+| Method                         | Returns                           | Live?  | Notes                                           |
+| :----------------------------- | :-------------------------------- | :----- | :---------------------------------------------- |
+| `querySelector(sel)`           | `Element \| null`                 | n/a    | first match in document order                   |
+| `querySelectorAll(sel)`        | `NodeListOf<Element>`             | static | snapshot; has `forEach`, iterable               |
+| `getElementById(id)`           | `HTMLElement \| null`             | n/a    | `Document`, `DocumentFragment`, `ShadowRoot` only |
+| `getElementsByClassName(c)`    | `HTMLCollectionOf<Element>`       | live   | space-separated list means "has all"            |
+| `getElementsByTagName(t)`      | `HTMLCollectionOf<…>`             | live   | typed by tag name like `querySelector`          |
+| `getElementsByName(n)`         | `NodeListOf<HTMLElement>`         | live   | `Document` only; matches `name="…"`             |
+| `el.closest(sel)`              | `Element \| null`                 | n/a    | walks up from `el` itself to the root           |
+| `el.matches(sel)`              | `boolean`                         | n/a    | would `el` be selected by `sel`?                |
+| `el.contains(other)`           | `boolean`                         | n/a    | inclusive: `el.contains(el)` is `true`          |
+| `document.forms`, `form.elements` | `HTMLCollection…`              | live   | named access: `form.elements.namedItem("email")` |
+
+Selectors are any valid CSS selector; an invalid one throws a `SyntaxError` `DOMException`.
+Calling on an element scopes the search to its descendants, but the selector is still matched
+against the whole document, so use `:scope` to anchor it.
+
+```ts
+// HTMLElement
+const nav = document.querySelector("nav");
+// children
+const links = nav?.querySelectorAll(":scope > a");
+// HTMLLIElement
+const first = document.querySelector("li");
+// HTMLElement
+const byId = document.getElementById("app");
+
+// ids starting with a digit or holding odd chars
+// need escaping
+const id = "1st-item";
+const el = document.querySelector(`#${CSS.escape(id)}`);
+```
+
+### NodeList vs HTMLCollection
+
+| Aspect              | `NodeList`                                  | `HTMLCollection`                     |
+| :------------------ | :------------------------------------------ | :----------------------------------- |
+| Contains            | any `Node` (text, comments, elements)       | elements only                        |
+| Live?               | `childNodes` live; `querySelectorAll` static | always live                          |
+| `forEach`           | yes                                         | no                                   |
+| `for…of`, spread    | yes                                         | yes                                  |
+| Named access        | no                                          | `namedItem(id)` or `coll.name`       |
+| `entries/keys/values` | yes                                       | no                                   |
+| To array            | `Array.from(list)` or `[...list]`           | same                                 |
+
+<Callout type="warn" title="Live collections shift under you">
+  Removing items while looping forward over a live `HTMLCollection` skips every other element.
+  Copy first (`[...coll]`) or loop backwards.
+</Callout>
+
+## Traversing
+
+| Element-only                 | Any node (incl. text, comments) | Notes                           |
+| :--------------------------- | :------------------------------ | :------------------------------ |
+| `parentElement`              | `parentNode`                    | `html.parentElement` is `null`, `parentNode` is `document` |
+| `children`                   | `childNodes`                    | `HTMLCollection` vs live `NodeList` |
+| `firstElementChild`          | `firstChild`                    | whitespace between tags is a text node |
+| `lastElementChild`           | `lastChild`                     |                                 |
+| `nextElementSibling`         | `nextSibling`                   |                                 |
+| `previousElementSibling`     | `previousSibling`               |                                 |
+| `childElementCount`          | `childNodes.length`             |                                 |
+| `closest(sel)`               | `getRootNode()`                 | root is `document` or a `ShadowRoot` |
+
+```ts
+function* ancestors(el: Element): Generator<Element> {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    yield p;
+  }
+}
+
+const cell = document.querySelector("td");
+// HTMLTableRowElement
+const row = cell?.closest("tr");
+const next = row?.nextElementSibling;     // Element | null
+```
+
+For large walks (every text node, say) use `document.createTreeWalker(root, NodeFilter.SHOW_TEXT)`
+instead of recursion.
+
+## Creating & inserting
+
+| Method                               | Accepts                  | Notes                                     |
+| :----------------------------------- | :----------------------- | :---------------------------------------- |
+| `document.createElement(tag)`        | tag name                 | typed: `createElement("a")` is `HTMLAnchorElement` |
+| `document.createTextNode(s)`         | string                   | strings passed to `append` do this for you |
+| `parent.append(...nodes)`            | nodes and strings        | at the end; returns `undefined`           |
+| `parent.prepend(...nodes)`           | nodes and strings        | at the start                              |
+| `el.before(...)`, `el.after(...)`    | nodes and strings        | as siblings                               |
+| `el.replaceWith(...)`                | nodes and strings        | swaps `el` out                            |
+| `parent.replaceChildren(...)`        | nodes and strings        | empty args clears all children            |
+| `el.remove()`                        | none                     | detaches from its parent                  |
+| `parent.appendChild(node)`           | one node                 | older; returns the node                   |
+| `parent.insertBefore(node, ref)`     | one node, ref or `null`  | older; `null` ref appends                 |
+| `node.cloneNode(true)`               | deep flag                | copies attributes, not listeners          |
+| `el.insertAdjacentElement(pos, el)`  | position, element        | returns the element or `null`             |
+| `el.insertAdjacentHTML(pos, html)`   | position, HTML string    | parses; XSS risk with untrusted input     |
+| `el.insertAdjacentText(pos, s)`      | position, string         | safe text                                 |
+
+Inserting a node that is already in the document moves it (it is never duplicated).
+`parent.moveBefore(node, ref)` moves while keeping state such as focus, iframe loads and running
+animations; Chrome 133+ and Firefox 144+, not Safari yet.
+
+```ts
+const li = document.createElement("li");   // HTMLLIElement
+li.className = "item";
+li.append("Buy ", Object.assign(
+  document.createElement("strong"), { textContent: "milk" },
+));
+document.querySelector("ul")?.append(li);
+```
+
+### insertAdjacent positions
+
+```html
+<!-- beforebegin -->
+<p>
+  <!-- afterbegin -->
+  existing content
+  <!-- beforeend -->
+</p>
+<!-- afterend -->
+```
+
+`beforebegin` and `afterend` need the element to have a parent.
+
+### Templates and fragments
+
+A `DocumentFragment` is a parentless container: appending it moves its children in one insertion
+and leaves the fragment empty. `<template>` content is an inert fragment (scripts don't run,
+images don't load) that you clone per use.
+
+```html
+<template id="row-tpl">
+  <li class="row"><span class="name"></span></li>
+</template>
+```
+
+```ts
+type User = { id: string; name: string };
+
+function renderUsers(
+  list: Element,
+  tpl: HTMLTemplateElement,
+  users: readonly User[],
+): void {
+  const frag = document.createDocumentFragment();
+  for (const u of users) {
+    // importNode is generic: returns DocumentFragment
+    const row = document.importNode(tpl.content, true);
+    row.querySelector(".name")!.textContent = u.name;
+    row.firstElementChild?.setAttribute("data-id", u.id);
+    frag.append(row);
+  }
+  list.replaceChildren(frag); // clear + insert once
+}
+
+const tpl = document.querySelector<HTMLTemplateElement>(
+  "#row-tpl",
+);
+const list = document.querySelector("ul");
+if (tpl && list) {
+  renderUsers(list, tpl, [{ id: "1", name: "Ada" }]);
+}
+```
+
+`tpl.content.cloneNode(true)` works too but is typed `Node`, so it needs a cast.
+
+## Content
+
+| Property      | Reads                                        | Writes                        | Layout? | Safe with user input? |
+| :------------ | :------------------------------------------- | :---------------------------- | :------ | :-------------------- |
+| `textContent` | all text, incl. `<script>`/`<style>` and hidden | replaces children with one text node | no | yes |
+| `innerText`   | rendered text as CSS shows it (skips hidden, applies `text-transform`) | text, newlines become `<br>` | yes, forces layout | yes |
+| `innerHTML`   | serialized HTML of children                  | parses and replaces children  | no      | no                    |
+| `outerHTML`   | serialized HTML incl. the element            | replaces the element itself   | no      | no                    |
+| `nodeValue`   | text of a text/comment node; `null` on elements | same                        | no      | yes                   |
+
+```ts
+const out = document.querySelector("output");
+declare const userInput: string;
+
+if (out) {
+  out.textContent = userInput;         // ✅ always text
+  // out.innerHTML = userInput;        // ❌ XSS
+}
+```
+
+<Callout type="error" title="innerHTML is an XSS sink">
+  Assigning untrusted strings to `innerHTML`, `outerHTML`, `insertAdjacentHTML`,
+  `document.write` or `setHTMLUnsafe` runs attacker markup (`<img src=x onerror=…>`).
+  Use `textContent`, build nodes with `createElement`, or sanitize.
+</Callout>
+
+### setHTML and the Sanitizer API
+
+`el.setHTML(html, { sanitizer })` parses and sanitizes in one step, always stripping script-capable
+content (`<script>`, `<iframe>`, `<object>`, `on*` handler attributes) even if your config allows it.
+Chrome 146+ and Firefox 148+, not Safari, so not Baseline: feature-detect and keep a fallback
+(for example DOMPurify). TypeScript 5.9's `lib.dom` has no types for it yet. `setHTMLUnsafe(html)`
+(Baseline 2025) parses declarative shadow DOM but does not sanitize by default.
+
+```ts
+type SetHTML = (html: string) => void;
+
+function safeSet(el: Element, html: string): void {
+  const setHTML = (el as Element & { setHTML?: SetHTML })
+    .setHTML;
+  if (typeof setHTML === "function") {
+    setHTML.call(el, html);
+  } else {
+    el.textContent = html; // or DOMPurify.sanitize
+  }
+}
+```
+
+### Trusted Types
+
+Trusted Types (Baseline 2026) make the browser reject plain strings at injection sinks. Turn it on
+with the CSP header `require-trusted-types-for 'script'`, then only values produced by a policy
+from `trustedTypes.createPolicy(name, { createHTML })` are accepted by `innerHTML` and friends.
+Types come from `@types/trusted-types`, not `lib.dom`.
+
+## Attributes & dataset
+
+| Method                          | Returns            | Notes                                     |
+| :------------------------------ | :----------------- | :---------------------------------------- |
+| `getAttribute(n)`               | `string \| null`   | raw attribute text                        |
+| `setAttribute(n, v)`            | `void`             | `v` is a string; numbers are coerced      |
+| `removeAttribute(n)`            | `void`             | no error if missing                       |
+| `hasAttribute(n)`               | `boolean`          |                                           |
+| `toggleAttribute(n, force?)`    | `boolean`          | for boolean attributes; returns new state |
+| `getAttributeNames()`           | `string[]`         |                                           |
+
+### Properties vs attributes
+
+Attributes are the HTML source text; properties are the live JS state. Many reflect each other,
+but not all.
+
+| Attribute                  | Property                   | Difference                                        |
+| :------------------------- | :------------------------- | :------------------------------------------------ |
+| `value` on `<input>`       | `value` / `defaultValue`   | attribute is the initial value; property is current |
+| `checked`                  | `checked` / `defaultChecked` | same split as `value`                           |
+| `href`, `src`              | `href`, `src`              | property is the resolved absolute URL             |
+| `class`, `for`             | `className`, `htmlFor`     | renamed because they are JS keywords              |
+| `disabled`, `hidden`       | `disabled`, `hidden`       | presence of the attribute means `true`            |
+| `aria-expanded`            | `ariaExpanded`             | property is `string \| null`, not boolean         |
+| `tabindex`                 | `tabIndex`                 | property is a number, `-1` when unset on non-focusables |
+
+```ts
+const input = document.querySelector("input");
+if (input) {
+  input.value = "typed";                 // current value
+  input.getAttribute("value");           // still the initial
+  input.toggleAttribute("disabled", true);
+  input.disabled;                        // true
+}
+```
+
+### dataset
+
+`data-*` attributes map to `el.dataset` (`DOMStringMap`): drop `data-`, and each dash plus
+lowercase letter becomes the uppercase letter. Values are always strings.
+
+| Attribute              | Property                  |
+| :--------------------- | :------------------------ |
+| `data-id`              | `dataset.id`              |
+| `data-user-id`         | `dataset.userId`          |
+| `data-sort-by-date`    | `dataset.sortByDate`      |
+
+```ts
+const card = document.querySelector<HTMLElement>(".card");
+if (card) {
+  const id: string | undefined = card.dataset.userId;
+  card.dataset.state = "open";   // sets data-state="open"
+  card.dataset.count = String(3); // strings only
+  delete card.dataset.state;     // removes the attribute
+}
+```
+
+Style off data attributes in CSS with `[data-state="open"]`.
+
+## Classes & styles
+
+| `classList` member       | Returns   | Notes                                   |
+| :----------------------- | :-------- | :-------------------------------------- |
+| `add(...names)`          | `void`    | ignores ones already present            |
+| `remove(...names)`       | `void`    | ignores missing                         |
+| `toggle(name, force?)`   | `boolean` | `force` makes it add-only or remove-only |
+| `contains(name)`         | `boolean` |                                         |
+| `replace(old, new)`      | `boolean` | `false` if `old` wasn't present         |
+| `value`, `length`        | `string`, `number` | same as `className`            |
+
+```ts
+const panel = document.querySelector<HTMLElement>(".panel");
+if (panel) {
+  const open = panel.classList.toggle("open");
+  panel.classList.toggle("dim", !open);
+
+  panel.style.transform = "translateX(0)"; // camelCase
+  panel.style.setProperty("--gap", "8px"); // custom prop
+  panel.style.setProperty("color", "red", "important");
+  panel.style.removeProperty("color");
+
+  const cs = getComputedStyle(panel);
+  const gap = cs.getPropertyValue("--gap").trim();
+  const width = parseFloat(cs.width); // "320px" to 320
+}
+```
+
+| API                            | What it holds                                            |
+| :----------------------------- | :------------------------------------------------------- |
+| `el.style`                     | inline `style=""` only; empty strings for anything else  |
+| `el.style.cssText`             | the whole inline style as one string                     |
+| `style.setProperty(n, v, p?)`  | the only way to set `--custom` props or `!important`     |
+| `getComputedStyle(el, pseudo?)` | read-only resolved values after the cascade; forces style recalc |
+
+Prefer toggling classes or data attributes over writing many inline styles; keep inline style for
+values computed at runtime (positions, custom props).
+
+## Measuring & scrolling
+
+`el.getBoundingClientRect()` returns a `DOMRect` (`x`, `y`, `width`, `height`, `top`, `right`,
+`bottom`, `left`) relative to the viewport, fractional, including CSS transforms. Add
+`scrollX`/`scrollY` for page coordinates.
+
+| Property                        | Includes                                  | Notes                           |
+| :------------------------------ | :---------------------------------------- | :------------------------------ |
+| `offsetWidth`, `offsetHeight`   | content + padding + border + scrollbar    | integers; ignores transforms    |
+| `clientWidth`, `clientHeight`   | content + padding, no border or scrollbar | `0` for inline elements         |
+| `scrollWidth`, `scrollHeight`   | full content incl. overflowed part + padding | `>= clientWidth`             |
+| `offsetTop`, `offsetLeft`       | position relative to `offsetParent`       | nearest positioned ancestor     |
+| `scrollTop`, `scrollLeft`       | how far the element is scrolled           | writable                        |
+| `clientTop`, `clientLeft`       | border width (roughly)                    |                                 |
+| `innerWidth`, `innerHeight`     | viewport incl. scrollbar (on `window`)    | `documentElement.clientWidth` excludes it |
+
+```ts
+const box = document.querySelector("#box");
+if (box) {
+  const r = box.getBoundingClientRect();
+  const pageTop = r.top + window.scrollY;
+  const inView = r.bottom > 0 && r.top < innerHeight;
+
+  box.scrollIntoView({
+    behavior: "smooth",   // "auto" | "instant" | "smooth"
+    // "start" (default) | "nearest" | …
+    block: "center",
+    inline: "nearest",
+  });
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollBy({ top: 200 });
+}
+
+const scroller = document.querySelector(".log");
+if (scroller) {
+  // stick to bottom
+  scroller.scrollTop = scroller.scrollHeight;
+  const atEnd =
+    scroller.scrollHeight - scroller.scrollTop
+      - scroller.clientHeight < 1;
+}
+```
+
+`behavior: "auto"` follows CSS `scroll-behavior`. The `scrollend` event (Baseline 2025) tells you
+when a smooth scroll has finished. Use `scroll-margin-top` in CSS to offset sticky headers.
+
+## Observers
+
+All three take a callback, then `observe(target, options?)`, and stop with `unobserve(target)` or
+`disconnect()`. Callbacks run asynchronously and batched.
+
+| Observer              | Watches                          | Callback entries          | Replaces                      |
+| :-------------------- | :------------------------------- | :------------------------ | :---------------------------- |
+| `IntersectionObserver` | element visibility in a root/viewport | `IntersectionObserverEntry[]` | scroll + `getBoundingClientRect` |
+| `ResizeObserver`      | element box size changes         | `ResizeObserverEntry[]`   | `resize` on `window`          |
+| `MutationObserver`    | DOM tree, attribute, text changes | `MutationRecord[]`       | deprecated mutation events    |
+
+### IntersectionObserver
+
+```ts
+const onVisible: IntersectionObserverCallback = (
+  entries, observer,
+) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    const img = e.target as HTMLImageElement;
+    img.src = img.dataset.src ?? "";
+    observer.unobserve(img); // load once
+  }
+};
+
+const io = new IntersectionObserver(onVisible, {
+  root: null,              // viewport
+  rootMargin: "200px 0px", // start early
+  threshold: [0, 0.5, 1],  // ratios that fire callbacks
+});
+document.querySelectorAll("img[data-src]")
+  .forEach((img) => io.observe(img));
+```
+
+### ResizeObserver
+
+```ts
+const ro = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const [box] = entry.contentBoxSize; // inline = width
+    const el = entry.target as HTMLElement;
+    el.classList.toggle("narrow", box.inlineSize < 480);
+  }
+});
+const card = document.querySelector(".card");
+if (card) ro.observe(card, { box: "border-box" });
+```
+
+Changing the observed size inside the callback can loop; the browser stops after one pass and
+reports "ResizeObserver loop completed with undelivered notifications".
+
+### MutationObserver
+
+```ts
+const mo = new MutationObserver((records) => {
+  for (const r of records) {
+    if (r.type === "childList") {
+      r.addedNodes.forEach((n) => {
+        if (n instanceof HTMLElement) n.classList.add("new");
+      });
+    } else if (r.type === "attributes") {
+      console.info(r.attributeName, r.oldValue);
+    }
+  }
+});
+
+mo.observe(document.body, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["class", "data-state"],
+  attributeOldValue: true,
+});
+const pending = mo.takeRecords(); // flush before disconnect
+mo.disconnect();
+```
+
+## Typing the DOM
+
+| Call                                          | Type                              |
+| :-------------------------------------------- | :-------------------------------- |
+| `querySelector("input")`                      | `HTMLInputElement \| null`        |
+| `querySelector("svg")`                        | `SVGSVGElement \| null`           |
+| `querySelector("#email")`                     | `Element \| null`                 |
+| `querySelector("input.email")`                | `Element \| null` (not a bare tag) |
+| `querySelector<HTMLInputElement>("#email")`   | `HTMLInputElement \| null`, unchecked |
+| `getElementById("email")`                     | `HTMLElement \| null`, no generic |
+| `querySelectorAll("li")`                      | `NodeListOf<HTMLLIElement>`       |
+| `createElement("canvas")`                     | `HTMLCanvasElement`               |
+| `closest("form")`                             | `HTMLFormElement \| null`         |
+
+The tag-name overloads look up `HTMLElementTagNameMap` (plus the SVG and MathML maps). Any other
+selector string falls back to `Element`; the generic parameter is an assertion in disguise.
+
+```ts
+// 1. `as` / generic: trusts you, no runtime check
+const a = document.querySelector(
+  "#email",
+) as HTMLInputElement;
+const b = document.querySelector<HTMLInputElement>("#email");
+
+// 2. instanceof: checks at runtime, narrows
+const c = document.querySelector("#email");
+if (c instanceof HTMLInputElement) {
+  c.value = "x"; // HTMLInputElement
+}
+
+// 3. helper that checks and throws
+function $<T extends Element>(
+  sel: string,
+  type: new () => T,
+  root: ParentNode = document,
+): T {
+  const el = root.querySelector(sel);
+  if (!(el instanceof type)) {
+    throw new Error(`${sel} is not a ${type.name}`);
+  }
+  return el;
+}
+const email = $("#email", HTMLInputElement);
+```
+
+| Null handling           | Use when                                              |
+| :---------------------- | :---------------------------------------------------- |
+| `if (!el) return`       | element may legitimately be absent                    |
+| `el?.focus()`           | fire-and-forget calls                                 |
+| throw / helper above    | the markup is required; fail loudly                   |
+| `el!` non-null assertion | you are certain; the error later is a vague `TypeError` |
+
+`instanceof` fails across realms (an element from an `<iframe>` has a different
+`HTMLInputElement`); check `el.tagName === "INPUT"` there.
+
+### Custom elements
+
+```ts
+class UserCard extends HTMLElement {
+  static observedAttributes = ["name"];
+  attributeChangedCallback(
+    _n: string, _old: string | null, next: string | null,
+  ): void {
+    this.textContent = next ?? "";
+  }
+}
+customElements.define("user-card", UserCard);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "user-card": UserCard;
+  }
+}
+
+const card = document.querySelector("user-card"); // UserCard
+```
+
+### tsconfig
+
+```json
+{
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "strict": true
+  }
+}
+```
+
+`DOM.Iterable` adds `for…of`, `entries()` and friends on `NodeList`, `FormData` and the like. From
+TypeScript 6.0 it is folded into `DOM` and listing it is harmless. Leave `DOM` out of server-only
+projects so `window` and `document` are type errors there.
+
+## Performance
+
+| Do                                                    | Why                                                     |
+| :---------------------------------------------------- | :------------------------------------------------------ |
+| read all layout values, then write all styles         | a read after a write forces a synchronous layout        |
+| do visual writes inside `requestAnimationFrame`       | one write per frame, right before paint                 |
+| build off-DOM (fragment, `replaceChildren`, `append(...nodes)`) | one insertion instead of N                    |
+| animate `transform` and `opacity`                     | compositor only; `top`/`width` trigger layout           |
+| `content-visibility: auto` on long off-screen sections | skips their layout and paint until near the viewport   |
+| observers instead of `scroll`/`resize` handlers       | no work on the main thread per scroll tick              |
+| delegate events to a container                        | one listener instead of thousands                       |
+
+Layout-forcing reads include `offset*`, `client*`, `scroll*`, `getBoundingClientRect()`,
+`getComputedStyle()`, `innerText` and `focus()`.
+
+```ts
+const items = [...document.querySelectorAll<HTMLElement>(
+  ".item",
+)];
+
+// ❌ thrashing: read, write, read, write…
+for (const el of items) {
+  el.style.height = `${el.offsetWidth / 2}px`;
+}
+
+// ✅ batch reads, then writes in the next frame
+const widths = items.map((el) => el.offsetWidth);
+requestAnimationFrame(() => {
+  items.forEach((el, i) => {
+    el.style.height = `${widths[i] / 2}px`;
+  });
+});
+```
+
+```css
+.comment {
+  content-visibility: auto;
+  /* placeholder height */
+  contain-intrinsic-size: auto 200px;
+}
+```
+
+`content-visibility` is Baseline 2024 (Safari 18). Content it skips is still in the DOM and
+findable with find-in-page.
+
+## References
+
+- [MDN: Document Object Model](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)
+- [MDN: Locating DOM elements using selectors](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model/Locating_DOM_elements_using_selectors)
+- [MDN: Element.insertAdjacentHTML](https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentHTML)
+- [MDN: Element.setHTML](https://developer.mozilla.org/en-US/docs/Web/API/Element/setHTML) and [Trusted Types API](https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API)
+- [MDN: HTMLElement.dataset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset)
+- [MDN: Determining the dimensions of elements](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements)
+- [MDN: Intersection Observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API), [ResizeObserver](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver), [MutationObserver](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver)
+- [MDN: content-visibility](https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility)
+- [TypeScript: DOM Manipulation](https://www.typescriptlang.org/docs/handbook/dom-manipulation.html)
+- [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)

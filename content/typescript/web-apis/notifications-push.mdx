@@ -1,0 +1,538 @@
+---
+title: Notifications & Push
+date: 2026-09-25
+order: 16
+---
+
+System notifications from a page or a service worker, Web Push with VAPID (browser subscription plus
+a Bun/Node sender using `web-push` 3.6), iOS home-screen rules, and the Badging API. Support data is
+from MDN as of September 2026. Service worker basics live in
+[Service workers](/typescript/web-apis/service-workers/).
+
+## Support
+
+| Feature                                   | Status (MDN)                  | Notes                                               |
+| :---------------------------------------- | :---------------------------- | :-------------------------------------------------- |
+| Push messages (`PushManager`, `push` event) | Baseline widely available (2025) | Safari 16 on macOS 13+, iOS 16.4 home-screen apps |
+| `registration.showNotification()`         | Baseline widely available     | the portable way to show a notification             |
+| `new Notification()` (page)               | not Baseline                  | throws on Chrome Android; undefined in iOS tabs     |
+| `Notification.requestPermission()` promise | all current engines          | Safari 15+; older Safari took a callback            |
+| Notification `actions`                    | Chromium, Firefox 152+        | not Safari                                          |
+| Badging (`setAppBadge`)                   | not Baseline                  | Chromium desktop, Safari 17 (macOS), iOS 16.4       |
+| Declarative Web Push                      | Safari only                   | iOS/iPadOS 18.4, macOS Safari 18.5                  |
+| `pushsubscriptionchange`                  | Chrome 138+, Firefox, Safari (macOS) | Firefox lacks `oldSubscription`/`newSubscription` |
+
+All of it needs a **secure context** (HTTPS or `localhost`). Push needs a registered service worker
+(except Declarative Web Push). Chrome shows nothing in incognito.
+
+## Permission flow
+
+| `Notification.permission` | Meaning                              | What you can do                               |
+| :------------------------ | :----------------------------------- | :-------------------------------------------- |
+| `"default"`               | never asked (or prompt dismissed)    | call `requestPermission()` from a user action |
+| `"granted"`               | allowed                              | show notifications, subscribe to push         |
+| `"denied"`                | blocked                              | nothing; only the user can undo it in site settings |
+
+```ts
+declare const btn: HTMLButtonElement;
+
+btn.addEventListener("click", async () => {
+  const result = await Notification.requestPermission();
+  if (result !== "granted") return;
+  // subscribe to push, update UI
+});
+```
+
+| Rule                                           | Browsers                                    |
+| :--------------------------------------------- | :------------------------------------------ |
+| `requestPermission()` needs a user gesture     | Firefox 72+, Safari; Chrome may use a quiet UI otherwise |
+| `pushManager.subscribe()` needs a user gesture | Firefox 72+                                  |
+| no prompt from cross-origin iframes            | Firefox 70+, Chrome                          |
+| dismissing counts against you                  | Chrome embargoes after repeated dismissals   |
+| `denied` is permanent for the page             | all; you cannot ask again                   |
+
+The Permissions API reads the same state without prompting. `"notifications"` and `"push"` (with
+`userVisibleOnly: true`) are valid names; Safari's `change` event never fires, so re-query on focus.
+
+```ts
+const status = await navigator.permissions.query({
+  name: "notifications",
+});
+status.state; // "granted" | "denied" | "prompt"
+```
+
+## Notification options
+
+Options go to `new Notification(title, options)` or `registration.showNotification(title, options)`.
+
+| Option               | Type                  | Support                         | Effect                                           |
+| :------------------- | :-------------------- | :------------------------------ | :----------------------------------------------- |
+| `body`               | `string`              | all                             | second line of text                              |
+| `icon`               | URL                   | not Safari (ignored)            | large image beside the text                      |
+| `badge`              | URL                   | Chromium                        | monochrome status-bar icon on Android            |
+| `image`              | URL                   | Chromium                        | big picture; not in `lib.dom`                    |
+| `tag`                | `string`              | not Safari                      | same tag replaces the previous notification      |
+| `renotify`           | `boolean`             | Chromium                        | alert again when replacing by tag; needs `tag`   |
+| `requireInteraction` | `boolean`             | Chromium; Firefox on Windows    | stays until clicked or dismissed                 |
+| `silent`             | `boolean \| null`     | Chrome, Firefox 132+, Safari 16.6 (macOS) | no sound or vibration                  |
+| `data`               | any cloneable         | all                             | read back as `notification.data` in the click    |
+| `actions`            | `{ action, title, icon? }[]` | Chromium, Firefox 152+, SW only | buttons; limit is `Notification.maxActions` |
+| `vibrate`            | `number[]`            | Chromium Android                | vibration pattern; not in `lib.dom`              |
+| `timestamp`          | epoch ms              | Chromium                        | time shown; not in `lib.dom`                     |
+| `dir`, `lang`        | `"auto" \| "ltr" \| "rtl"`, BCP 47 | most               | text direction and language                      |
+
+The OS decides the final look: macOS and iOS drop images and most styling, and Windows may truncate
+the body. Treat everything beyond `title` and `body` as a hint.
+
+## Showing notifications
+
+| From                             | How                                         | Works on                          |
+| :------------------------------- | :------------------------------------------ | :-------------------------------- |
+| a page                           | `new Notification(title, opts)`             | desktop only; `TypeError` on Chrome Android |
+| a page, via its service worker   | `(await navigator.serviceWorker.ready).showNotification(...)` | everywhere with a SW |
+| a service worker                 | `self.registration.showNotification(...)`   | everywhere                        |
+
+```ts
+const reg = await navigator.serviceWorker.ready;
+await reg.showNotification("Build finished", {
+  body: "main #512 passed in 3m 12s",
+  icon: "/icons/192.png",
+  tag: "build-512",
+  data: { url: "/builds/512" },
+});
+
+const open = await reg.getNotifications({
+  tag: "build-512",
+});
+open.forEach((n) => n.close());
+```
+
+Page notifications fire `click`, `close`, `show` and `error` on the `Notification` object. They die
+with the page, so prefer the service-worker path even when the page is open.
+
+## Service worker events
+
+| Event                     | Fires when                                  | Do                                          |
+| :------------------------ | :------------------------------------------ | :------------------------------------------ |
+| `push`                    | a push message arrives                      | `event.waitUntil(showNotification(...))`    |
+| `notificationclick`       | the notification or an action is clicked    | `close()`, then focus or open a window      |
+| `notificationclose`       | the user dismisses it                       | analytics; can't reopen                     |
+| `pushsubscriptionchange`  | the push service rotated or expired the subscription | resubscribe, send the new one to the server |
+
+```ts title="sw-click.ts"
+/// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  if (event.action === "mute") return; // action button
+  const data: unknown = event.notification.data;
+  const path =
+    typeof data === "object" && data && "url" in data
+      ? String(data.url)
+      : "/";
+  const url = new URL(path, self.location.origin).href;
+  event.waitUntil(focusOrOpen(url));
+});
+
+async function focusOrOpen(url: string) {
+  const wins = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  const hit = wins.find((w) => w.url === url);
+  return hit ? hit.focus() : self.clients.openWindow(url);
+}
+```
+
+`clients.openWindow()` and `focus()` need user activation, which a `notificationclick` grants the
+worker for a short time. Always wrap the work in `event.waitUntil()`, or the worker may
+be killed before the window opens.
+
+## Push API
+
+```text
+browser                     push service             your server
+  | pushManager.subscribe()       |                        |
+  |------------------------------>|                        |
+  |<-- PushSubscription ----------|                        |
+  |-- POST subscription JSON ------------------------------>|  store it
+  |                               |<-- encrypted POST -----|  web-push
+  |<-- push event (SW wakes) -----|                        |
+```
+
+| Member                                     | Returns / type                          | Notes                                   |
+| :----------------------------------------- | :-------------------------------------- | :-------------------------------------- |
+| `reg.pushManager.subscribe(opts)`          | `Promise<PushSubscription>`             | prompts for permission if `default`     |
+| `reg.pushManager.getSubscription()`        | `Promise<PushSubscription \| null>`     | check before subscribing again          |
+| `reg.pushManager.permissionState(opts)`    | `Promise<PermissionState>`              | no prompt                               |
+| `PushManager.supportedContentEncodings`    | `readonly string[]`                     | `["aes128gcm", ...]`                    |
+| `sub.endpoint`                             | `string`                                | push service URL; treat as a secret     |
+| `sub.expirationTime`                       | `number \| null`                        | usually `null`                          |
+| `sub.getKey("p256dh" \| "auth")`           | `ArrayBuffer \| null`                   | raw keys                                |
+| `sub.toJSON()`                             | `PushSubscriptionJSON`                  | what `JSON.stringify(sub)` sends        |
+| `sub.unsubscribe()`                        | `Promise<boolean>`                      | also delete it server-side              |
+
+| `subscribe()` option     | Value                                                              |
+| :----------------------- | :----------------------------------------------------------------- |
+| `userVisibleOnly`        | `true`; Chrome and Edge reject anything else                       |
+| `applicationServerKey`   | VAPID public key: base64url string or `Uint8Array` (65-byte P-256 point) |
+
+```json
+{
+  "endpoint": "https://fcm.googleapis.com/fcm/send/dQ9…",
+  "expirationTime": null,
+  "keys": { "p256dh": "BNc…", "auth": "tBH…" }
+}
+```
+
+Endpoints differ by browser: `fcm.googleapis.com` (Chrome, Edge), `updates.push.services.mozilla.com`
+(Firefox), `web.push.apple.com` (Safari). Your server doesn't care; `web-push` speaks the standard
+protocol (RFC 8030, 8291, 8292) to all of them.
+
+## VAPID keys
+
+VAPID (RFC 8292) identifies your server to push services with a P-256 key pair. The public key is
+baked into every subscription, so **rotating it invalidates all existing subscriptions**.
+
+```sh
+bunx web-push generate-vapid-keys --json   # npx works too
+# {"publicKey":"BHoV…","privateKey":"k3Jx…"}
+```
+
+```ini title=".env"
+VAPID_PUBLIC_KEY=BHoV...     # also shipped to the browser
+VAPID_PRIVATE_KEY=k3Jx...    # server only, never bundled
+VAPID_SUBJECT=mailto:ops@example.com
+```
+
+| Key / field   | Lives in           | Notes                                                           |
+| :------------ | :----------------- | :-------------------------------------------------------------- |
+| public key    | client and server  | `applicationServerKey`; `NEXT_PUBLIC_…` in Next.js              |
+| private key   | server secret      | signs the JWT on each push                                      |
+| subject       | server             | `mailto:` or an `https:` URL; Safari rejects `https://localhost` |
+
+## Sending from a server
+
+`web-push` handles payload encryption (`aes128gcm`) and the VAPID JWT. Version 3.6 runs on Bun as
+well as Node (it uses `node:crypto` and `node:https`).
+
+```sh
+bun add web-push && bun add -d @types/web-push
+```
+
+```ts title="push.ts"
+import webpush from "web-push";
+import { z } from "zod";
+
+const env = z
+  .object({
+    VAPID_PUBLIC_KEY: z.string().min(1),
+    VAPID_PRIVATE_KEY: z.string().min(1),
+    VAPID_SUBJECT: z.string().min(1),
+  })
+  .parse(process.env);
+
+webpush.setVapidDetails(
+  env.VAPID_SUBJECT,
+  env.VAPID_PUBLIC_KEY,
+  env.VAPID_PRIVATE_KEY,
+);
+
+export const Subscription = z.object({
+  endpoint: z.url(),
+  expirationTime: z.number().nullish(),
+  keys: z.object({ p256dh: z.string(), auth: z.string() }),
+});
+export type Subscription = z.infer<typeof Subscription>;
+```
+
+| `sendNotification` option | Default           | Meaning                                                   |
+| :------------------------ | :---------------- | :-------------------------------------------------------- |
+| `TTL`                     | 4 weeks (seconds) | how long the push service keeps an undelivered message    |
+| `urgency`                 | `"normal"`        | `"very-low"`, `"low"`, `"normal"`, `"high"`; low saves battery |
+| `topic`                   | none              | newer message with the same topic replaces a queued one (max 32 chars) |
+| `headers`                 | `{}`              | extra HTTP headers                                        |
+| `timeout`                 | none              | socket timeout in ms                                      |
+| `vapidDetails`            | global            | per-call override of `setVapidDetails`                    |
+
+| Push service response | Meaning                              | Do                                   |
+| :-------------------- | :----------------------------------- | :----------------------------------- |
+| `201`                 | accepted                             | nothing                              |
+| `404`, `410`          | subscription expired or unsubscribed | delete it from your DB               |
+| `413`                 | payload too large (about 4 KB max)   | send an ID and fetch details in the SW |
+| `429`                 | rate limited                         | back off; honour `Retry-After`       |
+| `400`, `403`          | bad request or VAPID mismatch        | check keys and subject               |
+
+Errors arrive as `WebPushError` with `statusCode`, `headers`, `body` and `endpoint`.
+
+## iOS & Safari
+
+| Requirement (iOS/iPadOS 16.4+)                   | Detail                                                  |
+| :----------------------------------------------- | :------------------------------------------------------ |
+| installed to the Home Screen                     | in a Safari tab, `Notification` and `PushManager` are undefined |
+| manifest `display`                               | `"standalone"` or `"fullscreen"`                        |
+| permission from a user gesture                   | inside the installed app; no prompt on load             |
+| a notification for every push                    | silent pushes may get the subscription revoked          |
+| VAPID subject                                    | not `https://localhost`; use `mailto:`                  |
+| no Apple developer account                       | standard Web Push to `web.push.apple.com`               |
+
+Detect the installed context before showing a "Turn on notifications" button:
+
+```ts
+const isStandalone =
+  matchMedia("(display-mode: standalone)").matches ||
+  // iOS legacy flag, not in lib.dom
+  (navigator as { standalone?: boolean }).standalone ===
+    true;
+const canPush = "PushManager" in window && isStandalone;
+```
+
+**Declarative Web Push** (iOS/iPadOS 18.4, macOS Safari 18.5) delivers a notification described
+entirely in the JSON payload, with no service worker code; subscribe through `window.pushManager` or a
+registration's `pushManager` as usual. A service worker, if present, can still modify the message.
+
+```json
+{
+  "web_push": 8030,
+  "notification": {
+    "title": "Order shipped",
+    "body": "Arrives Thursday",
+    "navigate": "https://shop.example.com/orders/42",
+    "app_badge": "3"
+  }
+}
+```
+
+## Badging API
+
+| Call                          | Effect                                         |
+| :---------------------------- | :--------------------------------------------- |
+| `navigator.setAppBadge(n)`    | shows `n` on the installed app icon            |
+| `navigator.setAppBadge()`     | shows a plain dot                              |
+| `navigator.setAppBadge(0)`    | same as `clearAppBadge()`                      |
+| `navigator.clearAppBadge()`   | clears the badge                               |
+
+Works only for **installed** web apps: Chromium on Windows, macOS and ChromeOS (not Linux or
+Android), Safari 17 on macOS Sonoma, and iOS 16.4 home-screen apps (which need notification
+permission). Also available in service workers as `self.navigator.setAppBadge()`, so a `push`
+handler can update the count.
+
+```ts
+async function setUnread(count: number) {
+  if (!("setAppBadge" in navigator)) return;
+  try {
+    await (count
+      ? navigator.setAppBadge(count)
+      : navigator.clearAppBadge());
+  } catch {
+    // not installed, or permission missing
+  }
+}
+```
+
+## Permission UX
+
+| Do                                                       | Don't                                          |
+| :------------------------------------------------------- | :--------------------------------------------- |
+| ask after a clear trigger ("Notify me when it ships")    | prompt on page load                            |
+| show your own explainer first, then the browser prompt   | re-prompt after a dismissal on every visit     |
+| explain what, how often, and how to turn it off          | use notifications for marketing the user didn't ask for |
+| offer per-topic settings in your UI                      | send pushes the user can't act on              |
+| handle `denied` with a "how to re-enable" hint           | hide features behind the permission            |
+| group with `tag` and `topic` so updates replace old ones | stack ten notifications for one conversation   |
+
+Chrome switches abusive or low-acceptance sites to a quiet permission UI automatically, and a denied
+permission can't be requested again, so every wasted prompt costs you the channel.
+
+## Typing in TS
+
+| Situation                                | Fix                                                             |
+| :--------------------------------------- | :-------------------------------------------------------------- |
+| service worker globals                   | separate `tsconfig` with `"lib": ["es2024", "webworker"]`; `declare const self: ServiceWorkerGlobalScope` |
+| `dom` and `webworker` in one program     | conflicting globals; keep the SW in its own project             |
+| `actions`, `image`, `vibrate`, `timestamp`, `renotify` | missing from `NotificationOptions`; extend the type |
+| `event.data?.json()`                     | returns `any`; annotate as `unknown` and validate               |
+| `notification.data`                      | `any`; narrow before use                                        |
+| `window.pushManager`, `navigator.standalone` | not in `lib.dom`                                            |
+| `web-push` types                         | `@types/web-push`; its `PushSubscription` is a plain object type |
+
+```ts
+type NotificationAction = {
+  action: string;
+  title: string;
+  icon?: string;
+};
+type RichNotificationOptions = NotificationOptions & {
+  actions?: NotificationAction[];
+  image?: string;
+  renotify?: boolean;
+  vibrate?: number[];
+  timestamp?: number;
+};
+```
+
+```json title="tsconfig.sw.json"
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "webworker"],
+    "types": []
+  },
+  "include": ["src/sw.ts"]
+}
+```
+
+## Recipes
+
+### Ask permission on a user action
+An opt-in button that explains first and handles every outcome.
+
+```ts
+type Outcome =
+  | "granted"
+  | "denied"
+  | "dismissed"
+  | "unsupported";
+
+async function enableNotifications(): Promise<Outcome> {
+  if (!("Notification" in window)) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  const ok = window.confirm(
+    "Get a notification when your export is ready?",
+  );
+  if (!ok) return "dismissed";
+  const p = await Notification.requestPermission();
+  return p === "default" ? "dismissed" : p;
+}
+
+declare const btn: HTMLButtonElement;
+btn.addEventListener("click", async () => {
+  const outcome = await enableNotifications();
+  btn.hidden = outcome === "granted";
+});
+```
+
+Replace `confirm()` with your own dialog; the point is that the browser prompt follows a click.
+
+### Subscribe and send the subscription to the server
+Run after permission is granted, from the same click handler.
+
+```ts
+declare const VAPID_PUBLIC_KEY: string; // injected at build
+
+export async function subscribeToPush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub =
+    (await reg.pushManager.getSubscription()) ??
+    (await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: VAPID_PUBLIC_KEY,
+    }));
+  const res = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub), // uses toJSON()
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return sub;
+}
+```
+
+### Service worker push handler
+Validate the payload and always show something, or Chrome shows a generic "site updated" notice.
+
+```ts title="sw-push.ts"
+/// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope;
+
+type Msg = { title: string; body?: string; url?: string };
+
+function parse(e: PushEvent): Msg {
+  try {
+    const d: unknown = e.data?.json();
+    if (typeof d === "object" && d && "title" in d) {
+      return d as Msg; // or validate with Zod
+    }
+  } catch {} // payload wasn't JSON
+  return { title: "New activity" };
+}
+
+self.addEventListener("push", (event) => {
+  const msg = parse(event);
+  event.waitUntil(
+    self.registration.showNotification(msg.title, {
+      body: msg.body,
+      data: { url: msg.url ?? "/" },
+    }),
+  );
+});
+```
+
+### Server send with web-push
+Fan out to all of a user's devices and prune dead subscriptions.
+
+```ts
+import webpush, { WebPushError } from "web-push";
+import type { Subscription } from "./push.ts";
+
+declare function deleteSub(endpoint: string): Promise<void>;
+export async function notifyAll(
+  subs: Subscription[],
+  payload: { title: string; body?: string; url?: string },
+) {
+  const body = JSON.stringify(payload);
+  await Promise.allSettled(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(sub, body, {
+          TTL: 60 * 60,
+          urgency: "normal",
+        });
+      } catch (err) {
+        const gone = err instanceof WebPushError &&
+          [404, 410].includes(err.statusCode);
+        if (gone) await deleteSub(sub.endpoint);
+        else throw err;
+      }
+    }),
+  );
+}
+```
+
+### Store subscriptions with Bun.serve
+The endpoint the client recipe posts to; validate with the Zod schema from `push.ts`.
+
+```ts title="server.ts"
+import { Subscription } from "./push.ts";
+
+const subs = new Map<string, Subscription>(); // use a DB
+
+Bun.serve({
+  routes: {
+    "/api/push/subscribe": {
+      POST: async (req) => {
+        const parsed = Subscription.safeParse(
+          await req.json(),
+        );
+        if (!parsed.success) {
+          return new Response("Bad subscription", {
+            status: 400,
+          });
+        }
+        subs.set(parsed.data.endpoint, parsed.data);
+        return new Response(null, { status: 201 });
+      },
+    },
+  },
+});
+```
+
+## References
+
+- MDN: [Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API), [`showNotification()`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification), [`notificationclick`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerGlobalScope/notificationclick_event): options and per-browser support
+- MDN: [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API), [`PushManager.subscribe()`](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe), [`PushSubscription`](https://developer.mozilla.org/en-US/docs/Web/API/PushSubscription), [Badging API](https://developer.mozilla.org/en-US/docs/Web/API/Badging_API)
+- [web-push on npm](https://github.com/web-push-libs/web-push): `sendNotification` options, errors, CLI
+- WebKit: [Web Push for web apps on iOS and iPadOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [Meet Declarative Web Push](https://webkit.org/blog/16535/meet-declarative-web-push/)
+- web.dev: [Push notifications overview](https://web.dev/articles/push-notifications-overview), [Permission UX](https://web.dev/articles/push-notifications-permissions-ux)
+- IETF: [RFC 8030 Web Push](https://www.rfc-editor.org/rfc/rfc8030), [RFC 8291 encryption](https://www.rfc-editor.org/rfc/rfc8291), [RFC 8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292)

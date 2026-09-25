@@ -1,0 +1,609 @@
+---
+title: File I/O
+date: 2026-09-25
+order: 2
+---
+
+Reading, writing, walking and watching files from TypeScript: Node's `node:fs/promises` and `node:path`,
+Bun's file API, and the browser's `File`/`Blob`. For data too big to hold in memory, see
+[Streaming data](/typescript/backend/streaming/).
+
+## fs/promises basics
+
+```ts
+import { readFile, writeFile } from "node:fs/promises";
+
+const text = await readFile("notes.txt", "utf8"); // string
+const bytes = await readFile("logo.png"); // Buffer
+await writeFile("out.txt", `${text}\n`);
+```
+
+| Call | Resolves to | Notes |
+| :--- | :--- | :--- |
+| `readFile(p, "utf8")` | `string` | no encoding gives a `Buffer`; the whole file in memory |
+| `writeFile(p, data)` | `void` | creates or truncates; `{ flag: "wx" }` fails if it exists |
+| `appendFile(p, data)` | `void` | creates the file if missing |
+| `mkdir(p, { recursive: true })` | `string \| undefined` | like `mkdir -p`; no error if it exists |
+| `readdir(p)` | `string[]` | entry names only, unsorted |
+| `readdir(p, { withFileTypes: true })` | `Dirent[]` | `.name`, `.parentPath`, `.isFile()`, `.isDirectory()` |
+| `readdir(p, { recursive: true })` | `string[]` | relative paths of the whole tree (Node 20.1+) |
+| `stat(p)` / `lstat(p)` | `Stats` | `.size`, `.mtime`, `.isFile()`; `lstat` does not follow symlinks |
+| `access(p, constants.W_OK)` | `void` | rejects if not allowed; prefer just trying the operation |
+| `rename(from, to)` | `void` | atomic on one filesystem; `EXDEV` across devices |
+| `copyFile(from, to)` | `void` | one file; `constants.COPYFILE_EXCL` refuses to overwrite |
+| `cp(from, to, { recursive: true })` | `void` | copies directories; stable since Node 22.3 |
+| `rm(p, { recursive: true, force: true })` | `void` | `rm -rf`; `force` ignores a missing path |
+| `unlink(p)` / `rmdir(p)` | `void` | one file / one empty directory |
+| `glob("src/**/*.ts")` | `AsyncIterator<string>` | Node 22+, stable in 22.17 and 24 |
+| `open(p, flags)` | `FileHandle` | low-level reads, writes, streams; close it |
+| `mkdtemp(prefix)` | `string` | unique temp directory, see [Safety](#safety) |
+
+### Walking a tree
+
+```ts
+import { glob, readdir } from "node:fs/promises";
+import { join } from "node:path";
+
+const entries = await readdir("src", {
+  withFileTypes: true,
+  recursive: true,
+});
+const tsFiles = entries
+  .filter((e) => e.isFile() && e.name.endsWith(".ts"))
+  .map((e) => join(e.parentPath, e.name));
+
+// Node 22+: glob patterns, lazily
+const tests = await Array.fromAsync(
+  glob("src/**/*.test.ts", { exclude: ["**/fixtures/**"] }),
+);
+```
+
+### Sync, callback, promise
+
+| Style | Import | Use it for |
+| :--- | :--- | :--- |
+| Promise | `node:fs/promises` (same object as `fs.promises`) | default for application code |
+| Sync | `readFileSync` etc. from `node:fs` | CLI scripts and startup config; blocks the event loop |
+| Callback | `readFile(p, cb)` from `node:fs` | legacy code; error-first `(err, data)` |
+| Stream | `createReadStream` from `node:fs` | large files, see [Streaming big files](#streaming-big-files) |
+
+| Flag | Meaning |
+| :--- | :--- |
+| `"r"` | read, file must exist (default for reads) |
+| `"r+"` | read and write, file must exist |
+| `"w"` | write, create or truncate (default for writes) |
+| `"wx"` | write, fail with `EEXIST` if the path exists |
+| `"a"` / `"a+"` | append (and read), create if missing |
+
+## Paths
+
+```ts
+import path from "node:path";
+
+path.join("a", "b", "../c.txt"); // "a/c.txt"
+path.resolve("src", "index.ts"); // "/cwd/src/index.ts"
+path.relative("/a/b", "/a/c/d"); // "../c/d"
+path.dirname("/a/b/c.txt"); // "/a/b"
+path.basename("/a/b/c.txt", ".txt"); // "c"
+path.extname("archive.tar.gz"); // ".gz"
+path.parse("/home/u/file.txt");
+// { root: "/", dir: "/home/u", base: "file.txt",
+//   ext: ".txt", name: "file" }
+```
+
+| Function | Does |
+| :--- | :--- |
+| `join(...parts)` | concatenates with the separator and normalises; keeps relative paths relative |
+| `resolve(...parts)` | right to left until an absolute path is formed, else prepends `process.cwd()` |
+| `relative(from, to)` | path from `from` to `to`; `""` if they are the same |
+| `normalize(p)` | collapses `..`, `.` and doubled separators |
+| `isAbsolute(p)` | `true` for `/x` (POSIX) or `C:\x` (Windows) |
+| `sep`, `delimiter` | `/` and `:` on POSIX, `\` and `;` on Windows |
+| `path.posix`, `path.win32` | force one platform's rules, e.g. for URLs or archive entries |
+
+### Module directory vs working directory
+
+```ts
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+// ESM, Node 20.11+ and Bun
+const here = import.meta.dirname; // folder of this file
+const self = import.meta.filename; // this file
+
+// older Node: derive it from the module URL
+const dir = path.dirname(fileURLToPath(import.meta.url));
+
+// fs accepts file: URLs directly
+const cfgUrl = new URL("./config.json", import.meta.url);
+const cfg = await readFile(cfgUrl, "utf8");
+
+// "file:///tmp/a%20b.txt"
+pathToFileURL("/tmp/a b.txt").href;
+```
+
+| Value | Points at | Changes when |
+| :--- | :--- | :--- |
+| `process.cwd()` | where the process was started | the user runs from another folder, or `process.chdir()` |
+| `import.meta.dirname` | folder of the current module | never; use it for files shipped next to code |
+| `__dirname` | same, in CommonJS only | not defined in ES modules |
+| `new URL("./x", import.meta.url)` | file relative to the module | never; also works in bundlers and browsers |
+
+```tree title="Which base a path resolves against"
+my-cli/               # cwd for: cd my-cli && bun src/main.ts
+  src/
+    main.ts           # import.meta.dirname is my-cli/src
+    config.json       # URL relative to import.meta.url
+  data/
+    input.csv         # readFile("data/input.csv") via cwd
+  package.json
+```
+
+<Note kind="tip">Relative paths passed to `fs` resolve against `process.cwd()`, not the file that contains the call.</Note>
+
+## Encodings & Buffers
+
+```ts
+const buf = Buffer.from("héllo", "utf8");
+buf.length; // 6 bytes (é is two), "héllo".length is 5
+buf.toString("base64"); // "aMOpbGxv"
+buf.toString("hex"); // "68c3a96c6c6f"
+// "héllo"
+Buffer.from("aMOpbGxv", "base64").toString("utf8");
+Buffer.byteLength("héllo"); // 6
+Buffer.concat([buf, Buffer.from("!")]);
+```
+
+| Encoding | Notes |
+| :--- | :--- |
+| `utf8` | default for strings; invalid bytes decode to `U+FFFD` |
+| `utf16le` | two or four bytes per character; Windows APIs |
+| `latin1` | one byte per character, 0 to 255 |
+| `base64` / `base64url` | binary as text; `base64url` uses `-` `_` and no padding |
+| `hex` | two characters per byte |
+| `ascii` | 7-bit; avoid, use `latin1` or `utf8` |
+
+### Buffer vs Uint8Array
+
+| | `Buffer` | `Uint8Array` |
+| :--- | :--- | :--- |
+| Where | Node and Bun | everywhere |
+| Relationship | subclass of `Uint8Array` | the base type |
+| `.slice()` | shares memory (deprecated alias of `subarray`) | copies |
+| `.subarray()` | shares memory | shares memory |
+| Encodings | `toString("base64")`, `Buffer.from(s, "hex")` | `TextEncoder`/`TextDecoder`, `toBase64()` where supported |
+
+Accept `Uint8Array` in library signatures: every `Buffer` is one, and the code then runs in browsers too.
+
+### TextEncoder and TextDecoder
+
+```ts
+// Uint8Array
+const bytes = new TextEncoder().encode("héllo");
+const text = new TextDecoder().decode(bytes); // "héllo"
+
+// throw on invalid UTF-8 instead of inserting U+FFFD
+const strict = new TextDecoder("utf-8", { fatal: true });
+
+// chunked input: keep split multi-byte chars across calls
+const dec = new TextDecoder();
+const a = dec.decode(bytes.subarray(0, 2), { stream: true });
+const b = dec.decode(bytes.subarray(2)); // flushes
+// a === "h" (half of é held back), b === "éllo"
+```
+
+<Note kind="warning">`TextDecoder` strips a leading BOM by default; `readFile(p, "utf8")` keeps it as `"\uFEFF"`.</Note>
+
+## Streaming big files
+
+```ts
+import {
+  createReadStream,
+  createWriteStream,
+} from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
+
+// constant memory, backpressure handled, errors propagate
+await pipeline(
+  createReadStream("big.log"),
+  createGzip(),
+  createWriteStream("big.log.gz"),
+);
+```
+
+| `createReadStream` option | Default | Notes |
+| :--- | :--- | :--- |
+| `highWaterMark` | 64 KiB | chunk size for file streams |
+| `start`, `end` | whole file | byte range, `end` inclusive |
+| `encoding` | none | set `"utf8"` to get strings instead of `Buffer`s |
+| `signal` | none | `AbortSignal` destroys the stream |
+
+### Line by line
+
+```ts
+import { createReadStream } from "node:fs";
+import { open } from "node:fs/promises";
+import { createInterface } from "node:readline";
+
+const rl = createInterface({
+  input: createReadStream("big.csv"),
+  crlfDelay: Infinity, // treat \r\n as one break
+});
+for await (const line of rl) {
+  if (line.startsWith("#")) continue;
+}
+
+// Node 18.11+: straight from a FileHandle
+const file = await open("big.log");
+for await (const line of file.readLines()) {
+  if (line.includes("ERROR")) break;
+}
+```
+
+### FileHandle and random access
+
+```ts
+import { open } from "node:fs/promises";
+
+// closes itself
+await using fh = await open("data.bin", "r");
+const header = Buffer.alloc(16);
+const { bytesRead } = await fh.read(header, 0, 16, 0);
+const { size } = await fh.stat();
+```
+
+`await using` needs TypeScript 5.2+ and Node 20.4+ (Bun supports it). Without it, call
+`await fh.close()` in a `finally`.
+
+### Writing many chunks with backpressure
+
+```ts
+import { createWriteStream } from "node:fs";
+import { once } from "node:events";
+
+const out = createWriteStream("rows.txt");
+for (let i = 0; i < 1_000_000; i++) {
+  if (!out.write(`${i}\n`)) await once(out, "drain");
+}
+out.end();
+await once(out, "finish");
+```
+
+## Watching
+
+```ts
+import { watch } from "node:fs/promises";
+
+const ac = new AbortController();
+try {
+  const events = watch("src", {
+    recursive: true,
+    signal: ac.signal,
+  });
+  for await (const { eventType, filename } of events) {
+    // eventType: "rename" | "change"; filename may be null
+    if (filename?.endsWith(".ts")) rebuild(filename);
+  }
+} catch (err) {
+  if ((err as Error).name !== "AbortError") throw err;
+}
+// elsewhere: ac.abort() stops the loop
+declare function rebuild(file: string): void;
+```
+
+| Caveat | Detail |
+| :--- | :--- |
+| Duplicate events | one save often fires two or more; debounce |
+| `"rename"` | means created, deleted or moved; `stat` to find out which |
+| `filename` | relative to the watched dir, sometimes `null` |
+| `recursive` | macOS, Windows, and Linux (Node 20+) |
+| Network and virtual filesystems | may never emit; fall back to polling with `fs.watchFile` |
+| Restart on change | `node --watch app.ts` or `bun --watch` instead of hand-rolled watchers |
+
+For production-grade watching (atomic saves, globbing, polling fallback) use `chokidar`.
+
+## Bun file API
+
+```ts
+const file = Bun.file("data.json"); // lazy, nothing read yet
+if (await file.exists()) {
+  const size = file.size; // bytes
+  const data: unknown = await file.json();
+}
+
+const text = await Bun.file("notes.txt").text();
+// Uint8Array
+const bytes = await Bun.file("logo.png").bytes();
+
+await Bun.write("out.txt", "hello\n"); // bytes written
+// fast copy
+await Bun.write("copy.png", Bun.file("logo.png"));
+await Bun.write("page.html", await fetch("https://x.dev"));
+
+const writer = Bun.file("app.log").writer(); // incremental
+writer.write("line 1\n");
+await writer.end();
+
+await Bun.file("out.txt").delete();
+```
+
+| API | Returns | Notes |
+| :--- | :--- | :--- |
+| `Bun.file(path \| URL \| fd)` | `BunFile` | a `Blob` subclass; lazy |
+| `.text()`, `.json()`, `.bytes()`, `.arrayBuffer()` | `Promise` | reads the whole file |
+| `.stream()` | `ReadableStream<Uint8Array>` | web stream of the contents |
+| `.exists()` | `Promise<boolean>` | |
+| `.size`, `.type` | `number`, `string` | MIME type guessed from the extension |
+| `.writer()` | `FileSink` | buffered `write`, `flush`, `end` |
+| `.delete()` | `Promise<void>` | |
+| `Bun.write(dest, data)` | `Promise<number>` | `data`: string, bytes, `Blob`, `BunFile`, `Response` |
+
+Bun also implements `node:fs` and `node:path`, so Node code runs unchanged; reach for `Bun.file` in Bun-only
+code where the shorter API reads better.
+
+## Browser files
+
+```ts
+const input =
+  document.querySelector<HTMLInputElement>("#upload");
+
+input?.addEventListener("change", async () => {
+  const file = input.files?.[0];
+  if (!file) return;
+  const { name, size, type, lastModified } = file;
+  const text = await file.text(); // or .bytes(), .stream()
+  // first 1 KiB
+  const head = await file.slice(0, 1024).text();
+});
+```
+
+| API | Notes |
+| :--- | :--- |
+| `File` | a `Blob` plus `name` and `lastModified`; from inputs, drag and drop (`e.dataTransfer.files`), paste |
+| `blob.text()`, `.arrayBuffer()`, `.stream()` | promise or stream based reads; Baseline |
+| `blob.bytes()` | `Promise<Uint8Array>`; newer, Baseline 2026 (Chrome 144) |
+| `blob.slice(start, end, type)` | cheap view of a byte range |
+| `FileReader` | legacy callback API; only for `readAsDataURL` or very old browsers |
+| `URL.createObjectURL(blob)` | `blob:` URL for `img.src`, downloads; revoke when done |
+| `file.type` | guessed from the extension; never trust it for security |
+
+### Download a generated file
+
+```ts
+function download(
+  data: BlobPart,
+  name: string,
+  type: string,
+) {
+  const url = URL.createObjectURL(
+    new Blob([data], { type }),
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+const json = JSON.stringify({ ok: true });
+download(json, "a.json", "application/json");
+```
+
+### File System Access API and OPFS
+
+`showOpenFilePicker()`, `showSaveFilePicker()` and `showDirectoryPicker()` read and write real files on disk
+but are Chromium-only (not Firefox or Safari) and missing from TypeScript's DOM lib; feature-detect with
+`"showOpenFilePicker" in window` and add `@types/wicg-file-system-access`.
+
+The origin private file system (OPFS) is Baseline since 2023: a sandboxed per-origin disk the user never sees.
+
+```ts
+const root = await navigator.storage.getDirectory();
+const handle = await root.getFileHandle("draft.txt", {
+  create: true,
+});
+
+const writable = await handle.createWritable(); // Safari 26+
+await writable.write("hello");
+await writable.close();
+
+const saved = await (await handle.getFile()).text();
+```
+
+In a worker, `handle.createSyncAccessHandle()` gives fast synchronous reads and writes (all engines).
+
+## JSON & CSV
+
+```ts
+import { readFile, writeFile } from "node:fs/promises";
+import { z } from "zod";
+
+const Config = z.object({
+  port: z.number().int().positive(),
+  host: z.string().default("localhost"),
+});
+type Config = z.infer<typeof Config>;
+
+async function readJson<S extends z.ZodType>(
+  file: string,
+  schema: S,
+): Promise<z.infer<S>> {
+  const raw: unknown = JSON.parse(
+    await readFile(file, "utf8"),
+  );
+  return schema.parse(raw); // throws ZodError with a path
+}
+
+async function writeJson(file: string, data: unknown) {
+  await writeFile(
+    file,
+    `${JSON.stringify(data, null, 2)}\n`,
+  );
+}
+
+const config: Config = await readJson("config.json", Config);
+```
+
+| Approach | When |
+| :--- | :--- |
+| `JSON.parse` + Zod | anything read at runtime; the file is external input |
+| `import cfg from "./c.json" with { type: "json" }` | static data bundled with code; needs `resolveJsonModule` |
+| NDJSON, one object per line | logs, exports, big data; parse line by line, see [Streaming data](/typescript/backend/streaming/#ndjson--line-parsing) |
+
+`JSON.parse` returns `any`: annotate the result as `unknown` so the compiler forces validation.
+
+### CSV caveats
+
+```ts
+// naive: fine only for data you produced, with no commas
+const rows = "a,b\n1,2"
+  .split(/\r?\n/)
+  .map((l) => l.split(","));
+
+// writing: quote fields that need it, double inner quotes
+const cell = (v: string) =>
+  /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+const line = (fields: string[]) =>
+  fields.map(cell).join(",");
+```
+
+| Trap | Why naive splitting fails |
+| :--- | :--- |
+| Quoted commas | `"Smith, J",42` is two fields, not three |
+| Escaped quotes | `"say ""hi"""` means `say "hi"` |
+| Newlines in quotes | one record spans several lines |
+| BOM and `\r\n` | Excel exports start with `U+FEFF` and use CRLF |
+| Locale delimiters | some locales use `;` |
+| Formula injection | cells starting with `=`, `+`, `-`, `@` run in spreadsheets |
+
+Parse real-world CSV with a library (`csv-parse`, `papaparse`) and validate each row with Zod.
+
+## Errors
+
+```ts
+import { readFile } from "node:fs/promises";
+
+function isErrnoException(
+  err: unknown,
+): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
+
+async function readIfExists(file: string) {
+  try {
+    return await readFile(file, "utf8");
+  } catch (err) {
+    if (isErrnoException(err) && err.code === "ENOENT") {
+      return null;
+    }
+    throw err; // anything else is a real failure
+  }
+}
+```
+
+`NodeJS.ErrnoException` has `code`, `errno`, `syscall` and `path`, all optional.
+
+| Code | Meaning | Usual fix |
+| :--- | :--- | :--- |
+| `ENOENT` | no such file or directory | create it, or treat as "missing" |
+| `EEXIST` | already exists (`wx`, `mkdir` without `recursive`) | ignore, or pick a new name |
+| `EACCES` | permission denied | check mode/owner; do not run as root to "fix" it |
+| `EPERM` | operation not permitted (often Windows locks) | retry, close other handles |
+| `EISDIR` | expected a file, got a directory | check `stat().isFile()` |
+| `ENOTDIR` | a path component is a file | fix the path |
+| `ENOTEMPTY` | `rmdir` on a non-empty directory | `rm(p, { recursive: true })` |
+| `EMFILE` | too many open files | limit concurrency, close handles, stream |
+| `EXDEV` | `rename` across devices | copy then delete |
+
+<Note kind="tip">Skip `access()` then `readFile()`: the file can change in between. Try the operation and handle the code.</Note>
+
+## Safety
+
+### Path traversal
+
+```ts
+import path from "node:path";
+
+const UPLOADS = path.resolve("uploads");
+
+function safePath(root: string, userPath: string): string {
+  const full = path.resolve(root, userPath);
+  const rel = path.relative(root, full);
+  const escapes =
+    rel === ".." ||
+    rel.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(rel);
+  if (escapes) throw new Error("Path escapes root");
+  return full;
+}
+
+safePath(UPLOADS, "a/b.png"); // ok
+// safePath(UPLOADS, "../../etc/passwd") throws
+```
+
+| Pitfall | Guard |
+| :--- | :--- |
+| `full.startsWith(root)` alone | matches `/uploads-evil`; compare with `root + path.sep` or use `relative` |
+| Absolute input | `resolve` discards `root`; the check above catches it |
+| Symlinks inside root | compare `await realpath(full)` too |
+| User-chosen filenames | generate names (`randomUUID()`), store the original separately |
+
+### Atomic writes
+
+```ts
+import { randomUUID } from "node:crypto";
+import { rename, rm, writeFile } from "node:fs/promises";
+
+async function writeAtomic(file: string, data: string) {
+  const tmp = `${file}.${randomUUID()}.tmp`; // same dir
+  try {
+    await writeFile(tmp, data, { flush: true });
+    await rename(tmp, file); // readers see old or new
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+}
+```
+
+Writing in place can leave a half-written file after a crash. The temp file must sit on the same filesystem
+for `rename` to be atomic; `flush: true` (Node 20.10+) fsyncs before closing.
+
+### Permissions and temp directories
+
+| Mode | Owner | Group, others | Use |
+| :--- | :--- | :--- | :--- |
+| `0o600` | read, write | none | secrets, tokens |
+| `0o644` | read, write | read | normal files (typical default) |
+| `0o700` | all | none | private directories |
+| `0o755` | all | read, execute | directories, scripts |
+
+```ts
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+await writeFile("token", "s3cr3t", { mode: 0o600 });
+
+const dir = await mkdtemp(path.join(tmpdir(), "app-"));
+try {
+  await writeFile(path.join(dir, "scratch.txt"), "x");
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+```
+
+`mode` is filtered by the process umask and only applies when the file is created; use `chmod` to change an
+existing file. Windows honours only the write bit. Node 24.4+ adds `mkdtempDisposable()` for `await using`.
+
+## References
+
+- [MDN: File API](https://developer.mozilla.org/en-US/docs/Web/API/File_API)
+- [MDN: Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
+- [MDN: TextDecoder](https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder)
+- [Node.js: File system](https://nodejs.org/api/fs.html)
+- [Node.js: Path](https://nodejs.org/api/path.html)
+- [Node.js: Buffer](https://nodejs.org/api/buffer.html)
+- [Bun: File I/O](https://bun.com/docs/api/file-io)

@@ -1,0 +1,553 @@
+---
+title: Events
+date: 2026-09-25
+order: 2
+---
+
+Listening to, dispatching and typing DOM events: listener options, propagation, delegation, custom
+events and rate-limiting helpers. Element APIs are on [DOM manipulation](/typescript/frontend/dom/).
+
+## addEventListener
+
+```ts
+declare const target: EventTarget;
+declare const listener: EventListenerOrEventListenerObject;
+
+target.addEventListener("click", listener);
+target.addEventListener("click", listener, true); // capture
+target.addEventListener("click", listener, {
+  capture: false,
+  once: true,
+  passive: true,
+  signal: AbortSignal.timeout(5_000),
+});
+```
+
+| Option    | Default | Effect                                                               |
+| :-------- | :------ | :------------------------------------------------------------------- |
+| `capture` | `false` | run during the capture phase instead of target/bubble                |
+| `once`    | `false` | remove the listener automatically after its first call               |
+| `passive` | `false` | promise never to call `preventDefault()`; lets scrolling start at once |
+| `signal`  | none    | an `AbortSignal`; aborting it removes the listener                   |
+
+- A boolean third argument is shorthand for `{ capture: bool }`.
+- The same `(type, listener, capture)` triple added twice is registered once.
+- Browsers other than Safari default `passive` to `true` for `touchstart`, `touchmove`, `wheel` and
+  `mousewheel` on `window`, `document` and `document.body`.
+- The listener can be an object with a `handleEvent(e)` method; `this` is then that object.
+- Adding a listener to the target currently dispatching the same event does not run it for that
+  dispatch.
+
+`on<event>` properties (`btn.onclick = fn`) allow only one handler per event and are overwritten by
+the next assignment; prefer `addEventListener`.
+
+## Event flow
+
+A dispatched event travels **capture** (window down to the target's parent), **target**, then
+**bubble** (back up to window) if `bubbles` is `true`.
+
+| `event.eventPhase`        | Value | Where the listener runs                        |
+| :------------------------ | ----: | :--------------------------------------------- |
+| `Event.NONE`              | 0     | not being dispatched                           |
+| `Event.CAPTURING_PHASE`   | 1     | on an ancestor, going down                     |
+| `Event.AT_TARGET`         | 2     | on the target (both capture and bubble listeners) |
+| `Event.BUBBLING_PHASE`    | 3     | on an ancestor, going up                       |
+
+```ts
+const outer = document.querySelector("#outer");
+const log = (e: Event) =>
+  console.info(e.currentTarget, e.eventPhase);
+
+outer?.addEventListener("click", log, { capture: true });
+// capture listener runs first, then the bubble one
+outer?.addEventListener("click", log);
+// e.composedPath(): [target, …ancestors, document, window]
+```
+
+### Events that don't bubble
+
+| Event                                  | Bubbling alternative              |
+| :------------------------------------- | :-------------------------------- |
+| `focus`, `blur`                        | `focusin`, `focusout`             |
+| `mouseenter`, `mouseleave`             | `mouseover`, `mouseout`           |
+| `pointerenter`, `pointerleave`         | `pointerover`, `pointerout`       |
+| `load`, `error` on `img`/`script`/`link` | listen with `capture: true` on an ancestor |
+| `scroll`, `scrollend` on an element    | capture on `document`; on the document they reach `window` |
+| media events (`play`, `pause`, `ended`) | capture on an ancestor           |
+| `invalid`, `toggle`, dialog `close`    | capture, or listen on the element  |
+| `resize`                               | fires on `window` only; use `ResizeObserver` for elements |
+| `new CustomEvent(…)`                   | pass `bubbles: true`              |
+
+Capturing listeners still see non-bubbling events, which is how you delegate them. Events from
+inside a shadow root only escape it with `composed: true` and are retargeted to the host.
+
+## Delegation
+
+One listener on a container handles clicks for every current and future child: find the relevant
+element from `event.target` with `closest`, and check it still belongs to the container.
+
+```ts
+type Action = "edit" | "delete";
+const isAction = (v: string | undefined): v is Action =>
+  v === "edit" || v === "delete";
+
+const list = document.querySelector("ul#todos");
+
+list?.addEventListener("click", (e) => {
+  // text nodes etc.
+  if (!(e.target instanceof Element)) return;
+  const btn = e.target.closest<HTMLButtonElement>(
+    "button[data-action]",
+  );
+  if (!btn || !list.contains(btn)) return;
+
+  const id = btn.closest("li")?.dataset.id;
+  const action = btn.dataset.action;
+  if (id && isAction(action)) run(action, id);
+});
+
+function run(action: Action, id: string): void {
+  /* … */
+}
+```
+
+Delegate non-bubbling events with their bubbling twins (`focusin`) or `capture: true`.
+`mouseover` delegation fires for every child crossed, so compare against `e.relatedTarget`.
+
+## Common events
+
+| Category           | Events                                                                  | Event type          |
+| :----------------- | :---------------------------------------------------------------------- | :------------------ |
+| Mouse              | `click`, `dblclick`, `auxclick`, `contextmenu`, `mousedown`, `mouseup`, `mousemove`, `mouseover`/`out`, `mouseenter`/`leave`, `wheel` | `MouseEvent` (`click`, `auxclick`, `contextmenu` are `PointerEvent`), `WheelEvent` |
+| Pointer            | `pointerdown`, `pointerup`, `pointermove`, `pointercancel`, `pointerover`/`out`, `pointerenter`/`leave`, `gotpointercapture`, `lostpointercapture` | `PointerEvent` |
+| Touch              | `touchstart`, `touchmove`, `touchend`, `touchcancel`                    | `TouchEvent`        |
+| Keyboard           | `keydown`, `keyup` (`keypress` is deprecated)                            | `KeyboardEvent`     |
+| Focus              | `focus`, `blur`, `focusin`, `focusout`                                  | `FocusEvent`        |
+| Form               | `submit`, `reset`, `change`, `invalid`, `formdata`                      | `SubmitEvent`, `Event`, `FormDataEvent` |
+| Input              | `beforeinput`, `input`, `compositionstart`/`update`/`end`, `selectionchange` | `InputEvent`, `CompositionEvent` |
+| Clipboard          | `copy`, `cut`, `paste`                                                  | `ClipboardEvent`    |
+| Drag and drop      | `dragstart`, `drag`, `dragenter`, `dragover`, `dragleave`, `drop`, `dragend` | `DragEvent`    |
+| Scroll and size    | `scroll`, `scrollend`, `resize` (window only)                           | `Event`, `UIEvent`  |
+| Animation          | `transitionend`, `animationend`, `…start`, `…cancel`                    | `TransitionEvent`, `AnimationEvent` |
+| UI state           | `toggle` (`details`, popover), `beforetoggle`, `close`/`cancel` (`dialog`) | `ToggleEvent`, `Event` |
+| Document lifecycle | `DOMContentLoaded` (HTML parsed), `readystatechange`, `visibilitychange` | `Event`             |
+| Window lifecycle   | `load` (all resources), `pagehide`, `pageshow`, `beforeunload`, `online`/`offline`, `error`, `unhandledrejection` | `Event`, `PageTransitionEvent`, `BeforeUnloadEvent`, `ErrorEvent`, `PromiseRejectionEvent` |
+
+```ts
+document.addEventListener("DOMContentLoaded", init, {
+  once: true,
+});
+function init(): void { /* safe to query the DOM */ }
+
+// save state when the tab is hidden: the last
+// reliable moment
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    navigator.sendBeacon("/analytics", JSON.stringify({}));
+  }
+});
+
+window.addEventListener("pagehide", (e) => {
+  if (e.persisted) { /* page entering back/forward cache */ }
+});
+```
+
+<Note kind="tip">Prefer `visibilitychange` and `pagehide` over `unload`/`beforeunload`: `unload`
+is unreliable on mobile and blocks the back/forward cache. Use `beforeunload` only while there
+are unsaved changes.</Note>
+
+`type="module"` and `defer` scripts run after parsing, just before `DOMContentLoaded`, so they
+rarely need to wait for it. `input` fires on each edit; `change` fires on commit (blur, or on
+selection for checkboxes and selects). In the TypeScript event map `input` is typed as `Event`,
+not `InputEvent`.
+
+## Keyboard & pointer
+
+### key vs code
+
+| Property     | Meaning                                  | Examples                               |
+| :----------- | :--------------------------------------- | :------------------------------------- |
+| `key`        | the character or named key produced, respects layout and Shift | `"a"`, `"A"`, `"Enter"`, `"ArrowUp"`, `" "`, `"Escape"` |
+| `code`       | the physical key, layout-independent      | `"KeyA"`, `"Enter"`, `"ArrowUp"`, `"Space"`, `"Digit1"` |
+| `repeat`     | `true` while held down and auto-repeating |                                        |
+| `isComposing` | `true` during IME composition            | ignore shortcuts while `true`          |
+| `altKey`, `ctrlKey`, `metaKey`, `shiftKey` | modifier state at the time | `metaKey` is ⌘ on macOS         |
+| `getModifierState(k)` | any modifier incl. lock keys    | `"CapsLock"`, `"AltGraph"`             |
+| `keyCode`, `which`, `charCode` | deprecated numbers     | don't use                              |
+
+Use `key` for text and shortcuts that follow the label ("press ?"), `code` for position-based
+controls such as WASD.
+
+```ts
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+document.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.repeat) return;
+  const mod = isMac ? e.metaKey : e.ctrlKey;
+
+  if (mod && e.key.toLowerCase() === "k") {
+    e.preventDefault(); // stop the browser's own shortcut
+    openSearch();
+  } else if (e.key === "Escape") {
+    closeSearch();
+  }
+});
+declare function openSearch(): void;
+declare function closeSearch(): void;
+```
+
+### Pointer events
+
+Pointer events unify mouse, pen and touch; the browser also fires compatibility mouse events after
+them, and `click` still fires for every pointer type.
+
+| Property              | Meaning                                                  |
+| :-------------------- | :------------------------------------------------------- |
+| `pointerType`         | `"mouse"`, `"pen"` or `"touch"`                          |
+| `pointerId`           | unique per active pointer; track multi-touch with it     |
+| `isPrimary`           | first finger, or the mouse                               |
+| `button`, `buttons`   | changed button (`0` main, `2` secondary); bitmask of held buttons |
+| `pressure`, `width`, `height`, `tiltX`, `tiltY` | pen and touch detail           |
+| `clientX/Y`, `pageX/Y`, `offsetX/Y` | viewport, page and target-relative position |
+
+```ts
+const handle =
+  document.querySelector<HTMLElement>(".handle");
+
+handle?.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  handle.setPointerCapture(e.pointerId); // keep events
+  const startX = e.clientX - handle.offsetLeft;
+
+  const move = (ev: PointerEvent) => {
+    handle.style.left = `${ev.clientX - startX}px`;
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("lostpointercapture", () => {
+    handle.removeEventListener("pointermove", move);
+  }, { once: true });
+});
+```
+
+Pointer capture sends every later event for that pointer to the element, even outside it, and
+releases automatically on `pointerup`/`pointercancel`. Add CSS `touch-action: none` (or `pan-y`)
+on draggable elements, or the browser claims the gesture for scrolling and fires `pointercancel`.
+
+## Default & propagation
+
+| Call / property                | Effect                                                         |
+| :----------------------------- | :------------------------------------------------------------- |
+| `e.preventDefault()`           | cancel the browser's default action; only if `e.cancelable`    |
+| `e.defaultPrevented`           | `true` once any listener cancelled it                          |
+| `e.stopPropagation()`          | no further targets, but other listeners on this one still run  |
+| `e.stopImmediatePropagation()` | also skips the remaining listeners on the current target       |
+| `return false`                 | cancels only in `on*` properties; ignored by `addEventListener` |
+| `dispatchEvent(e)` result      | `false` if the event was cancelable and cancelled              |
+| `e.isTrusted`                  | `true` for browser-generated events, `false` for `dispatchEvent` |
+
+```ts
+const form = document.querySelector("form");
+
+form?.addEventListener("submit", (e) => {
+  e.preventDefault(); // no page navigation
+  const data = new FormData(form, e.submitter);
+  void fetch(form.action, { method: "POST", body: data });
+});
+
+// passive: preventDefault is ignored (with a
+// console warning)
+window.addEventListener("wheel", (e) => e.preventDefault(), {
+  passive: false, // required to block scrolling
+});
+```
+
+<Callout type="warn" title="Avoid stopPropagation">
+  It silently breaks delegated handlers higher up: analytics, "click outside to close", framework
+  roots. Check `e.defaultPrevented` or mark the event handled instead.
+</Callout>
+
+## Custom events
+
+```ts
+type AddToCart = { sku: string; qty: number };
+
+const evt = new CustomEvent<AddToCart>("cart:add", {
+  detail: { sku: "A-1", qty: 2 },
+  bubbles: true,     // default false
+  cancelable: true,  // allow preventDefault
+  composed: true,    // cross shadow DOM boundaries
+});
+
+const ok = document
+  .querySelector("#buy")
+  ?.dispatchEvent(evt);
+// dispatchEvent is synchronous: listeners have already run
+```
+
+### Typing a global event map
+
+Augment `WindowEventMap`, `DocumentEventMap` or `HTMLElementEventMap` so `addEventListener`
+infers the event type from the name.
+
+```ts title="events.d.ts"
+type AddToCart = { sku: string; qty: number };
+
+declare global {
+  interface HTMLElementEventMap {
+    "cart:add": CustomEvent<AddToCart>;
+  }
+  interface WindowEventMap {
+    "cart:add": CustomEvent<AddToCart>;
+  }
+}
+
+window.addEventListener("cart:add", (e) => {
+  e.detail.qty; // number
+});
+```
+
+### Typed EventTarget subclass
+
+```ts
+class Emitter<D extends Record<string, unknown>>
+  extends EventTarget {
+  on<K extends keyof D & string>(
+    type: K,
+    fn: (e: CustomEvent<D[K]>) => void,
+    opts?: AddEventListenerOptions,
+  ): () => void {
+    const l = fn as EventListener;
+    this.addEventListener(type, l, opts);
+    return () => this.removeEventListener(type, l, opts);
+  }
+
+  emit<K extends keyof D & string>(type: K, detail: D[K]) {
+    const e = new CustomEvent(type, { detail });
+    return this.dispatchEvent(e);
+  }
+}
+
+type TimerEvents = { tick: { n: number }; done: undefined };
+
+const timer = new Emitter<TimerEvents>();
+const off = timer.on("tick", (e) => e.detail.n.toFixed());
+timer.emit("tick", { n: 1 });
+// @ts-expect-error: detail must be { n: number }
+timer.emit("tick", { n: "1" });
+off();
+```
+
+Use a `type` alias for the map: interfaces lack an implicit index signature and fail the
+`Record<string, unknown>` constraint.
+
+## Removing listeners
+
+`removeEventListener(type, fn, capture)` only removes a listener registered with the **same
+function reference** and the **same `capture` flag**; other options don't matter.
+
+| Mistake                                      | Why it fails                                  |
+| :------------------------------------------- | :-------------------------------------------- |
+| inline arrow in both calls                   | two different function objects                |
+| `fn.bind(this)` in both calls                | `bind` returns a new function each time       |
+| added with `capture: true`, removed without  | capture flag must match                       |
+| removing inside a React render / every call  | reference changes between renders             |
+
+```ts
+class Tooltip {
+  // arrow property: stable reference, `this` bound
+  private onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") this.hide();
+  };
+  show() {
+    document.addEventListener("keydown", this.onKey);
+  }
+  hide() {
+    document.removeEventListener("keydown", this.onKey);
+  }
+}
+```
+
+### AbortController: remove many at once
+
+```ts
+function mount(el: HTMLElement): () => void {
+  const ac = new AbortController();
+  const { signal } = ac;
+
+  el.addEventListener("pointerenter", show, { signal });
+  el.addEventListener("pointerleave", hide, { signal });
+  window.addEventListener("resize", place, { signal });
+
+  return () => ac.abort(); // removes all three
+}
+declare function show(): void;
+declare function hide(): void;
+declare function place(): void;
+```
+
+Combine signals with `AbortSignal.any([a, b])` or add a deadline with `AbortSignal.timeout(ms)`.
+An already aborted signal means the listener is never added.
+
+## Typing handlers
+
+| Property          | Is                                        | TypeScript type          |
+| :---------------- | :---------------------------------------- | :----------------------- |
+| `e.target`        | where the event originated (deepest node) | `EventTarget \| null`    |
+| `e.currentTarget` | the element the listener is attached to   | `EventTarget \| null`    |
+| `this` (function) | same as `currentTarget`                   | the element's type       |
+| `e.relatedTarget` | the other element in `over`/`out`/`focus` pairs | `EventTarget \| null` |
+
+`currentTarget` is `null` once dispatch finishes, so read it synchronously (not after an `await`).
+
+```ts
+const input = document.querySelector("input");
+
+// type inferred from HTMLElementEventMap["keydown"]
+input?.addEventListener("keydown", (e) => e.key);
+
+// the element via a closure: already narrowed
+input?.addEventListener("input", () => input.value);
+
+// `this` is typed for function handlers, not arrows
+input?.addEventListener("change", function () {
+  this.value; // this: HTMLInputElement
+});
+
+// target needs narrowing: it may be a child or a text node
+document.addEventListener("input", (e) => {
+  if (e.target instanceof HTMLInputElement) {
+    e.target.value;
+  }
+});
+```
+
+### Named handlers
+
+```ts
+// annotate with the concrete event type…
+const onKey = (e: KeyboardEvent): void => { e.code; };
+
+// …or look it up from the map by name
+type Ev<K extends keyof HTMLElementEventMap> =
+  HTMLElementEventMap[K];
+const onPaste = (e: Ev<"paste">) => e.clipboardData;
+
+// typed helper returning an unsubscribe function
+function on<K extends keyof HTMLElementEventMap>(
+  el: HTMLElement,
+  type: K,
+  fn: (e: HTMLElementEventMap[K]) => void,
+  opts?: AddEventListenerOptions,
+): () => void {
+  el.addEventListener(type, fn, opts);
+  return () => el.removeEventListener(type, fn, opts);
+}
+```
+
+| Target        | Event map                                  |
+| :------------ | :----------------------------------------- |
+| `window`      | `WindowEventMap`                           |
+| `document`    | `DocumentEventMap`                         |
+| `HTMLElement` | `HTMLElementEventMap`                      |
+| `SVGElement`  | `SVGElementEventMap`                       |
+| `HTMLMediaElement` | `HTMLMediaElementEventMap`            |
+| `AbortSignal`, `WebSocket`, `Worker`, … | `AbortSignalEventMap`, `WebSocketEventMap`, `WorkerEventMap`, … |
+
+React's `onClick` and friends take synthetic events with different types; see
+[TypeScript with React](/typescript/react/typescript-react/).
+
+## Debounce, throttle & rAF
+
+| Technique | Runs                                        | Use for                                           |
+| :-------- | :------------------------------------------ | :------------------------------------------------ |
+| debounce  | once, `ms` after the calls stop             | search-as-you-type, autosave, "resize finished"   |
+| throttle  | at most once per `ms`, first and last call  | scroll position sync, analytics, API calls on drag |
+| rAF       | at most once per frame, with the latest args | visual updates on `pointermove`/`scroll`         |
+| none      | every event                                 | `keydown` shortcuts, `click`                      |
+
+```ts title="rate-limit.ts"
+type Fn<A extends unknown[]> = (...args: A) => void;
+type Timer = ReturnType<typeof setTimeout>;
+
+export function debounce<A extends unknown[]>(
+  fn: Fn<A>, ms: number,
+) {
+  let t: Timer | undefined;
+  const debounced = (...args: A): void => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+  debounced.cancel = () => clearTimeout(t);
+  return debounced;
+}
+
+export function throttle<A extends unknown[]>(
+  fn: Fn<A>, ms: number,
+): Fn<A> {
+  let last = 0;
+  let t: Timer | undefined;
+  let queued: A | undefined;
+  return (...args) => {
+    const wait = ms - (Date.now() - last);
+    if (wait <= 0) {
+      last = Date.now();
+      fn(...args);                  // leading call
+      return;
+    }
+    queued = args;
+    t ??= setTimeout(() => {
+      last = Date.now();
+      t = undefined;
+      if (queued) fn(...queued);    // trailing call
+    }, wait);
+  };
+}
+
+export function rafThrottle<A extends unknown[]>(fn: Fn<A>) {
+  let frame = 0;
+  let latest: A | undefined;
+  return (...args: A): void => {
+    latest = args;
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (latest) fn(...latest);
+    });
+  };
+}
+```
+
+```ts
+import { debounce, rafThrottle } from "./rate-limit";
+
+const box = document.querySelector("input[type=search]");
+const search = debounce((q: string) => {
+  void fetch(`/api/search?q=${encodeURIComponent(q)}`);
+}, 300);
+
+box?.addEventListener("input", () => {
+  if (box instanceof HTMLInputElement) search(box.value);
+});
+
+const dot = document.querySelector<HTMLElement>(".dot");
+window.addEventListener("pointermove", rafThrottle(
+  (e: PointerEvent) => {
+    dot?.style.setProperty("--x", `${e.clientX}px`);
+  },
+));
+```
+
+Before reaching for these, check for an event that already fires at the right time: `change`
+instead of debounced `input`, `scrollend` instead of debounced `scroll`, `IntersectionObserver`
+or `ResizeObserver` instead of throttled `scroll`/`resize`.
+
+## References
+
+- [MDN: EventTarget.addEventListener](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener)
+- [MDN: Event bubbling](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Scripting/Event_bubbling) and [Event.eventPhase](https://developer.mozilla.org/en-US/docs/Web/API/Event/eventPhase)
+- [MDN: Event reference](https://developer.mozilla.org/en-US/docs/Web/Events)
+- [MDN: KeyboardEvent.key](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key) and [code](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/code)
+- [MDN: Pointer events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)
+- [MDN: CustomEvent](https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent)
+- [MDN: Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API)
+- [TypeScript: DOM Manipulation](https://www.typescriptlang.org/docs/handbook/dom-manipulation.html)

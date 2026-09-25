@@ -1,0 +1,272 @@
+---
+title: Web Share
+date: 2026-09-25
+order: 18
+---
+
+`navigator.share()` and `canShare()` for handing text, links and files to the OS share sheet, the
+fallbacks you need where it's missing, and the manifest `share_target` that makes an installed app a
+share destination. Support data is from MDN as of September 2026.
+
+## Support
+
+`navigator.share()` is **not Baseline** (MDN: limited availability): it is solid on mobile and uneven
+on desktop.
+
+| Browser                      | `share()`         | files          | `canShare()` | Share target (manifest) |
+| :--------------------------- | :---------------- | :------------- | :----------- | :---------------------- |
+| Chrome / Edge Android        | 61+               | 76+            | 75+          | 76+, installed apps     |
+| Chrome / Edge desktop        | 128+ (Windows and ChromeOS since 89) | 89+ | 128+ | 89+, installed apps |
+| Safari macOS / iOS           | 12.1 / 12.2       | 14+            | 14+          | no                      |
+| Firefox Android              | 79+               | no             | 96+          | no                      |
+| Firefox desktop              | behind a flag     | no             | behind a flag | no                     |
+
+Always feature-detect; never branch on the user agent. A desktop Firefox user needs the fallback.
+
+## Requirements
+
+| Requirement           | Detail                                                                   |
+| :-------------------- | :----------------------------------------------------------------------- |
+| secure context        | HTTPS or `localhost`; `navigator.share` is `undefined` otherwise         |
+| transient activation  | call from a click or key handler; a short `await` first is fine, a slow one isn't |
+| Permissions Policy    | `web-share`; cross-origin iframes need `allow="web-share"`               |
+| one at a time         | a second call while the sheet is open rejects with `InvalidStateError`   |
+| no permission prompt  | there is nothing to query in the Permissions API                         |
+
+## API
+
+| Member                      | Returns            | Notes                                                |
+| :-------------------------- | :----------------- | :--------------------------------------------------- |
+| `navigator.share(data)`     | `Promise<void>`    | resolves when the user picks a target (Android may resolve earlier) |
+| `navigator.canShare(data?)` | `boolean`          | `true` if `share(data)` would be accepted; no activation needed |
+
+| `ShareData` field | Type     | Notes                                                             |
+| :---------------- | :------- | :---------------------------------------------------------------- |
+| `title`           | `string` | often ignored by the target                                       |
+| `text`            | `string` | message body; many apps put everything here                       |
+| `url`             | `string` | absolute or relative (resolved against the page); `""` = current page |
+| `files`           | `File[]` | images, video, audio, PDF, text; see [Sharing files](#sharing-files) |
+
+At least one field is required. `share({})` rejects with `TypeError`.
+
+```ts
+declare const btn: HTMLButtonElement;
+
+btn.addEventListener("click", async () => {
+  try {
+    await navigator.share({
+      title: "Fetch API cheatsheet",
+      text: "Typed fetch patterns",
+      url: "/typescript/web-apis/fetch-api/",
+    });
+  } catch (err) {
+    if (err instanceof DOMException &&
+        err.name === "AbortError") return; // cancelled
+    throw err;
+  }
+});
+```
+
+## Sharing files
+
+```ts
+declare const blob: Blob; // e.g. from canvas.toBlob
+
+const file = new File([blob], "chart.png", {
+  type: "image/png",
+});
+const data: ShareData = { files: [file], title: "Q3 chart" };
+
+if (navigator.canShare?.(data)) {
+  await navigator.share(data);
+}
+```
+
+| Rule                                      | Detail                                                        |
+| :---------------------------------------- | :------------------------------------------------------------ |
+| check with `canShare({ files })`          | the only reliable test; `share` existing doesn't imply file support |
+| give files a name **and** an extension    | Chromium checks the extension against an allowlist            |
+| allowed types (Chromium)                  | common image, audio and video formats, PDF, and text files such as `.txt`, `.csv`, `.html` |
+| blocked types                             | executables, archives, unknown types: `NotAllowedError` or `TypeError` |
+| size                                      | no fixed limit, but large files may fail on mobile; keep to a few MB |
+| mixing files with `url`/`text`            | allowed, but some targets drop one or the other; test on devices |
+
+## Errors
+
+| Error               | Cause                                                               | Handle                         |
+| :------------------ | :------------------------------------------------------------------ | :----------------------------- |
+| `AbortError`        | user closed the sheet, or no targets available                      | ignore silently                |
+| `NotAllowedError`   | no user activation, `web-share` policy blocks it, file type blocked | fall back                      |
+| `TypeError`         | empty data, bad URL, unsupported files                              | a bug; check `canShare` first  |
+| `InvalidStateError` | a share is already open, or the document isn't active               | disable the button while sharing |
+| `DataError`         | the target app failed to start or receive the data                  | fall back or retry             |
+
+## Fallbacks
+
+| Fallback                    | When                                                  |
+| :-------------------------- | :---------------------------------------------------- |
+| copy link to the clipboard  | default desktop fallback; see [Clipboard](/typescript/web-apis/clipboard/) |
+| `mailto:` link              | `mailto:?subject=...&body=...` with `encodeURIComponent` |
+| download the file           | when `canShare({ files })` is `false`                 |
+| service-specific share URLs | only if you need those networks; they change over time |
+
+```ts
+function mailtoHref(subject: string, body: string) {
+  const q = new URLSearchParams({ subject, body });
+  // mailto wants %20, not +
+  return `mailto:?${q.toString().replaceAll("+", "%20")}`;
+}
+```
+
+## Web Share Target
+
+An **installed** web app (Chromium only) can appear in the OS share sheet by declaring `share_target`
+in its manifest. Text and links can use `GET`; files need `POST` with `multipart/form-data`.
+
+```json title="manifest.webmanifest"
+{
+  "share_target": {
+    "action": "/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        { "name": "media", "accept": ["image/*", "video/*"] }
+      ]
+    }
+  }
+}
+```
+
+| Field       | Meaning                                                             |
+| :---------- | :------------------------------------------------------------------ |
+| `action`    | URL inside the app's scope that receives the share                  |
+| `method`    | `GET` (query string) or `POST`                                      |
+| `enctype`   | `application/x-www-form-urlencoded` or `multipart/form-data` (files) |
+| `params`    | maps `title`, `text`, `url` to your parameter names                 |
+| `files`     | `{ name, accept }` list; `accept` takes MIME types or extensions    |
+
+Android apps often put the shared URL in `text` and leave `url` empty, so parse both. A `POST` target
+must be handled by the service worker (or the server), which then redirects with `303`.
+
+## Typing in TS
+
+| Situation                          | Fix                                                             |
+| :--------------------------------- | :-------------------------------------------------------------- |
+| `navigator.share` typed as always present | detect with `typeof navigator.share === "function"`      |
+| `navigator.canShare`               | same; `navigator.canShare?.(data)` is fine at runtime           |
+| caught errors                      | `unknown`; narrow with `err instanceof DOMException` and `name` |
+| `ShareData.files`                  | `File[]`, not `FileList`; spread an input's files: `[...input.files]` |
+| `share_target` handler in the SW   | `event.request.formData()` gives `FormData`; `getAll("media")` is `FormDataEntryValue[]` |
+
+## Recipes
+
+### Share button with fallback
+Native sheet where it exists, copy-to-clipboard everywhere else.
+
+```ts
+type Shared = "shared" | "copied" | "cancelled";
+
+export async function shareLink(
+  data: { title: string; url: string },
+): Promise<Shared> {
+  if (typeof navigator.share === "function" &&
+      navigator.canShare?.(data) !== false) {
+    try {
+      await navigator.share(data);
+      return "shared";
+    } catch (err) {
+      const name = err instanceof DOMException && err.name;
+      if (name === "AbortError") return "cancelled";
+      // NotAllowedError etc.: fall through to copy
+    }
+  }
+  const url = new URL(data.url, location.href).href;
+  await navigator.clipboard.writeText(url);
+  return "copied"; // show a "Link copied" toast
+}
+```
+
+### Share a generated image
+Render a canvas, share it as a PNG file, or download it when file sharing isn't supported.
+
+```ts
+function toBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("empty"))),
+      "image/png",
+    ),
+  );
+}
+
+export async function shareCanvas(c: HTMLCanvasElement) {
+  const blob = await toBlob(c);
+  const file = new File([blob], "score.png", {
+    type: "image/png",
+  });
+  if (navigator.canShare?.({ files: [file] })) {
+    return navigator.share({ files: [file] });
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1_000);
+}
+```
+
+`toBlob` is fast enough to keep the click's activation; for slow rendering, prepare the file before
+the user clicks.
+
+### Show the share button only when useful
+Hide the native button where it would always fall back, and label it for the platform.
+
+```ts
+declare const shareBtn: HTMLButtonElement;
+declare const copyBtn: HTMLButtonElement;
+
+const canNativeShare =
+  window.isSecureContext &&
+  typeof navigator.share === "function";
+
+shareBtn.hidden = !canNativeShare;
+copyBtn.hidden = canNativeShare;
+```
+
+### Receive shared files in the service worker
+Handle a `POST` share target: stash the files, then redirect to a page that shows them.
+
+```ts title="sw-share-target.ts"
+/// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (url.pathname !== "/share-target") return;
+  if (event.request.method !== "POST") return;
+  event.respondWith(
+    (async () => {
+      const form = await event.request.formData();
+      const files = form.getAll("media")
+        .filter((v): v is File => v instanceof File);
+      const cache = await caches.open("shared");
+      await Promise.all(files.map((f, i) =>
+        cache.put(`/shared/${i}`, new Response(f)),
+      ));
+      return Response.redirect("/inbox?shared=1", 303);
+    })(),
+  );
+});
+```
+
+## References
+
+- MDN: [Web Share API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API), [`Navigator.share()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share), [`Navigator.canShare()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/canShare): errors, requirements, compat
+- MDN: [`share_target`](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/share_target) manifest member
+- [W3C Web Share API](https://w3c.github.io/web-share/) and [Web Share Target](https://w3c.github.io/web-share-target/): the specs
+- web.dev: [Integrate with the OS sharing UI](https://web.dev/articles/web-share): usage and the Chromium file-type allowlist
+- Chrome for Developers: [Receive shared data with Web Share Target](https://developer.chrome.com/docs/capabilities/web-apis/web-share-target): manifest and service worker handling

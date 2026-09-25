@@ -1,0 +1,965 @@
+---
+title: Next.js
+date: 2026-09-25
+order: 6
+---
+
+Full-stack React with the Next.js 16 App Router (16.3, React 19.2): file-based routing, Server and
+Client Components, Cache Components (`"use cache"`), Server Functions, Route Handlers, `proxy.ts` and
+deployment. Plain React lives in [React](/typescript/react/react/) and
+[React Hooks](/typescript/react/react-hooks/).
+
+## Setup & CLI
+
+```sh
+bun create next-app my-app --yes  # TS, Tailwind, ESLint
+cd my-app
+bun dev                   # next dev (Turbopack) on :3000
+bun --bun next dev        # same, but on the Bun runtime
+bun run build && bun run start
+```
+
+`create-next-app` flags: `--api` (route handlers only), `--src-dir`, `--empty`, `--biome`,
+`--no-linter`, `--react-compiler`, `--use-bun`/`--use-pnpm`, `--no-agents-md`. npm: `npx create-next-app@latest`.
+
+| Command | Does |
+| :------ | :--- |
+| `next dev` | dev server; `-p 4000`, `-H 127.0.0.1`, `--experimental-https`, `--webpack` |
+| `next build` | production build; `--webpack`, `--debug-prerender`, `-d` (verbose) |
+| `next start` | serve the build; `-p`, `--keepAliveTimeout` |
+| `next typegen` | generate `PageProps`/`LayoutProps`/`RouteContext` types without a build |
+| `next info` | system report for bug reports |
+| `next upgrade` | bump Next.js; `--revision canary` |
+| `next experimental-analyze` | Turbopack bundle analysis |
+| `bunx @next/codemod@canary upgrade latest` | upgrade plus codemods |
+
+### What changed in 16
+
+| Change | Now |
+| :----- | :-- |
+| Bundler | Turbopack is the default for `dev` and `build`; `--webpack` opts out |
+| Request APIs | `params`, `searchParams`, `cookies()`, `headers()`, `draftMode()` are async only |
+| `middleware.ts` | renamed `proxy.ts`, export `proxy`; Node.js runtime only |
+| PPR / `dynamicIO` / `useCache` flags | replaced by `cacheComponents: true` |
+| `revalidateTag(tag)` | needs a profile: `revalidateTag(tag, "max")`; new `updateTag`, `refresh` |
+| `cacheLife`, `cacheTag` | stable, no `unstable_` prefix |
+| Parallel routes | every `@slot` needs a `default.tsx` |
+| `next lint` | removed; run ESLint or Biome directly |
+| `next/image` | `preload` replaces `priority`; `qualities` defaults to `[75]` |
+| `error.tsx` | `retry()` prop (re-fetch and re-render) next to `reset()` |
+| Minimums | Node 20.9, TypeScript 5.1; AMP and `publicRuntimeConfig` removed |
+
+## App Router file conventions
+
+Folders are URL segments. A folder becomes routable only when it has a `page` or `route` file, so
+other files can sit next to them safely.
+
+```tree title="app/ router"
+my-app/
+  app/
+    layout.tsx            # root layout: html + body
+    page.tsx              # /
+    loading.tsx           # Suspense fallback for segment
+    error.tsx             # error boundary ("use client")
+    global-error.tsx      # replaces root layout on crash
+    not-found.tsx         # notFound() and unmatched URLs
+    globals.css
+    favicon.ico
+    opengraph-image.tsx   # generated og:image
+    sitemap.ts            # /sitemap.xml
+    robots.ts             # /robots.txt
+    (marketing)/          # route group: not in the URL
+      layout.tsx          # layout only for this group
+      about/
+        page.tsx          # /about
+    blog/
+      page.tsx            # /blog
+      _components/        # private folder: never routed
+        post-card.tsx
+      [slug]/
+        page.tsx          # /blog/:slug
+        opengraph-image.tsx
+    shop/
+      [...slug]/
+        page.tsx          # /shop/a, /shop/a/b
+    docs/
+      [[...slug]]/
+        page.tsx          # /docs, /docs/a/b
+    dashboard/
+      layout.tsx          # gets children, team, stats
+      page.tsx
+      @team/
+        page.tsx
+        default.tsx       # required fallback per slot
+      @stats/
+        page.tsx
+        default.tsx
+    photos/
+      [id]/
+        page.tsx          # full page on hard navigation
+    @modal/               # slot: root layout props.modal
+      default.tsx         # returns null
+      (.)photos/
+        [id]/
+          page.tsx        # intercept: modal on soft nav
+    api/
+      posts/
+        route.ts          # GET/POST /api/posts
+        [id]/
+          route.ts        # /api/posts/:id
+  public/                 # served from /
+  proxy.ts                # runs before routing
+  instrumentation.ts      # register() on server start
+  next.config.ts
+  .env.local
+  tsconfig.json
+```
+
+| File | Role |
+| :--- | :--- |
+| `layout.tsx` | shared UI; stays mounted across navigations; root one must render `<html>` and `<body>` |
+| `page.tsx` | the route's UI; makes the segment public |
+| `template.tsx` | like a layout, but remounts on every navigation |
+| `loading.tsx` | wraps the page in `<Suspense>` with this fallback |
+| `error.tsx` | client error boundary for the segment below its layout |
+| `global-error.tsx` | root-level boundary; renders its own `<html>` |
+| `not-found.tsx` | UI for `notFound()`; the root one also handles unmatched URLs |
+| `forbidden.tsx` / `unauthorized.tsx` | UI for `forbidden()`/`unauthorized()` (`experimental.authInterrupts`) |
+| `default.tsx` | fallback for a parallel slot with no match |
+| `route.ts` | HTTP handler; cannot share a segment with `page.tsx` |
+
+Render nesting per segment: `layout` → `template` → `error` → `loading` → `not-found` → `page`.
+
+| Folder name | Matches | `params` |
+| :---------- | :------ | :------- |
+| `blog/[slug]` | `/blog/a` | `{ slug: string }` |
+| `shop/[...slug]` | `/shop/a`, `/shop/a/b` (not `/shop`) | `{ slug: string[] }` |
+| `docs/[[...slug]]` | `/docs`, `/docs/a/b` | `{ slug?: string[] }` |
+| `(group)` | adds nothing to the URL; groups layouts | none |
+| `_folder` | never routed | none |
+| `%5Fname` | a real segment starting with `_` | none |
+| `@slot` | parallel route, passed to the parent layout as a prop | none |
+| `(.)x` / `(..)x` / `(..)(..)x` / `(...)x` | intercept `x` from the same level / parent / two up / root | none |
+
+Intercepting counts route segments, not folders, so `@slot` and `(group)` don't count.
+
+## Pages, layouts & navigation
+
+`next dev`, `next build` and `next typegen` generate the global helpers `PageProps<"/route">`,
+`LayoutProps<"/route">` and `RouteContext<"/route">` from your folders.
+
+```tsx title="app/layout.tsx"
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: { template: "%s | Acme", default: "Acme" },
+};
+
+export default function RootLayout({
+  children,
+}: LayoutProps<"/">) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+```tsx title="app/blog/[slug]/page.tsx"
+import { notFound } from "next/navigation";
+import { getPost, getSlugs } from "@/lib/posts";
+
+// prerender these at build; others render on first visit
+export async function generateStaticParams() {
+  const slugs = await getSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+export default async function Page(
+  props: PageProps<"/blog/[slug]">,
+) {
+  const { slug } = await props.params;   // a Promise now
+  const post = await getPost(slug);
+  if (!post) notFound();                 // throws
+  return <article>{post.title}</article>;
+}
+```
+
+`searchParams` is a `Promise<Record<string, string | string[] | undefined>>` and only exists on
+pages. Reading it makes that part request-time.
+
+| API | Import | Where | Use |
+| :-- | :----- | :---- | :-- |
+| `<Link href prefetch>` | `next/link` | both | client navigation; prefetches links in the viewport |
+| `useRouter()` | `next/navigation` | client | `push`, `replace`, `refresh`, `back`, `prefetch` |
+| `usePathname()`, `useSearchParams()`, `useParams()` | `next/navigation` | client | read the URL (`useSearchParams` wants a `<Suspense>` above it) |
+| `useSelectedLayoutSegment(s)()` | `next/navigation` | client | active-link state in a layout |
+| `useLinkStatus()` | `next/link` | client | `pending` flag inside a `<Link>` |
+| `redirect(url)` / `permanentRedirect(url)` | `next/navigation` | server, actions | throws; 307/308 (303 from an action) |
+| `notFound()` | `next/navigation` | server | renders the nearest `not-found.tsx` |
+| `forbidden()` / `unauthorized()` | `next/navigation` | server | 403/401 UI (experimental) |
+
+### Errors
+
+```tsx title="app/dashboard/error.tsx"
+"use client";
+
+export default function ErrorPage({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
+  return (
+    <div>
+      <p>Something broke: {error.message}</p>
+      <button onClick={() => retry()}>Try again</button>
+    </div>
+  );
+}
+```
+
+- `error.tsx` does not catch errors from the `layout.tsx` in the same segment; put it one level up.
+- In production, server error messages are replaced by a generic one plus `digest` (match it in logs).
+- `catchError(Fallback)` from `next/error` builds a component-level boundary that lets
+  `redirect()`/`notFound()` through.
+- Return expected errors (validation, 4xx) as values; throw only for bugs.
+
+## Server & Client Components
+
+Components are Server Components unless a module starts with `"use client"`. That directive marks a
+boundary: the module and everything it imports ship to the browser.
+
+| | Server (default) | Client (`"use client"`) |
+| :-- | :-- | :-- |
+| Runs | server, at build or request time | server (SSR HTML) and browser (hydration) |
+| `async` component | yes | no: unwrap promises with `use()` |
+| State, effects, refs | no | yes |
+| Event handlers, browser APIs | no | yes |
+| DB, filesystem, secrets | yes | no; only `NEXT_PUBLIC_*` env vars |
+| JS sent to the browser | none | the component and its imports |
+| Props it receives | anything | serializable values, JSX, Server Functions |
+
+- Push `"use client"` down to leaves (a button, not a page).
+- Pass Server Components into Client ones as `children` or other JSX props.
+- Wrap context providers in a Client Component that renders `{children}`.
+- `import "server-only"` (package `server-only`) makes a module fail the build if a client imports it.
+
+```tsx title="app/page.tsx"
+import { Suspense } from "react";
+import { getStats } from "@/lib/stats";
+import { Stats } from "./stats";
+
+export default function Page() {
+  const stats = getStats();          // start, don't await
+  return (
+    <Suspense fallback={<p>Loading…</p>}>
+      <Stats stats={stats} />
+    </Suspense>
+  );
+}
+```
+
+```tsx title="app/stats.tsx"
+"use client";
+import { use } from "react";
+
+export function Stats(props: {
+  stats: Promise<{ views: number }>;
+}) {
+  const { views } = use(props.stats);  // suspends
+  return <p>{views} views</p>;
+}
+```
+
+## Data fetching & caching
+
+With `cacheComponents: true` everything is **dynamic by default** and you opt in to caching with
+`"use cache"`. Without the flag, the previous model (route segment `revalidate`/`dynamic`,
+`fetch` `next.revalidate`, `unstable_cache`) still applies.
+
+```ts title="next.config.ts"
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+};
+
+export default nextConfig;
+```
+
+| Directive | Put at the top of | Effect |
+| :-------- | :---------------- | :----- |
+| `"use cache"` | an async function, component or file | caches the return value; arguments and closures form the key |
+| `"use cache: remote"` | same | stores entries in a shared cache handler (Redis, KV) instead of per-instance memory |
+| `"use cache: private"` | same | may read `cookies()`/`headers()`; cached only in the browser |
+| `"use server"` | an async function or file | Server Function callable from the client |
+| `"use client"` | a file | Client Component boundary |
+
+```ts title="lib/data.ts"
+import { cacheLife, cacheTag } from "next/cache";
+import { cache } from "react";
+import { db } from "@/lib/db";
+
+export async function getPosts() {
+  "use cache";
+  cacheLife("hours");            // always pick a lifetime
+  cacheTag("posts");             // on-demand invalidation
+  return db.post.findMany();
+}
+
+// per-request dedupe only (not a cross-request cache)
+export const getUser = cache(async (id: string) =>
+  db.user.find(id),
+);
+```
+
+- A cached scope cannot call `cookies()`, `headers()` or read `searchParams`. Read them outside
+  and pass the values in as arguments.
+- Arguments and return values must be serializable. JSX `children` passes through without
+  becoming part of the key.
+- Default storage is an in-memory LRU per instance. On serverless it rarely survives between
+  requests, and no entry survives a new deployment.
+- Independent fetches: `await Promise.all([a(), b()])`. `fetch` itself is not cached.
+
+### `cacheLife` profiles
+
+| Profile | `stale` (client) | `revalidate` (server, background) | `expire` (hard) |
+| :------ | :--------------- | :-------------------------------- | :-------------- |
+| `default` | 5 min | 15 min | never |
+| `seconds` | 30 s | 1 s | 1 min |
+| `minutes` | 5 min | 1 min | 1 h |
+| `hours` | 5 min | 1 h | 1 day |
+| `days` | 5 min | 1 day | 1 week |
+| `weeks` | 5 min | 1 week | 30 days |
+| `max` | 5 min | 30 days | 1 year |
+
+Custom: `cacheLife({ stale: 60, revalidate: 300, expire: 3600 })` (seconds), or name a profile under
+`cacheLife` in `next.config.ts`. A `revalidate` of 0 or an `expire` under 5 min makes the entry
+a request-time hole instead of part of the prerender.
+
+### Invalidation
+
+| Call | Where | Semantics |
+| :--- | :---- | :-------- |
+| `updateTag(tag)` | Server Actions only | expire now; this response already shows fresh data (read-your-writes) |
+| `revalidateTag(tag, "max")` | actions, Route Handlers | stale-while-revalidate: next visit gets stale, refresh runs behind |
+| `revalidateTag(tag, { expire: 0 })` | actions, Route Handlers | expire now, e.g. from a webhook |
+| `revalidatePath("/blog/1")` | actions, Route Handlers | one literal path; for a pattern pass a type: `("/blog/[slug]", "page")`, `"layout"` for the subtree |
+| `refresh()` | Server Actions | re-render the current route without touching caches |
+
+All come from `next/cache`. Tags are case-sensitive, at most 256 chars. `fetch(url, { next: { tags } })`
+also tags a fetch.
+
+## Rendering
+
+At build time Next renders each route and keeps whatever finishes as the **static shell** (HTML plus
+RSC payload, served from the CDN). Holes inside `<Suspense>` stream in at request time. This is Partial
+Prerendering (PPR), the default under Cache Components.
+
+| Code in the tree | At prerender | Ends up |
+| :--------------- | :----------- | :------ |
+| Plain JSX, imports, sync `fs` reads, pure computation | runs | static shell |
+| `"use cache"` with a normal lifetime | runs | static shell, revalidated per `cacheLife` |
+| `cookies()`, `headers()`, `searchParams`, `connection()` | stops | streams behind `<Suspense>` |
+| Uncached `fetch`/DB query | stops | streams behind `<Suspense>` |
+| `Math.random()`, `Date.now()`, `crypto.randomUUID()` | error | call `await connection()` first, or cache it |
+| `params` listed by `generateStaticParams` | runs | concrete shell per param |
+| unknown `params` | stops | app shell now, filled in and cached on first visit (ISR) |
+
+Request-time data read **outside** a `<Suspense>` boundary is an error (dev overlay, then the build).
+Fix it by wrapping in `<Suspense>` (or adding `loading.tsx`), caching it, or moving the read deeper.
+
+```tsx title="app/shop/page.tsx"
+import { Suspense } from "react";
+import { cookies } from "next/headers";
+import { getPosts } from "@/lib/data";
+
+export default function Page() {
+  return (
+    <>
+      <h1>Shop</h1>                   {/* static */}
+      <Posts />                       {/* cached */}
+      <Suspense fallback={<p>…</p>}>
+        <Cart />                      {/* per request */}
+      </Suspense>
+    </>
+  );
+}
+
+async function Posts() {
+  const posts = await getPosts();
+  return (
+    <ul>
+      {posts.map((p) => <li key={p.id}>{p.title}</li>)}
+    </ul>
+  );
+}
+
+async function Cart() {
+  const id = (await cookies()).get("cart")?.value;
+  return <p>Cart {id ?? "empty"}</p>;
+}
+```
+
+| Request API | Import | Notes |
+| :---------- | :----- | :---- |
+| `await cookies()` | `next/headers` | `.get`, `.getAll`, `.has`; `.set`/`.delete` only in actions and Route Handlers |
+| `await headers()` | `next/headers` | read-only `Headers` |
+| `await draftMode()` | `next/headers` | `isEnabled`, `enable()`, `disable()` |
+| `await connection()` | `next/server` | "render per request from here on" |
+| `after(fn)` | `next/server` | run work after the response is sent (logging, analytics) |
+
+`export const instant = true` on a page or layout asks the dev overlay to flag anything that would
+block a client navigation into it. Bots get fully rendered HTML instead of the shell plus stream.
+
+## Mutations
+
+Server Functions are async functions marked `"use server"`. Pass one to `<form action>`,
+`<button formAction>`, or call it inside `startTransition`. Next sends it as a POST to the current
+page and returns the result plus the re-rendered route in one response.
+
+```ts title="app/posts/actions.ts"
+"use server";
+import { redirect } from "next/navigation";
+import { updateTag } from "next/cache";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+export async function deletePost(id: string) {
+  const session = await auth();          // always re-check
+  if (!session) throw new Error("Unauthorized");
+  await db.post.delete(id, session.userId);
+  updateTag("posts");                    // before redirect
+  redirect("/posts");                    // throws
+}
+```
+
+```tsx title="app/posts/delete-button.tsx"
+import { deletePost } from "./actions";
+
+export function DeleteButton({ id }: { id: string }) {
+  // bind extra args; FormData would come last
+  return (
+    <form action={deletePost.bind(null, id)}>
+      <button>Delete</button>
+    </form>
+  );
+}
+```
+
+| Hook | From | Gives |
+| :--- | :--- | :---- |
+| `useActionState(fn, init)` | `react` | `[state, formAction, pending]`; `fn(prev, formData)` |
+| `useFormStatus()` | `react-dom` | `pending`, `data` for the enclosing `<form>` |
+| `useOptimistic(state, reducer)` | `react` | temporary state while an action runs |
+| `useTransition()` | `react` | `startTransition(async () => await action())` outside forms |
+
+- Every action is a public endpoint: authenticate, authorize and validate (Zod) inside it.
+  `proxy.ts` coverage alone is not enough.
+- The client runs actions one at a time. For parallel work, do it inside one action.
+- Body limit is 1 MB (`experimental.serverActions.bodySizeLimit`). Origin is checked against Host
+  (`allowedOrigins` for proxies).
+- Return plain, minimal objects. Return values are serialized to the client.
+
+## Route handlers
+
+`route.ts` exports `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` using Web
+`Request`/`Response` (see [Fetch API](/typescript/web-apis/fetch-api/)). Other methods get a 405.
+
+```ts title="app/api/posts/[id]/route.ts"
+import type { NextRequest } from "next/server";
+import { getPost } from "@/lib/posts";
+
+export async function GET(
+  req: NextRequest,
+  ctx: RouteContext<"/api/posts/[id]">,
+) {
+  const { id } = await ctx.params;
+  const fields = req.nextUrl.searchParams.get("fields");
+  const post = await getPost(id);
+  if (!post) {
+    return Response.json({ error: "not found" }, {
+      status: 404,
+    });
+  }
+  return Response.json({ post, fields });
+}
+```
+
+| Detail | Behaviour |
+| :----- | :-------- |
+| `NextRequest` | adds `nextUrl` (parsed URL) and `cookies` to `Request` |
+| `NextResponse` | `NextResponse.json`, `.redirect`, `.rewrite`, `.next()`, `response.cookies.set` |
+| Caching (Cache Components) | `GET` is prerendered if it touches no request data or uncached I/O |
+| `"use cache"` | not allowed in the handler body; put it in a helper it calls |
+| Streaming | return `new Response(readableStream)` (see [Streaming](/typescript/backend/streaming/)) |
+| Segment config | `maxDuration`, `preferredRegion`; `dynamic`/`revalidate` exist only without Cache Components |
+
+Prefer a Server Function for mutations from your own UI, and a Route Handler for webhooks,
+public APIs, other clients and file downloads.
+
+## Proxy
+
+`proxy.ts` (was `middleware.ts`) sits next to `app/` and runs before routing, on the Node.js runtime.
+Use it for redirects, rewrites, headers, A/B buckets and cheap auth gates.
+
+```ts title="proxy.ts"
+import { NextResponse, type NextRequest } from "next/server";
+
+export function proxy(req: NextRequest) {
+  if (req.nextUrl.pathname === "/old") {
+    return NextResponse.redirect(new URL("/new", req.url));
+  }
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", req.nextUrl.pathname);
+  const res = NextResponse.next({ request: { headers } });
+  res.headers.set("x-frame-options", "DENY");
+  return res;
+}
+
+export const config = {
+  // skip static assets and images
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
+```
+
+| Return | Effect |
+| :----- | :----- |
+| nothing / `NextResponse.next()` | continue; can set request/response headers and cookies |
+| `NextResponse.redirect(url)` | 307 to another URL |
+| `NextResponse.rewrite(url)` | serve another route, keep the URL |
+| `Response.json(...)` / `new Response()` | answer directly |
+
+Order: `next.config` `headers` → `redirects` → proxy → `beforeFiles` rewrites → files and static
+routes → `afterFiles` → dynamic routes → `fallback`. Matchers must be string literals. Server Functions
+are POSTs to the page route, so a matcher that skips a page also skips its actions.
+
+## Metadata & SEO
+
+```tsx title="app/blog/[slug]/page.tsx"
+import type { Metadata } from "next";
+import { getPost } from "@/lib/posts";
+
+export async function generateMetadata(
+  props: PageProps<"/blog/[slug]">,
+): Promise<Metadata> {
+  const { slug } = await props.params;
+  const post = await getPost(slug);
+  return {
+    title: post?.title,          // fills the layout template
+    description: post?.excerpt,
+    alternates: { canonical: `/blog/${slug}` },
+    openGraph: { type: "article" },
+  };
+}
+```
+
+Export either `metadata` (static) or `generateMetadata`, from a layout or page, Server Components only.
+Set `metadataBase: new URL("https://acme.dev")` in the root layout so relative URLs resolve. Viewport
+and `themeColor` go in `export const viewport` / `generateViewport`.
+
+| File in a segment | Produces |
+| :---------------- | :------- |
+| `favicon.ico`, `icon.png`, `apple-icon.png` | icon `<link>` tags |
+| `icon.tsx`, `apple-icon.tsx` | generated icons (`ImageResponse`) |
+| `opengraph-image.png` / `.tsx`, `twitter-image.*` | `og:image` / `twitter:image` plus size and alt |
+| `sitemap.ts` (returns `MetadataRoute.Sitemap`) | `/sitemap.xml`; `generateSitemaps` to split |
+| `robots.ts` (returns `MetadataRoute.Robots`) | `/robots.txt` |
+| `manifest.ts` (returns `MetadataRoute.Manifest`) | `/manifest.webmanifest` |
+
+```ts title="app/sitemap.ts"
+import type { MetadataRoute } from "next";
+import { getSlugs } from "@/lib/posts";
+
+export default async function sitemap():
+  Promise<MetadataRoute.Sitemap> {
+  const slugs = await getSlugs();
+  return slugs.map((slug) => ({
+    url: `https://acme.dev/blog/${slug}`,
+    changeFrequency: "weekly",
+  }));
+}
+```
+
+## Images & fonts
+
+```tsx title="app/hero.tsx"
+import Image from "next/image";
+import hero from "./hero.jpg";  // static: size + blur
+
+export function Hero() {
+  return (
+    <>
+      <Image
+        src={hero}
+        alt="Team"
+        placeholder="blur"
+        preload
+      />
+      <div style={{ position: "relative", height: 240 }}>
+        <Image
+          src="https://cdn.acme.dev/a.png"
+          alt="Chart"
+          fill
+          sizes="(max-width: 768px) 100vw, 50vw"
+        />
+      </div>
+    </>
+  );
+}
+```
+
+| Prop | Notes |
+| :--- | :---- |
+| `src`, `alt` | required; remote URLs need `images.remotePatterns` |
+| `width`, `height` | required for remote images unless `fill` |
+| `fill` | stretches to the positioned parent; pair with `sizes` |
+| `sizes` | media list for `srcset`; without it the browser assumes `100vw` |
+| `preload` | preload the LCP image (replaces `priority` in 16) |
+| `quality` | must be listed in `images.qualities` (default `[75]`) |
+| `placeholder` | `"blur"` (auto for static imports; else `blurDataURL`), `"empty"` |
+| `unoptimized` | serve as-is |
+
+```tsx title="app/layout.tsx"
+import { Inter } from "next/font/google";
+import localFont from "next/font/local";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+const mono = localFont({
+  src: "./fonts/Mono.woff2",
+  variable: "--font-mono",
+});
+
+export default function RootLayout({
+  children,
+}: LayoutProps<"/">) {
+  const fonts = `${inter.variable} ${mono.variable}`;
+  return (
+    <html lang="en" className={fonts}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+`next/font` downloads Google fonts at build time and self-hosts them, with no request to Google at
+runtime. It also adds size-adjusted fallbacks to avoid layout shift. Options: `weight`, `style`,
+`subsets`, `display` (`"swap"` default), `variable`, `preload`, `fallback`.
+
+## Environment variables
+
+| Source (first match wins) | Loaded when |
+| :------------------------ | :---------- |
+| `process.env` (shell, platform) | always |
+| `.env.$(NODE_ENV).local` | always |
+| `.env.local` | not in `test` |
+| `.env.$(NODE_ENV)` | `development` / `production` / `test` |
+| `.env` | always |
+
+- Only `NEXT_PUBLIC_*` reach the browser, and they are **inlined at build time**. One Docker image
+  promoted across environments keeps the build-time values.
+- Server-only vars are read at runtime. Call `await connection()` first if a prerendered component
+  must see the runtime value.
+- Only literal `process.env.NEXT_PUBLIC_X` is replaced. `process.env[name]` and destructuring are not.
+- `$OTHER` inside `.env` values expands. Commit `.env` defaults, keep `*.local` out of git.
+- Outside Next (ORM configs, scripts): `import { loadEnvConfig } from "@next/env"`.
+
+```ts title="lib/env.ts"
+import "server-only";
+import { z } from "zod";
+
+export const env = z
+  .object({
+    DATABASE_URL: z.url(),
+    AUTH_SECRET: z.string().min(32),
+  })
+  .parse(process.env);
+```
+
+## next.config
+
+`next.config.ts` exports a `NextConfig` (or a function of `phase`).
+
+| Option | Does |
+| :----- | :--- |
+| `cacheComponents` | `"use cache"`, PPR, dynamic-by-default model |
+| `cacheLife` | custom named cache profiles |
+| `reactCompiler` | automatic memoization (needs `babel-plugin-react-compiler`) |
+| `typedRoutes` | type-check `<Link href>` and router paths |
+| `output` | `"standalone"` (minimal server bundle) or `"export"` (static HTML) |
+| `images` | `remotePatterns`, `localPatterns`, `qualities`, `formats`, `minimumCacheTTL` (4 h default) |
+| `redirects`, `rewrites`, `headers` | async functions returning rule arrays |
+| `basePath`, `assetPrefix`, `trailingSlash` | URL layout, CDN prefix |
+| `turbopack` | `rules` (loaders), `resolveAlias`, `root` |
+| `serverExternalPackages` | keep packages out of the server bundle (native deps) |
+| `transpilePackages` | compile workspace or ESM-only packages |
+| `experimental.serverActions` | `bodySizeLimit`, `allowedOrigins` |
+| `deploymentId` | version-skew protection across rolling deploys |
+| `cacheHandlers` | backends for `"use cache: remote"` |
+| `logging` | `fetches.fullUrl` and friends in dev |
+| `typescript.ignoreBuildErrors` | skip type errors in `next build` |
+| `poweredByHeader` | `false` removes `x-powered-by` |
+
+```ts title="next.config.ts"
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  typedRoutes: true,
+  output: "standalone",
+  images: {
+    remotePatterns: [new URL("https://cdn.acme.dev/**")],
+  },
+  async redirects() {
+    return [
+      { source: "/docs", destination: "/guide",
+        permanent: true },
+    ];
+  },
+};
+
+export default nextConfig;
+```
+
+## Deploying
+
+| Target | How | Supports |
+| :----- | :-- | :------- |
+| Vercel | push to Git or `vercel deploy` | everything, managed caching and CDN |
+| Node server | `next build && next start` | everything |
+| Docker | `output: "standalone"`, `node server.js` | everything (see Recipes) |
+| Static export | `output: "export"` → `out/` | no proxy, Server Functions, ISR or request-time rendering |
+| Adapters | `adapterPath`; verified: Vercel, Bun | varies; Cloudflare, Netlify ship their own |
+
+Self-hosting checklist:
+
+- Behind nginx, disable buffering (`X-Accel-Buffering: no`) or streaming and PPR stop working.
+- Several instances need the same `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (base64 AES key at build),
+  a `deploymentId`, and a shared `cacheHandlers` store if `"use cache"` must be consistent.
+- Standalone output skips `public/` and `.next/static`. Copy them in or serve them from a CDN.
+- `PORT` and `HOSTNAME=0.0.0.0` configure `server.js`. Cache Components needs the Node.js runtime.
+
+See [Dockerfile](/infrastructure/containers/dockerfile/) and [Docker](/infrastructure/containers/docker/).
+
+## Recipes
+
+### Server Action form with Zod and `useActionState`
+Use for any form that needs field errors and a pending state without client fetch code.
+
+```ts title="app/signup/actions.ts"
+"use server";
+import { z } from "zod";
+import { updateTag } from "next/cache";
+import { db } from "@/lib/db";
+
+const Signup = z.object({
+  email: z.email(), name: z.string().trim().min(2),
+});
+
+type Errors = { email?: string[]; name?: string[] };
+export type SignupState = { errors?: Errors; ok?: boolean };
+
+export async function signup(
+  _prev: SignupState,
+  form: FormData,
+): Promise<SignupState> {
+  const parsed = Signup.safeParse(Object.fromEntries(form));
+  if (!parsed.success) {
+    const { fieldErrors } = z.flattenError(parsed.error);
+    return { errors: fieldErrors };
+  }
+  await db.user.create(parsed.data);
+  updateTag("users");
+  return { ok: true };
+}
+```
+
+```tsx title="app/signup/form.tsx"
+"use client";
+import { useActionState } from "react";
+import { signup } from "./actions";
+
+export function SignupForm() {
+  const [state, action, pending] =
+    useActionState(signup, {});
+  return (
+    <form action={action}>
+      <input name="email" type="email" required />
+      <p aria-live="polite">{state.errors?.email?.[0]}</p>
+      <input name="name" required />
+      <p aria-live="polite">{state.errors?.name?.[0]}</p>
+      <button disabled={pending}>
+        {pending ? "Saving…" : "Sign up"}
+      </button>
+      {state.ok && <p>Welcome aboard.</p>}
+    </form>
+  );
+}
+```
+
+### Cached data with tag revalidation
+Use when data changes rarely and a CMS or webhook can tell you when.
+
+```ts title="lib/products.ts"
+import { cacheLife, cacheTag } from "next/cache";
+
+export type Product = { id: string; name: string };
+
+export async function getProduct(id: string) {
+  "use cache";
+  cacheLife("max");
+  cacheTag("products", `product:${id}`);
+  const res = await fetch(`https://api.acme.dev/p/${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as Product;
+}
+```
+
+```ts title="app/api/revalidate/route.ts"
+import { revalidateTag } from "next/cache";
+
+export async function POST(req: Request) {
+  const secret = req.headers.get("x-webhook-secret");
+  if (secret !== process.env.WEBHOOK_SECRET) {
+    return new Response(null, { status: 401 });
+  }
+  const { id } = (await req.json()) as { id: string };
+  revalidateTag(`product:${id}`, "max");  // SWR
+  return Response.json({ revalidated: id });
+}
+```
+
+### JSON API route handler
+Use for a small typed API consumed by other clients.
+
+```ts title="app/api/todos/route.ts"
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { db } from "@/lib/db";
+
+const NewTodo = z.object({ title: z.string().min(1) });
+
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams.get("q") ?? "";
+  const todos = await db.todo.search(q);
+  return Response.json({ data: todos });
+}
+
+export async function POST(req: NextRequest) {
+  const body: unknown = await req.json().catch(() => null);
+  const parsed = NewTodo.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: z.flattenError(parsed.error).fieldErrors },
+      { status: 400 },
+    );
+  }
+  const todo = await db.todo.create(parsed.data);
+  return Response.json({ data: todo }, { status: 201 });
+}
+```
+
+### Auth gate in proxy
+Use to bounce signed-out users early. Still verify the session in pages and actions.
+
+```ts title="proxy.ts"
+import { NextResponse, type NextRequest } from "next/server";
+
+const PUBLIC = ["/login", "/signup"];
+
+export function proxy(req: NextRequest) {
+  const { pathname, search } = req.nextUrl;
+  if (PUBLIC.some((p) => pathname.startsWith(p))) return;
+  if (req.cookies.has("session")) return;
+
+  const url = new URL("/login", req.url);
+  url.searchParams.set("next", pathname + search);
+  return NextResponse.redirect(url);
+}
+
+export const config = {
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+  ],
+};
+```
+
+### Dynamic Open Graph image
+Use to give every post a generated social card.
+
+```tsx title="app/blog/[slug]/opengraph-image.tsx"
+import { ImageResponse } from "next/og";
+import { getPost } from "@/lib/posts";
+
+export const size = { width: 1200, height: 630 };
+export const contentType = "image/png";
+export const alt = "Blog post";
+
+export default async function Image(props: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await props.params;
+  const post = await getPost(slug);
+  return new ImageResponse(
+    <div style={{
+      display: "flex", width: "100%", height: "100%",
+      alignItems: "center", padding: 80, fontSize: 72,
+      background: "#0b0b0f", color: "white",
+    }}>
+      {post?.title ?? "Acme blog"}
+    </div>,
+    size,
+  );
+}
+```
+
+### Standalone Docker image
+Use to self-host with a small image. Install with Bun, build and run on Node (Cache Components
+needs the Node runtime). Set `output: "standalone"` first.
+
+```dockerfile title="Dockerfile"
+FROM oven/bun:1-alpine AS deps
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npx next build
+
+FROM node:24-alpine AS run
+WORKDIR /app
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+COPY --from=build /app/public ./public
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node \
+  /app/.next/static ./.next/static
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+## References
+
+- [MDN: Response](https://developer.mozilla.org/en-US/docs/Web/API/Response): what Route Handlers and `proxy` return
+- [Next.js docs: App Router](https://nextjs.org/docs/app): also bundled in `node_modules/next/dist/docs/`
+- [Next.js: Upgrading to version 16](https://nextjs.org/docs/app/guides/upgrading/version-16): every breaking change
+- [Next.js: Caching](https://nextjs.org/docs/app/getting-started/caching): Cache Components, the static shell
+- [Next.js: `use cache`](https://nextjs.org/docs/app/api-reference/directives/use-cache): keys, constraints, runtime storage
+- [Next.js: `cacheLife`](https://nextjs.org/docs/app/api-reference/functions/cacheLife): profiles and prerender thresholds
+- [Next.js: Server Actions](https://nextjs.org/docs/app/guides/server-actions): security model, dispatch, config
+- [Next.js: `proxy.js`](https://nextjs.org/docs/app/api-reference/file-conventions/proxy): matcher syntax and execution order
+- [Next.js: Self-hosting](https://nextjs.org/docs/app/guides/self-hosting): caching, encryption key, streaming behind proxies
+- [React: Server Components](https://react.dev/reference/rsc/server-components): the underlying model
+- [React: `useActionState`](https://react.dev/reference/react/useActionState)
+- [Next.js examples: with-docker](https://github.com/vercel/next.js/tree/canary/examples/with-docker)

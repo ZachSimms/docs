@@ -1,0 +1,615 @@
+---
+title: WebCodecs
+date: 2026-09-25
+order: 14
+---
+
+Direct access to the browser's (often hardware) audio, video and image codecs: `VideoEncoder`,
+`VideoDecoder`, `AudioEncoder`, `AudioDecoder`, `ImageDecoder` and the frame and chunk objects they
+exchange. WebCodecs does no containers, so muxing examples use [Mediabunny](https://mediabunny.dev/)
+1.x. Capture comes from [Media devices](/typescript/web-apis/media-devices/).
+
+## When to use it
+
+| You want to… | Use |
+| :----------- | :-- |
+| play a file or stream | `<video>` (+ Media Source Extensions for adaptive streaming) |
+| record a camera or screen to a file | `MediaRecorder`; one call, no frame access |
+| send live video to peers | WebRTC; it owns encoding, jitter buffers and congestion control |
+| encode canvas / WebGL / WebGPU output to MP4 or WebM | **WebCodecs** + a muxer |
+| edit, trim, transcode or thumbnail files in the browser | **WebCodecs** + a demuxer/muxer |
+| frame-accurate seeking, per-frame processing, ML on frames | **WebCodecs** (`VideoFrame`) |
+| custom low-latency streaming over WebTransport or WebSocket | **WebCodecs** (`latencyMode: "realtime"`) |
+| decode GIF/APNG/WebP frames one by one | `ImageDecoder` |
+
+```text
+ encode:  canvas / camera / pixels
+            └─► VideoFrame ─► VideoEncoder ─► EncodedVideoChunk
+                                                  └─► muxer ─► .mp4 / .webm
+
+ decode:  .mp4 / .webm ─► demuxer ─► EncodedVideoChunk
+            └─► VideoDecoder ─► VideoFrame ─► canvas / WebGL / WebGPU
+```
+
+## Support & TypeScript
+
+| API | Chrome / Edge | Firefox | Safari | Status |
+| :-- | :------------ | :------ | :----- | :----- |
+| `VideoEncoder`, `VideoDecoder`, `EncodedVideoChunk` | 94 | 130 (desktop only) | 16.4 | not Baseline: no Firefox Android |
+| `VideoFrame` | 94 | 130 (Android too) | 16.4 | all engines |
+| `AudioEncoder`, `AudioDecoder` | 94 | 130 (desktop only) | 26 | not Baseline |
+| `ImageDecoder` | 94 | 133 | not shipped | not Baseline |
+| `MediaStreamTrackProcessor` | 94, on `Window` only | no | 18, in workers | not Baseline |
+
+WebCodecs needs a **secure context** and is exposed on `Window` and dedicated workers. Actual codec
+support varies by OS and GPU, so always check with `isConfigSupported()`.
+
+- `lib.dom` includes every WebCodecs type: `VideoEncoderConfig`, `VideoDecoderConfig`,
+  `EncodedVideoChunkMetadata`, `VideoFrameInit`, `ImageDecoder`, `AudioData`.
+- `EncodedVideoChunkMetadata` in TS 5.9 only has `decoderConfig`; `svc` and `alphaSideData` are
+  missing.
+- `MediaStreamTrackProcessor` / `VideoTrackGenerator` are not in `lib.dom`; declare them.
+- Worker files need `"lib": ["es2024", "webworker"]`, which conflicts with `dom`: give workers their
+  own `tsconfig.json` (see [Web workers](/typescript/web-apis/web-workers/)).
+- All timestamps and durations are **microseconds** (`number`), not milliseconds.
+
+## Encoders & decoders
+
+All four share one state machine and API shape.
+
+| Member | Notes |
+| :----- | :---- |
+| `new VideoEncoder({ output, error })` | `output(chunk, metadata?)` for encoders, `output(frame)` for decoders |
+| `configure(config)` | `state` goes `"unconfigured"` to `"configured"`; call again to reconfigure |
+| `encode(frame, { keyFrame })` / `decode(chunk)` | queue work; returns immediately |
+| `encodeQueueSize` / `decodeQueueSize` | pending items; use for backpressure |
+| `dequeue` event | the queue shrank; wait on it instead of polling |
+| `flush()` | `Promise` that resolves once every queued item is output |
+| `reset()` | drop queued work, back to `"unconfigured"` |
+| `close()` | release the codec; `state` is `"closed"` for good |
+| `isConfigSupported(config)` | static; `{ supported, config }` |
+| `error` callback | fires once, then the codec is closed; create a new one to recover |
+
+### VideoEncoder
+
+```ts
+const encoder = new VideoEncoder({
+  output(chunk, meta) {
+    // meta.decoderConfig arrives with the first keyframe
+    // (and after each reconfigure): hand both to a muxer
+  },
+  error: (e) => console.error("encode failed", e),
+});
+
+encoder.configure({
+  codec: "avc1.42001f", // H.264 Baseline, level 3.1
+  width: 1280,
+  height: 720,
+  bitrate: 2_500_000, // bits per second
+  framerate: 30,
+  latencyMode: "quality", // "realtime" for live streams
+  hardwareAcceleration: "no-preference",
+  avc: { format: "avc" }, // "annexb" for raw streams
+});
+
+encoder.encode(frame, { keyFrame: true }); // then close it
+frame.close();
+await encoder.flush();
+
+declare const frame: VideoFrame;
+```
+
+| `VideoEncoderConfig` | Values | Notes |
+| :------------------- | :----- | :---- |
+| `codec` | codec string | see [Codec strings](#codec-strings) |
+| `width`, `height` | pixels | frames are scaled to this |
+| `bitrate` | bits/s | target, meaning depends on `bitrateMode` |
+| `bitrateMode` | `"variable"`, `"constant"`, `"quantizer"` | `quantizer`: pass `encode(f, { av1: { quantizer: 30 } })` per frame |
+| `framerate` | fps | a hint for rate control |
+| `latencyMode` | `"quality"`, `"realtime"` | realtime may drop frames to keep up |
+| `hardwareAcceleration` | `"no-preference"`, `"prefer-hardware"`, `"prefer-software"` | a preference, not a guarantee |
+| `scalabilityMode` | `"L1T2"`, `"L1T3"`, … | temporal SVC (VP8/VP9/AV1) |
+| `alpha` | `"discard"`, `"keep"` | `keep` needs a codec with alpha (VP9 in WebM) |
+| `avc.format` | `"avc"`, `"annexb"` | `avc` for MP4 (config in `description`); `annexb` for raw H.264 |
+
+### VideoDecoder
+
+```ts
+const decoder = new VideoDecoder({
+  output(frame) {
+    ctx.drawImage(frame, 0, 0);
+    frame.close(); // every frame, every time
+  },
+  error: (e) => console.error("decode failed", e),
+});
+
+decoder.configure({
+  codec: "avc1.64001f",
+  codedWidth: 1920,
+  codedHeight: 1080,
+  description: avcC, // from the MP4 avcC box / demuxer
+  optimizeForLatency: false,
+});
+
+decoder.decode(
+  new EncodedVideoChunk({
+    type: "key", // decoding must start on a keyframe
+    timestamp: 0, // microseconds
+    data: bytes,
+  }),
+);
+await decoder.flush();
+
+declare const ctx: CanvasRenderingContext2D;
+declare const avcC: Uint8Array;
+declare const bytes: Uint8Array;
+```
+
+### Audio
+
+```ts
+const audioEncoder = new AudioEncoder({
+  output: (chunk, meta) => mux(chunk, meta),
+  error: (e) => console.error(e),
+});
+audioEncoder.configure({
+  codec: "opus",
+  sampleRate: 48_000,
+  numberOfChannels: 2,
+  bitrate: 128_000,
+});
+
+const pcm = new Float32Array(2 * 960); // 20 ms, planar
+const data = new AudioData({
+  format: "f32-planar", // "s16", "f32", "u8", "*-planar"
+  sampleRate: 48_000,
+  numberOfChannels: 2,
+  numberOfFrames: 960,
+  timestamp: 0,
+  data: pcm,
+});
+audioEncoder.encode(data);
+data.close();
+
+declare function mux(
+  c: EncodedAudioChunk, m?: EncodedAudioChunkMetadata,
+): void;
+```
+
+## Frames & chunks
+
+| Object | Holds | Key members |
+| :----- | :---- | :---------- |
+| `VideoFrame` | one decoded picture (GPU or CPU memory) | `timestamp`, `duration`, `format`, `codedWidth`/`Height`, `displayWidth`/`Height`, `visibleRect`, `colorSpace`, `copyTo()`, `clone()`, `close()` |
+| `AudioData` | a block of PCM samples | `format`, `sampleRate`, `numberOfFrames`, `numberOfChannels`, `copyTo()`, `close()` |
+| `EncodedVideoChunk` | one compressed frame | `type` (`"key"`/`"delta"`), `timestamp`, `duration`, `byteLength`, `copyTo()` |
+| `EncodedAudioChunk` | one compressed audio packet | same shape as the video chunk |
+| `VideoColorSpace` | primaries, transfer, matrix, full range | `toJSON()` |
+
+```ts
+// from anything drawable: canvas, OffscreenCanvas,
+// ImageBitmap, <video>, <img>, another VideoFrame
+const a = new VideoFrame(canvas, { timestamp: 0 });
+
+// from raw pixels
+const rgba = new Uint8Array(640 * 480 * 4);
+const b = new VideoFrame(rgba, {
+  format: "RGBA", // I420, NV12, RGBX, BGRA, …
+  codedWidth: 640,
+  codedHeight: 480,
+  timestamp: 33_333, // µs
+});
+
+// back to bytes (pixel format stays frame.format)
+const out = new Uint8Array(b.allocationSize());
+await b.copyTo(out);
+a.close();
+b.close();
+
+declare const canvas: HTMLCanvasElement;
+```
+
+`VideoFrame` is a `CanvasImageSource` (`drawImage`), a WebGL `texImage2D` source, and a WebGPU
+`importExternalTexture` source; see [WebGPU](/typescript/web-apis/webgpu/).
+
+## Codec strings
+
+A codec string names codec, profile and level; a plain `"h264"` or `"av1"` is rejected. Pick
+the level for your resolution and frame rate.
+
+| Codec string | Codec | Means | Containers |
+| :----------- | :---- | :---- | :--------- |
+| `avc1.42001f` | H.264 | Baseline, level 3.1 (720p30) | MP4 |
+| `avc1.4d0028` | H.264 | Main, level 4.0 (1080p30) | MP4 |
+| `avc1.640028` | H.264 | High, level 4.0 (1080p30) | MP4 |
+| `hvc1.1.6.L93.B0` | H.265 | Main, level 3.1; hardware-only in most browsers | MP4 |
+| `vp8` | VP8 | no profile | WebM |
+| `vp09.00.10.08` | VP9 | profile 0, level 1.0, 8-bit; use `vp09.00.40.08` for 1080p | WebM, MP4 |
+| `av01.0.04M.08` | AV1 | Main profile, level 3.0, Main tier, 8-bit; `av01.0.08M.08` for 1080p | WebM, MP4 |
+| `opus` | Opus | 48 kHz native; the safest audio encoder | WebM, MP4, Ogg |
+| `mp4a.40.2` | AAC-LC | encoding depends on the OS | MP4 |
+| `flac`, `mp3`, `vorbis` | lossless / legacy | mostly decode-only | varies |
+| `pcm-s16`, `pcm-f32`, `ulaw`, `alaw` | raw PCM / G.711 | uncompressed or telephony | WAV |
+
+`avc1.PPCCLL` is hex: profile (`42` Baseline, `4d` Main, `64` High), constraint flags, level ×10
+(`1f` = 3.1, `28` = 4.0, `33` = 5.1).
+
+```ts
+const { supported, config } =
+  await VideoEncoder.isConfigSupported({
+    codec: "av01.0.08M.08",
+    width: 1920,
+    height: 1080,
+    bitrate: 4_000_000,
+    framerate: 30,
+    hardwareAcceleration: "prefer-hardware",
+  });
+// resolves { supported: false } for unknown combinations;
+// rejects with TypeError only for malformed configs
+```
+
+## Frame lifetime
+
+Decoders and cameras hand out frames from a small pool of GPU buffers. A frame you forget to
+close keeps its buffer until garbage collection, and the decoder or camera **stalls** once the
+pool is empty.
+
+| Rule | Why |
+| :--- | :-- |
+| `close()` every `VideoFrame` and `AudioData` as soon as you are done | frees GPU/decoder memory now, not at GC |
+| `encoder.encode(frame)` does not take ownership | close your frame right after `encode()` |
+| need it twice? `frame.clone()` and close both | clones share the buffer, ref-counted |
+| transfer to a worker with `postMessage(frame, [frame])` | the sender's copy is closed; no copy made |
+| don't keep frames in arrays "for later" | copy pixels out (`copyTo`, `drawImage`) and close |
+| closed frame access throws `InvalidStateError` | a sign of a double close or use-after-close |
+
+Chrome logs "A VideoFrame was garbage collected without being closed" when you leak.
+
+## Containers & muxing
+
+WebCodecs outputs bare chunks; a file needs a container around them.
+
+| Library | Does | Status |
+| :------ | :--- | :----- |
+| [Mediabunny](https://mediabunny.dev/) | read + write MP4, MOV, WebM, MKV, MP3, WAV, Ogg, MPEG-TS, HLS; wraps WebCodecs; tree-shakable | active; the successor of both muxers below |
+| `mp4-muxer`, `webm-muxer` | MP4 / WebM writing only | deprecated in favour of Mediabunny |
+| [mp4box.js](https://github.com/gpac/mp4box.js) | MP4 demuxing / fragmenting (GPAC) | active, lower-level |
+| `ffmpeg.wasm` | everything, in software | large download, slow; last resort |
+
+```sh
+bun add mediabunny   # npm i mediabunny / pnpm add mediabunny
+```
+
+```ts
+import {
+  ALL_FORMATS, BlobSource, BufferTarget, Input,
+  Mp4OutputFormat, Output, Conversion,
+} from "mediabunny";
+
+// transcode/remux any input file to MP4 in a few lines
+export async function toMp4(file: File): Promise<Blob> {
+  const input = new Input({
+    source: new BlobSource(file),
+    formats: ALL_FORMATS,
+  });
+  const output = new Output({
+    format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+    target: new BufferTarget(),
+  });
+  const job = await Conversion.init({ input, output });
+  await job.execute();
+  return new Blob([output.target.buffer!], {
+    type: "video/mp4",
+  });
+}
+```
+
+- **MP4 + H.264** needs `avc.format: "avc"` so the encoder emits the `avcC` box as
+  `metadata.decoderConfig.description`; the muxer writes it.
+- **Pass the first chunk's `metadata`** to the muxer; it carries the decoder config.
+- **Fast start:** put the `moov` box first (`fastStart: "in-memory"`) so the file plays while
+  downloading.
+- **Timestamps:** start at `0` and increase monotonically in microseconds.
+
+### Wiring a VideoEncoder to a muxer
+
+Mediabunny's `CanvasSource` and `VideoSampleSource` drive `VideoEncoder` for you. To keep your own
+encoder, feed its chunks to an `EncodedVideoPacketSource`, in output order:
+
+```ts
+import {
+  BufferTarget, EncodedPacket, EncodedVideoPacketSource,
+  Mp4OutputFormat, Output,
+} from "mediabunny";
+
+const target = new BufferTarget();
+const output = new Output({
+  format: new Mp4OutputFormat(),
+  target,
+});
+const source = new EncodedVideoPacketSource("avc");
+output.addVideoTrack(source, { frameRate: 30 });
+await output.start();
+
+let muxing = Promise.resolve(); // keeps packets in order
+const encoder = new VideoEncoder({
+  output(chunk, meta) {
+    const packet = EncodedPacket.fromEncodedChunk(chunk);
+    muxing = muxing.then(() => source.add(packet, meta));
+  },
+  error: (e) => console.error("encode failed", e),
+});
+encoder.configure({
+  codec: "avc1.640028",
+  width: 1920,
+  height: 1080,
+  bitrate: 5e6,
+});
+// ... encoder.encode(frame) for each frame, close frames
+await encoder.flush();
+await muxing;
+await output.finalize();
+const mp4 = new Blob([target.buffer!], {
+  type: "video/mp4",
+});
+```
+
+## ImageDecoder
+
+Decodes still and animated images (GIF, APNG, WebP, AVIF, JPEG, PNG) into `VideoFrame`s with
+per-frame control. Chromium and Firefox only; use `createImageBitmap()` elsewhere.
+
+```ts
+const type = "image/gif";
+if (await ImageDecoder.isTypeSupported(type)) {
+  const res = await fetch("/party.gif");
+  const decoder = new ImageDecoder({
+    data: res.body!, // stream, ArrayBuffer or TypedArray
+    type,
+  });
+  await decoder.tracks.ready;
+  const track = decoder.tracks.selectedTrack;
+  const count = track?.frameCount ?? 1; // grows if streaming
+  for (let i = 0; i < count; i++) {
+    const { image } = await decoder.decode({
+      frameIndex: i,
+    });
+    // image is a VideoFrame: draw it, then close it
+    image.close();
+  }
+  decoder.close();
+}
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `decode({ frameIndex, completeFramesOnly })` | `{ image: VideoFrame, complete }` |
+| `tracks.selectedTrack` | `frameCount`, `animated`, `repetitionCount` (`Infinity` = loop) |
+| `completed` | `Promise` resolving when all bytes have arrived |
+| `desiredWidth` / `desiredHeight` | decode size, honoured for scalable formats (e.g. SVG) |
+| `preferAnimation` | pick the animated track when a file has several |
+
+## Workers & OffscreenCanvas
+
+Encoding and decoding already run off-thread, but the callbacks, drawing and muxing run on the
+thread that owns the codec. Move the whole pipeline to a worker to keep the page smooth.
+
+```ts title="main.ts"
+const canvas = document.querySelector("canvas")!;
+const offscreen = canvas.transferControlToOffscreen();
+const worker = new Worker(
+  new URL("./decode.worker.ts", import.meta.url),
+  { type: "module" },
+);
+worker.postMessage({ canvas: offscreen, file }, [offscreen]);
+
+declare const file: File;
+```
+
+```ts title="decode.worker.ts"
+type Job = { canvas: OffscreenCanvas; file: File };
+
+self.onmessage = (e: MessageEvent<Job>) => {
+  const ctx = e.data.canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  const decoder = new VideoDecoder({
+    output(frame) {
+      ctx.drawImage(frame, 0, 0);
+      frame.close();
+    },
+    error: (err) => self.postMessage({ error: err.message }),
+  });
+  // demux e.data.file, configure, decode (see recipes)
+};
+```
+
+### Live camera frames
+
+`MediaStreamTrackProcessor` turns a track into a `ReadableStream<VideoFrame>`. Chromium exposes it
+on `Window` (transfer the `readable` to a worker); Safari 18+ only in workers (transfer the track).
+
+```ts
+declare class MediaStreamTrackProcessor {
+  constructor(init: { track: MediaStreamTrack });
+  readonly readable: ReadableStream<VideoFrame>;
+}
+
+async function encodeTrack(
+  track: MediaStreamTrack,
+  encoder: VideoEncoder,
+) {
+  const reader = new MediaStreamTrackProcessor({ track })
+    .readable.getReader();
+  for (let n = 0; ; n++) {
+    const { value: frame, done } = await reader.read();
+    if (done) break;
+    if (encoder.encodeQueueSize > 2) {
+      frame.close(); // drop frames instead of lagging
+      continue;
+    }
+    encoder.encode(frame, { keyFrame: n % 150 === 0 });
+    frame.close();
+  }
+}
+```
+
+## Performance
+
+| Lever | Effect |
+| :---- | :----- |
+| `hardwareAcceleration: "prefer-hardware"` | much faster, fewer options; check `isConfigSupported` |
+| `latencyMode: "realtime"` | no lookahead, may drop frames; for live use |
+| Backpressure on `encodeQueueSize` / `decodeQueueSize` | keeps memory flat; wait for `dequeue` |
+| Keyframe interval (every 1–5 s) | seeking and recovery vs file size |
+| Stay on the GPU | draw frames with `drawImage` / WebGL / WebGPU; avoid `copyTo` readbacks |
+| Reuse one codec | `configure()` is expensive; reconfigure only on size or codec change |
+| Worker + `OffscreenCanvas` | main thread free for UI |
+| `optimizeForLatency: true` (decoder) | output frames as soon as possible, less buffering |
+
+## Pitfalls
+
+- **Microseconds:** `timestamp: performance.now()` gives milliseconds; multiply by 1000.
+- **Leaked frames** stall decoders and cameras silently; close in `finally` blocks.
+- **First chunk must be a keyframe** after `configure()` or `flush()`; otherwise the decoder errors.
+- **`flush()` before `close()`**, or pending output is dropped.
+- **An error closes the codec**; recreate it instead of calling `configure()` again.
+- **Odd dimensions:** many H.264 encoders need even `width`/`height`; round down to a multiple of 2.
+- **`isConfigSupported()` true, `configure()` fails later:** hardware encoders can still reject at
+  runtime (session limits on mobile); handle `error` and fall back to software.
+- **No container, no playback:** raw chunks are not a file; mux them.
+- **Safari:** no `ImageDecoder`, audio codecs only from Safari 26; test there early.
+
+## Recipes
+
+### Encode canvas frames to MP4 or WebM
+
+Render an animation frame by frame (faster or slower than real time) and get a video `Blob`.
+
+```ts
+import {
+  BufferTarget, CanvasSource, Mp4OutputFormat, Output,
+  QUALITY_HIGH, WebMOutputFormat,
+} from "mediabunny";
+export async function renderVideo(
+  canvas: HTMLCanvasElement | OffscreenCanvas, n: number,
+  draw: (i: number) => void | Promise<void>,
+  { fps = 30, webm = false } = {},
+): Promise<Blob> {
+  const target = new BufferTarget();
+  const output = new Output({ target, format: webm
+    ? new WebMOutputFormat() : new Mp4OutputFormat() });
+  const source = new CanvasSource(canvas, {
+    codec: webm ? "vp9" : "avc", quality: QUALITY_HIGH,
+  });
+  output.addVideoTrack(source, { frameRate: fps });
+  await output.start();
+  for (let i = 0; i < n; i++) {
+    await draw(i);
+    await source.add(i / fps, 1 / fps); // seconds, not µs
+  }
+  await output.finalize();
+  const type = webm ? "video/webm" : "video/mp4";
+  return new Blob([target.buffer!], { type });
+}
+```
+
+`CanvasSource` wraps `new VideoFrame(canvas)` + `VideoEncoder` and respects backpressure; see
+[Wiring a VideoEncoder to a muxer](#wiring-a-videoencoder-to-a-muxer) for the manual version.
+
+### Decode and draw frames
+
+Demux with Mediabunny, decode with `VideoDecoder`, and draw every frame as fast as it decodes
+(scrubbing previews, frame analysis).
+
+```ts
+import * as mb from "mediabunny";
+export async function drawAll(
+  file: File, canvas: HTMLCanvasElement,
+) {
+  const input = new mb.Input({
+    source: new mb.BlobSource(file), formats: mb.ALL_FORMATS,
+  });
+  const track = await input.getPrimaryVideoTrack();
+  const config = await track?.getDecoderConfig();
+  if (!track || !config) throw new Error("no video track");
+  const ctx = canvas.getContext("2d")!;
+  const decoder = new VideoDecoder({
+    output: (f) => { ctx.drawImage(f, 0, 0); f.close(); },
+    error: (e) => console.error(e),
+  });
+  decoder.configure(config);
+  const sink = new mb.EncodedPacketSink(track);
+  for await (const packet of sink.packets()) {
+    while (decoder.decodeQueueSize > 8)
+      await new Promise((r) => (decoder.ondequeue = r));
+    decoder.decode(packet.toEncodedVideoChunk());
+  }
+  await decoder.flush();
+  decoder.close();
+}
+```
+
+### Thumbnail with ImageDecoder
+
+First frame of any image (animated GIF, AVIF, huge JPEG) as a small JPEG, with a fallback.
+
+```ts
+export async function thumbnail(file: File, maxW = 320) {
+  const { type } = file;
+  let src: VideoFrame | ImageBitmap;
+  let dec: ImageDecoder | undefined;
+  if ("ImageDecoder" in globalThis &&
+      (await ImageDecoder.isTypeSupported(type))) {
+    dec = new ImageDecoder({ data: file.stream(), type });
+    src = (await dec.decode({ frameIndex: 0 })).image;
+  } else {
+    src = await createImageBitmap(file); // Safari path
+  }
+  const [w0, h0] = src instanceof ImageBitmap
+    ? [src.width, src.height]
+    : [src.displayWidth, src.displayHeight];
+  const k = Math.min(1, maxW / w0);
+  const w = Math.round(w0 * k), h = Math.round(h0 * k);
+  const canvas = new OffscreenCanvas(w, h);
+  canvas.getContext("2d")!.drawImage(src, 0, 0, w, h);
+  src.close();
+  dec?.close();
+  return canvas.convertToBlob({ type: "image/jpeg" });
+}
+```
+
+### Feature detection
+
+Find which encoders this device really has before offering format choices.
+
+```ts
+const CANDIDATES = {
+  av1: "av01.0.08M.08",
+  vp9: "vp09.00.40.08",
+  h264: "avc1.640028",
+  vp8: "vp8",
+} as const;
+type Name = keyof typeof CANDIDATES;
+
+export async function videoEncoders(
+  width = 1920, height = 1080,
+): Promise<Name[]> {
+  if (typeof VideoEncoder === "undefined") return [];
+  const names = Object.keys(CANDIDATES) as Name[];
+  const ok = await Promise.all(names.map((name) =>
+    VideoEncoder.isConfigSupported({
+      codec: CANDIDATES[name], width, height,
+      bitrate: 5_000_000, framerate: 30,
+    }).then((r) => r.supported === true, () => false)));
+  return names.filter((_, i) => ok[i]);
+}
+```
+
+## References
+
+- MDN: [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API), [`VideoEncoder`](https://developer.mozilla.org/en-US/docs/Web/API/VideoEncoder), [`VideoDecoder`](https://developer.mozilla.org/en-US/docs/Web/API/VideoDecoder), [`VideoFrame`](https://developer.mozilla.org/en-US/docs/Web/API/VideoFrame), [`ImageDecoder`](https://developer.mozilla.org/en-US/docs/Web/API/ImageDecoder): API shape and support
+- MDN: [Codecs parameter in common media types](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/codecs_parameter): how `avc1`, `vp09`, `av01` strings are built
+- W3C: [WebCodecs](https://www.w3.org/TR/webcodecs/), [WebCodecs Codec Registry](https://www.w3.org/TR/webcodecs-codec-registry/), [MediaStreamTrack Insertable Media Processing](https://w3c.github.io/mediacapture-transform/)
+- Chrome for Developers: [Video processing with WebCodecs](https://developer.chrome.com/docs/web-platform/best-practices/webcodecs)
+- [Mediabunny docs](https://mediabunny.dev/guide/introduction): muxing, demuxing and conversion on top of WebCodecs
+- [w3c/webcodecs samples](https://w3c.github.io/webcodecs/samples/): encode/decode, capture-to-file and audio demos

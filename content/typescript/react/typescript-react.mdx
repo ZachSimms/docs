@@ -1,0 +1,918 @@
+---
+title: TypeScript & React
+date: 2026-09-25
+order: 3
+---
+
+Typing React 19 components with `@types/react` 19: props, hooks, events, refs, generics, context,
+form actions and Server Components, plus the type names you reach for daily. Plain DOM forms are in
+[Forms](/typescript/frontend/forms/).
+
+## Setup
+
+<Tabs items={["bun", "npm"]} persist="pm">
+  <Tab>
+
+    ```bash
+    bun add react react-dom
+    bun add -d typescript @types/react @types/react-dom
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```bash
+    npm install react react-dom
+    npm install -D typescript @types/react @types/react-dom
+    ```
+
+  </Tab>
+</Tabs>
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
+    "noEmit": true
+  }
+}
+```
+
+| `jsx`          | Emits                                     | Use when                                 |
+| :------------- | :---------------------------------------- | :--------------------------------------- |
+| `react-jsx`    | `_jsx()` calls from `react/jsx-runtime`   | default; no `import React` needed        |
+| `react-jsxdev` | dev variant with source info              | dev builds only                          |
+| `preserve`     | JSX untouched in `.jsx` output            | another tool (Babel, SWC) compiles JSX   |
+| `react`        | `React.createElement()`                   | legacy classic runtime                   |
+
+### What changed in the React 19 types
+
+| Area                    | Before (18)                                  | React 19                                          |
+| :---------------------- | :------------------------------------------- | :------------------------------------------------ |
+| JSX namespace           | global `JSX.Element`                         | `React.JSX.Element`, or `import type { JSX } from "react"` |
+| `useRef`                | `useRef<T>()` allowed                        | argument required: `useRef<T>(null)`, `useRef<T>(undefined)` |
+| Ref objects             | `RefObject` read-only, `MutableRefObject`    | one `RefObject<T>` with mutable `current`; `MutableRefObject` deprecated |
+| `ref` on function components | needed `forwardRef`                     | ordinary prop; `forwardRef` still works           |
+| Callback refs           | any return value ignored                     | may return a cleanup function; other returns are errors |
+| `ReactElement` props    | `any`                                        | `unknown`                                         |
+| `propTypes`, `defaultProps` on functions | supported                   | removed; use default parameters                   |
+| Submit/change events    | `FormEvent`                                  | `FormEvent` deprecated in `@types/react` 19.2: use `SubmitEvent`, `ChangeEvent` |
+
+```bash
+npx types-react-codemod@latest preset-19 ./src
+```
+
+## Typing props
+
+### Interface or type
+
+```tsx
+import type { ReactNode } from "react";
+
+interface CardProps {
+  title: string;
+  tone?: "neutral" | "danger";
+  onClose?: () => void;
+  children?: ReactNode;
+}
+
+export function Card({
+  title,
+  tone = "neutral", // default via destructuring
+  onClose,
+  children,
+}: CardProps) {
+  return (
+    <section data-tone={tone}>
+      <h2>{title}</h2>
+      {children}
+      {onClose && <button onClick={onClose}>Close</button>}
+    </section>
+  );
+}
+```
+
+|                            | `interface`                   | `type`                              |
+| :------------------------- | :---------------------------- | :---------------------------------- |
+| Object props               | yes                           | yes                                 |
+| Unions / discriminated props | no                          | yes                                 |
+| Extend                     | `extends`, clearer errors     | `&` intersections                   |
+| Declaration merging        | yes (rarely wanted for props) | no                                  |
+
+Pick one per codebase; `type` is forced as soon as props are a union.
+
+### `children`
+
+| Type                            | Accepts                                              |
+| :------------------------------ | :--------------------------------------------------- |
+| `ReactNode`                     | anything renderable: elements, strings, numbers, arrays, `null`, `undefined`, `boolean` |
+| `ReactElement`                  | exactly one element (for `cloneElement`-style APIs)  |
+| `string`                        | text only                                            |
+| `(value: T) => ReactNode`       | render prop                                          |
+| `PropsWithChildren<P>`          | adds `children?: ReactNode` to `P`                   |
+
+### Native element props
+
+```tsx
+import type { ComponentProps } from "react";
+
+type ButtonProps = ComponentProps<"button"> & {
+  variant?: "primary" | "ghost";
+};
+
+export function Button({
+  variant = "primary",
+  className = "",
+  type = "button",
+  ...rest
+}: ButtonProps) {
+  const cls = `btn btn-${variant} ${className}`;
+  return <button type={type} className={cls} {...rest} />;
+}
+```
+
+| Helper                                | Gives                                               |
+| :------------------------------------ | :-------------------------------------------------- |
+| `ComponentProps<"input">`             | all props of `<input>`, including `ref` in React 19 |
+| `ComponentPropsWithoutRef<"input">`   | same without `ref`                                  |
+| `ComponentPropsWithRef<typeof Foo>`   | props of a component, `ref` normalized              |
+| `ComponentProps<typeof Foo>`          | props of your own component                         |
+| `HTMLAttributes<HTMLDivElement>`      | older style; misses element-specific props          |
+
+### `Omit` to override a native prop
+
+```tsx
+import type { ComponentProps } from "react";
+
+type TextFieldProps = Omit<
+  ComponentProps<"input">,
+  "value" | "onChange"
+> & {
+  value: string;
+  onChange: (value: string) => void; // string, not event
+};
+
+export function TextField({
+  onChange,
+  ...rest
+}: TextFieldProps) {
+  return (
+    <input
+      {...rest}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+```
+
+Intersecting without `Omit` merges the two `onChange` types into an overload nobody can satisfy.
+
+## Hooks
+
+### `useState`
+
+```tsx
+const [count, setCount] = useState(0); // number
+const [user, setUser] = useState<User | null>(null);
+// not never[]
+const [tags, setTags] = useState<string[]>([]);
+const [status, setStatus] =
+  useState<"idle" | "saving" | "done">("idle");
+
+// lazy initializer: runs once
+const [rows] = useState(() => parseCsv(initialCsv));
+
+setCount((c) => c + 1); // functional update
+setTags((prev) => [...prev, "new"]); // never mutate prev
+```
+
+### `useReducer` with discriminated-union actions
+
+```tsx
+type State =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; items: string[] }
+  | { status: "error"; message: string };
+
+type Action =
+  | { type: "fetch" }
+  | { type: "resolve"; items: string[] }
+  | { type: "reject"; message: string };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case "fetch":
+      return { status: "loading" };
+    case "resolve":
+      return { status: "done", items: action.items };
+    case "reject":
+      return { status: "error", message: action.message };
+  }
+}
+
+function Items() {
+  const [state, dispatch] = useReducer(reducer, {
+    status: "idle",
+  });
+  // dispatch: (action: Action) => void
+  if (state.status === "done") {
+    return <p>{state.items.length} items</p>;
+  }
+  return (
+    <button onClick={() => dispatch({ type: "fetch" })}>
+      Load
+    </button>
+  );
+}
+```
+
+The switch is exhaustive, so no `default` is needed; add an action type and the missing `return`
+becomes a compile error.
+
+### `useRef`: DOM node vs mutable box
+
+```tsx
+const inputRef = useRef<HTMLInputElement>(null);
+// RefObject<HTMLInputElement | null>; use ref={inputRef}
+
+const timer = useRef<number | undefined>(undefined);
+timer.current = window.setTimeout(tick, 1000);
+
+const renders = useRef(0); // RefObject<number>
+// ok outside render (effects, handlers)
+renders.current += 1;
+```
+
+### `useContext` with a null guard
+
+```tsx
+interface Auth {
+  user: { id: string; name: string } | null;
+  signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<Auth | null>(null);
+
+export function useAuth(): Auth {
+  const auth = useContext(AuthContext);
+  if (!auth) {
+    throw new Error("useAuth outside <AuthProvider>");
+  }
+  return auth; // Auth, never null
+}
+```
+
+### `useMemo` / `useCallback`
+
+```tsx
+const visible = useMemo(
+  () => rows.filter((r) => r.name.includes(query)),
+  [rows, query],
+); // inferred Row[]
+
+const onSelect = useCallback((id: string) => {
+  setSelected(id);
+}, []); // (id: string) => void; annotate the parameters
+```
+
+### Custom hooks: return a tuple `as const`
+
+```tsx
+export function useToggle(initial = false) {
+  const [on, setOn] = useState(initial);
+  const toggle = useCallback(() => setOn((v) => !v), []);
+  return [on, toggle] as const;
+  // readonly [boolean, () => void]
+  // without as const: (boolean | (() => void))[]
+}
+
+const [open, toggleOpen] = useToggle();
+```
+
+Return an object instead once there are more than two or three values.
+
+## Events
+
+| Prop                        | Event type                           | Handler type                                    |
+| :-------------------------- | :----------------------------------- | :---------------------------------------------- |
+| `onChange` on `input`       | `ChangeEvent<HTMLInputElement>`      | `ChangeEventHandler<HTMLInputElement>`          |
+| `onChange` on `select`      | `ChangeEvent<HTMLSelectElement>`     | `ChangeEventHandler<HTMLSelectElement>`         |
+| `onChange` on `textarea`    | `ChangeEvent<HTMLTextAreaElement>`   | `ChangeEventHandler<HTMLTextAreaElement>`       |
+| `onSubmit` on `form`        | `SubmitEvent<HTMLFormElement>`       | `SubmitEventHandler<HTMLFormElement>`           |
+| `onInput`                   | `InputEvent<T>`                      | `InputEventHandler<T>`                          |
+| `onClick`, `onDoubleClick`  | `MouseEvent<HTMLButtonElement>`      | `MouseEventHandler<HTMLButtonElement>`          |
+| `onKeyDown`, `onKeyUp`      | `KeyboardEvent<HTMLInputElement>`    | `KeyboardEventHandler<HTMLInputElement>`        |
+| `onFocus`, `onBlur`         | `FocusEvent<T>`                      | `FocusEventHandler<T>`                          |
+| `onPointerDown`             | `PointerEvent<T>`                    | `PointerEventHandler<T>`                        |
+| `onDragOver`, `onDrop`      | `DragEvent<T>`                       | `DragEventHandler<T>`                           |
+| `onScroll`                  | `UIEvent<T>`                         | `UIEventHandler<T>`                             |
+| anything                    | `SyntheticEvent<T>`                  | `ReactEventHandler<T>`                          |
+
+All live on the `React` namespace. `React.MouseEvent` is not the DOM `MouseEvent`; import the type
+(`import type { MouseEvent } from "react"`) or write `React.MouseEvent`. The native event is
+`e.nativeEvent`. `SubmitEvent` is new in `@types/react` 19.2; on older versions use `FormEvent`.
+
+```tsx
+import type {
+  ChangeEventHandler,
+  KeyboardEvent,
+  SubmitEvent,
+} from "react";
+
+// 1. Inline: parameter type is inferred from the prop
+<input onChange={(e) => setName(e.target.value)} />;
+
+// 2. Named handler typed by its handler alias
+const onName: ChangeEventHandler<HTMLInputElement> = (e) => {
+  setName(e.currentTarget.value);
+};
+
+// 3. Named handler with an event parameter
+function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+  if (e.key === "Escape") e.currentTarget.blur();
+}
+
+function onSubmit(e: SubmitEvent<HTMLFormElement>) {
+  e.preventDefault();
+  const data = new FormData(e.currentTarget);
+  save(String(data.get("name") ?? ""));
+}
+```
+
+`currentTarget` is the element the handler is on (typed `T`); `target` is where the event started
+(typed `EventTarget`, except `ChangeEvent` and `SubmitEvent`). Not sure of a type? Ask the prop:
+`ComponentProps<"input">["onKeyDown"]`.
+
+## Refs in React 19
+
+### `ref` is a regular prop
+
+```tsx
+import type { ComponentProps, Ref } from "react";
+
+// take every input prop, ref included
+export function Input(props: ComponentProps<"input">) {
+  return <input className="input" {...props} />;
+}
+
+// or name it explicitly
+interface SearchProps {
+  ref?: Ref<HTMLInputElement>;
+  onSearch: (q: string) => void;
+}
+
+export function Search({ ref, onSearch }: SearchProps) {
+  return (
+    <input
+      ref={ref}
+      type="search"
+      onChange={(e) => onSearch(e.target.value)}
+    />
+  );
+}
+
+function Page() {
+  const ref = useRef<HTMLInputElement>(null);
+  return <Search ref={ref} onSearch={console.info} />;
+}
+```
+
+`forwardRef` still type-checks but is no longer needed and is expected to be deprecated.
+
+### Callback refs with cleanup
+
+```tsx
+<div
+  ref={(node) => {
+    if (!node) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setWidth(entry?.contentRect.width ?? 0);
+    });
+    ro.observe(node);
+    return () => ro.disconnect(); // runs on detach
+  }}
+/>;
+```
+
+With a cleanup returned, React calls it instead of calling the ref with `null`. Because any other
+return value is a type error, write `ref={(el) => { saved = el; }}` with braces, not
+`ref={(el) => (saved = el)}`.
+
+### `useImperativeHandle`
+
+```tsx
+import {
+  useImperativeHandle,
+  useRef,
+  type Ref,
+} from "react";
+
+export interface PlayerHandle {
+  play: () => void;
+  pause: () => void;
+}
+
+export function Player({
+  src,
+  ref,
+}: {
+  src: string;
+  ref?: Ref<PlayerHandle>;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  useImperativeHandle(ref, () => ({
+    play: () => void video.current?.play(),
+    pause: () => video.current?.pause(),
+  }), []);
+  return <video ref={video} src={src} />;
+}
+
+function Parent() {
+  const player = useRef<PlayerHandle>(null);
+  return (
+    <>
+      <Player ref={player} src="/intro.mp4" />
+      <button onClick={() => player.current?.play()}>
+        Play
+      </button>
+    </>
+  );
+}
+```
+
+## Generic components
+
+A type parameter on a component flows from props to callbacks. In a `.tsx` file an arrow function
+needs `<T,>` (or `<T extends unknown>`) so `<T>` is not read as a JSX tag; function declarations
+don't.
+
+```tsx
+import type { Key, ReactNode } from "react";
+
+interface ListProps<T> {
+  items: readonly T[];
+  getKey: (item: T) => Key;
+  render: (item: T) => ReactNode;
+}
+
+export function List<T>({
+  items,
+  getKey,
+  render,
+}: ListProps<T>) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={getKey(item)}>{render(item)}</li>
+      ))}
+    </ul>
+  );
+}
+
+export const Count = <T,>({ items }: { items: T[] }) => (
+  <span>{items.length}</span>
+);
+
+const users = [{ id: 1, name: "Ada" }];
+<List
+  items={users}
+  getKey={(u) => u.id}   // u: { id: number; name: string }
+  render={(u) => u.name}
+/>;
+```
+
+```tsx
+interface SelectProps<T extends string> {
+  value: T;
+  options: readonly T[];
+  onChange: (value: T) => void;
+}
+
+export function Select<T extends string>({
+  value,
+  options,
+  onChange,
+}: SelectProps<T>) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const next = options.find(
+          (o) => o === e.target.value,
+        );
+        if (next !== undefined) onChange(next); // no cast
+      }}
+    >
+      {options.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
+
+const sizes = ["s", "m", "l"] as const;
+<Select value="m" options={sizes} onChange={(s) => s} />;
+// s: "s" | "m" | "l"
+```
+
+## Discriminated-union props
+
+### Variants that need different props
+
+```tsx
+type AlertProps =
+  | { kind: "info"; message: string }
+  | { kind: "error"; message: string; onRetry: () => void };
+
+function Alert(props: AlertProps) {
+  if (props.kind === "error") {
+    return (
+      <p role="alert">
+        {props.message}
+        <button onClick={props.onRetry}>Retry</button>
+      </p>
+    );
+  }
+  return <p>{props.message}</p>;
+}
+
+<Alert kind="info" message="Saved" />;
+// @ts-expect-error onRetry is required for kind="error"
+<Alert kind="error" message="Failed" />;
+```
+
+Narrow on `props.kind` before destructuring, or destructure the discriminant with the rest kept
+as one object so narrowing still works.
+
+### Mutually exclusive props: the `never` trick
+
+```tsx
+type Controlled = {
+  value: string;
+  onChange: (value: string) => void;
+  defaultValue?: never;
+};
+type Uncontrolled = {
+  defaultValue?: string;
+  value?: never;
+  onChange?: never;
+};
+type FieldProps = { label: string } &
+  (Controlled | Uncontrolled);
+
+function Field(props: FieldProps) {
+  return <label>{props.label}</label>;
+}
+
+<Field label="A" value="x" onChange={() => {}} />;
+<Field label="B" defaultValue="y" />;
+// @ts-expect-error value and defaultValue together
+<Field label="C" value="x" defaultValue="y" />;
+```
+
+`prop?: never` means "must be absent", so the union rejects mixed shapes and errors name the prop.
+
+## Polymorphic `as` prop
+
+```tsx
+import type {
+  ComponentPropsWithoutRef,
+  ElementType,
+  ReactNode,
+} from "react";
+
+type TextProps<E extends ElementType> = {
+  as?: E;
+  children?: ReactNode;
+} & Omit<ComponentPropsWithoutRef<E>, "as" | "children">;
+
+export function Text<E extends ElementType = "span">({
+  as,
+  ...rest
+}: TextProps<E>) {
+  const Tag: ElementType = as ?? "span";
+  return <Tag {...rest} />;
+}
+
+<Text as="label" htmlFor="email">Email</Text>;
+<Text as="a" href="/">Home</Text>;
+// @ts-expect-error href is not a span prop
+<Text href="/">Home</Text>;
+```
+
+| Trade-off                  | Detail                                                               |
+| :------------------------- | :------------------------------------------------------------------- |
+| Compile speed              | props are recomputed per `as`; large design systems feel it          |
+| Error messages             | long and hard to read when a prop is wrong                           |
+| Refs                       | typing `ref` per element needs more generics                         |
+| Implementation             | needs the `ElementType` widening inside the body                     |
+| Alternatives               | `asChild` + Slot (Radix), a `render` prop, or separate components    |
+
+## Context
+
+```tsx title="theme.tsx"
+import {
+  createContext,
+  use,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
+type Theme = "light" | "dark";
+
+interface ThemeValue {
+  theme: Theme;
+  toggle: () => void;
+}
+
+const ThemeContext = createContext<ThemeValue | null>(null);
+
+export function ThemeProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [theme, setTheme] = useState<Theme>("light");
+  const value = useMemo<ThemeValue>(
+    () => ({
+      theme,
+      toggle: () =>
+        setTheme((t) => (t === "light" ? "dark" : "light")),
+    }),
+    [theme],
+  );
+  // React 19: the context itself is the provider
+  return (
+    <ThemeContext value={value}>{children}</ThemeContext>
+  );
+}
+
+export function useTheme(): ThemeValue {
+  const value = use(ThemeContext); // may be called in an if
+  if (!value) {
+    throw new Error("useTheme outside ThemeProvider");
+  }
+  return value;
+}
+```
+
+| Choice                                      | When                                                 |
+| :------------------------------------------ | :--------------------------------------------------- |
+| `createContext<T \| null>(null)` + guard hook | value only exists under a provider                 |
+| `createContext<T>(defaultValue)`            | a real default makes sense (theme, locale)           |
+| `<Ctx value>` vs `<Ctx.Provider value>`     | same in React 19; `.Provider` is expected to be deprecated |
+| `use(Ctx)` vs `useContext(Ctx)`             | `use` also works in conditionals and loops           |
+| memoize `value`                             | a new object each render re-renders every consumer   |
+
+## Forms & actions
+
+### `action` prop, `useActionState`, `useFormStatus`
+
+```tsx title="newsletter.tsx"
+"use client";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+import { subscribe, type SubscribeState } from "./actions";
+
+function SubmitButton() {
+  const { pending } = useFormStatus(); // nearest parent form
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? "Saving..." : "Subscribe"}
+    </button>
+  );
+}
+
+const initial: SubscribeState = { ok: false, message: "" };
+
+export function Newsletter() {
+  const [state, formAction, isPending] = useActionState(
+    subscribe,
+    initial,
+  );
+  return (
+    <form action={formAction} aria-busy={isPending}>
+      <input name="email" type="email" required />
+      <SubmitButton />
+      <p aria-live="polite">{state.message}</p>
+    </form>
+  );
+}
+```
+
+### Typed server action
+
+```ts title="actions.ts"
+"use server";
+import { z } from "zod";
+
+export interface SubscribeState {
+  ok: boolean;
+  message: string;
+}
+
+const Input = z.object({ email: z.email() });
+
+export async function subscribe(
+  _prev: SubscribeState,
+  formData: FormData,
+): Promise<SubscribeState> {
+  const parsed = Input.safeParse({
+    email: formData.get("email"),
+  });
+  if (!parsed.success) {
+    return { ok: false, message: "Enter a valid email" };
+  }
+  await saveSubscriber(parsed.data.email);
+  return { ok: true, message: "Subscribed" };
+}
+```
+
+| API                         | Signature (simplified)                                                   |
+| :-------------------------- | :----------------------------------------------------------------------- |
+| `<form action={fn}>`        | `fn: (formData: FormData) => void \| Promise<void>`; resets uncontrolled fields on success |
+| `<button formAction={fn}>`  | same, per button                                                         |
+| `useActionState(fn, init)`  | `fn: (prev: S, payload: P) => S \| Promise<S>`; returns `[state, dispatch, isPending]` |
+| `useFormStatus()`           | `{ pending, data: FormData \| null, method, action }`; call in a child of the form (`react-dom`) |
+| `useOptimistic(state, fn?)` | `fn: (current: S, action: A) => S`; returns `[optimistic, addOptimistic]` |
+| `useTransition()`           | `[isPending, startTransition]`; wraps async work outside forms           |
+
+### `useOptimistic`
+
+```tsx
+interface Message {
+  id: string;
+  text: string;
+  sending?: boolean;
+}
+
+function Chat({ messages }: { messages: Message[] }) {
+  const [optimistic, addOptimistic] = useOptimistic(
+    messages,
+    (current: Message[], text: string): Message[] => [
+      ...current,
+      { id: crypto.randomUUID(), text, sending: true },
+    ],
+  );
+
+  async function send(formData: FormData) {
+    const text = String(formData.get("text") ?? "");
+    addOptimistic(text); // inside the action's transition
+    await sendMessage(text);
+  }
+
+  return (
+    <form action={send}>
+      {optimistic.map((m) => (
+        <p key={m.id}>{m.text}{m.sending && " (sending)"}</p>
+      ))}
+      <input name="text" />
+    </form>
+  );
+}
+```
+
+The optimistic value reverts to `messages` when the action settles; the parent must then pass the
+saved list.
+
+## Server Components
+
+```tsx title="app/users/page.tsx"
+import { Suspense } from "react";
+import { UserList } from "./user-list";
+import { Stats } from "./stats";
+
+// Server Component: no directive, can be async
+export default async function UsersPage() {
+  const users = await db.user.findMany();
+  const statsPromise = getStats(); // not awaited
+  return (
+    <>
+      <UserList users={users} />
+      <Suspense fallback={<p>Loading stats...</p>}>
+        <Stats statsPromise={statsPromise} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+```tsx title="app/users/stats.tsx"
+"use client";
+import { use } from "react";
+
+export interface StatsData {
+  total: number;
+  active: number;
+}
+
+export function Stats({
+  statsPromise,
+}: {
+  statsPromise: Promise<StatsData>;
+}) {
+  const stats = use(statsPromise); // suspends until resolved
+  return <p>{stats.active} of {stats.total} active</p>;
+}
+```
+
+| Props from server to client | Allowed                                                     |
+| :-------------------------- | :---------------------------------------------------------- |
+| primitives                  | `string`, `number`, `bigint`, `boolean`, `null`, `undefined`, `Symbol.for(...)` symbols |
+| collections                 | arrays, `Map`, `Set`, typed arrays, `ArrayBuffer`           |
+| objects                     | plain objects and `Date`                                    |
+| async                       | `Promise` (read with `use`)                                 |
+| functions                   | only Server Functions (`"use server"`)                      |
+| JSX                         | server or client elements, e.g. `children`                  |
+| not allowed                 | other functions, class instances, null-prototype objects, local symbols |
+
+- `"use client"` marks a module as the boundary: it and everything it imports ship to the browser.
+- Client components cannot import Server Components; pass them as `children` or other JSX props.
+- TypeScript does not check serializability. Type client props as plain data and keep event
+  handlers inside the client component.
+- Create the promise for `use()` on the server or in a cache; a promise made during a client render
+  is new every render.
+- Async components type-check with TypeScript 5.1+ and `@types/react` 18.2.8+.
+
+## Common types
+
+| Type                             | Meaning                                                         |
+| :------------------------------- | :-------------------------------------------------------------- |
+| `ReactNode`                      | anything renderable; the type for `children` and render returns |
+| `ReactElement<P>`                | the object JSX creates; `P` defaults to `unknown`               |
+| `React.JSX.Element`              | JSX expression result (`ReactElement<any, any>`)                |
+| `CSSProperties`                  | `style` object; custom properties need a cast or augmentation   |
+| `PropsWithChildren<P>`           | `P & { children?: ReactNode }`                                  |
+| `ComponentProps<T>`              | props of an intrinsic tag or component                          |
+| `Dispatch<SetStateAction<T>>`    | type of a `useState` setter, for passing it down                |
+| `ComponentType<P>`               | a function or class component taking `P`                        |
+| `ElementType<P>`                 | a tag name or component; used for `as` props                    |
+| `Ref<T>` / `RefObject<T>`        | anything a `ref` prop accepts / the `useRef` object             |
+| `Key`                            | `string \| number \| bigint`                                    |
+| `FC<P>`                          | function component type; see Pitfalls                           |
+
+```tsx
+import type {
+  CSSProperties,
+  Dispatch,
+  SetStateAction,
+} from "react";
+
+interface PagerProps {
+  page: number;
+  setPage: Dispatch<SetStateAction<number>>;
+  style?: CSSProperties;
+}
+
+const accent = { "--accent": "tomato" } as CSSProperties;
+```
+
+## Pitfalls
+
+| Pitfall                                  | Instead                                                          |
+| :--------------------------------------- | :--------------------------------------------------------------- |
+| `React.FC<Props>` everywhere             | fine since 18 (no implicit `children`), but cannot be generic and hides the props in the signature; prefer `function C(props: Props)` |
+| `props: {}`                              | `{}` means "any non-nullish value"; omit the parameter or use `Record<string, never>` |
+| `{count && <Badge />}`                   | renders `0` when `count` is `0`; write `{count > 0 && ...}`      |
+| `inputRef.current!.focus()`              | refs are `null` during render and before mount; use `?.` in effects and handlers |
+| `(e: any) => ...`                        | use the handler alias or let the prop infer it                   |
+| `useState([])`                           | infers `never[]`; pass the type: `useState<Item[]>([])`          |
+| `useEffect(async () => ...)`             | effect must return `void` or a cleanup; define and call an async function inside |
+| `ref={(el) => (saved = el)}`             | implicit return of a non-function is an error in React 19; use braces |
+| `as Props` on fetched JSON               | validate with Zod at the boundary; `as` checks nothing           |
+| spreading `...rest` of unknown props onto DOM | type `rest` from `ComponentProps<"tag">` so bad props fail  |
+| `key={index}` on reorderable lists       | a stable id from the data                                        |
+
+```tsx
+useEffect(() => {
+  const controller = new AbortController();
+  async function load() {
+    const res = await fetch("/api/me", {
+      signal: controller.signal,
+    });
+    setUser(await res.json());
+  }
+  load().catch(() => {});
+  return () => controller.abort();
+}, []);
+```
+
+## References
+
+- [react.dev: Using TypeScript](https://react.dev/learn/typescript)
+- [react.dev: React 19 upgrade guide, TypeScript changes](https://react.dev/blog/2024/04/25/react-19-upgrade-guide#typescript-changes)
+- [react.dev: useActionState](https://react.dev/reference/react/useActionState), [useFormStatus](https://react.dev/reference/react-dom/hooks/useFormStatus), [useOptimistic](https://react.dev/reference/react/useOptimistic), [use](https://react.dev/reference/react/use)
+- [react.dev: `"use client"` and serializable types](https://react.dev/reference/rsc/use-client)
+- [`@types/react` source](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react)
+- [React TypeScript Cheatsheet](https://react-typescript-cheatsheet.netlify.app/)
+- [Total TypeScript: React with TypeScript](https://www.totaltypescript.com/tutorials/react-with-typescript)
+- [MDN: Constraint validation](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Constraint_validation)

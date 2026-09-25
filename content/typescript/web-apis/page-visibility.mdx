@@ -1,0 +1,341 @@
+---
+title: Page Visibility & lifecycle
+date: 2026-09-25
+order: 20
+---
+
+`document.visibilityState` and `visibilitychange`, the Page Lifecycle states (with Chromium's
+`freeze`/`resume`), `pagehide`/`pageshow` and the back/forward cache, why `unload` is dead, and how to
+send data on exit and schedule idle work. Support data is from MDN as of September 2026.
+
+## Support
+
+| Feature                                 | Status (MDN)                   | Notes                                     |
+| :-------------------------------------- | :----------------------------- | :---------------------------------------- |
+| `visibilityState`, `hidden`, `visibilitychange` | Baseline widely available | every browser                            |
+| `pagehide` / `pageshow`, `event.persisted` | widely supported            | the bfcache-aware exit/entry events       |
+| `navigator.sendBeacon()`                | Baseline widely available      | Chrome rejects non-safelisted `Blob` types |
+| `fetch(..., { keepalive: true })`       | all engines                    | Firefox 133+                              |
+| `beforeunload`                          | not Baseline                   | never fires on iOS Safari                 |
+| Page Lifecycle (`freeze`, `resume`, `wasDiscarded`) | Chromium only      | experimental                              |
+| `requestIdleCallback()`                 | not Baseline                   | Chromium, Firefox; not Safari             |
+| `scheduler.yield()`, `postTask()`       | not Baseline                   | Chromium 129+, Firefox 142+               |
+| `fetchLater()`                          | Chromium 135+                  | deferred beacon, experimental             |
+| `notRestoredReasons`                    | Chromium 125+                  | why bfcache wasn't used                   |
+
+## Page Visibility API
+
+| Member                       | Type                          | Notes                                            |
+| :--------------------------- | :---------------------------- | :----------------------------------------------- |
+| `document.visibilityState`   | `"visible" \| "hidden"`       | `"prerender"` is gone from the spec              |
+| `document.hidden`            | `boolean`                     | same as `visibilityState === "hidden"`           |
+| `visibilitychange`           | `Event` on `document`         | read `visibilityState` inside the handler        |
+
+`hidden` means: another tab is selected, the window is minimised, the screen is locked, the user
+switched apps on mobile, or the page is being unloaded. A window merely covered by another window
+usually still counts as `visible`.
+
+```ts
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    // save state, flush analytics, pause work
+  } else {
+    // resume, refresh stale data
+  }
+});
+```
+
+<Note kind="warning">On mobile, a hidden page may be killed without any further event: `pagehide`,
+`beforeunload` and `unload` often never fire. Treat `visibilitychange` to `hidden` as the **last
+reliable moment** to save or send anything.</Note>
+
+## Page Lifecycle states
+
+```text
+             focus / blur
+  ACTIVE  <---------------->  PASSIVE
+  visible, focused            visible, not focused
+                                 |    ^
+          visibilitychange       |    |  visibilitychange
+          (hidden)               v    |  (visible)
+                              HIDDEN ------------------> TERMINATED
+                                 |    ^    pagehide         (page gone)
+                         freeze  |    |  resume
+                                 v    |
+                              FROZEN  --- memory pressure --> DISCARDED
+                     (bfcache or      (no event; wasDiscarded
+                      background tab)  is true on reload)
+```
+
+| State        | Visible | Focused | JS runs        | Entered via                           |
+| :----------- | :------ | :------ | :------------- | :------------------------------------ |
+| active       | yes     | yes     | yes            | load, `focus`                         |
+| passive      | yes     | no      | yes            | `blur` (another window or iframe)     |
+| hidden       | no      | no      | throttled      | `visibilitychange`                    |
+| frozen       | no      | no      | no tasks       | `freeze` (Chromium), entering bfcache |
+| terminated   | no      | no      | no             | `pagehide` without bfcache            |
+| discarded    | no      | no      | page unloaded  | nothing fires                         |
+
+Leaving a page that goes into the bfcache fires `visibilitychange` (hidden), then `pagehide` with
+`persisted: true`, then `freeze`. Coming back fires `resume`, `pageshow` with `persisted: true`, then
+`visibilitychange` (visible).
+
+## freeze & resume
+
+Chromium freezes hidden background tabs to save CPU and battery, and every browser freezes pages in the
+bfcache. Timers, `fetch` callbacks and rAF stop until the page resumes. Neither event is in
+`lib.dom`, so the listeners take plain `Event`.
+
+```ts
+document.addEventListener("freeze", () => {
+  // close IndexedDB and connections; no async work
+});
+document.addEventListener("resume", () => {
+  // reopen connections, refresh stale data
+});
+
+// Chromium: this load replaces a discarded tab
+const wasDiscarded =
+  (document as { wasDiscarded?: boolean }).wasDiscarded;
+```
+
+`freeze` handlers get a few milliseconds and can't start async work that needs to finish. Put anything
+important in the `visibilitychange` handler instead, which fires first.
+
+## pagehide, pageshow & bfcache
+
+The back/forward cache keeps a frozen snapshot of the page so Back and Forward restore it instantly,
+JS heap and all. `load` does not fire again on a restore.
+
+| Event      | `event.persisted`                       | Use for                                    |
+| :--------- | :-------------------------------------- | :----------------------------------------- |
+| `pageshow` | `true` = restored from bfcache          | refresh stale data, reconnect, re-check auth |
+| `pagehide` | `true` = page may enter the bfcache     | close connections, last-chance save on desktop |
+
+| Blocks bfcache                                      | Fix                                            |
+| :-------------------------------------------------- | :--------------------------------------------- |
+| an `unload` listener (desktop Chrome, Firefox)      | use `pagehide` or `visibilitychange`           |
+| `Cache-Control: no-store` on the HTML               | only for truly sensitive pages (Chrome is relaxing this) |
+| open IndexedDB transaction, in-flight `fetch`/XHR   | close or finish on `pagehide`                  |
+| open WebSocket or WebRTC connection                 | close on `pagehide` (Chrome 149+ and Safari allow open WebSockets) |
+| `window.opener` reference                           | `rel="noopener"` on links, `noopener` in `window.open` |
+
+Test in Chrome DevTools: **Application → Back/forward cache → Test**. In the field, read
+`notRestoredReasons` from the navigation entry (Chromium 125+).
+
+```ts
+type NavWithReasons = PerformanceNavigationTiming & {
+  notRestoredReasons?: unknown; // not in lib.dom yet
+};
+const [nav] = performance.getEntriesByType(
+  "navigation",
+) as NavWithReasons[];
+if (nav?.type === "back_forward") {
+  console.log(nav.notRestoredReasons);
+}
+```
+
+## Why not unload & beforeunload
+
+| Event          | Problem                                                        | Use instead                         |
+| :------------- | :------------------------------------------------------------- | :---------------------------------- |
+| `unload`       | unreliable on mobile, blocks bfcache; Chrome is disabling it by default, a rollout that reaches all page loads around Chrome 154 (September 2026) | `visibilitychange`, `pagehide` |
+| `beforeunload` | only for "unsaved changes" prompts; never fires on iOS Safari; unreliable elsewhere | save continuously; `visibilitychange` |
+
+- A `beforeunload` dialog shows only if the user has interacted with the page, and its text is always
+  the browser's own; your message is ignored.
+- Add the `beforeunload` listener only while there are unsaved changes, and remove it after saving.
+- Disable `unload` today with the header `Permissions-Policy: unload=()`; this also catches
+  third-party scripts that still add it.
+
+## Sending data on exit
+
+| Method                            | Method / body                   | Limit                  | Notes                                           |
+| :-------------------------------- | :------------------------------ | :--------------------- | :---------------------------------------------- |
+| `navigator.sendBeacon(url, data)` | `POST` only                     | 64 KiB in flight       | returns `false` if not queued; no response      |
+| `fetch(url, { keepalive: true })` | any method and headers          | 64 KiB in flight (shared) | outlives the page; response usually lost     |
+| `fetchLater(url, init)`           | any; `activateAfter` ms         | quota per origin       | Chromium only; the browser sends it at unload or after the delay |
+
+| `sendBeacon` body     | `Content-Type` sent                     |
+| :-------------------- | :-------------------------------------- |
+| `string`              | `text/plain;charset=UTF-8`              |
+| `URLSearchParams`     | `application/x-www-form-urlencoded`     |
+| `FormData`            | `multipart/form-data`                   |
+| `Blob`                | its `type`; Chrome throws for non-safelisted types such as `application/json` |
+
+Send JSON as a string (`text/plain`) and parse it on the server, or use `fetch` with `keepalive`
+when you need `application/json` or an auth header. See [Fetch API](/typescript/web-apis/fetch-api/).
+
+```ts
+declare const events: object[];
+
+// beacon: simplest, text/plain body
+navigator.sendBeacon("/rum", JSON.stringify(events));
+
+// keepalive fetch: real headers
+void fetch("/rum", {
+  method: "POST",
+  keepalive: true,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(events),
+});
+```
+
+## Idle work & scheduling
+
+| API                                   | Runs                                             | Support              |
+| :------------------------------------ | :----------------------------------------------- | :------------------- |
+| `requestIdleCallback(cb, { timeout })` | in idle time; `deadline.timeRemaining()` at most 50 ms | Chromium, Firefox |
+| `scheduler.postTask(cb, { priority })` | `"user-blocking"`, `"user-visible"`, `"background"` | Chromium, Firefox 142+ |
+| `scheduler.yield()`                   | resumes soon, ahead of other queued tasks        | Chromium 129+, Firefox 142+ |
+| `setTimeout(cb, 0)`                   | next task; the universal fallback                | everywhere           |
+
+```ts
+function whenIdle(cb: () => void, timeout = 2_000) {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(cb, { timeout });
+  } else {
+    setTimeout(cb, 1); // Safari
+  }
+}
+```
+
+Idle callbacks don't run in hidden or frozen pages until the page comes back (or `timeout` expires),
+so never rely on them for data you must send before the page goes away. More on the event loop and
+task queues in [Async & promises](/typescript/language/async-promises/).
+
+## Pausing work when hidden
+
+| Work                        | What the browser does when hidden                         | What you should do                  |
+| :-------------------------- | :-------------------------------------------------------- | :---------------------------------- |
+| `requestAnimationFrame`     | paused                                                    | nothing; rAF loops stop for free    |
+| `setTimeout`/`setInterval`  | throttled to at most once per second; Chrome batches chained timers to once per minute after 5 minutes hidden | stop polling; refetch on `visible` |
+| `fetch` polling             | still runs (slowly)                                       | pause, then refresh once on return  |
+| WebSocket                   | stays open until frozen or killed                         | reconnect on `pageshow`/`resume`    |
+| `<video>` / animations      | video keeps decoding unless paused                        | pause media the user can't see      |
+| audio playing               | exempt from most throttling                               | fine for music and calls            |
+
+TanStack Query and SWR already pause and refetch on visibility changes; see
+[TanStack Query](/typescript/react/tanstack-query/).
+
+## Typing in TS
+
+| Situation                              | Fix                                                              |
+| :------------------------------------- | :--------------------------------------------------------------- |
+| `visibilityState`                      | `DocumentVisibilityState`: `"visible" \| "hidden"`              |
+| `pageshow` / `pagehide` listeners on `window` | `e` is `PageTransitionEvent` with `persisted`             |
+| `freeze` / `resume` on `document`      | not in `DocumentEventMap`; the handler gets a plain `Event`      |
+| `document.wasDiscarded`, `fetchLater`, `notRestoredReasons` | not in `lib.dom`; widen the type locally    |
+| `requestIdleCallback`                  | typed as always present; test `typeof` for Safari                |
+| `scheduler`                            | typed in TypeScript 7's `lib.dom`, missing in 5.x                |
+
+## Recipes
+
+### Pause polling when hidden
+Poll only while the user can see the result, and refresh at once when they come back.
+
+```ts
+export function visiblePoll(
+  fn: () => Promise<void>,
+  everyMs: number,
+): () => void {
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const start = () => {
+    if (timer !== undefined || document.hidden) return;
+    void fn(); // refresh immediately on return
+    timer = setInterval(() => void fn(), everyMs);
+  };
+  const stop = () => {
+    clearInterval(timer);
+    timer = undefined;
+  };
+  const onChange = () =>
+    document.hidden ? stop() : start();
+  const ev = "visibilitychange";
+  document.addEventListener(ev, onChange);
+  start();
+  return () => {
+    stop();
+    document.removeEventListener(ev, onChange);
+  };
+}
+```
+
+### Send analytics on hide with sendBeacon
+Batch events in memory and flush when the page is hidden, the last reliable moment on mobile.
+
+```ts
+const queue: Record<string, unknown>[] = [];
+
+export function track(name: string, props = {}) {
+  queue.push({ name, t: Date.now(), ...props });
+}
+
+function flush() {
+  if (queue.length === 0) return;
+  const body = JSON.stringify(queue.splice(0));
+  // string body = text/plain, so Chrome accepts it
+  if (!navigator.sendBeacon("/rum", body)) {
+    const init = { method: "POST", body, keepalive: true };
+    void fetch("/rum", init);
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flush();
+});
+window.addEventListener("pagehide", flush); // older Safari
+```
+
+### Restore after bfcache
+Refresh what may be stale and reopen what `pagehide` closed.
+
+```ts
+declare function connect(): WebSocket;
+declare function refreshSession(): Promise<void>;
+
+let socket: WebSocket | null = connect();
+
+window.addEventListener("pagehide", () => {
+  socket?.close(); // let the page enter the bfcache
+  socket = null;
+});
+
+window.addEventListener("pageshow", (e) => {
+  if (!e.persisted) return; // normal load
+  socket ??= connect();
+  void refreshSession(); // cookies may have expired
+});
+```
+
+### Guard unsaved changes
+Warn before leaving only while there is something to lose.
+
+```ts
+const onBeforeUnload = (e: BeforeUnloadEvent) => {
+  e.preventDefault();
+  e.returnValue = true; // legacy browsers
+};
+
+export function setDirty(dirty: boolean) {
+  if (dirty) {
+    window.addEventListener("beforeunload", onBeforeUnload);
+  } else {
+    window.removeEventListener(
+      "beforeunload",
+      onBeforeUnload,
+    );
+  }
+}
+```
+
+Call `setDirty(true)` on the first edit and `setDirty(false)` after saving. Autosave on
+`visibilitychange` as well, since iOS never shows the prompt.
+
+## References
+
+- MDN: [Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API), [`visibilitychange`](https://developer.mozilla.org/en-US/docs/Web/API/Document/visibilitychange_event), [`pagehide`](https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event), [`pageshow`](https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event), [`beforeunload`](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event)
+- MDN: [`navigator.sendBeacon()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon), [`RequestInit.keepalive`](https://developer.mozilla.org/en-US/docs/Web/API/RequestInit#keepalive), [`fetchLater()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetchLater), [`requestIdleCallback()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback), [Prioritized Task Scheduling](https://developer.mozilla.org/en-US/docs/Web/API/Prioritized_Task_Scheduling_API)
+- Chrome for Developers: [Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api), [Deprecating the unload event](https://developer.chrome.com/docs/web-platform/deprecating-unload)
+- web.dev: [Back/forward cache](https://web.dev/articles/bfcache): blockers, testing, `notRestoredReasons`
+- [HTML Standard: page visibility and unloading](https://html.spec.whatwg.org/multipage/document-lifecycle.html)

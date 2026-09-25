@@ -1,0 +1,720 @@
+---
+title: Forms
+date: 2026-09-25
+order: 3
+---
+
+HTML forms from TypeScript: typed access to controls, reading values with `FormData` and Zod, the
+constraint validation API, submitting with `fetch`, file inputs, and the accessibility and security
+rules that go with them. React-specific patterns live in [TypeScript & React](/typescript/react/typescript-react/).
+
+## Form elements
+
+### Finding the form
+
+```ts
+const form =
+  document.querySelector<HTMLFormElement>("#signup");
+if (!form) throw new Error("#signup not found");
+
+document.forms.namedItem("signup"); // by name or id
+input.form; // owner form: HTMLFormElement | null
+```
+
+### `form.elements`
+
+| Expression                          | Type in `lib.dom`                  | Notes                                        |
+| :---------------------------------- | :--------------------------------- | :------------------------------------------- |
+| `form.elements`                     | `HTMLFormControlsCollection`       | live, tree order, all listed controls        |
+| `form.elements.length`              | `number`                           | counts buttons, fieldsets, outputs too       |
+| `form.elements[0]`                  | `Element`                          | by index                                     |
+| `form.elements.namedItem("email")`  | `RadioNodeList \| Element \| null` | by `name` or `id`                            |
+| `form.elements.namedItem("plan")`   | `RadioNodeList` at runtime         | when several controls share the name         |
+| `form.email`                        | `any`                              | named getter on the form; avoid, it can shadow `submit`, `reset`... |
+
+Listed controls: `button`, `fieldset`, `input` (except `type="image"`), `object`, `output`, `select`,
+`textarea` and form-associated custom elements. Controls outside the form with a `form="id"`
+attribute are included.
+
+### Typed elements by name
+
+Declare the shape once and assert the form to it. This is an assertion: nothing checks the HTML.
+
+```ts
+interface SignupControls extends HTMLFormControlsCollection {
+  email: HTMLInputElement;
+  password: HTMLInputElement;
+  plan: RadioNodeList; // several radios, one name
+  terms: HTMLInputElement;
+}
+
+interface SignupForm extends HTMLFormElement {
+  readonly elements: SignupControls;
+}
+
+const form = document.querySelector<SignupForm>("#signup");
+form?.elements.email.value; // string
+form?.elements.plan.value;  // checked radio's value, or ""
+```
+
+Checked at runtime instead, with a generic helper:
+
+```ts
+function control<T extends Element>(
+  form: HTMLFormElement,
+  name: string,
+  type: { new (): T; readonly name: string },
+): T {
+  const el = form.elements.namedItem(name);
+  if (!(el instanceof type)) {
+    throw new TypeError(`"${name}" is not ${type.name}`);
+  }
+  return el;
+}
+
+const email = control(form, "email", HTMLInputElement);
+const bio = control(form, "bio", HTMLTextAreaElement);
+```
+
+### RadioNodeList
+
+| Member                 | Meaning                                                        |
+| :--------------------- | :------------------------------------------------------------- |
+| `list.value`           | value of the checked radio; `""` if none is checked            |
+| `list.value = "pro"`   | checks the radio whose value is `"pro"`                        |
+| `list.length`, `list[i]` | the individual `HTMLInputElement`s                           |
+| `for (const r of list)` | iterable (`NodeListOf<HTMLInputElement>`)                     |
+
+`namedItem` returns a single `Element`, not a list, when only one control has that name. Handle both
+(`el instanceof RadioNodeList`) if the count can vary.
+
+### The `form` attribute and button overrides
+
+```html
+<form id="search" action="/search"></form>
+
+<!-- elsewhere in the page -->
+<input name="q" form="search" />
+<button form="search">Search</button>
+```
+
+| On a submit button | Overrides form attribute | Typical use                      |
+| :----------------- | :----------------------- | :------------------------------- |
+| `formaction`       | `action`                 | "Save" vs "Delete" endpoints     |
+| `formmethod`       | `method`                 | GET preview, POST save           |
+| `formenctype`      | `enctype`                | multipart only for one button    |
+| `formnovalidate`   | `novalidate`             | "Save draft" skips validation    |
+| `formtarget`       | `target`                 | open result in a new tab         |
+
+## Reading values
+
+### FormData
+
+```ts
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  // include the clicked button's name=value pair
+  const data = new FormData(form, event.submitter);
+
+  data.get("email");  // FormDataEntryValue | null
+  data.getAll("tag"); // FormDataEntryValue[]
+  data.has("terms");  // boolean
+});
+```
+
+`FormDataEntryValue` is `string | File`. The `submitter` argument must be a submit button of that form
+(otherwise `TypeError` / `NotFoundError`); it reached all engines in 2023.
+
+| Method                     | Returns                               | Notes                                |
+| :------------------------- | :------------------------------------ | :----------------------------------- |
+| `get(name)`                | `FormDataEntryValue \| null`          | first entry only                     |
+| `getAll(name)`             | `FormDataEntryValue[]`                | checkbox groups, multi-select        |
+| `has(name)`                | `boolean`                             | unchecked checkbox is absent         |
+| `set(name, value)`         | `void`                                | replaces all entries for `name`      |
+| `append(name, value)`      | `void`                                | adds another entry                   |
+| `delete(name)`             | `void`                                | removes all entries                  |
+| `entries()` / `for...of`   | `[string, FormDataEntryValue]` pairs  | also `keys()`, `values()`            |
+
+| Control                     | In `FormData` when      | Entry value                                   |
+| :-------------------------- | :---------------------- | :-------------------------------------------- |
+| text-like `input`, `textarea` | has a `name`, enabled | string, `""` when empty                       |
+| checkbox, radio             | checked                 | `value` attribute, default `"on"`             |
+| `select multiple`           | per selected option     | one entry per option                          |
+| `input type="file"`         | always                  | `File`; empty file named `""` if none chosen  |
+| submit button               | it is the submitter     | its `value`                                   |
+| `disabled` control          | never                   | `readonly` controls are included              |
+| no `name`                   | never                   |                                               |
+
+### `Object.fromEntries` caveats
+
+```ts
+const raw = Object.fromEntries(new FormData(form));
+// { [k: string]: FormDataEntryValue }
+```
+
+- Duplicate names collapse: last entry wins (checkbox groups, `select multiple`). Use `getAll`.
+- Unchecked checkboxes are missing keys, not `false`.
+- Every value is `string | File`; numbers and dates stay strings.
+- Empty text fields are `""`, not `undefined`.
+
+### Parse and validate with Zod
+
+```ts title="signup-schema.ts"
+import { z } from "zod";
+
+export const Signup = z.object({
+  email: z.email(),
+  age: z.coerce.number().int().min(13),
+  plan: z.enum(["free", "pro"]),
+  tags: z.array(z.string()).max(5),
+  newsletter: z.boolean(),
+  terms: z.literal("on", { error: "Accept the terms" }),
+});
+export type Signup = z.infer<typeof Signup>;
+
+export function readSignup(data: FormData) {
+  return Signup.safeParse({
+    ...Object.fromEntries(data),
+    tags: data.getAll("tags"),
+    newsletter: data.has("newsletter"),
+  });
+}
+```
+
+```ts
+const result = readSignup(new FormData(form));
+if (result.success) {
+  result.data.age; // number
+} else {
+  const { fieldErrors } = z.flattenError(result.error);
+  fieldErrors.email; // string[] | undefined
+}
+```
+
+<Note kind="warning">`z.coerce.number()` turns `""` into `0`. For optional numeric fields, map `""` to
+`undefined` first (`z.preprocess`) or use `z.string().regex(...)` then transform.</Note>
+
+### Typed accessors on inputs
+
+| Property         | Works on                                              | Otherwise                 |
+| :--------------- | :---------------------------------------------------- | :------------------------ |
+| `value`          | every control                                         | always a `string`         |
+| `valueAsNumber`  | `number`, `range`, `date`, `time`, `datetime-local`, `month`, `week` | `NaN`      |
+| `valueAsDate`    | `date`, `time`, `month`, `week`                       | `null`; setting throws    |
+| `checked`        | `checkbox`, `radio`                                   | `boolean`                 |
+| `indeterminate`  | `checkbox`                                            | visual only, not submitted |
+| `files`          | `file`                                                | `FileList \| null`        |
+| `selectedOptions` | `select`                                             | `HTMLCollectionOf<HTMLOptionElement>` |
+
+```ts
+const qty = control(form, "qty", HTMLInputElement);
+const n = qty.valueAsNumber;
+if (Number.isNaN(n)) throw new Error("not a number");
+
+const due = control(form, "due", HTMLInputElement); // date
+due.valueAsDate; // Date at 00:00 UTC, or null when empty
+due.valueAsDate?.toISOString().slice(0, 10); // "2026-09-25"
+```
+
+`valueAsDate` is midnight UTC, so `toLocaleDateString()` can show the previous day west of UTC.
+`datetime-local` has no `valueAsDate` (it is a wall-clock time); use `valueAsNumber` or parse `value`.
+
+### Checkboxes
+
+```ts
+const terms = control(form, "terms", HTMLInputElement);
+terms.checked; // boolean, the state
+terms.value;   // "on" unless value="..." is set
+
+const data = new FormData(form);
+data.has("terms");       // true only when checked
+// every checked box named "toppings"
+data.getAll("toppings");
+```
+
+## Input types
+
+| `type`           | `.value` looks like                 | Better accessor   | Useful attributes                       |
+| :--------------- | :---------------------------------- | :---------------- | :-------------------------------------- |
+| `text`           | any string                          |                   | `minlength` `maxlength` `pattern`       |
+| `email`          | `"a@b.co"`; list with `multiple`    |                   | `multiple` `pattern`                    |
+| `password`       | any string                          |                   | `minlength` `autocomplete`              |
+| `search`         | any string                          |                   | `enterkeyhint="search"`                 |
+| `tel`            | any string, no format check         |                   | `pattern` `inputmode` implied           |
+| `url`            | absolute URL                        | `new URL(value)`  | `pattern`                               |
+| `number`         | `"42"`; `""` if not numeric         | `valueAsNumber`   | `min` `max` `step` (`"any"`)            |
+| `range`          | `"50"`, never empty                 | `valueAsNumber`   | `min` `max` `step` (default 0 to 100)   |
+| `date`           | `"2026-09-25"`                      | `valueAsDate`     | `min` `max` `step` (days)               |
+| `time`           | `"14:30"` or `"14:30:15"`           | `valueAsNumber` (ms) | `min` `max` `step` (seconds)         |
+| `datetime-local` | `"2026-09-25T14:30"`                | `valueAsNumber`   | `min` `max` `step`                      |
+| `month`          | `"2026-09"`                         | `valueAsDate`     | `min` `max`                             |
+| `week`           | `"2026-W39"`                        | `valueAsDate`     | `min` `max`                             |
+| `color`          | `"#rrggbb"` lowercase               |                   | `list` for swatches                     |
+| `checkbox`       | its `value` (`"on"`)                | `checked`         | `required` = must be checked            |
+| `radio`          | its `value`                         | `RadioNodeList.value` | same `name` groups them             |
+| `file`           | `"C:\fakepath\a.png"`               | `files`           | `accept` `multiple` `capture`           |
+| `hidden`         | any string                          |                   | not validated, not secret               |
+| `select`         | selected option's `value`           | `selectedOptions` | `multiple` `size` `required`            |
+| `textarea`       | string, newlines as `\n`            |                   | `rows` `maxlength` `wrap`               |
+
+`inputmode` (`numeric`, `decimal`, `email`, `tel`, `url`, `search`) picks the mobile keyboard without
+changing validation; `type="text" inputmode="numeric"` suits codes and card numbers that are not
+quantities.
+
+## Constraint validation
+
+### Attributes and the flag they set
+
+| Attribute                 | Applies to                                      | `validity` flag              |
+| :------------------------ | :---------------------------------------------- | :--------------------------- |
+| `required`                | inputs, `select`, `textarea`                    | `valueMissing`               |
+| `minlength` / `maxlength` | text-like inputs, `textarea`                    | `tooShort` / `tooLong`       |
+| `pattern`                 | `text` `search` `url` `tel` `email` `password`  | `patternMismatch`            |
+| `min` / `max`             | numeric and date/time types                     | `rangeUnderflow` / `rangeOverflow` |
+| `step`                    | numeric and date/time types                     | `stepMismatch`               |
+| `type="email"` / `"url"`  | those types                                     | `typeMismatch`               |
+
+`pattern` must match the whole value (it is anchored for you) and is compiled with the `v` flag, so
+escape `-` and other class-set characters inside `[...]`. `minlength` and `tooLong`/`tooShort` only
+apply after a user edit, not to values set from script.
+
+### `ValidityState`
+
+| Property          | `true` when                                                  |
+| :---------------- | :----------------------------------------------------------- |
+| `valueMissing`    | `required` and empty (or checkbox unchecked, no radio chosen) |
+| `typeMismatch`    | not a valid email / URL for its `type`                        |
+| `patternMismatch` | value does not match `pattern`                                |
+| `tooLong`         | longer than `maxlength` (user edits only)                     |
+| `tooShort`        | shorter than `minlength`, and not empty                       |
+| `rangeUnderflow`  | below `min`                                                   |
+| `rangeOverflow`   | above `max`                                                   |
+| `stepMismatch`    | not on the `step` grid from `min`                             |
+| `badInput`        | browser cannot convert the input (`"1e"` in a number field)   |
+| `customError`     | a non-empty `setCustomValidity` message is set                |
+| `valid`           | none of the above                                             |
+
+### Methods and properties
+
+| Member                        | On                     | Does                                                    |
+| :---------------------------- | :--------------------- | :------------------------------------------------------ |
+| `checkValidity()`             | control, form          | `boolean`; fires `invalid` on each failing control      |
+| `reportValidity()`            | control, form          | same, plus shows the browser bubble and focuses the first |
+| `setCustomValidity(msg)`      | control                | non-empty sets `customError`; `""` clears it            |
+| `validity`                    | control                | the `ValidityState` above                               |
+| `validationMessage`           | control                | localized browser message, `""` when valid              |
+| `willValidate`                | control                | `false` when barred: disabled, readonly, hidden, `button type="button"` |
+| `noValidate`                  | form                   | reflects `novalidate`                                   |
+
+### Custom rules
+
+```ts
+function syncConfirm(
+  password: HTMLInputElement,
+  repeat: HTMLInputElement,
+): void {
+  const same = repeat.value === password.value;
+  repeat.setCustomValidity(same ? "" : "Passwords differ");
+}
+
+const password = control(form, "password", HTMLInputElement);
+const repeat = control(form, "repeat", HTMLInputElement);
+for (const el of [password, repeat]) {
+  el.addEventListener("input", () => {
+    syncConfirm(password, repeat);
+  });
+}
+```
+
+<Note kind="warning">A custom message sticks until you set `""`. Clear it on every `input`, or the field stays
+invalid forever.</Note>
+
+### `novalidate` and your own messages
+
+`<form novalidate>` stops the browser blocking submission and showing bubbles; the API still works.
+The usual pattern is `novalidate` plus `checkValidity()` and your own error UI:
+
+```ts
+form.noValidate = true;
+form.addEventListener("submit", (event) => {
+  if (!form.checkValidity()) {
+    event.preventDefault();
+    focusFirstInvalid(form); // see Accessibility
+  }
+});
+
+// `invalid` does not bubble: listen in the capture phase
+form.addEventListener("invalid", (event) => {
+  const el = event.target;
+  if (el instanceof HTMLInputElement) {
+    showFieldError(el, el.validationMessage);
+  }
+}, true);
+```
+
+### CSS pseudo-classes
+
+| Selector                          | Matches                                                     |
+| :-------------------------------- | :---------------------------------------------------------- |
+| `:invalid` / `:valid`             | constraint state right now, even on page load               |
+| `:user-invalid` / `:user-valid`   | only after the user edited the field or tried to submit (Baseline 2023) |
+| `:required` / `:optional`         | presence of `required`                                      |
+| `:in-range` / `:out-of-range`     | `min`/`max` checks                                          |
+| `:placeholder-shown`              | field is empty and showing its placeholder                  |
+| `form:invalid`, `fieldset:invalid` | contains at least one invalid control                      |
+
+Style errors with `:user-invalid` so untouched fields do not start red.
+
+## Submitting
+
+### The submit event
+
+```ts
+form.addEventListener("submit", (event) => {
+  event.preventDefault();       // stop the page navigation
+  event.submitter;              // HTMLElement | null
+});
+```
+
+- `"submit"` maps to `SubmitEvent` in `HTMLElementEventMap`, so `event.submitter` is typed.
+- It fires on the form, after constraint validation passes (unless `novalidate`).
+- Enter in a single-line field triggers implicit submission via the default button.
+- A `button` inside a form defaults to `type="submit"`; write `type="button"` for anything else.
+
+### `requestSubmit()` vs `submit()`
+
+|                             | `form.requestSubmit(btn?)`   | `form.submit()`         |
+| :-------------------------- | :--------------------------- | :---------------------- |
+| Runs constraint validation  | yes                          | no                      |
+| Fires `submit` event        | yes (listeners can cancel)   | no                      |
+| Sets `submitter`            | `btn`, or `null`             | n/a                     |
+| Use for                     | "submit like the user did"   | bypassing everything    |
+
+### Request body: content types
+
+| `body`                       | `Content-Type` fetch sends                            | Carries files |
+| :--------------------------- | :---------------------------------------------------- | :------------ |
+| `FormData`                   | `multipart/form-data; boundary=...` (auto)            | yes           |
+| `URLSearchParams`            | `application/x-www-form-urlencoded;charset=UTF-8`     | no            |
+| `JSON.stringify(obj)`        | `text/plain;charset=UTF-8` unless you set it          | no            |
+
+<Callout type="warn" title="Do not set Content-Type for FormData">
+  fetch adds the multipart boundary itself. A hand-written `multipart/form-data` header has no
+  boundary and the server cannot parse the body.
+</Callout>
+
+```ts
+async function post(form: HTMLFormElement, data: FormData) {
+  // multipart, files included
+  await fetch(form.action, { method: "POST", body: data });
+
+  // urlencoded, strings only
+  await fetch(form.action, {
+    method: "POST",
+    body: toParams(data),
+  });
+
+  // JSON: set the header yourself
+  await fetch("/api/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Object.fromEntries(data)),
+  });
+}
+
+// URLSearchParams(formData) fails to type-check: File values
+function toParams(data: FormData): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of data) {
+    if (typeof value === "string") params.append(key, value);
+  }
+  return params;
+}
+```
+
+`form.action` is the resolved absolute URL; `form.method` is lowercase `"get"`, `"post"` or `"dialog"`.
+For a GET form, put the params in the URL: `url.search = toParams(data).toString()`.
+
+### Disabling while in flight
+
+```ts
+async function onSubmit(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.ariaBusy === "true") return; // double submit
+
+  const button = event.submitter;
+  // before disabling
+  const data = new FormData(form, button);
+  const btn =
+    button instanceof HTMLButtonElement ? button : null;
+  if (btn) btn.disabled = true;
+  form.ariaBusy = "true";
+  try {
+    const res = await fetch(form.action, {
+      method: "POST",
+      body: data,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    form.reset();
+  } catch (error) {
+    showFormError(form, error);
+  } finally {
+    if (btn) btn.disabled = false;
+    form.ariaBusy = null;
+  }
+}
+
+form.addEventListener("submit", onSubmit);
+```
+
+Build the `FormData` before disabling anything: disabled controls are left out. `event.currentTarget`
+is `EventTarget | null`, hence the `instanceof` guard.
+
+## File inputs
+
+```html
+<input
+  type="file"
+  name="photos"
+  accept="image/png,image/jpeg"
+  multiple
+/>
+```
+
+| Attribute         | Effect                                                            |
+| :---------------- | :---------------------------------------------------------------- |
+| `accept`          | picker filter: `.pdf`, `image/*`, `image/png`; a hint, not enforced |
+| `multiple`        | allow several files                                               |
+| `capture`         | mobile camera: `"user"` (front) or `"environment"` (back)         |
+| `webkitdirectory` | pick a folder (non-standard name, supported everywhere)           |
+
+### Reading files
+
+```ts
+const input = control(form, "photos", HTMLInputElement);
+input.addEventListener("change", async () => {
+  const files = Array.from(input.files ?? []);
+  for (const file of files) {
+    file.name;         // "cat.png", no path
+    file.size;         // bytes
+    file.type;         // "image/png", from the extension
+    file.lastModified; // ms since epoch
+  }
+  const first = files[0];
+  if (first?.type === "text/csv") {
+    const text = await first.text();
+    text.split("\n").length;
+  }
+});
+```
+
+| `File` / `Blob` method | Returns                       | Notes                               |
+| :--------------------- | :---------------------------- | :---------------------------------- |
+| `text()`               | `Promise<string>`             | decodes as UTF-8                    |
+| `arrayBuffer()`        | `Promise<ArrayBuffer>`        | raw bytes                           |
+| `bytes()`              | `Promise<Uint8Array>`         | Baseline 2025                       |
+| `stream()`             | `ReadableStream<Uint8Array>`  | large files without buffering       |
+| `slice(start, end)`    | `Blob`                        | chunked uploads, headers            |
+| `FileReader`           | callback API                  | legacy; prefer the promise methods  |
+
+### Client-side checks (UX only)
+
+```ts
+const MAX_BYTES = 5 * 1024 * 1024;
+
+function checkImage(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "Not an image";
+  if (file.size > MAX_BYTES) return "Larger than 5 MB";
+  return null;
+}
+```
+
+### Preview with an object URL
+
+```ts
+function preview(file: File, img: HTMLImageElement): void {
+  const url = URL.createObjectURL(file);
+  img.addEventListener(
+    "load",
+    () => URL.revokeObjectURL(url),
+    { once: true },
+  );
+  img.src = url;
+}
+```
+
+Revoke every object URL you create, or the file stays in memory until the page unloads.
+
+### Upload with progress
+
+`fetch` has no upload progress events (streaming request bodies are Chromium-only and need HTTP/2).
+For a progress bar, use `XMLHttpRequest`:
+
+```ts
+function upload(
+  url: string,
+  body: FormData,
+  onProgress: (fraction: number) => void,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    });
+    xhr.addEventListener("load", () => resolve(xhr.status));
+    xhr.addEventListener("error", () => {
+      reject(new Error("Network error"));
+    });
+    xhr.send(body);
+  });
+}
+
+const body = new FormData();
+for (const file of files) {
+  body.append("photos", file, file.name);
+}
+await upload("/api/photos", body, (f) => {
+  bar.value = f;
+});
+```
+
+## Accessibility
+
+### Labels and groups
+
+```html
+<label for="email">Email</label>
+<input id="email" name="email" type="email" required
+  autocomplete="email"
+  aria-describedby="email-hint email-error" />
+<p id="email-hint">Used for receipts only.</p>
+<p id="email-error" hidden></p>
+
+<fieldset>
+  <legend>Plan</legend>
+  <label>
+    <input type="radio" name="plan" value="free" /> Free
+  </label>
+  <label>
+    <input type="radio" name="plan" value="pro" /> Pro
+  </label>
+</fieldset>
+```
+
+| Rule                                   | Why                                                          |
+| :------------------------------------- | :----------------------------------------------------------- |
+| Every control has a `label`            | accessible name, bigger click target; `placeholder` is not a label |
+| `fieldset` + `legend` for radio/checkbox groups | the group's question is announced with each option  |
+| Hints and errors via `aria-describedby` | read after the label; list several ids                      |
+| `aria-invalid="true"` on bad fields    | announced as invalid; set only after validation ran          |
+| Error text, not only colour            | colour-blind users, screen readers                           |
+| Summary in a live region               | `role="alert"` or `aria-live="polite"` announces changes     |
+| Don't disable the submit button up front | users can't discover what is missing                       |
+
+### Showing errors and focusing the first
+
+```ts
+type Control =
+  | HTMLInputElement
+  | HTMLSelectElement
+  | HTMLTextAreaElement;
+
+function isControl(el: Element): el is Control {
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLTextAreaElement
+  );
+}
+
+function showFieldError(el: Control, message: string): void {
+  const out = document.getElementById(`${el.id}-error`);
+  if (out) {
+    out.textContent = message; // never innerHTML
+    out.hidden = message === "";
+  }
+  el.ariaInvalid = message === "" ? null : "true";
+}
+
+function focusFirstInvalid(form: HTMLFormElement): void {
+  const first = Array.from(form.elements)
+    .filter(isControl)
+    .find((el) => !el.validity.valid);
+  first?.focus();
+}
+```
+
+### `autocomplete` tokens
+
+| Token                         | Field                                   |
+| :---------------------------- | :-------------------------------------- |
+| `name`, `given-name`, `family-name` | full name, first, last            |
+| `email`, `tel`                | email, phone                            |
+| `username`                    | login identifier                        |
+| `current-password`            | sign-in password (lets managers fill)   |
+| `new-password`                | sign-up / change (managers suggest one) |
+| `one-time-code`               | SMS / TOTP code (iOS autofill)          |
+| `street-address`, `address-line1` | address, first line                 |
+| `postal-code`, `country-name`, `country` | postcode, country name, ISO code |
+| `bday`                        | date of birth                           |
+| `organization`                | company                                 |
+| `cc-name`, `cc-number`, `cc-exp`, `cc-csc` | card holder, number, expiry, CVC |
+| `shipping ...`, `billing ...` | prefix to separate two addresses        |
+| `off`                         | disable (browsers may ignore for logins) |
+
+## Security
+
+| Rule                                       | Detail                                                        |
+| :----------------------------------------- | :------------------------------------------------------------ |
+| Client validation is UX, not security      | anyone can send any request with `curl`; attributes and JS are optional to an attacker |
+| Re-validate on the server                  | same Zod schema in a shared module; reject unknown keys        |
+| Never inject input into `innerHTML`        | use `textContent`, `setAttribute`, `createElement`; if HTML is required, sanitize it (DOMPurify; the Sanitizer API's `setHTML` is not Baseline yet) |
+| Protect against CSRF                       | `SameSite=Lax` or `Strict` session cookies, a per-session token in a hidden field or header, and check `Origin` / `Sec-Fetch-Site` on the server |
+| Form encodings skip CORS preflight         | urlencoded, multipart and `text/plain` are "simple" requests another site can send with cookies |
+| `hidden` is not secret                     | users can read and change hidden inputs                       |
+| Passwords and tokens: `method="post"`      | GET puts them in the URL, history and server logs             |
+| Files: trust nothing                       | check size and magic bytes server-side; ignore `file.name` for paths and `file.type` for content |
+
+```ts title="route.ts"
+import { Signup } from "./signup-schema";
+
+export async function POST(req: Request): Promise<Response> {
+  const data = await req.formData();
+  const result = Signup.safeParse({
+    ...Object.fromEntries(data),
+    tags: data.getAll("tags"),
+    newsletter: data.has("newsletter"),
+  });
+  if (!result.success) {
+    return Response.json(
+      { error: "Invalid input" },
+      { status: 422 },
+    );
+  }
+  // result.data is typed and trusted from here on
+  return Response.json({ ok: true }, { status: 201 });
+}
+```
+
+## Forms in React
+
+React 19 keeps the platform model: uncontrolled inputs plus `FormData` usually beat per-field
+state. A function passed to `<form action={fn}>` receives the `FormData`, runs in a transition and
+resets the form on success; `useActionState`, `useFormStatus` and `useOptimistic` add pending and
+result state. Typed examples, including handler types (`React.SubmitEvent<HTMLFormElement>` in
+current `@types/react`), are in [TypeScript & React](/typescript/react/typescript-react/#forms--actions).
+Event basics are in [Events](/typescript/frontend/events/).
+
+## References
+
+- [MDN: Web forms guide](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms)
+- [MDN: Constraint validation](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Constraint_validation) and [ValidityState](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState)
+- [MDN: FormData](https://developer.mozilla.org/en-US/docs/Web/API/FormData), [HTMLFormElement](https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement), [HTMLInputElement](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement)
+- [MDN: `<input>` types](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input) and [autocomplete](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete)
+- [MDN: Using files from web applications](https://developer.mozilla.org/en-US/docs/Web/API/File_API/Using_files_from_web_applications)
+- [MDN: Cross-site request forgery](https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/CSRF)
+- [Zod 4: basic usage and error formatting](https://zod.dev/error-formatting)
+- [WAI: Forms tutorial](https://www.w3.org/WAI/tutorials/forms/)

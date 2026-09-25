@@ -1,0 +1,706 @@
+---
+title: Modules, packages & libraries
+date: 2026-09-25
+order: 2
+---
+
+How TypeScript modules work, how Node and bundlers resolve them, and how to build, type and
+publish a library in 2026 (TS 5.9 and 6.0, Node 24). For patterns inside a module see
+[Design patterns](/typescript/design-architecture/design-patterns/).
+
+## ES module syntax
+
+| Syntax | Meaning |
+| :----- | :------ |
+| `export const x = 1` | named export (also `function`, `class`, `type`, `interface`) |
+| `export default fn` | one default export per module |
+| `export { a, b as c }` | export existing bindings, optionally renamed |
+| `export * from "./m.js"` | re-export all named exports (not the default) |
+| `export * as m from "./m.js"` | re-export as one namespace object |
+| `export { default as Btn } from "./btn.js"` | re-export someone's default under a name |
+| `import x, { a, b as c } from "./m.js"` | default + named imports |
+| `import * as m from "./m.js"` | namespace import (read-only object) |
+| `import "./polyfill.js"` | side effects only |
+| `await import("./m.js")` | dynamic import, returns `Promise` of the namespace |
+| `import type { T } from "./m.js"` | type-only; always erased |
+| `import { f, type T } from "./m.js"` | inline `type` modifier: `f` kept, `T` erased |
+| `export type { T } from "./m.js"` | type-only re-export |
+
+```ts title="math.ts"
+export const PI = 3.14159;
+export type Vec = { x: number; y: number };
+
+export function add(a: Vec, b: Vec): Vec {
+  return { x: a.x + b.x, y: a.y + b.y };
+}
+
+export default function length(v: Vec): number {
+  return Math.hypot(v.x, v.y);
+}
+```
+
+```ts title="main.ts"
+import length, { add, type Vec } from "./math.js";
+import * as math from "./math.js";
+
+const v: Vec = add({ x: 3, y: 0 }, { x: 0, y: 4 });
+length(v) === math.default(v); // true: 5
+
+// code-split or conditional loading
+if (v.x > 0) {
+  const { PI } = await import("./math.js");
+  PI.toFixed(2);
+}
+```
+
+Imports are **live, read-only bindings**: an importer sees later changes to an exported `let`,
+but cannot assign to it. Module code runs once, in strict mode, and top-level `await` works in
+ESM only.
+
+### verbatimModuleSyntax
+
+With `verbatimModuleSyntax: true` (TS 5.0+, default in `tsc --init` since 5.9) TypeScript emits
+imports exactly as written, minus anything marked `type`. That is what single-file tools
+(esbuild, SWC, Node type stripping) do anyway, so enable it.
+
+| Written | Emitted |
+| :------ | :------ |
+| `import type { A } from "a"` | removed |
+| `import { b, type C } from "b"` | `import { b } from "b"` |
+| `import { type D } from "d"` | `import {} from "d"` (side effects kept) |
+| `import { E } from "e"` where `E` is a type | error: use `import type` |
+| `import x = require("x")` in an ESM file | error |
+
+It also forbids ESM syntax in files that emit CommonJS; there you must write
+`import x = require("x")` and `export =`. One more reason to ship ESM.
+
+### import.meta
+
+| Property | Where | Notes |
+| :------- | :---- | :---- |
+| `import.meta.url` | everywhere | `file:` or `https:` URL of this module |
+| `import.meta.resolve(s)` | browsers, Node 20.6+ | resolve a specifier to a URL string |
+| `import.meta.dirname` | Node 20.11+ (stable 22.16, 24) | replaces `__dirname` |
+| `import.meta.filename` | Node 20.11+ (stable 22.16, 24) | replaces `__filename` |
+| `import.meta.main` | Node 22.18+ / 24.2+, Bun, Deno | `true` for the entry module |
+| `import.meta.env` | Vite | build-time env vars |
+
+```ts
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const tmpl = await readFile(
+  join(import.meta.dirname, "template.html"),
+  "utf8",
+);
+const asset = new URL("./logo.svg", import.meta.url);
+```
+
+### Import attributes
+
+```ts
+import pkg from "./package.json" with { type: "json" };
+pkg.version; // typed from the JSON (resolveJsonModule)
+```
+
+- `with { type: "json" }` is required by Node and browsers for JSON; only a default export.
+  The old `assert` form is removed (an error under `nodenext` and in TS 6.0).
+- TS 5.3+ parses attributes; `module: nodenext` checks JSON imports (5.7+).
+- JSON modules are Baseline 2025; CSS modules (`type: "css"`) are Chromium-only.
+- `import defer * as m from "./m.js"` (TS 5.9, stage 3) loads now but runs on first use; only
+  with `module: preserve` or `esnext` and a runtime/bundler that supports it.
+
+## CommonJS interop
+
+| CommonJS | ESM equivalent |
+| :------- | :------------- |
+| `const x = require("x")` | `import x from "x"` |
+| `const { a } = require("x")` | `import { a } from "x"` (if detectable) |
+| `module.exports = fn` | `export default fn` (roughly) |
+| `exports.a = 1` | `export const a = 1` |
+| `__dirname`, `__filename` | `import.meta.dirname`, `.filename` |
+| `require.resolve("x")` | `import.meta.resolve("x")` |
+| `require.main === module` | `import.meta.main` |
+
+In TypeScript, a CommonJS file (`.cts`, or `.ts` without `"type": "module"`) written in CJS
+style:
+
+```ts title="greet.cts"
+import os = require("node:os");
+
+function greet(name: string): string {
+  return `hi ${name} from ${os.hostname()}`;
+}
+export = greet;
+```
+
+```ts title="use-greet.mts"
+import greet from "./greet.cjs"; // module.exports -> default
+import { createRequire } from "node:module";
+
+greet("ada");
+const require = createRequire(import.meta.url);
+const legacy = require("./greet.cjs") as typeof greet;
+```
+
+### esModuleInterop and the default-import confusion
+
+Node gives ESM importers `module.exports` as the default export. Bundlers and
+`esModuleInterop` additionally honour the `__esModule` flag that transpilers set, which is
+where code that works in a bundler breaks in Node:
+
+| CJS module looks like | `import x from "pkg"` in Node | in a bundler |
+| :-------------------- | :---------------------------- | :----------- |
+| `module.exports = fn` | `x` is `fn` | `x` is `fn` |
+| `exports.a = 1` | `x` is `{ a: 1 }`; `{ a }` works | same |
+| `exports.__esModule = true;` `exports.default = fn` (transpiled ESM) | `x` is `{ default: fn }`: call `x.default()` | `x` is `fn` |
+
+- `esModuleInterop` (implied by `module: node*` and `preserve`, always on in TS 6.0) makes
+  `import fs from "fs"` legal and makes `import * as express from "express"; express()` an error:
+  a namespace object is never callable.
+- `module: nodenext` models Node exactly, so trust its errors over "it worked in Vite".
+
+### require(esm)
+
+Node can `require()` an ES module synchronously: unflagged in **20.19** and **22.12**, stable
+in 25.4. TypeScript models it under `module: nodenext` (5.8+) and `node20` (5.9+), not
+`node16`/`node18`.
+
+- `require()` returns the **namespace object**; the default export is `.default`.
+- `export { thing as "module.exports" }` makes `require()` return `thing` directly.
+- Throws `ERR_REQUIRE_ASYNC_MODULE` if the module graph uses top-level `await`.
+- Detect with `process.features.require_module`.
+
+This is what makes ESM-only packages usable from CommonJS apps.
+
+## Module resolution
+
+`module` says what the runtime is and what format to emit; `moduleResolution` follows from it.
+
+| `module` | Implies resolution | Implied target | Use for |
+| :------- | :----------------- | :------------- | :------ |
+| `nodenext` | `nodenext` | `esnext` | Node apps and libraries; tracks latest Node (require(esm)) |
+| `node20` (5.9) | `node16` | `es2023` | pin Node 20+ behaviour, stable over TS upgrades |
+| `node18` (5.8) | `node16` | `es2022` | Node 18: no require(esm), allows `assert` |
+| `node16` | `node16` | `es2022` | legacy pin |
+| `preserve` (5.4) | `bundler` | none | bundlers, Bun, tsx; `import` and `require` kept as written |
+| `esnext` | pair with `bundler` | none | bundled apps that emit ESM |
+| `commonjs` | (node10, deprecated) | none | legacy CJS; avoid for new code |
+
+| Feature | `nodenext` | `bundler` |
+| :------ | :--------- | :-------- |
+| `"exports"` / `"imports"` in package.json | yes | yes |
+| extensionless `./util` | CJS files only | yes |
+| directory `./dir` to `./dir/index` | CJS files only | yes |
+| `import` and `require` conditions | by file format | by syntax used |
+| emits runnable Node code | yes | no (a bundler must finish the job) |
+
+<Note kind="tip">
+  For a library, typecheck with `module: nodenext` even if you bundle: code that resolves under
+  Node's rules also works in bundlers, not the other way round.
+</Note>
+
+### File extensions in imports
+
+Under `nodenext`, relative ESM imports need a full extension. Write the **output** extension;
+TypeScript maps it back to the source file:
+
+| Source file | Import it as | Emitted file |
+| :---------- | :----------- | :----------- |
+| `util.ts` | `"./util.js"` | `util.js` |
+| `util.mts` | `"./util.mjs"` | `util.mjs` (always ESM) |
+| `util.cts` | `"./util.cjs"` | `util.cjs` (always CJS) |
+| `Button.tsx` | `"./Button.js"` | `Button.js` |
+
+Or write `"./util.ts"` and set `rewriteRelativeImportExtensions` (5.7+, rewrites relative
+paths on emit) or `allowImportingTsExtensions` (only with `noEmit` or declaration-only emit).
+
+### Module format detection
+
+| File | nearest package.json `"type": "module"` | no `"type"` / `"commonjs"` |
+| :--- | :-------------------------------------- | :------------------------- |
+| `.ts` `.tsx` `.js` `.d.ts` | ESM | CommonJS |
+| `.mts` `.mjs` `.d.mts` | ESM | ESM |
+| `.cts` `.cjs` `.d.cts` | CommonJS | CommonJS |
+
+Node 22.7+ also sniffs ESM syntax in ambiguous `.js` files, but TypeScript only reads
+`"type"`, so always set it.
+
+## tsconfig for libraries
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "isolatedDeclarations": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"]
+}
+```
+
+| Option | Since | Why for a library |
+| :----- | :---- | :---------------- |
+| `declaration` | 1.x | emit `.d.ts` so consumers get types |
+| `declarationMap` | 2.9 | "Go to definition" jumps to your `.ts` source (ship `src` too) |
+| `sourceMap` | 1.x | readable stack traces and debugging |
+| `strict` | 2.3 | your `.d.ts` must survive strict consumers; default `true` in 6.0 |
+| `isolatedDeclarations` | 5.5 | exports need explicit types, so fast tools (Oxc, tsdown) can emit `.d.ts` per file |
+| `erasableSyntaxOnly` | 5.8 | bans `enum`, runtime `namespace`, parameter properties, `import =`, `export =`; code runs under Node type stripping |
+| `rewriteRelativeImportExtensions` | 5.7 | write `./x.ts` in source, emit `./x.js` |
+| `verbatimModuleSyntax` | 5.0 | predictable import emit; forces `import type` |
+| `lib` / `types` | | keep them minimal so you don't accidentally depend on DOM or all of `@types` (6.0 defaults `types` to `[]`) |
+
+```ts
+// with isolatedDeclarations
+// ❌ error TS9007: needs an explicit return type
+// export function add(a: number, b: number) {
+//   return a + b;
+// }
+
+export function add(a: number, b: number): number {
+  return a + b;
+}
+export const ZERO: number = 0;
+```
+
+<Note kind="note">
+  TS 6.0 (March 2026) changes defaults: `strict: true`, `module: esnext`, `types: []`,
+  `rootDir: "."`, and deprecates `moduleResolution: node10`/`classic`, `baseUrl`, `outFile`,
+  AMD/UMD/System and `target: es5`. TS 7 (the native Go port) removes them. Set options
+  explicitly and you are unaffected.
+</Note>
+
+## package.json
+
+An ESM-only library:
+
+```json title="package.json"
+{
+  "name": "@me/geometry",
+  "version": "1.2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./shapes/*": {
+      "types": "./dist/shapes/*.d.ts",
+      "default": "./dist/shapes/*.js"
+    },
+    "./internal/*": null,
+    "./package.json": "./package.json"
+  },
+  "imports": { "#util/*": "./dist/util/*.js" },
+  "files": ["dist", "src"],
+  "sideEffects": false,
+  "engines": { "node": ">=20.19" },
+  "peerDependencies": { "react": "^18.3 || ^19" },
+  "peerDependenciesMeta": { "react": { "optional": true } },
+  "dependencies": { "zod": "^4.0.0" },
+  "devDependencies": { "typescript": "~5.9.3" }
+}
+```
+
+| Field | Purpose | Gotchas |
+| :---- | :------ | :------ |
+| `"type"` | how `.js`/`.ts` files are interpreted | set it explicitly |
+| `"exports"` | the public entry points; everything else is private | once present, deep imports not listed fail |
+| `"types"` condition | where TS finds types | must be **first** in each object; order matters |
+| `"import"` / `"require"` | ESM vs CJS consumers | only for dual packages |
+| `"default"` | fallback for any consumer | must be **last** |
+| `"module-sync"` | ESM that `require()` can load too (no TLA) | Node 22.10+ / 20.19+, newer bundlers |
+| subpath patterns | `"./shapes/*"`; `*` may span `/` | map `null` to hide paths |
+| `"imports"` | private `#` aliases inside the package | `#/...` needs Node 24.14+/25.4+, TS 6.0 |
+| `"files"` | allow-list for the tarball | `package.json`, README, LICENSE always included |
+| `"sideEffects"` | `false` lets bundlers drop unused modules | list CSS/polyfill files if any |
+| `"engines"` | supported Node range | advisory unless `engine-strict` |
+| `"main"` / `"types"` | pre-`exports` fallbacks | only for very old tools |
+
+What the tarball of the package above contains, and which `exports` entry reaches each file:
+
+```tree title="npm pack of @me/geometry"
+@me/geometry/
+  package.json
+  README.md
+  LICENSE
+  dist/
+    index.js          # "." default
+    index.d.ts        # "." types
+    index.d.ts.map    # declarationMap: jump to src/
+    shapes/
+      circle.js       # @me/geometry/shapes/circle
+      circle.d.ts
+    util/
+      math.js         # "#util/math", package-private
+  src/                # shipped only for declaration maps
+    index.ts
+    shapes/
+      circle.ts
+```
+
+Dual package (only if you must support old CJS consumers):
+
+```json
+{
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  }
+}
+```
+
+```tree title="dist/ of a dual package"
+dist/
+  index.mjs      # "import" default
+  index.d.mts    # "import" types
+  index.cjs      # "require" default
+  index.d.cts    # "require" types
+```
+
+Each format needs its own declaration file: a single `.d.ts` for both makes one side
+"masquerade" as the wrong format (attw flags this).
+
+### Dependency kinds
+
+| Kind | Installed for consumers | Use for |
+| :--- | :---------------------- | :------ |
+| `dependencies` | yes | runtime code you import |
+| `peerDependencies` | one shared copy, the consumer's (npm 7+ and pnpm install it if missing) | frameworks and hosts that must be a single copy: `react`, `vite`, `eslint` |
+| `peerDependenciesMeta.optional` | no, and no warning | integrations that are optional |
+| `devDependencies` | no | build, test, lint, `typescript` |
+| `optionalDependencies` | tried, may fail | platform binaries |
+
+Types leak: if your published `.d.ts` imports from `@types/node` or another package, that
+package must be a dependency or peer, not a devDependency.
+
+## Building
+
+| Tool | What it does | Pick when |
+| :--- | :----------- | :-------- |
+| `tsc` | type-checks, emits one `.js` + `.d.ts` per file | small libraries; exact, boring, no bundling |
+| tsdown | Rolldown + Oxc bundler for libraries; ESM/CJS, `.d.ts`, publint/attw hooks, unbundle mode | most new libraries |
+| tsup | esbuild-based predecessor | existing setups; README now points to tsdown |
+| Vite library mode | Rollup/Rolldown build with CSS and assets | UI component libraries |
+| `Bun.build` | fast bundling | apps; no `.d.ts` output |
+
+```bash
+# tsc only
+tsc -p tsconfig.build.json
+
+# tsdown: ESM + declarations into dist/
+npx tsdown src/index.ts --format esm --dts
+```
+
+```ts title="tsdown.config.ts"
+import { defineConfig } from "tsdown";
+
+export default defineConfig({
+  entry: ["src/index.ts", "src/shapes/*.ts"],
+  format: ["esm"],
+  dts: true,
+  sourcemap: true,
+  publint: true,
+});
+```
+
+- **No bundler** (tsc): output mirrors source, perfect tree shaking, readable stack traces,
+  consumers' bundlers do the rest. Relative imports need `.js` extensions (or `.ts` plus
+  rewriting).
+- **Bundler**: needed to inline internal deps, emit two formats, or handle CSS/JSX assets.
+  Keep `external` everything in `dependencies`/`peerDependencies`.
+
+<Callout type="info" title="ESM-only is the default for 2025+">
+  Every supported Node line (20.19+, 22.12+, 24) can `require()` ESM, and all bundlers read
+  ESM. Ship ESM only unless a real consumer needs CJS. Dual publishing risks the **dual-package
+  hazard** (two copies of the module: broken `instanceof`, duplicated singletons and caches),
+  doubles package size, needs separate `.d.mts`/`.d.cts`, and TypeScript only checks one of the
+  two outputs.
+</Callout>
+
+## Declaration files & augmentation
+
+A `.d.ts` file holds types only: `declare` statements and exported types, no values.
+
+| Form | Declares |
+| :--- | :------- |
+| `declare const VERSION: string` | a global value (script file) |
+| `declare function f(x: number): void` | a function signature |
+| `declare module "pkg" { ... }` | the shape of an untyped package |
+| `declare module "*.svg" { ... }` | every import matching a wildcard |
+| `declare global { ... }` | global additions from inside a module file |
+| `declare module "pkg"` + `interface` in a module file | augment an existing package |
+
+```ts title="vendor.d.ts"
+// an untyped dependency
+declare module "legacy-lib" {
+  export function parse(input: string): number;
+  export const version: string;
+}
+
+// asset imports handled by a bundler
+declare module "*.svg" {
+  const url: string;
+  export default url;
+}
+```
+
+Global augmentation must live in a module (a file with an `import` or `export`):
+
+```ts title="globals.d.ts"
+declare global {
+  interface Window {
+    __APP_VERSION__: string;
+  }
+  // `var` (not let/const) adds to globalThis
+  var __DEV__: boolean;
+}
+export {};
+```
+
+Module augmentation merges into a package's interfaces. Import something (or `export {}`) so
+the file is a module; otherwise `declare module` replaces the package instead:
+
+```ts title="react-css-vars.d.ts"
+import "react";
+
+declare module "react" {
+  interface CSSProperties {
+    [key: `--${string}`]: string | number; // CSS variables
+  }
+}
+```
+
+- You can add members to interfaces and namespaces, not new top-level exports or overrides
+  of existing member types.
+- `/// <reference types="vite/client" />` pulls in a types package; prefer `"types"` in
+  tsconfig. `/// <reference path="..." />` and `/// <reference lib="..." />` are rarely needed
+  outside hand-written `.d.ts` bundles.
+- Contributing types for someone else's package goes to DefinitelyTyped (`@types/pkg`).
+
+## Publishing checklist
+
+```bash
+npm run build && npm test
+npm pack --dry-run      # what exactly ships
+npx publint             # lint package.json + exports
+npx @arethetypeswrong/cli --pack .  # types per mode
+npx @arethetypeswrong/cli --pack . --profile esm-only
+npm publish --access public  # 1st publish, @scope
+```
+
+1. `exports` covers every public entry; `types` first, `default` last.
+2. `files` ships `dist` (and `src` if you ship declaration maps); no tests, no secrets.
+3. `.d.ts` output checked by attw; `--profile esm-only` ignores CJS failures by design.
+4. `engines`, `peerDependencies` ranges and `sideEffects` are accurate.
+5. Version bumped per semver; changelog written.
+6. Publish from CI with **trusted publishing** (OIDC, npm 11.5.1+, Node 22.14+): no stored
+   token, and provenance attestations are added automatically for public repos.
+
+| Change | Bump | Examples |
+| :----- | :--- | :------- |
+| breaking | MAJOR `2.0.0` | remove or rename an export, narrow a parameter type, widen a return type, drop CJS, raise minimum Node or TS |
+| feature | MINOR `1.3.0` | new export, new optional option, new overload |
+| fix | PATCH `1.2.1` | bug fix, docs, perf with same API |
+| `0.x` | minor acts as major | `^0.3.1` only matches `0.3.x` |
+
+| Range | Matches |
+| :---- | :------ |
+| `^1.2.3` | `>=1.2.3` and `<2.0.0` |
+| `~1.2.3` | `>=1.2.3` and `<1.3.0` |
+| `1.2.3` | exactly that version |
+| `^18.3 \|\| ^19` | either major |
+
+**Changesets** keeps versions and changelogs in step, especially in monorepos:
+
+```bash
+npx @changesets/cli init   # creates .changeset/
+npx changeset              # describe a change + bump type
+npx changeset version      # apply bumps, write CHANGELOG.md
+npx changeset publish      # publish changed packages, tag
+```
+
+**JSR** (jsr.io) publishes TypeScript source directly and generates docs; it works with npm,
+pnpm, Bun, Deno. It rejects "slow types" (exports without explicit types), the same rule as
+`isolatedDeclarations`.
+
+```json title="jsr.json"
+{
+  "name": "@me/geometry",
+  "version": "1.2.0",
+  "exports": "./src/index.ts"
+}
+```
+
+```bash
+npx jsr publish          # or: deno publish
+npx jsr add @me/geometry # consumers
+```
+
+## Monorepos & project references
+
+| Manager | Declare workspaces | Link a sibling | Run in all |
+| :------ | :----------------- | :------------- | :--------- |
+| Bun | `"workspaces": ["packages/*"]` in package.json | `"@me/ui": "workspace:*"` | `bun run --filter '*' build` |
+| pnpm | `packages: ["packages/*"]` in `pnpm-workspace.yaml` | `"@me/ui": "workspace:*"` | `pnpm -r build` |
+| npm | `"workspaces": ["packages/*"]` in package.json | `"@me/ui": "*"` | `npm run build --workspaces` |
+
+`workspace:*` is rewritten to the real version on publish. Turborepo or Nx add task caching
+on top.
+
+Project references split one big type-check into packages that build in dependency order and
+cache their results:
+
+```tree title="Bun workspace with project references"
+repo/
+  package.json            # "workspaces": ["packages/*"]
+  tsconfig.base.json      # shared compilerOptions
+  tsconfig.json           # "files": [], refs both packages
+  packages/
+    ui/
+      package.json        # "name": "@me/ui"
+      tsconfig.json       # composite: true
+      tsconfig.tsbuildinfo
+      src/
+        index.ts
+      dist/               # .js + .d.ts, read by app
+    app/
+      package.json        # "@me/ui": "workspace:*"
+      tsconfig.json       # references ../ui
+      tsconfig.tsbuildinfo
+      src/
+        main.ts
+      dist/
+```
+
+```json title="packages/app/tsconfig.json"
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "references": [{ "path": "../ui" }]
+}
+```
+
+```json title="tsconfig.json (root)"
+{
+  "files": [],
+  "references": [
+    { "path": "packages/ui" },
+    { "path": "packages/app" }
+  ]
+}
+```
+
+| Command / option | Effect |
+| :--------------- | :----- |
+| `composite: true` | required on referenced projects; forces `declaration`, enables incremental `.tsbuildinfo` (next to the tsconfig when `rootDir` is `src`), every file must be in `include` |
+| `references` | this project depends on another's `.d.ts` output |
+| `tsc -b` | build all referenced projects in order, skipping up-to-date ones |
+| `tsc -b --watch` / `--clean` / `--verbose` | watch, delete outputs, explain decisions |
+
+Lighter alternative: "internal packages" whose `exports` point at `.ts` source under a custom
+condition (`"@me/source": "./src/index.ts"`) plus `customConditions: ["@me/source"]` in
+tsconfig, so editors see live types without a build step.
+
+## Running TS directly
+
+| Runtime | Type-checks | Handles | Notes |
+| :------ | :---------- | :------ | :---- |
+| Node 22.18+, 23.6+, 24 | no | erasable syntax only | type stripping on by default; stable in 24.12 / 25.2 |
+| Bun | no | all TS + JSX, tsconfig `paths` | `bun file.ts`, `bun --watch` |
+| Deno | with `deno check` | all TS + JSX | `deno run file.ts` |
+| tsx | no | all TS + JSX, `paths` | esbuild-powered Node wrapper: `tsx watch file.ts` |
+| ts-node | optional | all TS | legacy and slow; prefer the above |
+
+Node's type stripping replaces types with whitespace and runs the result. Its limits:
+
+- No `enum`, runtime `namespace`, parameter properties, `import x = require()`, or
+  decorators (`--experimental-transform-types` covered some of these; removed in Node 26).
+- Relative imports need the real `.ts` extension; `tsconfig.json` is ignored, so no `paths`
+  (use package.json `"imports"` with `#` instead).
+- Type-only imports must say `import type` (hence `verbatimModuleSyntax`).
+- No `.tsx`, and nothing inside `node_modules` is stripped: publish JavaScript.
+
+```bash
+node src/main.ts          # Node 22.18+ / 24
+node --watch src/main.ts
+bun src/main.ts
+npx tsx watch src/main.ts
+npx tsc --noEmit          # the type check none of them do
+```
+
+Erasable replacements for the banned constructs:
+
+```ts
+// enum Dir { Up, Down }  ->  object + union type
+const Dir = { Up: "up", Down: "down" } as const;
+type Dir = (typeof Dir)[keyof typeof Dir]; // "up" | "down"
+
+// constructor(private x: number) {}  ->  explicit field
+class Point {
+  #x: number;
+  constructor(x: number) {
+    this.#x = x;
+  }
+  get x(): number {
+    return this.#x;
+  }
+}
+
+const move = (d: Dir, p: Point): string => `${d} ${p.x}`;
+move(Dir.Up, new Point(1));
+```
+
+## References
+
+- [MDN: JavaScript modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules),
+  [import attributes](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import/with),
+  [import.meta](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import.meta)
+- [TypeScript: Modules reference](https://www.typescriptlang.org/docs/handbook/modules/reference.html),
+  [Choosing compiler options](https://www.typescriptlang.org/docs/handbook/modules/guides/choosing-compiler-options.html),
+  [Project references](https://www.typescriptlang.org/docs/handbook/project-references.html),
+  [Declaration merging](https://www.typescriptlang.org/docs/handbook/declaration-merging.html)
+- TypeScript release notes [5.7](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-7.html),
+  [5.8](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-8.html),
+  [5.9](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html),
+  [6.0](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
+- Node.js: [Packages](https://nodejs.org/api/packages.html), [ESM](https://nodejs.org/api/esm.html),
+  [require(esm)](https://nodejs.org/api/modules.html#loading-ecmascript-modules-using-require),
+  [TypeScript](https://nodejs.org/api/typescript.html)
+- [publint](https://publint.dev/), [Are the types wrong?](https://arethetypeswrong.github.io/),
+  [tsdown](https://tsdown.dev/), [Changesets](https://github.com/changesets/changesets),
+  [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), [JSR](https://jsr.io/docs)

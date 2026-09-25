@@ -1,0 +1,686 @@
+---
+title: WebGL
+date: 2026-09-25
+order: 3
+---
+
+WebGL2 (OpenGL ES 3.0 in the browser) typed for TypeScript: context, GLSL ES 3.00 shaders, buffers and
+VAOs, textures, uniforms and UBOs, state, framebuffers, instancing, context loss and debugging. For 2D
+drawing see [Canvas 2D](/typescript/web-apis/canvas-2d/); for the newer API see
+[WebGPU](/typescript/web-apis/webgpu/).
+
+## Support & typing
+
+| Feature | Status (MDN) | Notes |
+| :------ | :----------- | :---- |
+| WebGL 1 | Baseline widely available | OpenGL ES 2.0 feature set |
+| WebGL2 | Baseline widely available | Baseline 2021; Chrome 56, Firefox 51, Safari 15 |
+| WebGL in `OffscreenCanvas` / workers | Baseline widely available | Safari 16.4 |
+| `drawingBufferColorSpace` (P3) | Baseline 2024 | |
+| `webglcontextlost` / `restored` events | Baseline widely available | handle them, see below |
+
+Browser support is not device support: a blocklisted GPU or driver gets `null` from `getContext`.
+Always check.
+
+| TS type | Notes |
+| :------ | :---- |
+| `WebGL2RenderingContext` | `canvas.getContext("webgl2")` returns it `\| null` |
+| `WebGLContextAttributes` | options object for `getContext` |
+| `WebGLProgram`, `WebGLShader`, `WebGLBuffer` | opaque handles |
+| `WebGLTexture`, `WebGLFramebuffer`, `WebGLRenderbuffer` | opaque handles |
+| `WebGLVertexArrayObject` | VAO handle (WebGL2) |
+| `WebGLUniformLocation \| null` | `null` when the uniform was optimised away |
+| `GLenum`, `GLint`, `GLfloat` | all aliases of `number` |
+| `getParameter()`, `getShaderParameter()` | return `any`; annotate the result |
+| `getExtension("NAME")` | typed overloads per extension, `\| null` |
+
+```ts
+const max: number = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+// Constants exist on the instance and the class
+gl.TRIANGLES === WebGL2RenderingContext.TRIANGLES; // true
+```
+
+## Pipeline overview
+
+```text
+ JS / TS (CPU)                              GPU
+ ─────────────                              ───
+ Float32Array ─ bufferData ─► ARRAY_BUFFER ─┐
+ Uint16Array  ─ bufferData ─► ELEMENT_ARRAY ┤ described by a VAO
+                                            ▼
+ uniforms, UBOs, textures ─────────► vertex shader  (runs per vertex)
+                                            │  gl_Position (clip space)
+                                            ▼
+                               primitive assembly + clipping
+                               ÷ w → NDC → viewport → window px
+                                            │  face culling
+                                            ▼
+                                      rasterisation
+                                            │  varyings interpolated
+                                            ▼
+ uniforms, textures ───────────────► fragment shader (runs per pixel)
+                                            │  out vec4 color
+                                            ▼
+                       scissor → stencil → depth → blend → framebuffer
+                       (canvas drawing buffer or your FBO/texture)
+```
+
+## Context creation
+
+```ts
+const gl = canvas.getContext("webgl2", {
+  antialias: true,
+  powerPreference: "high-performance",
+});
+if (!gl) throw new Error("WebGL2 unavailable");
+```
+
+| Attribute | Default | Effect |
+| :-------- | :------ | :----- |
+| `alpha` | `true` | transparent canvas; `false` is cheaper to composite |
+| `antialias` | `true` | MSAA on the default framebuffer (not on your FBOs) |
+| `depth` | `true` | 16+ bit depth buffer |
+| `stencil` | `false` | 8-bit stencil buffer |
+| `premultipliedAlpha` | `true` | the page expects premultiplied output colors |
+| `preserveDrawingBuffer` | `false` | keep pixels after compositing; needed for late `toBlob()`; slower |
+| `powerPreference` | `"default"` | `"high-performance"` or `"low-power"` GPU hint |
+| `failIfMajorPerformanceCaveat` | `false` | return `null` on software rendering |
+| `desynchronized` | `false` | low-latency, may tear (Chromium) |
+| `xrCompatible` | `false` | ready for WebXR |
+
+`canvas.width`/`height` set the drawing buffer size; `gl.drawingBufferWidth`/`Height` report what you
+actually got (can be smaller). Call `gl.viewport` after every resize. HiDPI sizing works as in
+[Canvas 2D](/typescript/web-apis/canvas-2d/#setup--hidpi).
+
+## Shaders (GLSL ES 3.00)
+
+```glsl title="vertex.glsl"
+#version 300 es
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec2 aUv;
+
+uniform mat4 uMvp;
+
+out vec2 vUv;
+
+void main() {
+  vUv = aUv;
+  gl_Position = uMvp * vec4(aPosition, 1.0);
+}
+```
+
+```glsl title="fragment.glsl"
+#version 300 es
+precision highp float;
+
+in vec2 vUv;
+uniform sampler2D uTex;
+uniform vec4 uTint;
+
+out vec4 outColor;
+
+void main() {
+  outColor = texture(uTex, vUv) * uTint;
+}
+```
+
+| Syntax | Meaning |
+| :----- | :------ |
+| `#version 300 es` | **must be the very first line**, no blank line or space before it |
+| `precision highp float;` | required in fragment shaders; `mediump` saves power on mobile |
+| `in` (vertex) | per-vertex attribute |
+| `out` (vertex) → `in` (fragment) | varying, interpolated across the triangle |
+| `flat out` / `flat in` | no interpolation; required for `int`/`uint` varyings |
+| `out vec4 x` (fragment) | color output; replaces `gl_FragColor` |
+| `layout(location = n)` | fix an attribute or output location |
+| `uniform` | constant for a draw call |
+| `texture(s, uv)` | sample; replaces `texture2D` |
+| `texelFetch(s, ivec2, lod)` | exact texel, no filtering |
+
+| Types | Notes |
+| :---- | :---- |
+| `float`, `int`, `uint`, `bool` | no implicit int→float: write `1.0`, not `1` |
+| `vec2..4`, `ivec2..4`, `uvec2..4`, `bvec2..4` | swizzle with `.xyzw`, `.rgba`, `.stpq` |
+| `mat2`, `mat3`, `mat4`, `mat3x4` … | column-major; `m * v` |
+| `sampler2D`, `sampler3D`, `samplerCube`, `sampler2DArray` | float textures |
+| `isampler2D`, `usampler2D` | integer textures |
+| `sampler2DShadow` | depth compare for shadow maps |
+
+| Built-in | Stage | Meaning |
+| :------- | :---- | :------ |
+| `gl_Position` | vertex (out) | clip-space position |
+| `gl_PointSize` | vertex (out) | size for `POINTS` |
+| `gl_VertexID`, `gl_InstanceID` | vertex (in) | vertex / instance index |
+| `gl_FragCoord` | fragment (in) | window px, origin bottom-left |
+| `gl_FrontFacing` | fragment (in) | triangle faces the camera |
+| `gl_FragDepth` | fragment (out) | override depth (disables early-z) |
+
+## Buffers, attributes & VAOs
+
+A **VAO** records attribute layout and the element buffer binding; bind it and draw.
+
+```ts
+const positions = new Float32Array([
+  // x, y, z,  u, v
+  -1, -1, 0,  0, 0,
+   1, -1, 0,  1, 0,
+   0,  1, 0,  0.5, 1,
+]);
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+const stride = 5 * 4; // bytes per vertex
+gl.enableVertexAttribArray(0); // aPosition
+gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
+gl.enableVertexAttribArray(1); // aUv
+gl.vertexAttribPointer(1, 2, gl.FLOAT, false, stride, 12);
+
+const ibo = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); // saved in VAO
+gl.bufferData(
+  gl.ELEMENT_ARRAY_BUFFER,
+  new Uint16Array([0, 1, 2]),
+  gl.STATIC_DRAW,
+);
+gl.bindVertexArray(null);
+```
+
+| Call | Notes |
+| :--- | :---- |
+| `bufferData(target, data, usage)` | allocate + upload; usage `STATIC_DRAW`, `DYNAMIC_DRAW`, `STREAM_DRAW` |
+| `bufferSubData(target, offset, data)` | update part of an existing buffer |
+| `vertexAttribPointer(loc, size, type, norm, stride, offset)` | float attribute; `norm` maps ints to 0–1 |
+| `vertexAttribIPointer(loc, size, type, stride, offset)` | integer attribute (`ivec`/`uvec` in GLSL) |
+| `getAttribLocation(prog, name)` | `-1` if unused; prefer `layout(location)` |
+| `vertexAttribDivisor(loc, 1)` | advance per instance, not per vertex |
+
+## Drawing & instancing
+
+| Call | Use |
+| :--- | :-- |
+| `drawArrays(mode, first, count)` | vertices in order |
+| `drawElements(mode, count, type, offset)` | via index buffer; `type` `UNSIGNED_SHORT` or `UNSIGNED_INT` |
+| `drawArraysInstanced(mode, first, count, n)` | `n` copies, `gl_InstanceID` 0…n-1 |
+| `drawElementsInstanced(mode, count, type, offset, n)` | indexed + instanced |
+| `drawRangeElements(mode, start, end, count, type, offset)` | hint the index range |
+| `drawBuffers([...])` | pick color attachments to write (MRT) |
+
+| Primitive (`mode`) | Vertices → shapes |
+| :----------------- | :---------------- |
+| `POINTS` | each vertex is a square of `gl_PointSize` px |
+| `LINES` | pairs: 0-1, 2-3 |
+| `LINE_STRIP` | connected: 0-1-2-3 |
+| `LINE_LOOP` | strip plus last→first |
+| `TRIANGLES` | triples: 0-1-2, 3-4-5 (most common) |
+| `TRIANGLE_STRIP` | each new vertex adds a triangle with the previous two |
+| `TRIANGLE_FAN` | all triangles share vertex 0 |
+
+Line width above 1 is not supported on most platforms: draw thick lines as triangles.
+
+```ts
+// One attribute per instance: offsets for 1000 quads
+const offsets = new Float32Array(1000 * 2);
+const inst = gl.createBuffer();
+gl.bindVertexArray(vao);
+gl.bindBuffer(gl.ARRAY_BUFFER, inst);
+gl.bufferData(gl.ARRAY_BUFFER, offsets, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(2);
+gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+gl.vertexAttribDivisor(2, 1); // one value per instance
+gl.useProgram(prog); // shader reads attribute 2
+gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1000);
+```
+
+A `mat4` attribute takes four consecutive locations, each with its own pointer and divisor.
+
+## Textures
+
+```ts
+const tex = gl.createTexture();
+gl.activeTexture(gl.TEXTURE0); // unit 0
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texImage2D(
+  gl.TEXTURE_2D, 0, gl.RGBA8, // level, internal format
+  gl.RGBA, gl.UNSIGNED_BYTE, bitmap, // format, type, src
+);
+gl.generateMipmap(gl.TEXTURE_2D);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,
+  gl.LINEAR_MIPMAP_LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER,
+  gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S,
+  gl.CLAMP_TO_EDGE);
+// Sampler uniform = texture unit index
+gl.useProgram(prog);
+gl.uniform1i(gl.getUniformLocation(prog, "uTex"), 0);
+```
+
+| Parameter | Values |
+| :-------- | :----- |
+| `TEXTURE_MIN_FILTER` | `NEAREST`, `LINEAR`, `*_MIPMAP_*` (needs mipmaps) |
+| `TEXTURE_MAG_FILTER` | `NEAREST` (pixel art), `LINEAR` |
+| `TEXTURE_WRAP_S` / `_T` / `_R` | `REPEAT`, `CLAMP_TO_EDGE`, `MIRRORED_REPEAT` |
+| `TEXTURE_MAX_ANISOTROPY_EXT` | via `EXT_texture_filter_anisotropic` |
+
+| Internal format | Format / type | Use |
+| :-------------- | :------------ | :-- |
+| `RGBA8` | `RGBA` / `UNSIGNED_BYTE` | default color |
+| `SRGB8_ALPHA8` | `RGBA` / `UNSIGNED_BYTE` | color images, correct filtering in linear space |
+| `R8`, `RG8` | `RED`, `RG` / `UNSIGNED_BYTE` | masks, data |
+| `RGBA16F` | `RGBA` / `HALF_FLOAT` | HDR |
+| `RGBA32F` | `RGBA` / `FLOAT` | data; linear filtering needs `OES_texture_float_linear` |
+| `R32UI` | `RED_INTEGER` / `UNSIGNED_INT` | integer ids (`usampler2D`) |
+| `DEPTH_COMPONENT24` | `DEPTH_COMPONENT` / `UNSIGNED_INT` | shadow maps |
+
+| Fact | Detail |
+| :--- | :----- |
+| Default texture with a mipmap `MIN_FILTER` and no mipmaps | samples black ("incomplete") |
+| WebGL2 | non-power-of-two sizes support mipmaps and `REPEAT` |
+| `texStorage2D(target, levels, fmt, w, h)` | immutable storage; then `texSubImage2D` |
+| `pixelStorei(UNPACK_FLIP_Y_WEBGL, true)` | flips DOM image sources; not `ImageBitmap` (use `imageOrientation: "flipY"`) |
+| `pixelStorei(UNPACK_ALIGNMENT, 1)` | tight rows for 1- or 3-byte formats |
+| Units | `MAX_COMBINED_TEXTURE_IMAGE_UNITS` is at least 32 in WebGL2 |
+| Cross-origin images | need CORS or `texImage2D` throws `SecurityError` |
+
+## Uniforms & UBOs
+
+```ts
+gl.useProgram(prog); // uniforms target the bound program
+const uTint = gl.getUniformLocation(prog, "uTint");
+const uMvp = gl.getUniformLocation(prog, "uMvp");
+gl.uniform4f(uTint, 1, 0.5, 0.2, 1);
+gl.uniformMatrix4fv(uMvp, false, mvp); // column-major
+```
+
+| Setter | GLSL type |
+| :----- | :-------- |
+| `uniform1f` / `uniform1fv` | `float` / `float[]` |
+| `uniform2f..4f`, `uniform2fv..4fv` | `vec2..4` |
+| `uniform1i` | `int`, `bool`, `sampler*` (texture unit) |
+| `uniform1ui..4ui` | `uint`, `uvec*` |
+| `uniformMatrix2fv..4fv(loc, transpose, data)` | `mat2..4`; `transpose` usually `false` |
+
+Look locations up once after linking and cache them. Uniform values belong to the program, so they
+persist across frames.
+
+### Uniform buffer objects
+
+Share one block across programs and update it with one upload. Layout `std140`: scalars take 4 bytes,
+`vec2` 8, `vec3` and `vec4` 16, each array element and matrix column is padded to 16.
+
+```glsl
+layout(std140) uniform Camera {
+  mat4 view;      // offset 0
+  mat4 proj;      // offset 64
+  vec4 eye;       // offset 128 (vec3 would pad anyway)
+};
+```
+
+```ts
+const CAMERA = 0; // binding point
+const idx = gl.getUniformBlockIndex(prog, "Camera");
+gl.uniformBlockBinding(prog, idx, CAMERA);
+
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, 144, gl.DYNAMIC_DRAW);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, CAMERA, ubo);
+
+// per frame: 36 floats = view(16) + proj(16) + eye(4)
+const data = new Float32Array(36);
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
+```
+
+## Coordinate spaces & matrices
+
+```text
+object (model) space
+   │  model matrix        scale · rotate · translate the mesh
+   ▼
+world space
+   │  view matrix         inverse of the camera transform
+   ▼
+view (eye) space          camera at origin, looking down -Z
+   │  projection matrix   perspective or orthographic
+   ▼
+clip space                gl_Position = P · V · M · vec4(pos, 1)
+   │  ÷ w (perspective divide)
+   ▼
+NDC                       x, y, z in -1..1 (WebGPU: z in 0..1)
+   │  viewport + depthRange
+   ▼
+window px                 origin bottom-left, depth 0..1
+```
+
+```ts
+import { mat4 } from "gl-matrix";
+
+const aspect = canvas.clientWidth / canvas.clientHeight;
+const proj = mat4.perspective(
+  mat4.create(), Math.PI / 4, aspect, 0.1, 100,
+);
+const view = mat4.lookAt(
+  mat4.create(), [0, 2, 5], [0, 0, 0], [0, 1, 0],
+);
+const model = mat4.fromYRotation(mat4.create(), 0.5);
+const mvp = mat4.create();
+mat4.multiply(mvp, proj, view);
+mat4.multiply(mvp, mvp, model); // P · V · M
+gl.uniformMatrix4fv(uMvp, false, mvp);
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Storage | `Float32Array(16)`, column-major (translation in elements 12–14) |
+| Order | read right to left: `P · V · M · v` |
+| Normals | transform with the inverse transpose of the model matrix (`mat3`) |
+| Ortho for 2D | `mat4.ortho(out, 0, w, h, 0, -1, 1)` gives a top-left pixel origin |
+| Libraries | `gl-matrix` (WebGL conventions), `wgpu-matrix` (WebGPU z range) |
+
+## Depth, blending & culling
+
+| State | Calls | Typical |
+| :---- | :---- | :------ |
+| Depth test | `enable(DEPTH_TEST)`, `depthFunc(LESS)` | opaque 3D |
+| Depth writes | `depthMask(false)` | transparent pass after opaque |
+| Blending | `enable(BLEND)`, `blendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` | straight alpha |
+| Premultiplied | `blendFunc(ONE, ONE_MINUS_SRC_ALPHA)` | matches the default canvas |
+| Additive | `blendFunc(ONE, ONE)` | glow, particles |
+| Separate alpha | `blendFuncSeparate(srcRGB, dstRGB, srcA, dstA)` | keep canvas alpha sane |
+| Equation | `blendEquation(FUNC_ADD \| MIN \| MAX)` | MIN/MAX built in to WebGL2 |
+| Culling | `enable(CULL_FACE)`, `cullFace(BACK)`, `frontFace(CCW)` | closed meshes |
+| Scissor | `enable(SCISSOR_TEST)`, `scissor(x, y, w, h)` | clip to a rect (bottom-left origin) |
+| Clear | `clearColor`, `clearDepth`, `clear(COLOR_BUFFER_BIT \| DEPTH_BUFFER_BIT)` | start of each frame |
+| Masks | `colorMask(r, g, b, a)`, `stencilFunc`, `stencilOp` | outlines, portals |
+
+State is global to the context and sticks until changed. Set what each pass needs at its start rather
+than assuming what the last pass left.
+
+Transparency: draw opaque objects first, then transparent ones back-to-front with depth writes off.
+
+## Framebuffers & render-to-texture
+
+```ts
+function createTarget(
+  gl: WebGL2RenderingContext, w: number, h: number,
+) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+  gl.texParameteri(gl.TEXTURE_2D,
+    gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  const depth = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+  gl.renderbufferStorage(gl.RENDERBUFFER,
+    gl.DEPTH_COMPONENT24, w, h);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER,
+    gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    const hex = status.toString(16);
+    throw new Error(`FBO incomplete: 0x${hex}`);
+  }
+  return { fbo, tex, depth };
+}
+```
+
+| Task | How |
+| :--- | :-- |
+| Render into it | `bindFramebuffer(FRAMEBUFFER, fbo)`, `viewport(0, 0, w, h)`, draw |
+| Back to canvas | `bindFramebuffer(FRAMEBUFFER, null)`, restore viewport |
+| Multiple render targets | attach `COLOR_ATTACHMENT0..n`, call `drawBuffers([...])`, write `layout(location = i) out` |
+| MSAA offscreen | `renderbufferStorageMultisample`, then `blitFramebuffer` into a texture FBO |
+| Float targets | `getExtension("EXT_color_buffer_float")` first, else incomplete |
+| Read pixels | `readPixels(x, y, w, h, RGBA, UNSIGNED_BYTE, out)`; stalls the GPU |
+| Post-processing chains | ping-pong two targets; never sample the texture you are writing (feedback loop error) |
+
+## Context loss
+
+The GPU process can reset (driver crash, too many contexts, device sleep). Every GL object is then gone.
+
+```ts
+let rafId = 0;
+canvas.addEventListener("webglcontextlost", (e) => {
+  e.preventDefault(); // allow a restore
+  cancelAnimationFrame(rafId);
+});
+canvas.addEventListener("webglcontextrestored", () => {
+  initGL(); // recreate programs, buffers, textures
+  rafId = requestAnimationFrame(render);
+});
+
+// Simulate in development
+gl.getExtension("WEBGL_lose_context")?.loseContext();
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Without `preventDefault()` | the context is never restored |
+| While lost | calls are no-ops, `getError()` returns `CONTEXT_LOST_WEBGL`, `create*` may return `null` |
+| Check | `gl.isContextLost()` |
+| Keep | CPU copies (or URLs) of everything you upload, so init can rerun |
+| Limit | browsers cap live contexts (about 16); the oldest is lost first |
+| TS | the listener gets `Event`; cast to `WebGLContextEvent` for `statusMessage` |
+
+## Debugging & extensions
+
+| Tool | Use |
+| :--- | :-- |
+| `getShaderInfoLog`, `getProgramInfoLog` | compile / link errors with line numbers |
+| `gl.getError()` | first error flag since last call; forces a sync, dev builds only |
+| `KHR_parallel_shader_compile` | poll `COMPLETION_STATUS_KHR` instead of blocking on link |
+| `WEBGL_debug_shaders` | `getTranslatedShaderSource`: what ANGLE made of your GLSL |
+| `WEBGL_debug_renderer_info` | `UNMASKED_RENDERER_WEBGL` GPU name, for bug reports |
+| [Spector.js](https://spector.babylonjs.com/) | browser extension: capture a frame, inspect every call and state |
+| Browser GPU tools | `chrome://gpu`, Firefox `about:support` show blocklist and driver info |
+
+| `getError()` | Usual cause |
+| :----------- | :---------- |
+| `INVALID_ENUM` | wrong constant for this call |
+| `INVALID_VALUE` | negative size, out-of-range index |
+| `INVALID_OPERATION` | nothing bound, program not linked, type mismatch |
+| `INVALID_FRAMEBUFFER_OPERATION` | drawing into an incomplete FBO |
+| `OUT_OF_MEMORY` | texture or buffer too large |
+| `CONTEXT_LOST_WEBGL` | see [Context loss](#context-loss) |
+
+Useful WebGL2 extensions. `getExtension` returns `null` when the GPU lacks one, whatever the browser.
+
+| Extension | Gives | Availability (MDN) |
+| :-------- | :---- | :----------------- |
+| `EXT_color_buffer_float` | render to `R/RG/RGBA16F/32F` | Baseline widely available |
+| `EXT_color_buffer_half_float` | render to half float | Baseline widely available |
+| `OES_texture_float_linear` | linear filtering of 32-bit float textures | Baseline widely available |
+| `EXT_texture_filter_anisotropic` | sharper textures at grazing angles | Baseline widely available |
+| `WEBGL_lose_context` | simulate context loss | Baseline widely available |
+| `WEBGL_debug_renderer_info` | real GPU name | Baseline widely available |
+| `WEBGL_compressed_texture_s3tc` | BC1–3 (desktop GPUs) | not on most mobile |
+| `WEBGL_compressed_texture_astc` / `_etc` | mobile compressed textures | Baseline widely available |
+| `KHR_parallel_shader_compile` | non-blocking compile | Chromium, Safari; not Firefox |
+| `WEBGL_multi_draw` | many draws in one call | Chromium, Safari; not Firefox |
+| `EXT_disjoint_timer_query_webgl2` | GPU timing | Chromium only |
+| `OVR_multiview2` | single-pass stereo (VR) | Windows (ANGLE) only |
+
+## Libraries & WebGPU
+
+| Library | Level | Notes |
+| :------ | :---- | :---- |
+| [three.js](https://threejs.org/) | 3D scene graph | r186; `WebGPURenderer` falls back to WebGL2; TSL node shaders |
+| [Babylon.js](https://www.babylonjs.com/) | 3D engine | v9; WebGL2 and WebGPU, editor, physics, Spector.js author |
+| [PixiJS](https://pixijs.com/) | 2D renderer | v8; WebGL2 or WebGPU, sprites and text at scale |
+| [twgl.js](https://twgljs.org/) | thin helpers | v7; cuts boilerplate, keeps raw GL |
+| [regl](https://github.com/regl-project/regl) | functional wrapper | v2; WebGL1 API, stable but quiet |
+| `gl-matrix` | math | `mat4`, `vec3`, `quat` in `Float32Array` |
+
+| | WebGL2 | WebGPU |
+| :- | :----- | :----- |
+| Support | Baseline widely available | Limited availability (2026) |
+| Model | global state machine | immutable pipelines + bind groups |
+| Shaders | GLSL ES 3.00 | WGSL |
+| Compute | none (fake it with fragment passes) | compute shaders, storage buffers |
+| CPU overhead | high per draw call | low, prerecorded command buffers |
+| Errors | `getError()` polling | error scopes, `uncapturederror`, `device.lost` |
+| NDC depth | -1..1 | 0..1 |
+| Choose it when | reach matters, or an existing engine handles it | compute, big scenes, new projects with a fallback |
+
+## Recipes
+
+### Compile and link with error reporting
+Use as the base of any raw WebGL2 code; it throws with the driver log (`ERROR: 0:LINE: …`).
+
+```ts
+function compile(
+  gl: WebGL2RenderingContext, type: GLenum, src: string,
+): WebGLShader {
+  const sh = gl.createShader(type)!; // null only if lost
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  const ok = gl.getShaderParameter(sh, gl.COMPILE_STATUS);
+  if (ok) return sh;
+  const log = gl.getShaderInfoLog(sh);
+  gl.deleteShader(sh);
+  throw new Error(`Shader compile failed: ${log}`);
+}
+
+export function createProgram(
+  gl: WebGL2RenderingContext, vs: string, fs: string,
+): WebGLProgram {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (gl.getProgramParameter(p, gl.LINK_STATUS)) return p;
+  const log = gl.getProgramInfoLog(p);
+  throw new Error(`Program link failed: ${log}`);
+}
+```
+
+### Minimal WebGL2 triangle
+Use as a smoke test for a new canvas; builds on `createProgram` above.
+
+```ts
+const VS = `#version 300 es
+layout(location = 0) in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const FS = `#version 300 es
+precision highp float;
+out vec4 color;
+void main() { color = vec4(1.0, 0.4, 0.2, 1.0); }`;
+
+const canvas = document.querySelector("canvas")!;
+const gl = canvas.getContext("webgl2");
+if (!gl) throw new Error("WebGL2 unavailable");
+const prog = createProgram(gl, VS, FS);
+
+gl.bindVertexArray(gl.createVertexArray());
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+const tri = new Float32Array([0, .8, -.8, -.8, .8, -.8]);
+gl.bufferData(gl.ARRAY_BUFFER, tri, gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.1, 0.1, 0.1, 1);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.useProgram(prog);
+gl.drawArrays(gl.TRIANGLES, 0, 3);
+```
+
+### Fullscreen fragment shader (Shadertoy style)
+Use for generative art and post effects: one oversized triangle from `gl_VertexID`, no buffers.
+
+```ts
+const VS = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 iResolution; uniform float iTime;
+out vec4 fragColor;
+void main() {
+  vec2 uv = gl_FragCoord.xy / iResolution;
+  vec3 c = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
+  fragColor = vec4(c, 1.0);
+}`;
+const prog = createProgram(gl, VS, FS);
+const uRes = gl.getUniformLocation(prog, "iResolution");
+const uTime = gl.getUniformLocation(prog, "iTime");
+gl.useProgram(prog); // default VAO, no attributes needed
+requestAnimationFrame(function frame(t) {
+  resizeToDisplay(gl); // last recipe
+  gl.uniform2f(uRes, gl.canvas.width, gl.canvas.height);
+  gl.uniform1f(uTime, t / 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+});
+```
+
+### Load a texture from a URL
+Use for images and sprite sheets; decodes off-thread and flips for GL's bottom-left origin.
+
+```ts
+async function loadTexture(
+  gl: WebGL2RenderingContext, url: string,
+): Promise<WebGLTexture> {
+  const res = await fetch(url, { mode: "cors" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  const bmp = await createImageBitmap(await res.blob(), {
+    imageOrientation: "flipY",
+    premultiplyAlpha: "none",
+  });
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8,
+    gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,
+    gl.LINEAR_MIPMAP_LINEAR);
+  bmp.close();
+  return tex;
+}
+```
+
+### Resize to the display size
+Use at the top of every frame; it only reallocates when the CSS size or DPR actually changed.
+
+```ts
+function resizeToDisplay(
+  gl: WebGL2RenderingContext, maxDpr = 2,
+): boolean {
+  const c = gl.canvas as HTMLCanvasElement;
+  const dpr = Math.min(window.devicePixelRatio, maxDpr);
+  const w = Math.round(c.clientWidth * dpr);
+  const h = Math.round(c.clientHeight * dpr);
+  const changed = c.width !== w || c.height !== h;
+  if (changed) {
+    c.width = w;
+    c.height = h;
+  }
+  gl.viewport(0, 0, gl.drawingBufferWidth,
+    gl.drawingBufferHeight);
+  return changed; // true: rebuild size-dependent FBOs
+}
+```
+
+Capping DPR at 2 keeps fill-rate sane on 3× phones. For exact device pixels use the
+`ResizeObserver` recipe in [Canvas 2D](/typescript/web-apis/canvas-2d/#resize-with-resizeobserver).
+
+## References
+
+- MDN: [WebGL API](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API), [`WebGL2RenderingContext`](https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext), [WebGL best practices](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices), [WebGL tutorial](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Tutorial)
+- MDN: [Using extensions](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Using_Extensions), [`webglcontextlost`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextlost_event), [Matrix math for the web](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Matrix_math_for_the_web), [Data in WebGL](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Data)
+- [Khronos: WebGL 2.0 specification](https://registry.khronos.org/webgl/specs/latest/2.0/), [WebGL extension registry](https://registry.khronos.org/webgl/extensions/), [GLSL ES 3.00 spec](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)
+- [WebGL2 Fundamentals](https://webgl2fundamentals.org/): the best from-scratch walkthrough
+- [Spector.js](https://spector.babylonjs.com/), [three.js docs](https://threejs.org/docs/), [twgl.js](https://twgljs.org/), [gl-matrix](https://glmatrix.net/)
+- [webglreport.com](https://webglreport.com/): what the current browser and GPU expose

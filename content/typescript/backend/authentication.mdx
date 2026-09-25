@@ -1,0 +1,862 @@
+---
+title: Authentication
+date: 2026-09-25
+order: 5
+---
+
+Proving who a user is (passwords, sessions, JWTs, OAuth, passkeys, MFA) and deciding what they may
+do, with typed TypeScript on Bun, Node and Web Crypto. Use vetted libraries for every primitive;
+nothing here invents its own crypto.
+
+## Concepts
+
+| Term           | Question it answers           | Failure status | Examples                          |
+| :------------- | :---------------------------- | :------------- | :-------------------------------- |
+| Authentication | who are you?                  | `401`          | password, passkey, OAuth login    |
+| Authorization  | may you do this?              | `403`          | roles, ownership, policies        |
+| Identification | which account?                | none           | email, username, `sub` claim      |
+| Session        | are you still the same user?  | `401`          | cookie with a random session ID   |
+
+`401 Unauthorized` really means unauthenticated; `403 Forbidden` means authenticated but not allowed.
+Return `404` instead of `403` when even the existence of a resource is secret.
+
+### Sessions vs tokens
+
+| Aspect            | Server-side session (opaque ID)       | Self-contained token (JWT)                    |
+| :---------------- | :------------------------------------ | :-------------------------------------------- |
+| State             | stateful: row in DB / Redis           | stateless: claims signed inside the token     |
+| Lookup per request | yes (fast KV read)                   | no, verify signature only                     |
+| Revocation        | delete the row, instant               | hard: wait for `exp` or keep a denylist       |
+| Size on the wire  | ~32–64 bytes                          | often 500 bytes to several KB                 |
+| Transport         | `HttpOnly` cookie                     | `Authorization: Bearer` header or cookie      |
+| Cross-service     | services share the store              | any service with the public key can verify    |
+| Best for          | first-party web apps                  | APIs, service-to-service, short-lived access  |
+
+Default for a web app you control: **server-side sessions in an `HttpOnly` cookie**. Reach for JWTs
+when a separate service must verify identity without calling back to you.
+
+## Passwords
+
+Never store plaintext or a fast hash (MD5, SHA-*). Store the output of a slow, salted, memory-hard
+password hashing function; the PHC string it returns carries the algorithm, parameters and salt.
+
+| Algorithm | Status           | OWASP minimum parameters                          | Notes                              |
+| :-------- | :--------------- | :------------------------------------------------ | :--------------------------------- |
+| argon2id  | preferred        | m = 19 MiB, t = 2, p = 1 (or 46 MiB, t = 1)       | memory-hard, GPU/side-channel resistant |
+| scrypt    | if no argon2     | N = 2^17, r = 8, p = 1 (128 MiB)                  | built into `node:crypto`           |
+| bcrypt    | legacy           | cost 10+                                          | truncates input at 72 bytes        |
+| PBKDF2    | FIPS only        | 600,000 iterations with HMAC-SHA-256              | not memory-hard                    |
+
+### Bun
+
+```ts title="bun-password.ts"
+const hash = await Bun.password.hash(password, {
+  algorithm: "argon2id",
+  memoryCost: 19_456, // KiB (19 MiB)
+  timeCost: 2,
+});
+// "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
+
+const ok = await Bun.password.verify(password, hash);
+// algorithm is read from the hash; bcrypt hashes work too
+```
+
+Both functions run in a worker thread; `hashSync` / `verifySync` block the event loop.
+
+### Node (`node:crypto` scrypt)
+
+```ts title="scrypt.ts"
+import {
+  randomBytes,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
+
+const KEY_LEN = 32;
+const PARAMS = {
+  N: 2 ** 17,
+  r: 8,
+  p: 1,
+  maxmem: 256 * 1024 * 1024, // default 32 MiB is too small
+};
+
+function derive(pw: string, salt: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(pw.normalize("NFKC"), salt, KEY_LEN, PARAMS,
+      (err, key) => (err ? reject(err) : resolve(key)));
+  });
+}
+
+export async function hashPassword(pw: string) {
+  const salt = randomBytes(16);
+  const key = await derive(pw, salt);
+  return `scrypt$${salt.toString("base64url")}` +
+    `$${key.toString("base64url")}`;
+}
+
+export async function verifyPassword(
+  pw: string,
+  stored: string,
+): Promise<boolean> {
+  const [alg, salt, key] = stored.split("$");
+  if (alg !== "scrypt" || !salt || !key) return false;
+  const expected = Buffer.from(key, "base64url");
+  const saltBuf = Buffer.from(salt, "base64url");
+  const actual = await derive(pw, saltBuf);
+  return expected.length === actual.length &&
+    timingSafeEqual(actual, expected);
+}
+```
+
+- **`timingSafeEqual`** compares in constant time; `===` leaks how many leading bytes matched.
+- Store the parameters with the hash (or version the prefix) and **rehash on login** when they change.
+- An optional **pepper** (secret key kept outside the DB, e.g. HMAC before hashing) adds defence if
+  only the database leaks.
+
+### Policy, rate limiting, breach checks
+
+| Rule (NIST SP 800-63B, OWASP)                   | Why                                              |
+| :---------------------------------------------- | :----------------------------------------------- |
+| length over complexity: 8+ chars, 15+ if password is the only factor | composition rules produce `Password1!` |
+| allow at least 64 chars, all Unicode, paste     | password managers                                |
+| no forced periodic rotation                     | rotate only on evidence of compromise            |
+| reject known-breached passwords                 | credential stuffing uses these lists first       |
+| rate limit by account **and** IP; add backoff   | slows online guessing                            |
+| identical error for "no such user" and "wrong password" | avoids account enumeration               |
+| same work on unknown users (hash a dummy)       | avoids timing-based enumeration                  |
+
+Have I Been Pwned's range API uses k-anonymity: only the first 5 hex chars of the SHA-1 leave the
+server.
+
+```ts title="breached.ts"
+export async function isBreached(
+  pw: string,
+): Promise<boolean> {
+  const bytes = new TextEncoder().encode(pw);
+  const digest = await crypto.subtle.digest("SHA-1", bytes);
+  const hex = Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("").toUpperCase();
+
+  const res = await fetch(
+    `https://api.pwnedpasswords.com/range/` +
+      hex.slice(0, 5),
+    { headers: { "Add-Padding": "true" } },
+  );
+  if (!res.ok) return false; // fail open, but log it
+  const suffix = hex.slice(5);
+  return (await res.text()).split("\n").some((line) => {
+    const [s, count] = line.trim().split(":");
+    return s === suffix && count !== "0"; // 0 = padding
+  });
+}
+```
+
+## Sessions & cookies
+
+### Cookie attributes
+
+| Attribute           | Set it to                  | Effect                                                     |
+| :------------------ | :------------------------- | :--------------------------------------------------------- |
+| `HttpOnly`          | always for session cookies | invisible to `document.cookie`, limits XSS token theft     |
+| `Secure`            | always                     | only sent over HTTPS (Chrome, Firefox also allow `localhost`) |
+| `SameSite=Lax`      | default choice             | sent on top-level GET navigations from other sites, not on cross-site POST, `fetch` or iframes |
+| `SameSite=Strict`   | admin / banking            | never sent cross-site, even when following a link          |
+| `SameSite=None`     | cross-site embeds only     | always sent; requires `Secure`; you need CSRF tokens       |
+| `Path=/`            | usually `/`                | URL prefix the cookie is sent to; not a security boundary  |
+| `Domain`            | omit                       | omitted: host-only; set: also sent to every subdomain      |
+| `Max-Age` / `Expires` | seconds / date           | omitted: session cookie; `Max-Age` wins over `Expires`     |
+| `Partitioned`       | third-party embeds         | CHIPS: one cookie jar per top-level site                   |
+| `__Host-` prefix    | recommended                | browser enforces `Secure`, `Path=/`, no `Domain`           |
+| `__Secure-` prefix  | if you need `Domain`       | browser enforces `Secure`                                  |
+
+```text
+Set-Cookie: __Host-sid=q3Vx…; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax
+```
+
+Chrome treats cookies without `SameSite` as `Lax`; other browsers do not, so always set it.
+
+### Session lifecycle
+
+```ts title="session.ts"
+type Session = {
+  id: string; // SHA-256 of the cookie token
+  userId: string;
+  expiresAt: number;
+};
+const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function base64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  return base64url(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", data),
+    ),
+  );
+}
+
+export async function createSession(userId: string) {
+  // 256 random bits; crypto.randomUUID() (122 bits)
+  // also fine
+  const token = base64url(
+    crypto.getRandomValues(new Uint8Array(32)),
+  );
+  const session: Session = {
+    id: await sha256(token), // DB leak does not leak cookies
+    userId,
+    expiresAt: Date.now() + TTL_MS,
+  };
+  await store.insert(session);
+  return { token, session }; // token goes only in the cookie
+}
+
+export async function validateSession(token: string) {
+  const session = await store.get(await sha256(token));
+  if (!session || session.expiresAt <= Date.now()) {
+    return null;
+  }
+  return session;
+}
+
+export async function invalidateSession(token: string) {
+  await store.delete(await sha256(token));
+}
+```
+
+```ts title="cookie.ts"
+export function sessionCookie(token: string): string {
+  return new Bun.Cookie("__Host-sid", token, {
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 30 * 24 * 60 * 60, // seconds
+  }).toString();
+}
+
+// logout: same name and attributes, Max-Age=0
+export const clearedCookie = new Bun.Cookie(
+  "__Host-sid",
+  "",
+  {
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 0,
+  },
+).toString();
+```
+
+| Event                        | Do                                                               |
+| :--------------------------- | :--------------------------------------------------------------- |
+| login, MFA, privilege change | create a **new** session and delete the old one (fixation)       |
+| each request                 | validate; optionally extend `expiresAt` (sliding) with an absolute cap |
+| logout                       | delete server-side **and** clear the cookie                      |
+| password change / reset      | delete all of the user's other sessions                          |
+| "sign out everywhere"        | delete every session for the user ID                             |
+| idle timeout                 | minutes for high-risk apps, days for low-risk                    |
+
+## JWT
+
+A JWT (RFC 7519) is `base64url(header).base64url(payload).base64url(signature)`: signed, **not**
+encrypted, so anyone can read the claims.
+
+| Part      | Contains                                    | Example                                  |
+| :-------- | :------------------------------------------ | :--------------------------------------- |
+| Header    | algorithm, type, key ID                     | `{ "alg": "EdDSA", "kid": "2026-09" }`   |
+| Payload   | claims                                      | `{ "sub": "u_1", "exp": 1790000000 }`    |
+| Signature | HMAC or signature over `header.payload`     | 32–64 bytes, base64url                   |
+
+| Claim | Name       | Check                                                   |
+| :---- | :--------- | :------------------------------------------------------ |
+| `iss` | issuer     | exact match with the expected issuer                    |
+| `sub` | subject    | the user or client ID                                   |
+| `aud` | audience   | must include **your** API, else tokens for others work  |
+| `exp` | expires    | seconds since epoch; reject if past (small clock skew)  |
+| `nbf` | not before | reject if in the future                                 |
+| `iat` | issued at  | informational; can enforce a max age                    |
+| `jti` | JWT ID     | unique ID, for denylists and replay detection           |
+
+### Sign and verify with jose
+
+`jose` is dependency-free and built on Web Crypto, so it runs in Node, Bun, Deno, Workers and browsers.
+
+```ts title="jwt.ts"
+import { SignJWT, errors, jwtVerify } from "jose";
+
+const ISSUER = "https://auth.example.com";
+const AUDIENCE = "https://api.example.com";
+// HS256 needs >= 32 random bytes; prefer EdDSA / ES256 keys
+const secret = new TextEncoder().encode(
+  process.env.JWT_SECRET,
+);
+
+export function issueAccessToken(userId: string) {
+  return new SignJWT({ scope: "posts:read" })
+    .setProtectedHeader({ alg: "HS256", typ: "at+jwt" })
+    .setSubject(userId)
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE)
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .setJti(crypto.randomUUID())
+    .sign(secret);
+}
+
+export async function verifyAccessToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, secret, {
+      // allow-list: never trust header
+      algorithms: ["HS256"],
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      requiredClaims: ["exp", "sub"],
+      clockTolerance: "5s",
+    });
+    return payload; // JWTPayload: validate further with Zod
+  } catch (err) {
+    if (err instanceof errors.JWTExpired) return null;
+    if (err instanceof errors.JOSEError) return null;
+    throw err;
+  }
+}
+```
+
+For tokens from an identity provider, verify against its published keys:
+`jwtVerify(token, createRemoteJWKSet(new URL(jwksUri)), { issuer, audience, algorithms: ["RS256"] })`.
+The JWKS is cached and refetched when an unknown `kid` appears.
+
+### Pitfalls
+
+| Pitfall                          | Fix                                                                     |
+| :------------------------------- | :---------------------------------------------------------------------- |
+| `alg: "none"` accepted           | always pass `algorithms`; jose's `jwtVerify` rejects unsecured JWTs      |
+| RS256 public key used as HS256 secret | one algorithm family per key; the allow-list prevents confusion    |
+| no `aud` / `iss` check           | a token minted for another service is accepted by yours                 |
+| stored in `localStorage`         | any XSS can exfiltrate it; prefer `HttpOnly` cookies or memory          |
+| cannot revoke                    | short `exp` (5–15 min) + revocable refresh token, or a `jti` denylist   |
+| secrets in payload               | payload is only base64url; put IDs in, not PII or permissions you may revoke |
+| `jwt.decode()` used for auth     | decode is for display only; always `verify`                             |
+| weak HS256 secret                | 256+ random bits, or asymmetric keys with rotation via `kid`            |
+
+**Refresh tokens**: keep them opaque, store their hash server-side, send them in an `HttpOnly` cookie
+scoped to `Path=/auth/refresh`, rotate on every use, and revoke the whole token family if an old one is
+reused.
+
+## OAuth 2.0 & OIDC
+
+OAuth 2.0 delegates **authorization** (an access token for an API); OpenID Connect adds
+**authentication** on top (an ID token saying who logged in). Use the authorization code flow with
+PKCE for every client type (RFC 9700); the implicit and password grants are deprecated.
+
+<Steps>
+  <Step title="Prepare">Generate `state`, `nonce` and a PKCE `code_verifier`; keep them in a short-lived `HttpOnly` cookie or the server session.</Step>
+  <Step title="Redirect">Send the user to the provider's `authorization_endpoint` with `response_type=code`, `code_challenge` and `code_challenge_method=S256`.</Step>
+  <Step title="Consent">The user logs in at the provider, which redirects back to your exact registered `redirect_uri` with `code` and `state`.</Step>
+  <Step title="Check state">Reject the callback unless `state` matches what you stored (CSRF on the login flow).</Step>
+  <Step title="Exchange">POST `code` plus `code_verifier` (and client authentication for confidential clients) to the `token_endpoint`.</Step>
+  <Step title="Validate">Verify the ID token's signature, `iss`, `aud` (your client ID), `exp` and `nonce`; then create your own session.</Step>
+</Steps>
+
+```ts title="pkce.ts"
+import { base64url } from "./session.js";
+
+export function randomToken(bytes = 32): string {
+  const buf = crypto.getRandomValues(new Uint8Array(bytes));
+  return base64url(buf);
+}
+
+// verifier: 43–128 chars; challenge = base64url(SHA-256)
+export async function pkce() {
+  const verifier = randomToken(32); // 43 chars
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier),
+  );
+  const challenge = base64url(new Uint8Array(hash));
+  return { verifier, challenge };
+}
+
+export async function authorizeUrl(cfg: {
+  endpoint: string;
+  clientId: string;
+  redirectUri: string;
+}) {
+  const { verifier, challenge } = await pkce();
+  const state = randomToken();
+  const nonce = randomToken();
+  const url = new URL(cfg.endpoint);
+  url.search = new URLSearchParams({
+    response_type: "code",
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    scope: "openid email profile",
+    state,
+    nonce,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  }).toString();
+  return { url, saved: { verifier, state, nonce } };
+}
+```
+
+```ts title="callback.ts"
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import { z } from "zod";
+
+const TokenResponse = z.object({
+  access_token: z.string(),
+  token_type: z.string(),
+  expires_in: z.number().optional(),
+  refresh_token: z.string().optional(),
+  id_token: z.string(),
+});
+
+const ISSUER = "https://accounts.example.com";
+const CLIENT_ID = "my-client";
+const JWKS = createRemoteJWKSet(
+  new URL(`${ISSUER}/.well-known/jwks.json`),
+);
+
+type Saved = {
+  verifier: string;
+  state: string;
+  nonce: string;
+};
+
+export async function callback(url: URL, saved: Saved) {
+  if (url.searchParams.get("state") !== saved.state) {
+    throw new Error("state mismatch");
+  }
+  const code = url.searchParams.get("code");
+  if (!code) throw new Error("authorization failed");
+
+  const res = await fetch(`${ISSUER}/oauth/token`, {
+    method: "POST",
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: "https://app.example.com/callback",
+      client_id: CLIENT_ID,
+      code_verifier: saved.verifier,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`token endpoint ${res.status}`);
+  }
+  const tokens = TokenResponse.parse(await res.json());
+
+  const { payload } = await jwtVerify(
+    tokens.id_token,
+    JWKS,
+    {
+      issuer: ISSUER,
+      audience: CLIENT_ID,
+    },
+  );
+  if (payload.nonce !== saved.nonce) {
+    throw new Error("nonce mismatch");
+  }
+  return { subject: payload.sub, tokens };
+}
+```
+
+| Token          | Audience            | Format             | Use it to                                          |
+| :------------- | :------------------ | :----------------- | :------------------------------------------------- |
+| ID token       | your app (client ID) | always a JWT      | learn who logged in (`sub`, `email`); never send to APIs |
+| Access token   | the resource API    | opaque or JWT      | call the API as `Authorization: Bearer …`          |
+| Refresh token  | the auth server     | opaque             | get new access tokens without a new login          |
+
+| Parameter    | Protects against                                            |
+| :----------- | :---------------------------------------------------------- |
+| `state`      | login CSRF: attacker's code landing in your session         |
+| `nonce`      | ID token replay/injection                                   |
+| PKCE         | stolen authorization codes (intercepted redirect)           |
+| exact `redirect_uri` | open redirects leaking codes                        |
+
+Identify users by `iss` + `sub`, never by email alone. In production use a certified library
+(`openid-client`, Arctic, Auth.js, Better Auth) and discover endpoints from
+`/.well-known/openid-configuration`.
+
+## Passkeys / WebAuthn
+
+A passkey is a public-key credential bound to your domain (the RP ID). The private key never leaves
+the authenticator, and the browser signs only for the matching origin, so passkeys are
+phishing-resistant and nothing reusable is stored on your server.
+
+| Ceremony       | Server sends                           | Browser call                      | Server verifies and stores             |
+| :------------- | :------------------------------------- | :-------------------------------- | :------------------------------------- |
+| Registration   | challenge, RP ID, user handle, algs    | `navigator.credentials.create()`  | attestation; saves credential ID, public key, counter, transports |
+| Authentication | challenge, allowed credential IDs (or none for discoverable) | `navigator.credentials.get()` | signature with stored public key; updates counter |
+
+Challenges are random, single-use and short-lived; keep them in the session, not the client.
+
+```ts title="passkey-client.ts"
+export async function registerPasskey(): Promise<void> {
+  const res = await fetch("/webauthn/register/options", {
+    method: "POST",
+  });
+  const json: PublicKeyCredentialCreationOptionsJSON =
+    await res.json();
+  const publicKey =
+    PublicKeyCredential.parseCreationOptionsFromJSON(json);
+  const cred = await navigator.credentials.create({
+    publicKey,
+  });
+  if (!(cred instanceof PublicKeyCredential)) {
+    throw new Error("Passkey creation cancelled");
+  }
+  await fetch("/webauthn/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cred.toJSON()),
+  });
+}
+```
+
+`parseCreationOptionsFromJSON` / `toJSON` are Baseline 2025; for older browsers use
+`startRegistration({ optionsJSON })` from `@simplewebauthn/browser`.
+
+```ts title="passkey-server.ts"
+import {
+  type RegistrationResponseJSON,
+  type WebAuthnCredential,
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+
+const rpID = "example.com";
+const origin = "https://example.com";
+
+type User = {
+  id: string;
+  email: string;
+  passkeys: WebAuthnCredential[];
+};
+
+export async function registrationOptions(user: User) {
+  const options = await generateRegistrationOptions({
+    rpName: "Example",
+    rpID,
+    userName: user.email,
+    userID: new TextEncoder().encode(user.id),
+    attestationType: "none",
+    excludeCredentials: user.passkeys.map((p) => ({
+      id: p.id,
+      transports: p.transports,
+    })),
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
+  });
+  await challenges.set(user.id, options.challenge);
+  return options; // JSON to the browser
+}
+
+export async function verifyRegistration(
+  user: User,
+  response: RegistrationResponseJSON,
+): Promise<boolean> {
+  const result = await verifyRegistrationResponse({
+    response,
+    expectedChallenge: await challenges.take(user.id),
+    expectedOrigin: origin,
+    expectedRPID: rpID,
+  });
+  if (result.verified) {
+    const { credential } = result.registrationInfo;
+    // persist id, publicKey, counter, transports
+    await passkeys.save(user.id, credential);
+  }
+  return result.verified;
+}
+```
+
+Authentication mirrors this: `generateAuthenticationOptions({ rpID })`, then
+`verifyAuthenticationResponse({ response, expectedChallenge, expectedOrigin, expectedRPID, credential })`
+with the stored credential whose `id` matches `response.id`; save `authenticationInfo.newCounter`.
+Offer passkeys alongside a recovery path, and let users register several.
+
+## MFA / TOTP
+
+| Factor             | Phishing-resistant | Notes                                                 |
+| :----------------- | :----------------- | :---------------------------------------------------- |
+| Passkey / security key | yes            | best second (or only) factor                          |
+| TOTP app           | no                 | offline, standard (RFC 6238), cheap                   |
+| Push approval      | no                 | use number matching against MFA fatigue               |
+| Email code / link  | no                 | only as good as the mailbox                           |
+| SMS code           | no                 | SIM swap and interception; avoid for high-risk apps   |
+
+### TOTP (RFC 6238)
+
+| Parameter | Usual value         | Notes                                                        |
+| :-------- | :------------------ | :----------------------------------------------------------- |
+| Secret    | 20 random bytes     | shown once as base32 in an `otpauth://totp/…` QR code; store encrypted |
+| Time step | 30 s                | counter = `floor(unixSeconds / 30)`                          |
+| Digits    | 6                   | `HOTP(secret, counter) mod 10^6`                             |
+| Hash      | HMAC-SHA-1          | what authenticator apps expect by default                    |
+| Window    | ±1 step             | tolerates clock drift                                        |
+
+```text
+otpauth://totp/Example:alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example
+```
+
+How a code is derived, using Web Crypto HMAC (in production use a maintained OTP library):
+
+```ts title="totp.ts"
+export async function totp(
+  secret: Uint8Array<ArrayBuffer>,
+  unixMs = Date.now(),
+  step = 30,
+  digits = 6,
+): Promise<string> {
+  const counter = new DataView(new ArrayBuffer(8));
+  const t = Math.floor(unixMs / 1000 / step);
+  counter.setBigUint64(0, BigInt(t)); // 8-byte big-endian
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secret,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, counter),
+  );
+  // RFC 4226 dynamic truncation
+  const offset = mac[mac.length - 1]! & 0x0f;
+  const bin =
+    new DataView(mac.buffer).getUint32(offset) & 0x7fffffff;
+  return String(bin % 10 ** digits).padStart(digits, "0");
+}
+```
+
+- Accept each counter value only once (store the last used step) to stop replay.
+- Rate limit attempts: 6 digits is only a million combinations.
+- Confirm setup by asking for one valid code before enabling MFA.
+- **Backup codes**: generate ~10 random single-use codes, show them once, store them hashed like
+  passwords, and invalidate the whole set when regenerated.
+- Re-authenticate (step-up) before changing MFA, email or password.
+
+## CSRF & CORS
+
+A cross-site request forgery makes the victim's browser send a request with their cookies attached.
+It matters only for cookie (ambient) authentication; `Authorization` headers are never sent
+automatically.
+
+| Defence                          | How                                                            |
+| :------------------------------- | :------------------------------------------------------------- |
+| `SameSite=Lax` / `Strict`        | cookie not sent on cross-site POST / `fetch`; first line of defence |
+| Fetch metadata                   | reject unsafe methods when `Sec-Fetch-Site` is `cross-site`    |
+| `Origin` check                   | unsafe methods must come from an allow-listed origin           |
+| Synchronizer / signed tokens     | per-session token in a hidden field or header (`Bun.CSRF.generate`) |
+| Safe methods stay safe           | never change state on `GET` / `HEAD`                           |
+| Custom request header            | e.g. `X-Requested-With`, forces a CORS preflight               |
+
+```ts title="csrf.ts"
+const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
+const ALLOWED = new Set(["https://app.example.com"]);
+
+export function isSameOriginRequest(req: Request): boolean {
+  if (SAFE.has(req.method)) return true;
+  const site = req.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin" || site === "none";
+  const origin = req.headers.get("origin"); // older browsers
+  return origin !== null && ALLOWED.has(origin);
+}
+```
+
+**CORS is not authentication.** It only decides whether a browser lets another origin's JS _read_
+your response. Simple cross-origin requests still reach your server and run; non-browser clients
+ignore CORS entirely.
+
+- Never reflect an arbitrary `Origin` together with `Access-Control-Allow-Credentials: true`.
+- `Access-Control-Allow-Origin: *` cannot be combined with credentials.
+- Add `Vary: Origin` when the allowed origin depends on the request.
+
+## Authorization
+
+| Model   | Decision based on                          | Good for                            |
+| :------ | :----------------------------------------- | :---------------------------------- |
+| RBAC    | the user's roles, each granting permissions | most apps, admin panels            |
+| ABAC    | attributes of user, resource, context      | ownership, tenancy, time or plan limits |
+| ReBAC   | relationships in a graph (Zanzibar-style)  | sharing, folders, orgs              |
+| ACL     | a list of principals on each resource      | per-document sharing                |
+
+```ts title="permissions.ts"
+export const PERMISSIONS = [
+  "post:read",
+  "post:write",
+  "post:delete",
+  "user:manage",
+] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+export const ROLES = {
+  viewer: ["post:read"],
+  editor: ["post:read", "post:write"],
+  admin: PERMISSIONS,
+} as const satisfies Record<string, readonly Permission[]>;
+export type Role = keyof typeof ROLES;
+
+export function hasPermission(role: Role, p: Permission) {
+  const granted: readonly Permission[] = ROLES[role];
+  return granted.includes(p);
+}
+
+// @ts-expect-error: "post:publish" is not a Permission
+hasPermission("editor", "post:publish");
+```
+
+Check in **one place**: a typed policy map that routes, server actions and jobs all call.
+
+```ts title="authorize.ts"
+type User = {
+  id: string;
+  role: "viewer" | "editor" | "admin";
+};
+type Post = { id: string; authorId: string };
+
+type Policies = {
+  "post:update": Post;
+  "post:delete": Post;
+  "user:list": null;
+};
+
+const policies: {
+  [A in keyof Policies]: (
+    u: User,
+    r: Policies[A],
+  ) => boolean;
+} = {
+  "post:update": (u, post) =>
+    u.role === "admin" || post.authorId === u.id,
+  "post:delete": (u) => u.role === "admin",
+  "user:list": (u) => u.role === "admin",
+};
+
+export class ForbiddenError extends Error {}
+
+export function authorize<A extends keyof Policies>(
+  user: User,
+  action: A,
+  resource: Policies[A],
+): void {
+  if (!policies[action](user, resource)) {
+    throw new ForbiddenError(action);
+  }
+}
+```
+
+- Deny by default; check on the server for every request, never only by hiding UI.
+- Scope queries by tenant/owner (`WHERE org_id = $1`) so a forgotten check cannot leak other rows (IDOR).
+- Log denied attempts; they are a signal.
+
+## Typing auth
+
+```ts title="auth-types.ts"
+import { z } from "zod";
+
+// branded IDs: a plain string or a PostId is not a UserId
+export const UserId = z.uuid().brand<"UserId">();
+export type UserId = z.infer<typeof UserId>;
+
+export type User = {
+  id: UserId;
+  email: string;
+  role: "viewer" | "editor" | "admin";
+};
+
+export type AuthState =
+  | { status: "loading" }
+  | { status: "anonymous" }
+  | { status: "mfa_required"; challengeId: string }
+  | { status: "authenticated"; user: User; expiresAt: Date };
+
+// validate claims instead of casting JWTPayload
+export const AccessClaims = z.object({
+  iss: z.literal("https://auth.example.com"),
+  sub: UserId,
+  aud: z.union([z.string(), z.array(z.string())]),
+  exp: z.number().int(),
+  scope: z.string().transform((s) => s.split(" ")),
+});
+export type AccessClaims = z.infer<typeof AccessClaims>;
+
+export function greeting(state: AuthState): string {
+  switch (state.status) {
+    case "authenticated":
+      return `Hi ${state.user.email}`; // user is narrowed
+    case "mfa_required":
+      return "Enter your code";
+    case "loading":
+    case "anonymous":
+      return "Sign in";
+  }
+}
+
+type Authed = Extract<
+  AuthState,
+  { status: "authenticated" }
+>;
+
+export function assertAuthed(
+  state: AuthState,
+): asserts state is Authed {
+  if (state.status !== "authenticated") {
+    throw new Error("Not authenticated");
+  }
+}
+```
+
+- Keep the `Session` / `User` types server-only; send the client a minimal DTO.
+- Parse, don't cast: every claim, cookie and header is external input.
+- Brands cost nothing at runtime; `UserId.parse(raw)` is the only way to create one.
+
+## Checklist
+
+- [ ] HTTPS everywhere, HSTS enabled, cookies `Secure`
+- [ ] Passwords hashed with argon2id (or scrypt/bcrypt) using OWASP parameters, never logged
+- [ ] Login, signup, reset and MFA endpoints rate limited per account and per IP
+- [ ] Generic error messages; no user enumeration through messages or timing
+- [ ] Session IDs are 128+ random bits, stored hashed, rotated on login and privilege change
+- [ ] Session cookies: `__Host-`, `HttpOnly`, `Secure`, `SameSite=Lax` or `Strict`
+- [ ] Logout and password change invalidate sessions server-side
+- [ ] JWTs: algorithm allow-list, `iss`/`aud`/`exp` checked, short-lived, refresh tokens rotated
+- [ ] OAuth: authorization code + PKCE, `state` and `nonce` checked, exact redirect URIs
+- [ ] CSRF defences for every cookie-authenticated state change
+- [ ] Authorization checked server-side on every request, deny by default
+- [ ] Reset tokens random, single-use, hashed, expiring within an hour
+- [ ] MFA available (passkeys or TOTP), with backup codes and step-up for sensitive changes
+- [ ] Auth events (login, failure, MFA change, reset) logged without secrets
+- [ ] Secrets from environment or a secret manager, never in source
+
+## References
+
+- [MDN: Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API),
+  [Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie),
+  [Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API),
+  [CSRF](https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/CSRF)
+- OWASP cheat sheets: [Authentication](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html),
+  [Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html),
+  [Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
+  [CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
+  [Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+- RFCs: [6749 OAuth 2.0](https://www.rfc-editor.org/rfc/rfc6749), [7636 PKCE](https://www.rfc-editor.org/rfc/rfc7636),
+  [9700 OAuth security BCP](https://www.rfc-editor.org/rfc/rfc9700), [7519 JWT](https://www.rfc-editor.org/rfc/rfc7519),
+  [8725 JWT BCP](https://www.rfc-editor.org/rfc/rfc8725), [6238 TOTP](https://www.rfc-editor.org/rfc/rfc6238)
+- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
+- [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html)
+- [jose](https://github.com/panva/jose), [SimpleWebAuthn](https://simplewebauthn.dev/),
+  [Bun.password](https://bun.com/docs/runtime/hashing)

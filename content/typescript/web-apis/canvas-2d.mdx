@@ -1,0 +1,631 @@
+---
+title: Canvas 2D
+date: 2026-09-25
+order: 2
+---
+
+The `<canvas>` 2D context (`CanvasRenderingContext2D`) typed for TypeScript: sizing for HiDPI, state,
+paths, styles, text, images, pixels, animation, hit testing, workers and export. For GPU work see
+[WebGL](/typescript/web-apis/webgl/) and [WebGPU](/typescript/web-apis/webgpu/).
+
+## Support & typing
+
+| Feature | Status (MDN) | Notes |
+| :------ | :----------- | :---- |
+| 2D context, `Path2D`, `toBlob()` | Baseline widely available | everywhere since ~2015 |
+| `roundRect()`, `createConicGradient()` | Baseline widely available | Safari 16.4 |
+| `OffscreenCanvas`, rAF in workers | Baseline widely available | Baseline 2023, Safari 16.4 |
+| `createImageBitmap()` | Baseline widely available | full options since Safari 17.2 |
+| `reset()` | Baseline widely available | Safari 17.2 |
+| `willReadFrequently` | Baseline 2024 | Safari 18 |
+| `letterSpacing`, `wordSpacing` | Chrome 99, Firefox 115, Safari 18.4 | |
+| `ctx.filter` | Limited availability | Safari only behind a flag |
+| `fontKerning`, `textRendering` | Limited availability | not in Safari |
+| `contextlost` event, `isContextLost()` | Limited availability | not in Safari |
+
+| Type | Where you meet it |
+| :--- | :---------------- |
+| `CanvasRenderingContext2D` | `canvas.getContext("2d")` returns it `\| null` |
+| `OffscreenCanvasRenderingContext2D` | `offscreen.getContext("2d")`; no `canvas` DOM features |
+| `CanvasRenderingContext2DSettings` | second arg of `getContext("2d", …)` |
+| `CanvasImageSource` | anything `drawImage` accepts |
+| `CanvasFillRule` | `"nonzero" \| "evenodd"` |
+| `GlobalCompositeOperation` | `globalCompositeOperation` values |
+| `ImageData` | RGBA bytes in a `Uint8ClampedArray` |
+
+```ts
+// One helper type for code shared by main thread and worker
+type Ctx2D =
+  | CanvasRenderingContext2D
+  | OffscreenCanvasRenderingContext2D;
+
+function get2d(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2D canvas unsupported");
+  return ctx; // CanvasRenderingContext2D
+}
+```
+
+## Setup & HiDPI
+
+A canvas has two sizes: the **bitmap** (`width`/`height` attributes, default 300×150) and the **CSS box**.
+When they differ the bitmap is stretched, so set the bitmap to CSS size × `devicePixelRatio` and scale
+the context back to draw in CSS pixels.
+
+| Thing | Meaning |
+| :---- | :------ |
+| `canvas.width`, `canvas.height` | bitmap pixels; setting either **clears the canvas and resets all state** |
+| `canvas.clientWidth` / CSS `width` | layout size in CSS px |
+| `window.devicePixelRatio` | device px per CSS px (2 on Retina, fractional when zoomed) |
+| `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` | draw in CSS px on a HiDPI bitmap |
+| `ctx.imageSmoothingEnabled = false` | crisp pixel art when scaling images |
+
+| `getContext("2d", opts)` | Default | Effect |
+| :----------------------- | :------ | :----- |
+| `alpha` | `true` | `false` = opaque backdrop, faster compositing |
+| `willReadFrequently` | `false` | CPU-backed canvas; fast `getImageData`, slow drawing |
+| `desynchronized` | `false` | low-latency (inking) path; may tear |
+| `colorSpace` | `"srgb"` | `"display-p3"` for wide gamut |
+
+```ts
+const ctx = get2d(canvas);
+const dpr = window.devicePixelRatio || 1;
+canvas.width = Math.round(canvas.clientWidth * dpr);
+canvas.height = Math.round(canvas.clientHeight * dpr);
+ctx.scale(dpr, dpr); // now 1 unit = 1 CSS px
+```
+
+The full helper and a resize-aware version are in [Recipes](#recipes).
+
+## State & transforms
+
+`save()` pushes the whole drawing state onto a stack, `restore()` pops it. State covers: the transform,
+clip region, `fillStyle`, `strokeStyle`, line props, `font`, text props, `globalAlpha`,
+`globalCompositeOperation`, shadows, `filter` and `imageSmoothing*`. The current path and the
+pixels are **not** state.
+
+| Call | Effect |
+| :--- | :----- |
+| `translate(x, y)` | move the origin |
+| `rotate(rad)` | rotate clockwise around the origin |
+| `scale(sx, sy)` | scale; negative flips |
+| `transform(a, b, c, d, e, f)` | multiply the current matrix |
+| `setTransform(a, b, c, d, e, f)` | replace the matrix (also takes a `DOMMatrix2DInit`) |
+| `resetTransform()` | identity (drops your DPR scale too) |
+| `getTransform()` | `DOMMatrix` copy; `.inverse()` maps screen to world |
+| `clip(path?, rule?)` | intersect the clip with the current path |
+| `reset()` | clear pixels, path and state in one call |
+
+```ts
+function drawRotated(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, angle: number,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillRect(-10, -10, 20, 20); // centred on (x, y)
+  ctx.restore();
+}
+```
+
+<Note kind="warning">Every `save()` needs a `restore()`. An unbalanced stack leaks transforms into later
+frames; wrap the body in `try`/`finally` when it can throw.</Note>
+
+## Paths & shapes
+
+| Call | Draws |
+| :--- | :---- |
+| `fillRect` / `strokeRect` / `clearRect(x, y, w, h)` | immediate rectangles, no path |
+| `beginPath()` | start a new path (forget the old one) |
+| `moveTo(x, y)` / `lineTo(x, y)` | pen move / straight segment |
+| `rect(x, y, w, h)` | rectangle subpath |
+| `roundRect(x, y, w, h, radii)` | radii: number or array of 1–4 |
+| `arc(x, y, r, start, end, ccw?)` | circle arc, angles in radians from +x |
+| `arcTo(x1, y1, x2, y2, r)` | rounded corner between two tangents |
+| `ellipse(x, y, rx, ry, rot, start, end)` | ellipse arc |
+| `quadraticCurveTo(cx, cy, x, y)` | one control point |
+| `bezierCurveTo(c1x, c1y, c2x, c2y, x, y)` | two control points |
+| `closePath()` | line back to the subpath start |
+| `fill(rule?)` / `stroke()` | paint the current path |
+
+```ts
+ctx.beginPath();
+ctx.arc(50, 50, 40, 0, Math.PI * 2);
+ctx.fillStyle = "tomato";
+ctx.fill();
+ctx.lineWidth = 4;
+ctx.stroke(); // same path, stroked
+```
+
+### Path2D and hit testing
+
+`Path2D` stores a path you can reuse, fill, stroke and hit-test. It also parses SVG path data.
+
+```ts
+const star = new Path2D("M10 0 L13 7 L20 7 L14 12 Z");
+const card = new Path2D();
+card.roundRect(0, 0, 120, 80, 8);
+
+ctx.fill(card);
+ctx.stroke(star);
+
+canvas.addEventListener("pointerdown", (e) => {
+  // Points are in bitmap px, before the transform
+  const dpr = window.devicePixelRatio || 1;
+  const x = e.offsetX * dpr;
+  const y = e.offsetY * dpr;
+  if (ctx.isPointInPath(card, x, y)) select("card");
+});
+```
+
+| Hit test | Notes |
+| :------- | :---- |
+| `isPointInPath(path?, x, y, rule?)` | uses the **current** transform on the path; point in bitmap px |
+| `isPointInStroke(path?, x, y)` | honours `lineWidth`; good for thin lines |
+| Many shapes | keep `Path2D` per shape; test in reverse draw order |
+| Thousands of shapes | spatial grid or color-picking on a hidden canvas |
+
+## Styles, gradients & patterns
+
+| Property | Values |
+| :------- | :----- |
+| `fillStyle`, `strokeStyle` | CSS color string, `CanvasGradient` or `CanvasPattern` |
+| `globalAlpha` | 0–1, multiplies everything drawn |
+| `lineWidth` | in user units (scales with the transform) |
+| `lineCap` | `butt` (default), `round`, `square` |
+| `lineJoin` | `miter` (default), `round`, `bevel`; `miterLimit` caps spikes |
+| `setLineDash([on, off])`, `lineDashOffset` | dashes; animate the offset for "marching ants" |
+| `shadowColor`, `shadowBlur`, `shadowOffsetX/Y` | drop shadow; costly, avoid per frame |
+
+```ts
+// Gradients are in canvas space, not relative to the shape
+const lin = ctx.createLinearGradient(0, 0, 200, 0);
+lin.addColorStop(0, "#4f46e5");
+lin.addColorStop(1, "#06b6d4");
+
+const rad = ctx.createRadialGradient(50, 50, 0, 50, 50, 50);
+rad.addColorStop(0, "white");
+rad.addColorStop(1, "transparent");
+
+const cone = ctx.createConicGradient(0, 100, 100);
+cone.addColorStop(0, "red");
+cone.addColorStop(1, "blue");
+
+ctx.fillStyle = lin;
+ctx.fillRect(0, 0, 200, 100);
+```
+
+```ts
+// Patterns repeat any CanvasImageSource
+const tile = new OffscreenCanvas(8, 8);
+const t = tile.getContext("2d")!;
+t.fillRect(0, 0, 4, 4);
+const pattern = ctx.createPattern(tile, "repeat");
+if (pattern) {
+  pattern.setTransform(new DOMMatrix().scale(2));
+  ctx.fillStyle = pattern;
+}
+```
+
+A 1px line at an integer coordinate straddles two pixels and looks blurry. Offset odd widths by 0.5
+(`moveTo(10.5, 0)`) in CSS px after the DPR scale.
+
+## Text
+
+| Property / call | Notes |
+| :-------------- | :---- |
+| `font` | CSS shorthand: `"600 16px Inter, sans-serif"`; size and family required |
+| `textAlign` | `start` (default), `end`, `left`, `right`, `center` |
+| `textBaseline` | `alphabetic` (default), `top`, `middle`, `bottom`, `hanging`, `ideographic` |
+| `direction` | `inherit`, `ltr`, `rtl` |
+| `letterSpacing`, `wordSpacing` | CSS lengths, e.g. `"2px"` |
+| `fillText(s, x, y, maxWidth?)` | `maxWidth` squeezes the text to fit |
+| `strokeText(s, x, y, maxWidth?)` | outline text |
+| `measureText(s)` | `TextMetrics` for the current `font` |
+
+| `TextMetrics` field | Use |
+| :------------------ | :-- |
+| `width` | advance width |
+| `actualBoundingBoxAscent` / `Descent` | tight ink box for this string |
+| `actualBoundingBoxLeft` / `Right` | ink overhang from the anchor |
+| `fontBoundingBoxAscent` / `Descent` | font-wide line box; stable line height |
+
+```ts
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string, maxWidth: number,
+): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let s = text;
+  while (s && ctx.measureText(s + "…").width > maxWidth) {
+    s = s.slice(0, -1);
+  }
+  return s + "…";
+}
+```
+
+Web fonts are not waited for: a `fillText` before the font loads draws the fallback. Await
+`document.fonts.load("16px Inter")` (or `document.fonts.ready`) before the first draw. Canvas text has no
+wrapping; split on words and measure.
+
+## Images & ImageBitmap
+
+| Call | Meaning |
+| :--- | :------ |
+| `drawImage(img, dx, dy)` | natural size at `(dx, dy)` |
+| `drawImage(img, dx, dy, dw, dh)` | scaled into a box |
+| `drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)` | crop `s*` from the source, draw into `d*` (sprites) |
+
+`CanvasImageSource` = `HTMLImageElement`, `SVGImageElement`, `HTMLVideoElement`, `HTMLCanvasElement`,
+`ImageBitmap`, `OffscreenCanvas`, `VideoFrame`.
+
+```ts
+async function loadBitmap(
+  url: string,
+): Promise<ImageBitmap> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // Decodes off the main thread; no <img> needed
+  return createImageBitmap(await res.blob());
+}
+
+const sprite = await loadBitmap("/sprites.png");
+ctx.drawImage(sprite, 0, 0, 32, 32, 100, 100, 64, 64);
+sprite.close(); // free GPU memory when done
+```
+
+| Source | Watch out for |
+| :----- | :------------ |
+| `HTMLImageElement` | must be loaded: `await img.decode()` before drawing |
+| Cross-origin image | taints the canvas unless served with CORS and `img.crossOrigin = "anonymous"` |
+| `ImageBitmap` | pre-decoded, fastest to draw, transferable to workers |
+| `createImageBitmap(src, opts)` | `resizeWidth`/`resizeHeight`, `imageOrientation: "flipY"`, `premultiplyAlpha` |
+| `HTMLVideoElement` | draws the current frame; call per rAF or `requestVideoFrameCallback` |
+
+## Pixel manipulation
+
+| Call | Notes |
+| :--- | :---- |
+| `getImageData(x, y, w, h)` | copy bitmap px into `ImageData`; ignores the transform |
+| `putImageData(img, x, y)` | write px back; ignores transform, alpha and compositing |
+| `createImageData(w, h)` | blank buffer |
+| `new ImageData(data, w, h?)` | wrap your own `Uint8ClampedArray` |
+| `imageData.data` | `[r, g, b, a, r, g, b, a, …]`, index `(y * w + x) * 4` |
+
+```ts
+function grayscale(ctx: CanvasRenderingContext2D) {
+  const { width: w, height: h } = ctx.canvas;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const y = 0.2126 * d[i]! + 0.7152 * d[i + 1]!
+      + 0.0722 * d[i + 2]!;
+    d[i] = d[i + 1] = d[i + 2] = y;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+```
+
+| Pitfall | Fix |
+| :------ | :-- |
+| `SecurityError` on `getImageData` | canvas is tainted by a cross-origin image; serve with CORS |
+| Slow reads every frame | create the context with `{ willReadFrequently: true }` |
+| Colors drift after a round trip | values are un-premultiplied; low alpha loses precision |
+| Index type is `number \| undefined` | `noUncheckedIndexedAccess` is on; use `!` in hot loops |
+| Heavy filters block the UI | do the loop in a worker on an `OffscreenCanvas` |
+
+## Compositing & filters
+
+`globalCompositeOperation` decides how new pixels combine with existing ones.
+
+| Value | Result |
+| :---- | :----- |
+| `source-over` | default: new on top |
+| `destination-over` | new goes behind existing |
+| `source-in` / `source-out` | new only inside / outside existing (masking) |
+| `source-atop` | new only where existing is opaque, keeps existing |
+| `destination-in` / `destination-out` | keep existing inside / erase with the new shape |
+| `lighter` | additive (glow, particles) |
+| `copy` | replace, ignore what was there |
+| `xor` | only where exactly one is opaque |
+| `multiply`, `screen`, `overlay`, `darken`, `lighten` | CSS blend modes |
+| `color-dodge`, `color-burn`, `hard-light`, `soft-light` | CSS blend modes |
+| `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity` | CSS blend modes |
+
+```ts
+// Eraser brush
+ctx.globalCompositeOperation = "destination-out";
+ctx.beginPath();
+ctx.arc(x, y, 12, 0, Math.PI * 2);
+ctx.fill();
+ctx.globalCompositeOperation = "source-over";
+
+// CSS filter string (Limited availability: not Safari)
+ctx.filter = "blur(4px) saturate(1.5)";
+ctx.drawImage(photo, 0, 0);
+ctx.filter = "none";
+```
+
+For Safari-safe effects, apply a CSS `filter` to the `<canvas>` element itself or process pixels.
+
+## Animation loop
+
+`requestAnimationFrame(cb)` calls `cb(time)` once before the next repaint (usually the display rate:
+60, 120 or 144 Hz). It pauses in hidden tabs. Scale motion by elapsed time, never by frame count.
+
+```ts
+let last = performance.now();
+let x = 0;
+let rafId = 0;
+
+function frame(now: DOMHighResTimeStamp) {
+  // Clamp: a backgrounded tab returns a huge delta
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  x = (x + 120 * dt) % ctx.canvas.width; // 120 px/s
+
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillRect(x, 20, 20, 20);
+  rafId = requestAnimationFrame(frame);
+}
+rafId = requestAnimationFrame(frame);
+// stop: cancelAnimationFrame(rafId);
+```
+
+| Rule | Why |
+| :--- | :-- |
+| One rAF loop per page | several loops fight over the frame budget |
+| Use the `now` argument | same timestamp for all callbacks in a frame |
+| Clear with `clearRect` (after `save`/`resetTransform` if transformed) | or `reset()` to drop state too |
+| Deterministic physics | fixed timestep, see [Recipes](#recipes) |
+| Respect `prefers-reduced-motion` | pause or simplify non-essential animation |
+
+## OffscreenCanvas & workers
+
+`OffscreenCanvas` is a canvas without a DOM node. Two uses: an in-memory buffer on any thread, or a
+visible canvas whose drawing is moved to a worker with `transferControlToOffscreen()`. See
+[Web Workers](/typescript/web-apis/web-workers/) for the messaging side.
+
+```ts title="main.ts"
+const view = document.querySelector("canvas")!;
+const off = view.transferControlToOffscreen();
+const worker = new Worker(
+  new URL("./render.worker.ts", import.meta.url),
+  { type: "module" },
+);
+// OffscreenCanvas is transferable, not copyable
+worker.postMessage({ canvas: off }, [off]);
+```
+
+```ts title="render.worker.ts"
+type Init = { canvas: OffscreenCanvas };
+
+self.onmessage = (e: MessageEvent<Init>) => {
+  const ctx = e.data.canvas.getContext("2d");
+  if (!ctx) return;
+  const loop = (t: number) => {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillRect(50 + Math.sin(t / 300) * 40, 40, 20, 20);
+    requestAnimationFrame(loop); // rAF works in workers
+  };
+  requestAnimationFrame(loop);
+};
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| After transfer | the element's `width`/`height` are read-only; resize via the worker |
+| DPR in a worker | not available: send `devicePixelRatio` and sizes in messages |
+| Fonts in a worker | use `self.fonts` (`FontFaceSet`) or `new FontFace(...)` there |
+| Export | `offscreen.convertToBlob({ type, quality })` returns `Promise<Blob>` |
+| Snapshot | `offscreen.transferToImageBitmap()` hands a frame to another canvas |
+| Worker types | add `"lib": ["webworker"]` in a separate tsconfig for worker files |
+
+## Exporting
+
+| Call | Returns | Notes |
+| :--- | :------ | :---- |
+| `canvas.toBlob(cb, type?, quality?)` | `void`; `cb(Blob \| null)` | async encode; preferred |
+| `canvas.toDataURL(type?, quality?)` | `string` | sync, blocks, ~33% larger (base64) |
+| `offscreen.convertToBlob(opts?)` | `Promise<Blob>` | worker friendly |
+| `canvas.captureStream(fps?)` | `MediaStream` | record with `MediaRecorder` |
+
+`type` defaults to `image/png`; `image/jpeg` and `image/webp` take a `quality` of 0–1. An unsupported
+type falls back to PNG, so check `blob.type`. A tainted canvas throws `SecurityError`.
+
+```ts
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type = "image/png",
+  quality?: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) =>
+        b ? resolve(b) : reject(new Error("encode failed")),
+      type,
+      quality,
+    );
+  });
+}
+```
+
+## Performance & pitfalls
+
+| Do | Why |
+| :- | :-- |
+| Batch same-style draws into one path, one `fill()` | state changes and draw calls cost more than geometry |
+| Pre-render static layers to an `OffscreenCanvas` | `drawImage` a cached bitmap per frame |
+| Stack canvases (background / sprites / UI) | redraw only the layer that changed |
+| Round coordinates for sprites | sub-pixel positions trigger smoothing |
+| Avoid `shadowBlur` and `filter` in hot paths | both rasterise per draw |
+| Use `ImageBitmap` over `<img>` | already decoded |
+| Keep `getImageData` out of the loop | GPU to CPU readback stalls |
+| Cap bitmap size | max area is browser-dependent (Safari iOS is strict); huge canvases fail silently |
+| Move heavy work to a worker | `OffscreenCanvas` keeps input responsive |
+
+| Pitfall | Symptom | Fix |
+| :------ | :------ | :-- |
+| Only CSS size set | blurry output | set bitmap size × DPR |
+| Setting `width` each frame | state lost, flicker | resize only on change |
+| Forgot `beginPath()` | old shapes re-stroked, slows over time | start every shape with it |
+| `arc` angles in degrees | wrong shape | radians: `deg * Math.PI / 180` |
+| Mouse coords vs bitmap coords | hits miss on HiDPI or scaled canvas | scale by `canvas.width / rect.width` |
+| Text drawn before font loads | fallback font | `await document.fonts.load(...)` |
+| `ctx.filter` in Safari | no effect | CSS filter or manual pixels |
+
+## Accessibility
+
+A canvas is one opaque image to assistive tech. Give it meaning and keep interaction reachable.
+
+| Technique | Use for |
+| :-------- | :------ |
+| `role="img"` + `aria-label` | static chart or illustration with a short summary |
+| Fallback content inside `<canvas>…</canvas>` | read by screen readers; can hold a data table or links |
+| Real DOM controls over or beside the canvas | buttons, inputs, focusable items |
+| Visually hidden live region (`aria-live="polite"`) | announce state changes (score, selection) |
+| `tabindex="0"` + key handlers | keyboard play for games and editors |
+| `prefers-reduced-motion` | stop or slow animation |
+| Honour `prefers-color-scheme` / contrast | canvas colors don't follow CSS automatically |
+
+```html
+<canvas id="sales" role="img"
+  aria-label="Sales rose 40% from January to June">
+  <table>…monthly sales…</table>
+</canvas>
+```
+
+## Recipes
+
+### HiDPI-correct setup
+Use for any canvas that should look sharp on Retina and zoomed screens.
+
+```ts
+function setupHiDPI(
+  canvas: HTMLCanvasElement,
+  opts?: CanvasRenderingContext2DSettings,
+): CanvasRenderingContext2D {
+  const ctx = canvas.getContext("2d", opts);
+  if (!ctx) throw new Error("2D canvas unsupported");
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // CSS px units
+  return ctx;
+}
+```
+
+### Resize with ResizeObserver
+Use when the canvas fills a flexible container; `devicePixelContentBoxSize` gives exact device pixels (not in
+Safari, hence the fallback).
+
+```ts
+function autoResize(
+  canvas: HTMLCanvasElement,
+  onResize: (w: number, h: number, dpr: number) => void,
+): () => void {
+  const ro = new ResizeObserver(([entry]) => {
+    if (!entry) return;
+    const dpr = window.devicePixelRatio || 1;
+    const dev = entry.devicePixelContentBoxSize?.[0];
+    const css = entry.contentBoxSize[0]!;
+    const w = dev?.inlineSize
+      ?? Math.round(css.inlineSize * dpr);
+    const h = dev?.blockSize
+      ?? Math.round(css.blockSize * dpr);
+    if (canvas.width === w && canvas.height === h) return;
+    canvas.width = w;  // clears + resets state
+    canvas.height = h;
+    onResize(w, h, dpr); // re-apply transform, redraw
+  });
+  ro.observe(canvas);
+  return () => ro.disconnect();
+}
+```
+
+### Game loop with fixed timestep
+Use when physics must be deterministic at any frame rate; render interpolates between steps.
+
+```ts
+function startLoop(
+  update: (dt: number) => void,
+  render: (alpha: number) => void,
+  step = 1 / 60,
+): () => void {
+  let acc = 0;
+  let last = performance.now();
+  let id = 0;
+  const frame = (now: number) => {
+    acc += Math.min((now - last) / 1000, 0.25);
+    last = now;
+    while (acc >= step) {
+      update(step);
+      acc -= step;
+    }
+    render(acc / step); // 0..1 between states
+    id = requestAnimationFrame(frame);
+  };
+  id = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(id);
+}
+```
+
+### Draw a line chart
+Use for a quick dependency-free sparkline or series plot in CSS px.
+
+```ts
+function lineChart(
+  ctx: CanvasRenderingContext2D,
+  data: readonly number[], w: number, h: number, pad = 8,
+) {
+  if (data.length < 2) return;
+  const min = Math.min(...data);
+  const span = Math.max(...data) - min || 1;
+  const sx = (w - pad * 2) / (data.length - 1);
+  const sy = (h - pad * 2) / span;
+  ctx.clearRect(0, 0, w, h);
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = pad + i * sx;
+    const y = h - pad - (v - min) * sy; // y grows down
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#2563eb";
+  ctx.stroke();
+}
+```
+
+### Export a PNG download
+Use for "Save image" buttons; `toBlob` avoids a giant data URL.
+
+```ts
+function downloadCanvas(
+  canvas: HTMLCanvasElement,
+  filename = "canvas.png",
+) {
+  canvas.toBlob((blob) => {
+    if (!blob) throw new Error("PNG encode failed");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, "image/png");
+}
+```
+
+## References
+
+- MDN: [Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API), [Canvas tutorial](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial), [`CanvasRenderingContext2D`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D), [`Path2D`](https://developer.mozilla.org/en-US/docs/Web/API/Path2D)
+- MDN: [Optimizing canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas), [Pixel manipulation](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Pixel_manipulation_with_canvas), [Compositing](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation)
+- MDN: [`OffscreenCanvas`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas), [`createImageBitmap()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap), [`devicePixelRatio`](https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio), [`requestAnimationFrame()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)
+- MDN: [`ResizeObserverEntry.devicePixelContentBoxSize`](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserverEntry/devicePixelContentBoxSize), [`HTMLCanvasElement.toBlob()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
+- [HTML Standard: The canvas element](https://html.spec.whatwg.org/multipage/canvas.html)
+- web.dev: [OffscreenCanvas](https://web.dev/articles/offscreen-canvas)
+- Glenn Fiedler, [Fix Your Timestep!](https://gafferongames.com/post/fix_your_timestep/): the accumulator loop

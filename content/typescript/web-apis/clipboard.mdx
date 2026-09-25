@@ -1,0 +1,350 @@
+---
+title: Clipboard
+date: 2026-09-25
+order: 15
+---
+
+The async Clipboard API (`navigator.clipboard`, `ClipboardItem`), the `copy`/`cut`/`paste` events,
+the permission and user-activation rules each browser applies, and the `execCommand` fallback.
+Support data is from MDN as of September 2026.
+
+## Support
+
+| Feature                          | Status (MDN)                     | Notes                                           |
+| :------------------------------- | :------------------------------- | :---------------------------------------------- |
+| `writeText()` / `readText()`     | Baseline 2024                    | Firefox got `readText()` in 125                 |
+| `write()` / `read()`, `ClipboardItem` | Baseline 2024 (newly available) | Firefox 127 was the last engine            |
+| `ClipboardItem.supports(type)`   | Baseline 2025                    | Safari 18.4 was the last engine                 |
+| `copy` / `cut` / `paste` events  | Baseline widely available        | `event.clipboardData` everywhere                |
+| `navigator.userActivation`       | Baseline widely available (2026) | `isActive`, `hasBeenActive`                     |
+| `image/svg+xml`, `"web "` custom formats | Chromium only            | check with `ClipboardItem.supports()`           |
+| `clipboardchange` event          | Chromium 144+                    | experimental                                    |
+| `document.execCommand("copy")`   | deprecated, still works          | fallback for old or non-secure pages            |
+
+`navigator.clipboard` exists only in a **secure context** (HTTPS or `localhost`). On plain HTTP it is
+`undefined`, and TypeScript won't warn you.
+
+## Permissions & user activation
+
+The rules differ per engine. Code that works in Chrome after a `setTimeout` fails in Safari.
+
+| Method        | Chrome / Edge                                         | Firefox                              | Safari                                      |
+| :------------ | :---------------------------------------------------- | :----------------------------------- | :------------------------------------------ |
+| `writeText()` | user gesture **or** `clipboard-write` granted; page focused | inside a user gesture          | inside a user gesture                       |
+| `write()`     | same as `writeText()`                                 | inside a user gesture                | inside a user gesture                       |
+| `readText()`  | `clipboard-read` permission prompt                    | user gesture; shows a "Paste" menu   | user gesture; shows a "Paste" callout       |
+| `read()`      | `clipboard-read` permission prompt                    | user gesture; "Paste" menu           | user gesture; "Paste" callout               |
+
+Firefox and Safari skip the paste prompt when the clipboard content came from the same origin.
+
+| Mechanism                         | Where it applies                                                    |
+| :-------------------------------- | :------------------------------------------------------------------ |
+| Permissions API names             | `clipboard-read`, `clipboard-write`: Chromium only; others throw `TypeError` in `query()` |
+| Permissions Policy                | `clipboard-read`, `clipboard-write`; iframes need `allow="clipboard-read; clipboard-write"` |
+| Transient activation              | about 5 s after a click or key press (engine-specific); consumed by some APIs |
+| Document focus                    | Chromium rejects with `NotAllowedError` if DevTools or another frame has focus |
+
+```ts
+async function clipboardPermission(
+  name: "clipboard-read" | "clipboard-write",
+): Promise<PermissionState | "unsupported"> {
+  try {
+    // PermissionName in lib.dom lacks the clipboard names
+    const desc = { name } as unknown as PermissionDescriptor;
+    return (await navigator.permissions.query(desc)).state;
+  } catch {
+    return "unsupported"; // Firefox, Safari
+  }
+}
+```
+
+<Note kind="tip">Call clipboard methods directly in the click or keydown handler, before any `await` that
+could outlive the activation window. For async data, hand `ClipboardItem` a promise instead (see
+[ClipboardItem](#clipboarditem--mime-types)).</Note>
+
+## Async API
+
+| Member                               | Returns                    | Notes                                         |
+| :----------------------------------- | :------------------------- | :-------------------------------------------- |
+| `navigator.clipboard.writeText(s)`   | `Promise<void>`            | plain text only                               |
+| `navigator.clipboard.readText()`     | `Promise<string>`          | `""` when the clipboard has no text           |
+| `navigator.clipboard.write(items)`   | `Promise<void>`            | `ClipboardItem[]`; one item in practice        |
+| `navigator.clipboard.read(opts?)`    | `Promise<ClipboardItem[]>` | Chromium: `{ unsanitized: ["text/html"] }`    |
+| `new ClipboardItem(data, opts?)`     | `ClipboardItem`            | `data`: MIME type to `string \| Blob \| Promise` |
+| `item.types`                         | `readonly string[]`        | MIME types present                            |
+| `item.getType(type)`                 | `Promise<Blob>`            | `NotFoundError` if `type` is missing          |
+| `ClipboardItem.supports(type)`       | `boolean`                  | feature-detect a MIME type                    |
+
+```ts
+declare const btn: HTMLButtonElement;
+
+btn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText("npm i zod");
+  const text = await navigator.clipboard.readText();
+});
+```
+
+| Error               | Cause                                                              |
+| :------------------ | :----------------------------------------------------------------- |
+| `NotAllowedError`   | no user activation, permission denied, document not focused, iframe without `allow` |
+| `DataError`         | unsupported MIME type or bad data in `write()`                     |
+| `NotFoundError`     | `getType()` for a type the item doesn't have                       |
+| `TypeError`         | `navigator.clipboard` is `undefined` (insecure context)            |
+
+## ClipboardItem & MIME types
+
+| MIME type              | Write | Read | Notes                                                   |
+| :--------------------- | :---- | :--- | :------------------------------------------------------ |
+| `text/plain`           | all   | all  | mandatory type                                          |
+| `text/html`            | all   | all  | sanitized on read (scripts, handlers stripped)          |
+| `image/png`            | all   | all  | the only portable image type; convert JPEG/WebP first   |
+| `image/svg+xml`        | Chromium 124+ | Chromium | sanitized                                   |
+| `"web <type>"`         | Chromium 104+ | Chromium | custom formats, e.g. `"web application/x-app"`; readable only by web apps |
+
+One `ClipboardItem` holds several representations of the **same** content; the pasting app picks the
+richest it understands.
+
+```ts
+declare const pngBlob: Blob;
+
+await navigator.clipboard.write([
+  new ClipboardItem({
+    "text/plain": "Chart: Q3 revenue",
+    "image/png": pngBlob,
+  }),
+]);
+```
+
+```ts
+const [item] = await navigator.clipboard.read();
+if (item?.types.includes("image/png")) {
+  const blob = await item.getType("image/png");
+  const url = URL.createObjectURL(blob);
+}
+```
+
+**Safari and async data**: Safari requires `write()` to start synchronously in the gesture. Pass a
+promise as the value, and the fetch happens after activation has been checked:
+
+```ts
+declare const btn: HTMLButtonElement;
+
+btn.addEventListener("click", () => {
+  const png = fetch("/chart.png").then((r) => r.blob());
+  void navigator.clipboard.write([
+    new ClipboardItem({ "image/png": png }),
+  ]);
+});
+```
+
+Chromium accepted only `Blob`s (and `Promise<Blob>`) in the constructor until 133; wrap strings in
+`new Blob([s], { type })` when you must support older Chrome.
+
+## Copy, cut & paste events
+
+Keyboard shortcuts, context menus and `execCommand` fire these on the focused element (or `body`);
+they bubble to `document`. `event.clipboardData` is only usable during the handler.
+
+| Event   | Default action                  | To customise                                                  |
+| :------ | :------------------------------ | :------------------------------------------------------------ |
+| `copy`  | copies the selection            | `clipboardData.setData(type, s)` then `preventDefault()`       |
+| `cut`   | copies and deletes (editable)   | same, and delete the selection yourself                       |
+| `paste` | inserts into editable target    | read `clipboardData`, then `preventDefault()` to insert your own |
+
+| `DataTransfer` member      | Use                                                       |
+| :------------------------- | :-------------------------------------------------------- |
+| `getData(type)`            | `"text/plain"`, `"text/html"`; `""` if absent             |
+| `setData(type, value)`     | in `copy`/`cut` only                                      |
+| `types`                    | available types; `"Files"` when files are present         |
+| `files`                    | `FileList` of pasted files (images, screenshots)          |
+| `items`                    | `DataTransferItemList`; `getAsFile()` per item            |
+
+```ts
+document.addEventListener("copy", (e) => {
+  const sel = document.getSelection()?.toString() ?? "";
+  if (!e.clipboardData || !sel) return;
+  e.clipboardData.setData(
+    "text/plain",
+    `${sel}\n\nSource: ${location.href}`,
+  );
+  e.preventDefault(); // otherwise the default copy wins
+});
+```
+
+The events need no permission and work on plain HTTP, which makes `paste` the most reliable way to
+receive files. More on listeners in [Events](/typescript/frontend/events/).
+
+## Legacy execCommand fallback
+
+`document.execCommand("copy")` copies the current selection, returns `boolean`, and must run inside
+a user gesture. It is deprecated and typed `@deprecated` in `lib.dom`, but every engine still ships
+it. Use it only when `navigator.clipboard` is missing (HTTP pages, old WebViews).
+
+```ts title="legacy-copy.ts"
+export function legacyCopy(text: string): boolean {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", ""); // no mobile keyboard
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.append(ta);
+  ta.select();
+  try {
+    return document.execCommand("copy");
+  } finally {
+    ta.remove();
+  }
+}
+```
+
+`execCommand("paste")` is blocked in web pages; there is no legacy way to read the clipboard.
+
+## Typing in TS
+
+| Situation                                  | Type or fix                                               |
+| :----------------------------------------- | :-------------------------------------------------------- |
+| `navigator.clipboard`                      | typed as always present; guard with `window.isSecureContext` |
+| `ClipboardItem` constructor data           | `Record<string, string \| Blob \| PromiseLike<string \| Blob>>` |
+| permission names                           | `"clipboard-read"` isn't in `PermissionName`; cast the descriptor |
+| `e.clipboardData`                          | `DataTransfer \| null`; always null-check                 |
+| `paste` listener on `document`             | `e` is `ClipboardEvent` via `DocumentEventMap`            |
+| `read({ unsanitized })`                    | not in `lib.dom` yet; Chromium only at runtime            |
+
+```ts
+const canUseAsyncClipboard =
+  window.isSecureContext && "clipboard" in navigator;
+const canWriteImages =
+  typeof ClipboardItem !== "undefined" &&
+  (!("supports" in ClipboardItem) ||
+    ClipboardItem.supports("image/png"));
+```
+
+## Security & pitfalls
+
+| Pitfall                                   | Fix                                                              |
+| :---------------------------------------- | :--------------------------------------------------------------- |
+| `await` before `write()` loses activation | call `write()` first with a promise inside the `ClipboardItem`   |
+| `NotAllowedError` while testing           | DevTools has focus; click the page first                         |
+| iframe copy fails                         | parent adds `allow="clipboard-write"` (and `clipboard-read`)     |
+| JPEG/WebP rejected                        | draw to a canvas and export `image/png`                          |
+| pasted HTML is trusted                    | treat as untrusted input; sanitize again before `innerHTML`      |
+| reading on page load                      | never works; read only from a user action                       |
+| copying secrets                           | other apps and clipboard managers can read it; don't auto-copy tokens |
+| custom `copy` handler without `preventDefault()` | your `setData` is discarded                               |
+| E2E tests                                 | Playwright: `context.grantPermissions(["clipboard-read", "clipboard-write"])` (Chromium) |
+
+Browsers never let a page read the clipboard silently: every read needs a gesture, a prompt or a
+granted permission, so design paste features around an explicit button or `Ctrl+V`.
+
+## Recipes
+
+### Copy button with feedback
+A "Copy" button next to a code block or an API key, falling back to `execCommand` on HTTP.
+
+```ts
+import { legacyCopy } from "./legacy-copy.ts";
+
+async function copyText(text: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // denied or unfocused: try the legacy path
+    }
+  }
+  return legacyCopy(text);
+}
+
+declare const btn: HTMLButtonElement;
+btn.addEventListener("click", async () => {
+  const ok = await copyText(btn.dataset.copy ?? "");
+  btn.textContent = ok ? "Copied!" : "Press Ctrl+C";
+  setTimeout(() => (btn.textContent = "Copy"), 1500);
+});
+```
+
+### Paste an image from the clipboard
+Accept screenshots with `Ctrl+V` anywhere on the page; no permission needed.
+
+```ts
+function onPastedImage(cb: (file: File) => void) {
+  const handler = (e: ClipboardEvent) => {
+    const files = e.clipboardData?.files ?? [];
+    const img = [...files].find((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (!img) return; // let text paste through
+    e.preventDefault();
+    cb(img);
+  };
+  document.addEventListener("paste", handler);
+  return () =>
+    document.removeEventListener("paste", handler);
+}
+```
+
+### Paste an image with a button
+A "Paste image" button for touch devices where `Ctrl+V` isn't an option.
+
+```ts
+async function readClipboardImage(): Promise<Blob | null> {
+  const items = await navigator.clipboard.read();
+  for (const item of items) {
+    const type = item.types.find((t) =>
+      t.startsWith("image/"),
+    );
+    if (type) return item.getType(type);
+  }
+  return null;
+}
+```
+
+### Copy rich HTML with a plain-text fallback
+Paste keeps formatting in docs and mail apps, and plain text in terminals and code editors.
+
+```ts
+async function copyRich(html: string, plain: string) {
+  if (typeof ClipboardItem === "undefined") {
+    return navigator.clipboard.writeText(plain);
+  }
+  const blob = (s: string, type: string) =>
+    new Blob([s], { type });
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      "text/html": blob(html, "text/html"),
+      "text/plain": blob(plain, "text/plain"),
+    }),
+  ]);
+}
+
+declare const table: HTMLTableElement;
+await copyRich(table.outerHTML, table.innerText);
+```
+
+### Copy a canvas as PNG
+Copy a chart or generated image; the promise keeps Safari's activation check happy.
+
+```ts
+declare const canvas: HTMLCanvasElement;
+
+function copyCanvas() {
+  const png = new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("empty"))),
+      "image/png",
+    ),
+  );
+  return navigator.clipboard.write([
+    new ClipboardItem({ "image/png": png }),
+  ]);
+}
+```
+
+## References
+
+- MDN: [Clipboard API](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API), [`Clipboard`](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard), [`ClipboardItem`](https://developer.mozilla.org/en-US/docs/Web/API/ClipboardItem), [`ClipboardEvent`](https://developer.mozilla.org/en-US/docs/Web/API/ClipboardEvent): methods, security notes, compat tables
+- MDN: [User activation](https://developer.mozilla.org/en-US/docs/Web/Security/User_activation), [`Document.execCommand()`](https://developer.mozilla.org/en-US/docs/Web/API/Document/execCommand): which APIs are gated and how
+- [W3C Clipboard API and events](https://w3c.github.io/clipboard-apis/): the spec, including mandatory data types
+- web.dev: [Unblocking clipboard access](https://web.dev/articles/async-clipboard), [Web custom formats](https://developer.chrome.com/blog/web-custom-formats-for-the-async-clipboard-api): Chromium specifics
+- WebKit: [Async Clipboard API in Safari](https://webkit.org/blog/10855/async-clipboard-api/): Safari's gesture and promise rules

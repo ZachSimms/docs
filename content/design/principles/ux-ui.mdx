@@ -1,0 +1,667 @@
+---
+title: UX/UI design principles
+date: 2026-09-25
+order: 1
+---
+
+Heuristics, laws, layout, type, states, forms, feedback, accessibility (WCAG 2.2 AA) and design
+tokens, as a checklist for building and reviewing interfaces. Palettes and contrast maths live in
+[Color theory](/design/principles/color-theory/); the CSS side is in [CSS](/design/css/css/).
+
+## Usability heuristics
+
+Jakob Nielsen's 10 heuristics (NN/g). Use them for heuristic evaluation: 3–5 reviewers each walk the
+UI alone, then merge findings and rate severity.
+
+| # | Heuristic | Meaning | Example |
+| :- | :-------- | :------ | :------ |
+| 1 | Visibility of system status | always show what is happening, promptly | upload progress, "Saved" indicator, active nav item |
+| 2 | Match with the real world | the user's words and mental models, not the system's | "Bin" not "Purge queue"; calendar that looks like a calendar |
+| 3 | User control and freedom | a clear exit from any state | undo, cancel, back, close on `Esc` |
+| 4 | Consistency and standards | same thing, same name, same look; follow platform conventions | logo links home, blue underlined links |
+| 5 | Error prevention | design the error out before messaging it | disable impossible dates, confirm destructive actions, constraints |
+| 6 | Recognition rather than recall | options visible, not memorised | recent searches, autocomplete, visible labels |
+| 7 | Flexibility and efficiency | accelerators for experts that novices can ignore | keyboard shortcuts, ⌘K palette, bulk actions |
+| 8 | Aesthetic and minimalist design | every extra element competes with the useful ones | one primary action per view |
+| 9 | Recognise, diagnose, recover from errors | plain-language cause and a fix | "Card expired. Use another card or update the date." |
+| 10 | Help and documentation | searchable, task-focused, in context | inline hints, tooltips, docs linked from the screen |
+
+Severity scale: 0 not a problem, 1 cosmetic, 2 minor, 3 major (fix before release), 4 catastrophe.
+
+## Laws of UX
+
+| Law | Says | Apply it |
+| :-- | :--- | :------- |
+| Fitts's law | time to hit a target grows with distance and shrinks with size | big, close targets for frequent actions; screen edges and corners are "infinite" targets |
+| Hick's law | decision time grows with the number and complexity of choices | fewer options, sensible defaults, progressive disclosure |
+| Jakob's law | users spend most time on other sites and expect yours to work the same | reuse conventions (cart top-right, search icon) |
+| Miller's law | working memory holds about 7 ± 2 items (newer research: ~4 chunks) | chunk content (phone numbers, card numbers); not a cap on menu items |
+| Tesler's law | every system has complexity that can't be removed, only moved | the product absorbs it, not the user (smart defaults, inference) |
+| Doherty threshold | productivity climbs when the system responds in under ~400 ms | fast feedback, optimistic UI, perceived-performance tricks |
+| Peak-end rule | experiences are judged by their peak and their end | polish the key moment and the final step (confirmation, success) |
+| Aesthetic-usability effect | attractive designs are perceived as easier to use | polish matters, but it also hides problems in testing |
+| Von Restorff effect | the item that differs is remembered | one visually distinct primary CTA; don't make everything stand out |
+| Serial position effect | first and last items are recalled best | key nav items at the start and end |
+| Postel's law | be liberal in what you accept, conservative in what you send | accept "+44 20…", "020…", spaces and dashes; output one format |
+| Goal-gradient effect | effort rises as the goal gets closer | progress bars, checklists, pre-filled first step |
+| Zeigarnik effect | unfinished tasks stick in memory | "profile 60% complete", visible incomplete steps |
+
+## Gestalt & visual hierarchy
+
+### Gestalt principles
+
+| Principle | Perception | UI use |
+| :-------- | :--------- | :----- |
+| Proximity | near things belong together | less space inside a group than between groups |
+| Similarity | same colour, shape or size means same kind | all links styled alike; all destructive actions red |
+| Common region | a shared boundary makes a group | cards, panels, fieldsets |
+| Uniform connectedness | connected elements relate | lines in steppers, timelines |
+| Closure | the mind completes partial shapes | icons, cropped carousels hinting more content |
+| Continuity | eyes follow lines and curves | aligned edges, horizontal scrollers |
+| Figure-ground | foreground separates from background | modals with a scrim, elevated cards |
+| Common fate | things moving together are a group | items animating together after a filter |
+| Symmetry and order (Prägnanz) | the simplest reading wins | plain shapes, clear grids |
+
+### Hierarchy levers
+
+Rank each screen's content (primary, secondary, tertiary), then use the fewest levers that make the
+ranking obvious. The squint test: blur the screen and check that the primary thing still wins.
+
+| Lever | Stronger | Weaker | Note |
+| :---- | :------- | :----- | :--- |
+| Size | larger | smaller | use a type scale, not ad-hoc sizes |
+| Weight | 600–700 | 400 | two or three weights are enough |
+| Colour | saturated, high contrast | grey, lower contrast | de-emphasise secondary text with colour, not smaller size |
+| Spacing | more whitespace around | tight | space isolates and elevates |
+| Contrast | dark on light / light on dark | muted | the only lever that also affects legibility |
+| Position | top-left (LTR), above the fold | bottom, trailing | F and Z scan patterns |
+| Depth | shadow, elevation | flat | reserve for overlays and draggable items |
+
+Buttons follow the same rule: one solid primary, outline or tonal secondary, text-only tertiary.
+Destructive actions are only red when they are the primary action of that view.
+
+## Layout, spacing & responsive
+
+### 4/8 pt grid
+
+Every size and space is a multiple of 4 px (fine steps) or 8 px (most layout). It keeps rhythm
+consistent and maps well to 1x/1.5x/2x/3x screens.
+
+| Token | px | rem | Typical use |
+| :---- | :- | :-- | :---------- |
+| `space-1` | 4 | 0.25 | icon to label gap |
+| `space-2` | 8 | 0.5 | inside compact controls, related items |
+| `space-3` | 12 | 0.75 | input padding, list item gap |
+| `space-4` | 16 | 1 | default gap, card padding (mobile) |
+| `space-6` | 24 | 1.5 | card padding, form field groups |
+| `space-8` | 32 | 2 | between sections in a card |
+| `space-12` | 48 | 3 | between page sections (mobile) |
+| `space-16` | 64 | 4 | between page sections (desktop) |
+| `space-24` | 96 | 6 | hero and landing blocks |
+
+Start with too much whitespace and remove it. Internal spacing (padding) should be smaller than
+external spacing (margin to the next group), otherwise proximity lies.
+
+```css title="spacing.css"
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+}
+
+.stack > * + * { margin-block-start: var(--space-4); }
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+```
+
+### Layout rules
+
+| Rule | Detail |
+| :--- | :----- |
+| Content-first width | text columns cap at ~65ch; don't stretch forms to 1200 px |
+| 12-column grid | common for desktop; 4 columns on mobile, 8 on tablet |
+| Align to few edges | fewer alignment lines read as calmer |
+| Group, then separate | whitespace first, then background, borders last |
+| Mobile-first CSS | base styles for small screens, `min-width` queries add layout |
+| Container queries | components respond to their container, not the viewport |
+| Reflow | usable at 320 CSS px wide with no horizontal scroll (WCAG 1.4.10) |
+
+| Breakpoint (common) | Width | Layout |
+| :------------------ | :---- | :----- |
+| sm | 640 px | single column, bottom nav |
+| md | 768 px | two columns, collapsible sidebar |
+| lg | 1024 px | persistent sidebar |
+| xl | 1280 px | max content width, extra whitespace |
+
+Pick breakpoints where your content breaks, not per device. Tailwind's defaults match the table:
+see [Tailwind](/design/css/tailwind/).
+
+## Typography
+
+### Type scale
+
+Multiply a base size (usually 16 px) by a ratio per step.
+
+| Ratio | Name | 16 px after 4 steps | Suits |
+| :---- | :--- | :------------------ | :---- |
+| 1.067 | minor second | 20.7 px | dense apps, data tables |
+| 1.125 | major second | 25.6 px | product UI, mobile |
+| 1.2 | minor third | 33.2 px | general UI, docs |
+| 1.25 | major third | 39.1 px | content sites, dashboards with headings |
+| 1.333 | perfect fourth | 50.5 px | blogs, marketing |
+| 1.414 | augmented fourth | 64 px | editorial |
+| 1.5 | perfect fifth | 81 px | landing pages, display |
+| 1.618 | golden ratio | 109.7 px | posters, hero text only |
+
+Use a tighter ratio on mobile and a larger one on desktop, or interpolate with `clamp()` (see
+Recipes). In practice, many systems hand-tune a fixed list (12, 14, 16, 18, 20, 24, 30, 36, 48).
+
+### Readability
+
+| Property | Guideline |
+| :------- | :-------- |
+| Body size | 16 px minimum on the web; 17 pt iOS default; don't go below 12 px for any text |
+| Line length | 45–75 characters, ~66 ideal; `max-inline-size: 65ch` |
+| Line height | body 1.4–1.6; headings 1.1–1.25; longer lines need more |
+| Paragraph spacing | about one line (0.75–1em) between paragraphs; WCAG 1.4.12 layouts must survive user overrides of line height 1.5, paragraph spacing 2em, letter 0.12em, word 0.16em |
+| Letter spacing | slightly positive for all-caps and small text, slightly negative for large display |
+| Alignment | left (start) aligned; avoid justified text on the web (rivers) |
+| Units | `rem` for font sizes so browser zoom and user settings scale them |
+| Wrapping | `text-wrap: balance` for headings, `text-wrap: pretty` for paragraphs (no Firefox yet) |
+
+### Pairing
+
+| Approach | Example | Rule |
+| :------- | :------ | :--- |
+| One family | Inter for everything | use weights and sizes for hierarchy; safest |
+| Sans + serif | serif headings, sans body | contrast in structure, similar x-height |
+| Sans + mono | UI sans, mono for code and numbers | mono or `font-variant-numeric: tabular-nums` for data |
+| System stack | `system-ui` | zero load time, native feel |
+
+Limit to two families and three or four weights. Load variable fonts to get every weight in one file.
+
+## Components & states
+
+### State matrix
+
+Every interactive component needs a design for each state that applies.
+
+| State | Trigger | Visual | Code / a11y |
+| :---- | :------ | :----- | :---------- |
+| Default | resting | base style | semantic element (`button`, `a`, `input`) |
+| Hover | pointer over | subtle bg or colour shift | `@media (hover: hover)` so touch doesn't stick |
+| Focus visible | keyboard focus | 2 px+ outline, 3:1 against neighbours | `:focus-visible`; never `outline: none` without a replacement |
+| Active / pressed | pointer or key down | darker, slight inset or scale | `:active`; toggles use `aria-pressed` |
+| Selected / checked | chosen | fill, check mark, not colour alone | `aria-selected`, `aria-checked`, `aria-current="page"` |
+| Disabled | not available | reduced contrast, no pointer | `disabled`; prefer `aria-disabled="true"` plus a reason when users must discover why |
+| Loading | work in progress | spinner or skeleton, keep size stable | `aria-busy="true"`; block double submit |
+| Empty | no data yet | explanation + next action | see below |
+| Error | failed or invalid | red + icon + message | `aria-invalid`, message linked with `aria-describedby` |
+| Success | completed | brief confirmation | `role="status"` live region |
+| Read-only | visible, not editable | no input chrome, still selectable | `readonly`, still focusable |
+
+Disabled controls are exempt from contrast rules but still need to be recognisable. Don't disable a
+submit button to signal invalid input: let the user press it and show what's missing.
+
+### Empty, error & onboarding states
+
+| Situation | Show | Avoid |
+| :-------- | :--- | :---- |
+| First use (nothing created) | what goes here, why it helps, one primary action, optional sample data | a blank table with column headers |
+| User-cleared ("inbox zero") | positive confirmation, maybe what's next | the same copy as first use |
+| No results | the query, why nothing matched, fixes (clear filters, spelling, broader search) | "No data" |
+| Load failure | what failed, a retry, keep what did load | full-page error for one widget |
+| Offline | cached content plus a banner, queue writes | silent failures |
+| No permission | who can grant access, a request button | a 404 that hides the reason |
+| 404 page | search, key links, a way home | blame ("you typed it wrong") |
+
+Onboarding: prefer contextual hints and a short checklist (goal-gradient, Zeigarnik) over a
+multi-screen tour. Delay sign-up until the user has seen value, and let them skip and resume later.
+
+## Forms
+
+| Rule | Why |
+| :--- | :-- |
+| Visible label above each field | placeholders vanish on input and fail contrast |
+| One column | faster to scan, fewer skipped fields |
+| Ask only what you need | each field costs completion rate |
+| Mark optional fields "(optional)" | usually fewer than required ones; or mark required with text, not just `*` |
+| Right input type and `autocomplete` | correct mobile keyboard, autofill, password managers |
+| Size fields to the expected input | a postcode field hints at its length |
+| Group with `fieldset` and `legend` | radio sets, addresses |
+| Primary button at the end, aligned with fields | follow the reading path |
+| Allow paste everywhere | WCAG 3.3.8: don't block password managers or pasted codes |
+| Don't ask twice | WCAG 3.3.7: reuse earlier answers (shipping = billing checkbox) |
+
+### Validation timing
+
+| When | Use for |
+| :--- | :------ |
+| On submit | always; show an error summary at the top, link each error, move focus to it |
+| On blur (first time) | format checks after the user leaves a field |
+| On input, after an error | clear the error as soon as the value becomes valid |
+| On input, debounced | username availability, password strength meters |
+| Never | while the user is still typing a field for the first time ("premature errors") |
+
+### Error messages
+
+| Do | Don't |
+| :- | :---- |
+| "Enter an email address like name@example.com" | "Invalid input" |
+| "Password must be at least 12 characters" | "Password error" |
+| Place under the field, keep the typed value | clear the field |
+| Icon + text + colour | red border only |
+| Say how to fix it | blame ("You entered a wrong date") |
+
+```html
+<label for="email">Email</label>
+<p id="email-hint">We'll send the receipt here.</p>
+<input id="email" type="email" autocomplete="email"
+  required aria-describedby="email-hint email-error">
+<p id="email-error" aria-live="polite"></p>
+```
+
+More on the DOM side in [Forms](/typescript/frontend/forms/).
+
+## Feedback & latency
+
+| Response time | Feels | Do |
+| :------------ | :---- | :- |
+| up to 0.1 s | instant, direct manipulation | no indicator |
+| 0.1–1 s | a delay, flow of thought intact | no spinner needed; subtle state change |
+| up to ~0.4 s | Doherty threshold for staying engaged | aim here for interactions |
+| 1–10 s | attention holds, but the user waits | spinner or skeleton |
+| over 10 s | attention drifts | determinate progress, estimate, cancel, notify when done |
+
+Web targets (Core Web Vitals, 75th percentile): INP ≤ 200 ms, LCP ≤ 2.5 s, CLS ≤ 0.1.
+
+### Loading patterns
+
+| Pattern | When | Note |
+| :------ | :--- | :--- |
+| Nothing | under ~300 ms | a flashing spinner feels slower than none |
+| Inline spinner | 1–~5 s, small area (button) | keep the button width fixed |
+| Skeleton | loading a known layout (lists, cards, pages) | match the final layout to avoid shifts; no skeleton for tiny waits |
+| Progress bar | long, measurable work (upload, export) | determinate if at all possible |
+| Optimistic UI | likely-to-succeed, reversible writes (like, reorder, rename) | update now, roll back with a message on failure |
+| Background + notify | minutes (video render, report) | let the user leave; toast or email when done |
+
+Other feedback rules: acknowledge every input within 100 ms (pressed state), confirm success
+unobtrusively (toast, inline tick), and prefer undo over confirmation dialogs for reversible actions.
+Data-fetching patterns in [TanStack Query](/typescript/react/tanstack-query/).
+
+## Navigation & IA
+
+| Pattern | Use when | Watch out |
+| :------ | :------- | :-------- |
+| Top nav bar | few top-level sections, marketing sites | overflows on small screens |
+| Sidebar | apps with many sections, deep hierarchies | collapse to icons or a drawer on mobile |
+| Bottom tab bar | mobile apps, 3–5 top destinations | not for actions; labels under icons |
+| Tabs | 2–~6 peer views of one object | not for sequential steps |
+| Breadcrumbs | hierarchies 3+ levels deep | supplement, not primary nav |
+| Search | large or unpredictable content | show recent and suggested queries |
+| Command palette (⌘K) | power users, many actions | a shortcut, not the only path |
+| Hamburger menu | secondary items on mobile | hides nav and lowers discoverability |
+| Steppers / wizards | long linear tasks | show progress, allow back without data loss |
+| Pagination / load more / infinite scroll | long lists | infinite scroll breaks the footer, back button and "find again"; prefer load more |
+
+Rules: show "you are here" (`aria-current="page"`), keep the URL in sync with view state (filters,
+tabs, pagination) so Back and sharing work, label with the user's words (validate with card sorting
+and tree testing), and prefer broad-and-shallow over narrow-and-deep hierarchies.
+
+## UX writing
+
+| Rule | Do | Don't |
+| :--- | :- | :---- |
+| Buttons are verbs that name the outcome | "Save changes", "Send invoice" | "OK", "Submit", "Yes" |
+| Confirmations restate the action | "Delete 3 files?" then [Delete] [Cancel] | "Are you sure?" then [Yes] [No] |
+| Front-load the important words | "Password reset link sent" | "We have now sent you a link which…" |
+| Sentence case | "Create new project" | "Create New Project" |
+| One term per concept | always "delete" | "delete", "remove", "trash" for the same thing |
+| Plain words, short sentences | "Can't connect. Check your Wi-Fi." | "Network error 0x80070" |
+| Errors: what happened + how to fix | "That code expired. Send a new one." | "Error. Try again." |
+| Numerals and specifics | "3 items", "2 min left" | "three items", "shortly" |
+| Descriptive link text | "Read the pricing guide" | "Click here" |
+| Positive framing | "Keep me signed in" | "Don't sign me out" |
+| Match tone to the moment | light on success, calm and direct on errors | jokes in error messages |
+
+Write the empty state, error and success copy with the design, not after. Keep UI strings out of
+code so they can be translated; leave ~30% extra room for longer languages like German.
+
+## Accessibility & touch
+
+### WCAG 2.2 AA essentials
+
+| SC | Level | Requirement | Quick check |
+| :- | :---- | :---------- | :---------- |
+| 1.1.1 Non-text content | A | text alternative for images and icons; `alt=""` for decoration | screen reader or alt-text audit |
+| 1.3.1 Info and relationships | A | structure in markup: headings, lists, labels, tables | turn off CSS, still makes sense |
+| 1.4.1 Use of colour | A | colour is never the only signal | greyscale screenshot |
+| 1.4.3 Contrast (minimum) | AA | text 4.5:1; large text (24 px, or 18.66 px bold) 3:1 | contrast checker |
+| 1.4.4 Resize text | AA | usable at 200% text size | browser zoom 200% |
+| 1.4.10 Reflow | AA | no 2D scrolling at 320 CSS px width | 400% zoom on 1280 px |
+| 1.4.11 Non-text contrast | AA | UI component boundaries, icons, focus indicators 3:1 | check borders and icons |
+| 1.4.12 Text spacing | AA | no loss when users increase line, letter, word spacing | text-spacing bookmarklet |
+| 1.4.13 Content on hover or focus | AA | tooltips dismissible (`Esc`), hoverable, persistent | hover then move into the tooltip |
+| 2.1.1 Keyboard | A | everything works with a keyboard | unplug the mouse |
+| 2.1.2 No keyboard trap | A | focus can always leave (except modal by design, with `Esc`) | tab through everything |
+| 2.2.2 Pause, stop, hide | A | auto-moving content over 5 s can be paused | carousels, tickers |
+| 2.3.1 Three flashes | A | nothing flashes more than 3 times per second | video, animations |
+| 2.4.3 Focus order | A | tab order follows the visual order | tab through |
+| 2.4.7 Focus visible | AA | a visible keyboard focus indicator | tab through |
+| 2.4.11 Focus not obscured (min) | AA | focused item not fully hidden by sticky headers or banners | tab under sticky UI; `scroll-padding` |
+| 2.5.7 Dragging movements | AA | a single-pointer alternative to drag | reorder with buttons too |
+| 2.5.8 Target size (minimum) | AA | targets at least 24 × 24 CSS px, or spaced so a 24 px circle fits | inline links in text are exempt |
+| 3.3.1 / 3.3.2 Errors, labels | A | errors described in text; inputs have labels | submit an empty form |
+| 3.3.8 Accessible authentication (min) | AA | no cognitive tests to log in; allow paste and password managers | try pasting the password |
+| 4.1.2 Name, role, value | A | custom widgets expose role and state (ARIA) | accessibility tree in devtools |
+| 4.1.3 Status messages | AA | status updates announced without moving focus | `role="status"`, `aria-live` |
+| 2.3.3 Animation from interactions | AAA | motion triggered by interaction can be turned off | `prefers-reduced-motion` |
+
+Also: one `h1`, logical heading levels, a skip link, `lang` on `html`, visible labels that match
+accessible names (2.5.3), and semantic HTML before ARIA. Automated tools (axe, Lighthouse) catch
+only part of the issues; test with a keyboard and a screen reader (VoiceOver, NVDA).
+
+### Touch targets
+
+| Source | Minimum | Note |
+| :----- | :------ | :--- |
+| WCAG 2.5.8 (AA) | 24 × 24 CSS px | or enough spacing around smaller targets |
+| WCAG 2.5.5 (AAA) | 44 × 44 CSS px | the comfortable target |
+| Apple HIG | 44 × 44 pt | iOS, iPadOS |
+| Material 3 | 48 × 48 dp | ~9 mm; at least 8 dp between targets |
+
+Put primary mobile actions in the thumb zone (bottom half), avoid hover-only affordances, and use
+`@media (pointer: coarse)` to enlarge controls on touch devices.
+
+## Design systems, tokens & dark mode
+
+### Token tiers
+
+| Tier | Example | Points to | Changes when |
+| :--- | :------ | :-------- | :----------- |
+| Primitive (reference) | `color.blue.600`, `space.4` | raw values | the brand palette changes |
+| Semantic (system) | `color.bg.accent`, `color.fg.muted` | primitives | the theme changes (light, dark, high contrast) |
+| Component | `button.primary.bg` | semantics | one component needs an override |
+
+Components use semantic tokens only. Themes swap the semantic layer; primitives stay the same.
+
+```tree title="tokens package"
+tokens/
+  primitives/
+    color.tokens.json   # blue.50 to blue.950, gray, red
+    space.tokens.json   # 4 px scale
+    type.tokens.json    # families, sizes, weights
+  semantic/
+    light.tokens.json   # aliases: bg, fg, border, accent
+    dark.tokens.json
+  components/
+    button.tokens.json
+  build.ts              # Style Dictionary / Terrazzo
+  dist/
+    tokens.css          # generated custom properties
+    tokens.ts           # generated typed constants
+  package.json
+```
+
+Tokens use the W3C Design Tokens Community Group format (first stable version 2025.10): every
+token has a `$value` and optional `$type`, and `{path.to.token}` makes an alias.
+
+```json title="semantic/light.tokens.json"
+{
+  "color": {
+    "bg": {
+      "accent": {
+        "$type": "color",
+        "$value": "{color.blue.600}"
+      }
+    }
+  }
+}
+```
+
+```ts title="tokens.ts"
+export const space = {
+  0: "0",
+  1: "0.25rem",
+  2: "0.5rem",
+  3: "0.75rem",
+  4: "1rem",
+  6: "1.5rem",
+  8: "2rem",
+  12: "3rem",
+  16: "4rem",
+} as const;
+
+export type Space = keyof typeof space;   // 0 | 1 | 2 | ...
+
+export const pad = (n: Space) => `var(--space-${n})`;
+pad(4);
+// @ts-expect-error 5 is not on the scale
+pad(5);
+```
+
+### Dark mode considerations
+
+| Concern | Do |
+| :------ | :- |
+| Background | near-black (`#121212`-ish) or dark grey, not only `#000`; pure black smears on OLED scroll |
+| Text | off-white (~87% white) for body, lower for secondary; avoid pure white on pure black (halation) |
+| Elevation | higher surfaces are lighter; shadows barely show on dark |
+| Colour | lighter, less saturated tints of brand colours; saturated colours vibrate on dark |
+| Contrast | re-check every pair; a passing light-mode pair often fails when mapped |
+| Images | dim bright images slightly, swap logos and illustrations |
+| Form controls | `color-scheme: light dark` so scrollbars and inputs follow |
+| Choice | system by default, plus a light/dark/system toggle that persists |
+
+Dark mode is a second semantic theme, not `filter: invert()`. Palette-building details in
+[Color theory](/design/principles/color-theory/#dark-mode-palettes).
+
+## Research & testing
+
+| Method | Answers | When | Sample |
+| :----- | :------ | :--- | :----- |
+| User interviews | needs, context, language | discovery | 5–10 per segment |
+| Contextual inquiry | how work really happens | discovery | 4–8 sessions |
+| Survey | how many, how often | validate at scale | 100+ |
+| Card sorting (open / closed) | how users group and name content | building IA | 15–30 |
+| Tree testing | can users find X in this hierarchy | validating IA | 50+ |
+| Moderated usability test | why users struggle | any prototype stage | ~5 per round, then iterate |
+| Unmoderated usability test | task success, time on task | mid to late | 15–40 |
+| First-click / five-second test | is the entry point or message clear | layouts, landing pages | 20–50 |
+| Heuristic evaluation | known usability problems, cheaply | any stage | 3–5 experts |
+| Cognitive walkthrough | can a first-time user learn the flow | new flows | 2–4 reviewers |
+| A/B test | which variant performs better | live product | power-calculated, often thousands |
+| Analytics and session replay | where users drop off | live product | all traffic |
+| Diary study | behaviour over days or weeks | long journeys | 10–15 |
+
+Metrics: task success rate, time on task, error rate, SUS (System Usability Scale; ~68 is average),
+and single ease question (SEQ). Five users per round finds most problems in one flow; run several
+small rounds rather than one big one.
+
+## Design review checklist
+
+- [ ] One clear primary action per screen; hierarchy survives the squint test
+- [ ] Spacing and sizes come from the scale; related items are closer than unrelated ones
+- [ ] Type uses the scale, body text is at least 16 px, lines at most ~75 characters
+- [ ] Every interactive element has hover, focus-visible, active, disabled and loading states
+- [ ] Empty, error, loading, offline and no-permission states are designed
+- [ ] Text contrast is at least 4.5:1 (3:1 large); UI and focus indicators at least 3:1
+- [ ] Colour is never the only signal (icons, text, patterns too)
+- [ ] Full keyboard path works, focus is visible and never hidden under sticky UI
+- [ ] Targets are at least 24 px (44–48 px on touch), with space between them
+- [ ] Forms have visible labels, helpful errors, `autocomplete`, and allow paste
+- [ ] Copy uses verbs on buttons, one term per concept, sentence case
+- [ ] Works at 320 px wide and 200% zoom; content, not devices, sets breakpoints
+- [ ] Dark mode checked separately, `prefers-reduced-motion` respected
+- [ ] Uses existing components and tokens; new ones are documented
+
+## Recipes
+
+### Focus ring that works everywhere
+Visible for keyboard users only, and `outline` survives Windows forced-colors mode (box-shadow doesn't).
+
+```css
+:where(a, button, input, select, textarea,
+  summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus, Highlight);
+  outline-offset: 2px;
+}
+
+/* keep focused items clear of a sticky header */
+html { scroll-padding-block-start: 5rem; }
+```
+
+### Motion only for those who want it
+Opt in to animation instead of stripping it out afterwards. See [Animation](/design/css/animation/).
+
+```css
+.card { transition: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: transform 200ms ease-out,
+      box-shadow 200ms ease-out;
+  }
+  .card:hover { transform: translateY(-2px); }
+}
+```
+
+### Bigger hit area, same visual size
+When a small icon button must meet 44 px on touch without looking bigger.
+
+```css
+.icon-btn {
+  position: relative;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+/* 20 px icon + 12 px each side = 44 px target */
+.icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+```
+
+### Fluid type scale
+Headings that grow with the viewport but still respond to zoom, because the `rem` term keeps scaling.
+
+```css
+:root {
+  --step-0: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --step-1: clamp(1.2rem, 1.1rem + 0.5vw, 1.5rem);
+  --step-2: clamp(1.44rem, 1.25rem + 0.9vw, 2rem);
+  --step-3: clamp(1.73rem, 1.4rem + 1.6vw, 2.67rem);
+}
+
+h1 { font-size: var(--step-3); line-height: 1.1; }
+p { font-size: var(--step-0); max-inline-size: 65ch; }
+```
+
+### Spinner that doesn't flash
+Show loading only if work takes longer than `delayMs`, then keep it up for `minMs` to avoid flicker.
+
+```ts
+const wait = (ms: number) =>
+  new Promise<void>((r) => setTimeout(r, ms));
+
+export async function withSpinner<T>(
+  work: Promise<T>,
+  show: (visible: boolean) => void,
+  delayMs = 300,
+  minMs = 500,
+): Promise<T> {
+  const started = { at: -1 };
+  const timer = setTimeout(() => {
+    started.at = performance.now();
+    show(true);
+  }, delayMs);
+  try {
+    return await work;
+  } finally {
+    clearTimeout(timer);
+    if (started.at >= 0) {
+      const shown = performance.now() - started.at;
+      await wait(Math.max(0, minMs - shown));
+      show(false);
+    }
+  }
+}
+```
+
+### Validate on blur, then live
+The validation timing from [Forms](#validation-timing): no errors while typing the first time.
+
+```ts
+type Validator = (value: string) => string | null;
+
+export function wireField(
+  input: HTMLInputElement,
+  validate: Validator,
+): void {
+  const error = document.getElementById(`${input.id}-error`);
+  const state = { touched: false };
+
+  const run = () => {
+    const msg = validate(input.value);
+    input.setAttribute("aria-invalid", String(msg !== null));
+    if (error) error.textContent = msg ?? "";
+  };
+
+  input.addEventListener("blur", () => {
+    state.touched = true;
+    run();
+  });
+  input.addEventListener("input", () => {
+    if (state.touched) run();
+  });
+}
+```
+
+### Optimistic update with rollback
+For likes, toggles and renames that almost always succeed. In React, see `useOptimistic` in
+[TypeScript + React](/typescript/react/typescript-react/).
+
+```ts
+type Store<S> = { get: () => S; set: (next: S) => void };
+
+export async function optimistic<S>(
+  store: Store<S>,
+  update: (prev: S) => S,
+  commit: () => Promise<void>,
+): Promise<void> {
+  const before = store.get();
+  store.set(update(before));          // paint the result now
+  try {
+    await commit();
+  } catch (err) {
+    store.set(before);                // roll back
+    throw new Error("Could not save", { cause: err });
+  }
+}
+
+// optimistic(post, (p) => ({ ...p, likes: p.likes + 1 }),
+//   () => api.like("p1"));
+```
+
+## References
+
+- MDN: [Accessibility](https://developer.mozilla.org/en-US/docs/Web/Accessibility), [Understanding WCAG](https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Understanding_WCAG), [`:focus-visible`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/:focus-visible), [`prefers-reduced-motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-motion), [`prefers-color-scheme`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-color-scheme), [`color-scheme`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/color-scheme), [`autocomplete`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete), [`text-wrap`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/text-wrap), [`clamp()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/clamp)
+- W3C: [WCAG 2.2](https://www.w3.org/TR/WCAG22/), [What's new in WCAG 2.2](https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/), [Design Tokens Format Module](https://www.designtokens.org/tr/drafts/format/)
+- Nielsen Norman Group: [10 usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/), [Response time limits](https://www.nngroup.com/articles/response-times-3-important-limits/), [Why you only need to test with 5 users](https://www.nngroup.com/articles/why-you-only-need-to-test-with-5-users/)
+- [Laws of UX](https://lawsofux.com/): one page per law with sources
+- [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) and [Material Design 3](https://m3.material.io/): platform conventions, target sizes, components
+- [Refactoring UI](https://www.refactoringui.com/): hierarchy, spacing and colour for developers
+- [web.dev: Web Vitals](https://web.dev/articles/vitals): INP, LCP, CLS thresholds
+- [GOV.UK Design System](https://design-system.service.gov.uk/): tested patterns for forms, errors and validation
+- [Butterick's Practical Typography](https://practicaltypography.com/): line length, spacing, font choice

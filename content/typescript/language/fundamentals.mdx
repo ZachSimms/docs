@@ -1,0 +1,779 @@
+---
+title: Fundamentals
+date: 2026-09-25
+order: 1
+---
+
+The TypeScript type system from primitives to generics: annotations, narrowing, functions, generics, type-level
+operators and the tsconfig flags that tighten the rules. Examples assume TypeScript 5.9 with `strict` on; object
+shapes and mapped types get more room in [Objects](/typescript/language/objects/).
+
+## Primitive types
+
+| Type        | Example value                | `typeof`      | Notes                                         |
+| :---------- | :--------------------------- | :------------ | :-------------------------------------------- |
+| `string`    | `"a"`, `'a'`, `` `a${b}` ``  | `"string"`    | UTF-16 code units                             |
+| `number`    | `42`, `0x2a`, `1_000`, `NaN` | `"number"`    | 64-bit float; safe ints up to `2 ** 53 - 1`   |
+| `bigint`    | `42n`                        | `"bigint"`    | arbitrary precision; never mixes with `number` |
+| `boolean`   | `true`, `false`              | `"boolean"`   | union `true \| false`                         |
+| `symbol`    | `Symbol("id")`               | `"symbol"`    | `unique symbol` for `const` declarations      |
+| `undefined` | `undefined`                  | `"undefined"` | missing value, optional props, no return      |
+| `null`      | `null`                       | `"object"`    | explicit "no value"; the `typeof` is a JS bug  |
+| `object`    | `{}`, `[]`, `() => 0`        | `"object"` / `"function"` | any non-primitive                 |
+
+Use the lowercase names. `String`, `Number`, `Boolean` are wrapper-object types and accept too much.
+
+```ts
+let title: string = "Notes";
+let count = 3;              // inferred: number
+const max = 10;             // literal type: 10
+const id: symbol = Symbol("id");
+const big: bigint = 2n ** 64n;
+let maybe: string | undefined;  // no value yet
+
+count += max;
+```
+
+Annotate function parameters and public return types; let inference handle locals.
+
+## Literal types & `as const`
+
+A literal type is a single value used as a type. `const` keeps literals; `let` and object properties widen.
+
+```ts
+const method = "GET";        // "GET"
+let method2 = "GET";         // string (widened)
+let dir: "up" | "down" = "up";
+
+const req = { method: "GET" };
+// { method: string }
+const req2 = { method: "GET" } as const;
+// { readonly method: "GET" }
+
+const sizes = ["s", "m", "l"] as const;
+// readonly ["s", "m", "l"]
+type Size = (typeof sizes)[number];  // "s" | "m" | "l"
+```
+
+| Construct                    | Effect                                                          |
+| :--------------------------- | :-------------------------------------------------------------- |
+| `as const` on a literal      | no widening, every property `readonly`, arrays become tuples    |
+| `` `${number}px` ``          | template literal type: any string shaped like `12px`            |
+| `` `on${Capitalize<E>}` ``   | builds new string literal types from a union `E`                |
+| `Uppercase<S>`, `Lowercase<S>` | intrinsic string manipulation types                           |
+
+```ts
+type Px = `${number}px`;
+const width: Px = "12px";
+// @ts-expect-error missing unit
+const bad: Px = "12";
+
+type Evt = "click" | "focus";
+type Handler = `on${Capitalize<Evt>}`;
+// "onClick" | "onFocus"
+```
+
+## Arrays & tuples
+
+| Syntax                           | Meaning                                        |
+| :------------------------------- | :--------------------------------------------- |
+| `T[]`, `Array<T>`                | mutable array of `T`                           |
+| `readonly T[]`, `ReadonlyArray<T>` | no `push`, `sort`, index assignment          |
+| `[string, number]`               | tuple: fixed length, typed positions           |
+| `[x: number, y: number]`         | labelled tuple (labels show in hovers/params)  |
+| `[string, number?]`              | optional trailing element                      |
+| `[string, ...number[]]`          | rest element (can also be leading or middle)   |
+| `readonly [number, number]`      | readonly tuple, what `as const` produces       |
+| `T[number]`                      | element type of an array or tuple type         |
+
+```ts
+const ids: number[] = [1, 2, 3];
+const names: ReadonlyArray<string> = ["a", "b"];
+// @ts-expect-error push does not exist on readonly
+names.push("c");
+
+type Point = [x: number, y: number];
+const p: Point = [3, 4];
+const [x, y] = p;
+
+type Row = [id: number, ...tags: string[]];
+const row: Row = [1, "new", "sale"];
+
+function useToggle(): [boolean, () => void] {
+  let on = false;
+  return [on, () => { on = !on; }];
+}
+```
+
+<Note kind="warning">Indexing `ids[10]` is typed `number` even though it is `undefined` at runtime. Turn on
+`noUncheckedIndexedAccess` (see [Strictness flags](#strictness-flags)) to get `number | undefined`.</Note>
+
+## Object types
+
+```ts
+type User = {
+  readonly id: number;        // can't reassign
+  name: string;
+  email?: string;             // may be absent
+  tags: string[];
+  greet(): string;            // method syntax
+  onSave: (u: User) => void;  // function property
+};
+
+const u: User = {
+  id: 1,
+  name: "Ada",
+  tags: [],
+  greet() { return `Hi ${this.name}`; },
+  onSave: () => {},
+};
+// @ts-expect-error id is readonly
+u.id = 2;
+```
+
+| Member form            | Meaning                                                  |
+| :--------------------- | :------------------------------------------------------- |
+| `name: T`              | required                                                 |
+| `name?: T`             | optional (absent or `undefined`)                         |
+| `readonly name: T`     | no reassignment through this type (shallow)              |
+| `[key: string]: T`     | index signature: any string key                          |
+| `method(): R`          | method; parameters checked bivariantly                   |
+| `fn: () => R`          | function-valued property; checked contravariantly        |
+| `(x: A): R`            | call signature: the object itself is callable            |
+| `new (x: A): R`        | construct signature                                      |
+
+Index signatures, `Record`, excess property checks and `satisfies` on objects are on the
+[Objects](/typescript/language/objects/#typing-objects) sheet.
+
+## Type aliases vs interfaces
+
+```ts
+type Id = string | number;            // alias: any type
+type Pair<T> = [T, T];
+
+interface Animal { name: string }
+interface Dog extends Animal { bark(): void }
+
+type Cat = Animal & { meow(): void }; // intersection
+
+declare global {
+  interface Window { appVersion: string }  // merges
+}
+```
+
+| Capability                          | `type`                 | `interface`                     |
+| :---------------------------------- | :--------------------- | :------------------------------ |
+| Object shapes                       | yes                    | yes                             |
+| Unions, tuples, primitives, mapped  | yes                    | no                              |
+| Extending                           | `A & B`                | `extends A, B`                  |
+| Conflicting members                 | silently `never`       | error at the `extends`          |
+| Declaration merging                 | no (duplicate error)   | yes, same-name blocks merge     |
+| `implements` in a class             | yes (object types)     | yes                             |
+| Checker performance on hierarchies  | intersections re-computed | cached, usually faster       |
+
+Rule of thumb: `interface` for object shapes you extend or want augmentable (library APIs, globals);
+`type` for everything else. Consistency in a codebase matters more than the choice.
+
+## Unions & intersections
+
+```ts
+type Status = "idle" | "loading" | "done";   // union: one of
+type Timestamped = { createdAt: Date };
+type Named = { name: string };
+type Entity = Named & Timestamped;           // both at once
+
+function len(x: string | string[]): number {
+  return x.length;  // ok: both members have length
+}
+
+type Never = string & number;  // never: nothing is both
+```
+
+| Operation      | Values                  | Members you can access            |
+| :------------- | :---------------------- | :-------------------------------- |
+| `A \| B`       | values of `A` or `B`    | only members common to both       |
+| `A & B`        | values of `A` and `B`   | all members of both               |
+
+A union is wider in values but narrower in what you may do with it until you narrow.
+
+## Narrowing
+
+TypeScript follows control flow and refines a union inside each branch.
+
+| Technique                  | Example                              | Narrows to                   |
+| :------------------------- | :----------------------------------- | :--------------------------- |
+| `typeof`                   | `typeof x === "string"`              | primitives, `"function"`     |
+| truthiness                 | `if (x)`                             | removes `null`, `undefined` (and `0`, `""`) |
+| equality                   | `x === null`, `x == null`            | removes/keeps `null` (`==` also `undefined`) |
+| `in`                       | `"swim" in pet`                      | members that have that key   |
+| `instanceof`               | `err instanceof Error`               | class instance type          |
+| `Array.isArray`            | `Array.isArray(x)`                   | `any[]` branch of the union  |
+| discriminant property      | `shape.kind === "circle"`            | matching union member        |
+| type predicate             | `isFish(pet)`                        | `pet is Fish`                |
+| assertion function         | `assertIsString(v)`                  | rest of the scope            |
+
+### typeof / in / instanceof
+
+```ts
+function show(v: string | number | Date | { text: string }) {
+  if (typeof v === "string") return v.toUpperCase();
+  if (typeof v === "number") return v.toFixed(2);
+  if (v instanceof Date) return v.toISOString();
+  if ("text" in v) return v.text;
+  return v satisfies never;
+}
+```
+
+### Discriminated unions
+
+Give every member a literal "tag" property; switching on it narrows the whole object.
+
+```ts
+type Result<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: Error };
+
+function unwrap<T>(r: Result<T>): T {
+  if (r.ok) return r.value;   // r: { ok: true; value: T }
+  throw r.error;              // r: { ok: false; ... }
+}
+```
+
+### Type predicates
+
+```ts
+interface Fish { swim(): void }
+interface Bird { fly(): void }
+
+function isFish(pet: Fish | Bird): pet is Fish {
+  return "swim" in pet;
+}
+
+declare const pet: Fish | Bird;
+if (isFish(pet)) pet.swim();
+else pet.fly();
+
+// TS 5.5+ infers the predicate `x is number` here
+const nums = [1, undefined, 3].filter(
+  (x) => x !== undefined,
+);
+//    ^? number[]
+```
+
+### Assertion functions
+
+```ts
+function assert(cond: unknown, msg = "Assertion failed"):
+  asserts cond {
+  if (!cond) throw new Error(msg);
+}
+
+function assertIsString(v: unknown): asserts v is string {
+  if (typeof v !== "string")
+    throw new TypeError("not string");
+}
+
+declare const input: unknown;
+assertIsString(input);
+input.trim();  // input: string from here on
+```
+
+Arrow functions used as assertions need an explicit type annotation on the variable.
+
+### `never` exhaustiveness
+
+```ts title="shapes.ts" {9-12}
+type Shape =
+  | { kind: "circle"; r: number }
+  | { kind: "square"; side: number };
+
+function area(s: Shape): number {
+  switch (s.kind) {
+    case "circle": return Math.PI * s.r ** 2;
+    case "square": return s.side ** 2;
+    default: {
+      const unreachable: never = s;  // missed a case?
+      throw new Error(`Unhandled ${String(unreachable)}`);
+    }
+  }
+}
+```
+
+Shorter alternative: `default: return s satisfies never;`. Adding a `triangle` member makes both forms fail to compile.
+
+## Functions
+
+```ts
+// Declaration with typed params and return
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+// Optional, default, rest
+function greet(
+  name: string,
+  greeting = "Hi",
+  suffix?: string,
+) {
+  return `${greeting}, ${name}${suffix ?? ""}`;
+}
+function sum(...xs: number[]) {
+  return xs.reduce((a, b) => a + b, 0);
+}
+
+// Destructured params: annotate the whole pattern
+function move({ x, y = 0 }: { x: number; y?: number }) {
+  return x + y;
+}
+
+// Function types
+type BinOp = (a: number, b: number) => number;
+const mul: BinOp = (a, b) => a * b;  // a, b: number
+```
+
+### Overloads
+
+List the public signatures, then one implementation signature that covers them all (it is not callable).
+
+```ts
+function parse(input: string): number;
+function parse(input: string[]): number[];
+function parse(input: string | string[]) {
+  return Array.isArray(input)
+    ? input.map(Number)
+    : Number(input);
+}
+const one = parse("1");          // number
+const many = parse(["1", "2"]);  // number[]
+```
+
+Prefer a union parameter or generics when the return type does not depend on the argument type.
+
+### `void` and `this`
+
+```ts
+function log(msg: string): void {
+  console.log(msg);
+}
+
+// A void-returning *type* accepts functions
+// that return values
+type Cb = () => void;
+const push: Cb = () => [1].push(2);  // ok, result ignored
+
+interface Button { label: string }
+function onClick(this: Button, e: MouseEvent) {
+  return `${this.label}:${e.button}`;
+}
+declare const btn: Button;
+onClick.call(btn, new MouseEvent("click"));
+// @ts-expect-error `this` context is void
+onClick(new MouseEvent("click"));
+```
+
+| Return type | Meaning                                                        |
+| :---------- | :------------------------------------------------------------- |
+| `void`      | caller should ignore the result                                |
+| `undefined` | must actually return `undefined` (allowed implicitly since 5.1) |
+| `never`     | never returns: always throws or loops forever                  |
+| `Promise<T>` | `async` functions; `Promise<void>` for no value               |
+| `asserts x is T` | assertion function                                        |
+| `x is T`    | type predicate                                                 |
+
+`this: T` is a fake first parameter; it is erased from the emitted JS and from `.length`.
+
+## any, unknown, never
+
+| Type      | Assign **to** it | Use it without checks | Role                                  |
+| :-------- | :--------------- | :-------------------- | :------------------------------------ |
+| `any`     | everything       | yes (checks off)      | escape hatch; spreads silently        |
+| `unknown` | everything       | no, narrow first      | safe "could be anything" (top type)   |
+| `never`   | nothing          | n/a, unreachable      | empty set (bottom type)               |
+
+```ts
+function parseJson(text: string): unknown {
+  return JSON.parse(text);  // JSON.parse returns any
+}
+
+const data = parseJson('{"n":1}');
+// @ts-expect-error 'data' is of type 'unknown'
+data.n;
+if (
+  typeof data === "object" &&
+  data !== null &&
+  "n" in data
+) {
+  data.n;  // unknown, but accessible
+}
+
+try {
+  throw new Error("x");
+} catch (e) {        // e: unknown under strict
+  if (e instanceof Error) console.error(e.message);
+}
+
+function fail(msg: string): never {
+  throw new Error(msg);
+}
+```
+
+`T | never` is `T`; `T & unknown` is `T`. Use `unknown` at trust boundaries (JSON, `catch`, `postMessage`) and
+validate it (for example with Zod), never `any`.
+
+## Enums & alternatives
+
+```ts
+enum Direction { Up, Down }         // 0, 1 + reverse map
+enum Level { Info = "info", Warn = "warn" }
+
+const d: Direction = Direction.Up;
+const name = Direction[0];          // "Up"
+```
+
+| Form                        | Runtime code      | Erasable | Notes                                           |
+| :-------------------------- | :---------------- | :------- | :---------------------------------------------- |
+| numeric `enum`              | object + reverse map | no    | nominal-ish; values auto-increment              |
+| string `enum`               | object            | no       | can't pass the plain string `"info"`            |
+| `const enum`                | none (inlined)    | no       | breaks with `isolatedModules` across files      |
+| union of literals           | none              | yes      | simplest; strings are self-describing           |
+| `as const` object + union   | plain object      | yes      | iterable values, JS-compatible                  |
+
+```ts
+// Union of literals
+type Method = "GET" | "POST";
+
+// as const object: runtime values + a same-named type
+const LogLevel = {
+  Info: "info",
+  Warn: "warn",
+  Error: "error",
+} as const;
+type LogLevel = (typeof LogLevel)[keyof typeof LogLevel];
+// "info" | "warn" | "error"
+
+function setLevel(l: LogLevel) { return l; }
+setLevel(LogLevel.Warn);
+setLevel("error");  // plain strings work too
+```
+
+<Note kind="info">`erasableSyntaxOnly` (TS 5.8) errors on syntax that emits runtime code: `enum`, `namespace`
+with values, constructor parameter properties, `import x = require()` and `export =`. Enable it when running `.ts`
+directly with Node's type stripping (Node 22.18+, 23.6+) or other strip-only tools.</Note>
+
+## Type assertions & `satisfies`
+
+| Syntax              | What it does                                              | Safety                   |
+| :------------------ | :-------------------------------------------------------- | :----------------------- |
+| `x as T`            | tell the checker `x` is `T` (must overlap)                | unchecked at runtime     |
+| `x as unknown as T` | force any conversion                                      | last resort              |
+| `x!`                | remove `null` / `undefined`                               | unchecked                |
+| `x as const`        | freeze literal types                                      | safe                     |
+| `x satisfies T`     | check `x` against `T`, keep `x`'s own inferred type       | safe                     |
+| `<T>x`              | old assertion syntax, not allowed in `.tsx`               | as `as`                  |
+
+```ts
+const el = document.getElementById("app") as HTMLDivElement;
+const input = document.querySelector("input")!;
+
+type Color = string | [number, number, number];
+const palette = {
+  red: [255, 0, 0],
+  green: "#00ff00",
+} satisfies Record<string, Color>;
+
+palette.green.toUpperCase();  // still string, not Color
+palette.red.map((c) => c / 255);  // still a tuple
+
+// Combine: literal types + a shape check
+const routes = {
+  home: "/",
+  about: "/about",
+} as const satisfies Record<string, `/${string}`>;
+```
+
+With an annotation (`const palette: Record<string, Color>`) you lose the per-key types and every access becomes
+`Color`. `satisfies` keeps them.
+
+## Generics
+
+### Functions
+
+```ts
+function first<T>(xs: readonly T[]): T | undefined {
+  return xs[0];
+}
+const n = first([1, 2]);        // T inferred as number
+const s = first<string>([]);    // explicit type argument
+
+function pair<A, B>(a: A, b: B): [A, B] {
+  return [a, b];
+}
+```
+
+### Constraints and defaults
+
+```ts
+function longest<T extends { length: number }>(a: T, b: T) {
+  return a.length >= b.length ? a : b;
+}
+longest("abc", "de");
+longest([1, 2], [3]);
+// @ts-expect-error number has no length
+longest(1, 2);
+
+function get<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+const age = get({ name: "Ada", age: 36 }, "age");  // number
+
+type ApiResponse<T = unknown, E = Error> =
+  | { ok: true; data: T }
+  | { ok: false; error: E };
+const res: ApiResponse<string> = { ok: true, data: "hi" };
+```
+
+### `const` type parameters and `NoInfer`
+
+```ts
+function routes<const T extends readonly string[]>(
+  paths: T,
+) {
+  return paths;
+}
+const r = routes(["/", "/about"]);
+// readonly ["/", "/about"], no `as const` at the call site
+
+function pick<T extends string>(
+  opts: T[],
+  fallback: NoInfer<T>,
+) {
+  return opts[0] ?? fallback;
+}
+pick(["a", "b"], "a");
+// @ts-expect-error "c" not in "a" | "b"
+pick(["a", "b"], "c");
+```
+
+`const` type parameters (5.0) infer as if `as const` were written; add a `readonly` constraint for arrays.
+`NoInfer<T>` (5.4) stops a position from contributing to inference.
+
+### Generic interfaces, types and classes
+
+```ts
+interface Box<T> {
+  value: T;
+  map<U>(fn: (v: T) => U): Box<U>;
+}
+
+function box<T>(value: T): Box<T> {
+  return { value, map: (fn) => box(fn(value)) };
+}
+
+class Stack<T> {
+  #items: T[] = [];
+  push(item: T): this {
+    this.#items.push(item);
+    return this;
+  }
+  pop(): T | undefined { return this.#items.pop(); }
+}
+
+const b = box(2).map(String);          // Box<string>
+const st = new Stack<number>().push(1).push(2);
+```
+
+| Pattern                  | Example                                         |
+| :----------------------- | :---------------------------------------------- |
+| Constraint               | `T extends string`                              |
+| Key of another param     | `K extends keyof T`                             |
+| Default                  | `T = unknown`                                   |
+| `const` inference        | `const T extends readonly unknown[]`            |
+| Block inference          | `NoInfer<T>`                                    |
+| Generic call signature   | `type Fn = <T>(x: T) => T`                      |
+
+Only add a type parameter if it links two positions (input to output, or two inputs). A type parameter used once
+is just `unknown`.
+
+## keyof, typeof & indexed access
+
+```ts
+const config = { host: "localhost", port: 5432, ssl: false };
+
+type Config = typeof config;
+// { host: string; port: number; ssl: boolean }
+type ConfigKey = keyof Config;     // "host" | "port" | "ssl"
+type Port = Config["port"];        // number
+// string | number | boolean
+type Val = Config[ConfigKey];
+
+const tags = ["a", "b"] as const;
+type Tag = (typeof tags)[number];  // "a" | "b"
+
+function makeUser() { return { id: 1, name: "Ada" }; }
+type UserT = ReturnType<typeof makeUser>;
+```
+
+| Operator      | Operates on | Produces                                        |
+| :------------ | :---------- | :---------------------------------------------- |
+| `typeof x`    | a value     | its static type (in type positions)             |
+| `keyof T`     | a type      | union of its keys (`string \| number` for index signatures) |
+| `T[K]`        | a type      | the type of property `K` (union for a union `K`) |
+| `T[number]`   | array/tuple | element type                                    |
+
+## Conditional & mapped types
+
+### Conditional types and `infer`
+
+```ts
+type IsString<T> = T extends string ? true : false;
+type A = IsString<"x">;   // true
+
+// infer: capture part of a type
+type ElementOf<T> = T extends readonly (infer U)[]
+  ? U
+  : never;
+type B = ElementOf<string[]>;  // string
+
+type Unwrap<T> = T extends Promise<infer U> ? Unwrap<U> : T;
+type C = Unwrap<Promise<Promise<number>>>;  // number
+
+type FirstArg<F> =
+  F extends (first: infer A, ...rest: never[]) => unknown
+    ? A
+    : never;
+type D = FirstArg<(n: number, s: string) => void>;  // number
+
+// Distributive over naked type params
+type ToArray<T> = T extends unknown ? T[] : never;
+type E = ToArray<string | number>;  // string[] | number[]
+
+// Wrap in [] to turn distribution off
+type ToArray2<T> = [T] extends [unknown] ? T[] : never;
+type F = ToArray2<string | number>; // (string | number)[]
+```
+
+`infer U extends string` (4.7+) constrains what gets inferred. Conditional types on a bare `T` distribute over
+unions; that is how `Exclude` and `Extract` work.
+
+### Mapped types
+
+```ts
+type Flags<T> = { [K in keyof T]: boolean };
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+type Nullable<T> = { [K in keyof T]: T[K] | null };
+
+type F1 = Flags<{ a: string; b: number }>;
+// { a: boolean; b: boolean }
+```
+
+Key remapping with `as`, template literal keys and modifier tricks are covered in
+[Objects: mapped types](/typescript/language/objects/#mapped-types--key-remapping).
+
+## Utility types
+
+| Utility                        | Result                                            |
+| :----------------------------- | :------------------------------------------------ |
+| `Partial<T>`                   | all properties optional                           |
+| `Required<T>`                  | all properties required (removes `?`)             |
+| `Readonly<T>`                  | all properties `readonly` (shallow)               |
+| `Pick<T, K>`                   | only keys `K`                                     |
+| `Omit<T, K>`                   | all keys except `K` (`K` not checked against `T`) |
+| `Record<K, V>`                 | object with keys `K`, values `V`                  |
+| `Exclude<U, X>`                | union members of `U` not assignable to `X`        |
+| `Extract<U, X>`                | union members of `U` assignable to `X`            |
+| `NonNullable<T>`               | `T` without `null` and `undefined`                |
+| `ReturnType<F>`                | return type of a function type                    |
+| `Parameters<F>`                | parameter tuple of a function type                |
+| `ConstructorParameters<C>`     | parameter tuple of a class constructor            |
+| `InstanceType<C>`              | instance type of a constructor type               |
+| `Awaited<T>`                   | recursively unwraps `Promise` / thenables         |
+| `NoInfer<T>`                   | same type, excluded from inference (5.4)          |
+| `ThisParameterType<F>`         | the `this:` parameter type of `F`                 |
+| `OmitThisParameter<F>`         | `F` without its `this:` parameter                 |
+| `ThisType<T>`                  | marker for `this` inside object literals          |
+| `Uppercase<S>` / `Lowercase<S>` | string literal case change                       |
+| `Capitalize<S>` / `Uncapitalize<S>` | first character case change                  |
+
+```ts
+interface Todo {
+  id: number;
+  title: string;
+  done: boolean;
+}
+type TodoDraft = Omit<Todo, "id">;
+type TodoPatch = Partial<Pick<Todo, "title" | "done">>;
+type ById = Record<Todo["id"], Todo>;
+
+async function load() { return [] as Todo[]; }
+type Loaded = Awaited<ReturnType<typeof load>>;  // Todo[]
+type Primary = Exclude<"a" | "b" | "c", "c">;    // "a" | "b"
+```
+
+## Strictness flags
+
+`strict: true` turns on the whole family below; new flags join it in later releases, so upgrades can surface new
+errors.
+
+| Flag                           | In `strict` | Effect                                                     |
+| :----------------------------- | :---------- | :--------------------------------------------------------- |
+| `noImplicitAny`                | yes         | error when a type falls back to `any`                      |
+| `strictNullChecks`             | yes         | `null` / `undefined` are separate types                    |
+| `strictFunctionTypes`          | yes         | contravariant checks for function-typed properties         |
+| `strictBindCallApply`          | yes         | typed `bind`, `call`, `apply`                              |
+| `strictPropertyInitialization` | yes         | class fields must be set in the constructor                |
+| `noImplicitThis`               | yes         | error on `this` typed as `any`                             |
+| `useUnknownInCatchVariables`   | yes         | `catch (e)` gives `e: unknown`                             |
+| `alwaysStrict`                 | yes         | parse in strict mode, emit `"use strict"`                  |
+| `strictBuiltinIteratorReturn`  | yes (5.6)   | built-in iterators return `undefined`, not `any`           |
+| `noUncheckedIndexedAccess`     | no          | `arr[i]` and `obj[key]` add `\| undefined`                 |
+| `exactOptionalPropertyTypes`   | no          | `a?: T` rejects an explicit `undefined`                    |
+| `noImplicitOverride`           | no          | overriding members must say `override`                     |
+| `noImplicitReturns`            | no          | every code path must return                                |
+| `noFallthroughCasesInSwitch`   | no          | non-empty `case` must `break` / `return`                   |
+| `noPropertyAccessFromIndexSignature` | no    | index-signature keys need `obj["key"]`                     |
+| `noUnusedLocals` / `noUnusedParameters` | no | unused declarations are errors                             |
+| `verbatimModuleSyntax`         | no          | `import type` required for type-only imports               |
+| `isolatedModules`              | no          | each file must be transpilable on its own                  |
+| `erasableSyntaxOnly`           | no (5.8)    | forbid enums, namespaces, parameter properties             |
+| `noUncheckedSideEffectImports` | no (5.6)    | error when `import "./x"` doesn't resolve                  |
+
+`tsc --init` in 5.9 generates a lean config with the stricter extras already on:
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  }
+}
+```
+
+```ts
+// With exactOptionalPropertyTypes
+interface Opts { debug?: boolean }
+const a: Opts = {};                     // ok
+// error with the flag
+const b: Opts = { debug: undefined };
+
+// With noUncheckedIndexedAccess
+const list = ["a"];
+const item = list[5];                   // string | undefined
+```
+
+## References
+
+- [MDN: JavaScript data types and data structures](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Data_structures)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html): Everyday Types, Narrowing, More on Functions, Generics, Type Manipulation
+- [TypeScript: Utility Types](https://www.typescriptlang.org/docs/handbook/utility-types.html)
+- [TSConfig reference](https://www.typescriptlang.org/tsconfig/)
+- TypeScript release notes: [4.9 `satisfies`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html), [5.0 `const` type parameters](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html), [5.4 `NoInfer`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-4.html), [5.5 inferred predicates](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html), [5.8 `erasableSyntaxOnly`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-8.html), [5.9](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html)
+- [Total TypeScript Essentials](https://www.totaltypescript.com/books/total-typescript-essentials)

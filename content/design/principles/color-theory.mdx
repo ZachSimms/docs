@@ -1,0 +1,552 @@
+---
+title: Color theory
+date: 2026-09-25
+order: 2
+---
+
+Color models, harmonies, palettes and tonal scales in OKLCH, contrast (WCAG 2.2, APCA), color vision
+deficiency, dark mode, data visualization and wide gamut, with the modern CSS color functions. Where
+to use the colors is in [UX/UI design principles](/design/principles/ux-ui/).
+
+## Color models
+
+| Model | Channels | Perceptual? | CSS | Use for |
+| :---- | :------- | :---------- | :-- | :------ |
+| RGB / hex | red, green, blue (0–255) | no | `#1c69e3`, `rgb(28 105 227)` | storage, hand-off, what screens emit |
+| HSL | hue, saturation, lightness | no | `hsl(217 78% 50%)` | quick tweaks; misleading lightness |
+| HSV / HSB | hue, saturation, value | no | none (use `hwb()`) | design tool pickers |
+| HWB | hue, whiteness, blackness | no | `hwb(217 11% 11%)` | "add white / add black" mixing |
+| CIELAB | L\*, a\* (green–red), b\* (blue–yellow) | mostly | `lab(46% 14 -70)` | device-independent color, print |
+| LCH | lightness, chroma, hue (polar Lab) | mostly | `lch(46% 71 281)` | Lab with intuitive axes; blues drift purple |
+| OKLab | L, a, b | yes (better) | `oklab(0.55 -0.035 -0.197)` | mixing, gradients, interpolation |
+| OKLCH | lightness 0–1, chroma 0–~0.37, hue 0–360 | yes (better) | `oklch(0.55 0.2 260)` | UI palettes, scales, states |
+| CMYK | cyan, magenta, yellow, key (black) | no | none in browsers | print only; subtractive |
+
+Every CSS example in the table is the same blue, `#1c69e3`. RGB and HSL are additive, device-oriented models of sRGB. Lab, LCH, OKLab and OKLCH model human
+perception and are not tied to one gamut. Designers' RYB color wheel (red-yellow-blue, used in
+painting) puts complements in different places than RGB/OKLCH wheels: orange opposes blue in RYB,
+yellow opposes blue in RGB.
+
+### Why OKLCH for UI
+
+| Property | Benefit |
+| :------- | :------ |
+| Perceptual lightness | same `L` looks equally light across hues, so contrast is predictable |
+| Independent channels | change `L` without the hue drifting (blue stays blue, unlike LCH) |
+| Readable | `oklch(0.55 0.2 260)`: you can guess the color from the numbers |
+| Wide gamut | the same syntax reaches Display P3 colors when chroma is high |
+| Programmatic | scales and hover states are arithmetic on `L` and `C` |
+| Adopted | Tailwind CSS v4's default palette and many design systems ship OKLCH |
+
+Caveat: max chroma depends on lightness and hue, so some `L C H` triples fall outside sRGB. The
+browser maps them back into range (see [Gamut](#gamut--wide-color)).
+
+## Color properties
+
+| Property | Meaning | OKLCH channel | HSL channel |
+| :------- | :------ | :------------ | :---------- |
+| Hue | position on the wheel (red, blue…) | `h` (degrees) | `h` |
+| Chroma / saturation | colorfulness vs grey | `c` (absolute, 0 is grey) | `s` (relative to max, per hue) |
+| Lightness / value | perceived brightness | `l` (0 black, 1 white) | `l` (math average, not perceived) |
+| Temperature | warm (red–yellow) vs cool (green–blue) | hue range | hue range |
+| Tint / shade / tone | add white / add black / add grey | raise `l` / lower `l` / lower `c` | mix |
+
+Warm colors advance and feel energetic; cool colors recede and feel calm. Tint neutrals slightly
+warm or cool (chroma 0.005–0.02) to match the brand instead of using pure grey.
+
+### Perceptual uniformity (why HSL lies)
+
+HSL computes lightness from the RGB channels, not from how bright the color looks:
+
+| Color | HSL lightness | OKLCH `l` | Contrast on white |
+| :----- | :------------ | :-------- | :---------------- |
+| `hsl(60 100% 50%)` yellow | 50% | 0.97 | 1.07:1 |
+| `hsl(240 100% 50%)` blue | 50% | 0.45 | 8.59:1 |
+
+Same "50% lightness", completely different perceived brightness and contrast. A palette built by
+stepping HSL lightness gives uneven steps and unpredictable contrast between hues; in OKLCH, equal
+`l` steps look like equal steps, and the same step number across hues has similar contrast.
+
+## Harmonies
+
+Angles are on the hue wheel (OKLCH `h`). Harmonies pick hues; lightness and chroma still decide
+whether the result works.
+
+| Scheme | Hues | Feel | UI use |
+| :----- | :--- | :--- | :----- |
+| Monochromatic | one hue, many `l`/`c` | calm, cohesive | product UI default: one brand hue + neutrals |
+| Analogous | 3 neighbours within ~30–60° | harmonious, low tension | gradients, illustrations, brand accents |
+| Complementary | opposite, 180° apart | high contrast, vibrant | one accent against the main hue; avoid equal amounts |
+| Split-complementary | base + two hues at 180° ± 30° | contrast with less tension | brand + two accents |
+| Triadic | 3 hues 120° apart | lively, balanced | illustration, playful brands; mute two of them |
+| Tetradic (rectangle / square) | 4 hues, two complementary pairs | rich, hard to balance | data viz categories, let one dominate |
+
+```css
+:root {
+  --base: oklch(0.6 0.15 260);
+  --complement: oklch(from var(--base) l c calc(h + 180));
+  --split-a: oklch(from var(--base) l c calc(h + 150));
+  --split-b: oklch(from var(--base) l c calc(h + 210));
+  --triad-a: oklch(from var(--base) l c calc(h + 120));
+  --triad-b: oklch(from var(--base) l c calc(h + 240));
+}
+```
+
+## Building a palette
+
+| Role | Scale | Used for |
+| :--- | :---- | :------- |
+| Neutral (grey) | 11 steps, chroma 0–0.02 | backgrounds, surfaces, borders, text; most of the UI |
+| Primary (brand) | 11 steps | primary actions, links, focus, selection |
+| Accent | 1–2 scales, used sparingly | highlights, badges, marketing |
+| Danger | red, hue ~25–30 | errors, destructive actions |
+| Warning | amber, hue ~60–85 | caution, pending states |
+| Success | green, hue ~145–150 | confirmations, positive deltas |
+| Info | blue or cyan, hue ~215–260 | neutral notices (can reuse primary) |
+
+Around OKLCH `l` 0.5, every semantic hue at full sRGB chroma gives at least 4.5:1 on white (red
+6.7, amber 6.2, green 5.6, blue 6.0). Warning yellows are too light for text: use a dark amber for
+text and a pale amber background for fills.
+
+### 60-30-10 rule
+
+| Share | Role | In UI |
+| :---- | :--- | :---- |
+| ~60% | dominant | background and surfaces (neutrals) |
+| ~30% | secondary | text, cards, navigation, secondary surfaces |
+| ~10% | accent | primary buttons, links, highlights, key data |
+
+A starting ratio from interior design, not a law. The point is that the accent stays rare so it
+keeps its pull (Von Restorff effect).
+
+## Tonal scales
+
+A scale is one hue in 11 steps (50–950, as in Tailwind) or 12 (Radix). Lightness falls steadily;
+chroma peaks in the middle and fades at both ends, because very light and very dark colors can't
+be very saturated.
+
+| Steps | Typical role | Contrast on white (this scale) |
+| :---- | :----------- | :----------------------------- |
+| 50–100 | app background, subtle fills, hover on neutral rows | ~1.1–1.2 |
+| 200–300 | borders, dividers, selected rows, disabled fills | ~1.5–1.9 |
+| 400–500 | icons, solid fills with dark text, large text, focus rings | ~2.6–3.7 |
+| 600–700 | solid buttons with white text, links, body-size colored text | ~5.0–6.7 |
+| 800–950 | high-contrast text, headings, dark-mode surfaces | ~9–15 |
+
+```css title="blue.css"
+:root {
+  --blue-50: oklch(0.97 0.01 260);   /* #f1f5fc */
+  --blue-100: oklch(0.93 0.02 260);  /* #e0e8f6 */
+  --blue-200: oklch(0.87 0.05 260);  /* #c1d5f6 */
+  --blue-300: oklch(0.8 0.09 260);   /* #9cbff8 */
+  --blue-400: oklch(0.71 0.13 260);  /* #70a1f2 */
+  --blue-500: oklch(0.62 0.18 260);  /* #3f82f0 */
+  --blue-600: oklch(0.55 0.2 260);   /* #1c69e3 */
+  --blue-700: oklch(0.48 0.17 260);  /* #1957bb */
+  --blue-800: oklch(0.41 0.15 260);  /* #0f449a */
+  --blue-900: oklch(0.35 0.12 260);  /* #0f3778 */
+  --blue-950: oklch(0.27 0.09 260);  /* #082451 */
+}
+```
+
+These values sit inside sRGB (chroma ~90% of the max for each lightness at hue 260). For another
+hue, keep the `l` column and re-fit `c` to that hue's gamut; yellows peak light, blues peak dark.
+
+```css title="gray.css"
+:root {
+  --gray-50: oklch(0.985 0.005 260);
+  --gray-100: oklch(0.97 0.005 260);
+  --gray-200: oklch(0.922 0.005 260);
+  --gray-300: oklch(0.87 0.005 260);
+  --gray-400: oklch(0.708 0.005 260);
+  --gray-500: oklch(0.556 0.005 260);   /* 4.7:1 on white */
+  --gray-600: oklch(0.439 0.005 260);
+  --gray-700: oklch(0.371 0.005 260);
+  --gray-800: oklch(0.269 0.005 260);
+  --gray-900: oklch(0.205 0.005 260);
+  --gray-950: oklch(0.145 0.005 260);
+}
+```
+
+## Contrast
+
+### WCAG 2.2 contrast ratios
+
+Ratio = (L1 + 0.05) / (L2 + 0.05), with L1 the lighter relative luminance. Range 1:1 to 21:1. Don't
+round: 4.49:1 fails 4.5:1.
+
+| Content | AA | AAA | SC |
+| :------ | :- | :-- | :- |
+| Body text | 4.5:1 | 7:1 | 1.4.3 / 1.4.6 |
+| Large text (24 px, or 18.66 px bold) | 3:1 | 4.5:1 | 1.4.3 / 1.4.6 |
+| UI component boundaries, icons, chart marks | 3:1 | none | 1.4.11 |
+| Focus indicator vs unfocused state | none at AA | 3:1 | 2.4.13 |
+| Disabled controls, decoration, logos | exempt | exempt | none |
+
+| Pair | Ratio | Result |
+| :--- | :---- | :----- |
+| `#777777` on white | 4.48:1 | fails AA text |
+| `#767676` on white | 4.54:1 | passes AA text |
+| blue-500 `#3f82f0` on white | 3.71:1 | large text and icons only |
+| blue-600 `#1c69e3` on white | 5.02:1 | passes AA text |
+| black on blue-500 | 5.66:1 | passes: mid tones often need dark text |
+
+### APCA (briefly)
+
+The Accessible Perceptual Contrast Algorithm, a candidate for WCAG 3, scores lightness contrast
+(Lc, about -108 to 106) and accounts for polarity (dark on light vs light on dark) and font size and
+weight. Its published guidance, roughly: Lc 90 preferred for body text, 75 minimum for body, 60 for
+other content text, 45 for large headings, 30 for non-text and placeholder, 15 for dividers. WCAG 3
+is still a draft: WCAG 2.x AA is the legal baseline (ADA cases, EN 301 549 and the European
+Accessibility Act), so check WCAG 2 first and use APCA to catch dark-mode pairs that pass the
+formula but read poorly.
+
+## Color vision deficiency
+
+About 8% of men and 0.5% of women (Northern European ancestry) have some color vision deficiency;
+red-green types dominate.
+
+| Type | Cone affected | Confuses | Approx. prevalence (men) |
+| :--- | :------------ | :------- | :----------------------- |
+| Deuteranomaly | M (green) weak | red/green/brown, muted greens | ~5% (most common) |
+| Deuteranopia | M missing | red and green | ~1% |
+| Protanomaly | L (red) weak | red/green; reds look darker | ~1% |
+| Protanopia | L missing | red and green; red looks near-black | ~1% |
+| Tritanomaly / tritanopia | S (blue) | blue/green, yellow/pink | very rare, both sexes |
+| Achromatopsia (monochromacy) | none work | all hues; sees lightness only | ~1 in 30,000 |
+
+| Rule | Example |
+| :--- | :------ |
+| Never color alone (WCAG 1.4.1) | error = red + icon + message; required = text, not only a red asterisk |
+| Differ in lightness, not just hue | status dots at clearly different `l` survive greyscale |
+| Avoid red vs green as the only pair | use blue/orange, or red/blue, for good/bad |
+| Underline links in body text | or 3:1 contrast with surrounding text plus a non-color cue on hover/focus |
+| Label chart series directly | legends by color alone fail; add labels, shapes, dashes |
+| Test with simulators | Chrome DevTools, Rendering, "Emulate vision deficiencies"; Sim Daltonism (macOS) |
+
+## Meaning & psychology
+
+Associations depend on culture and context, and the research on color psychology is weak. Treat
+this table as conventions to check, not rules.
+
+| Color | Common Western UI meaning | Caveats elsewhere |
+| :----- | :------------------------ | :---------------- |
+| Red | error, danger, stop, urgency, sale | luck and celebration in China; East Asian stock tickers show gains in red |
+| Green | success, go, money, nature | losses in some East Asian markets; political meanings vary |
+| Blue | trust, calm, links, corporate | the most "neutral" brand color, so also the least distinctive |
+| Yellow / amber | warning, caution, attention | low contrast on white; hard to use for text |
+| Orange | energy, friendly calls to action | also used for warnings |
+| Purple | premium, creative, magical | mourning in some countries (e.g. Thailand, Brazil) |
+| Black | luxury, formality | mourning in much of the West |
+| White | clean, empty, pure | mourning in parts of East and South Asia |
+
+Existing conventions (red = error, green = success) beat any psychological argument. Test with
+your users when a market differs.
+
+## Dark mode palettes
+
+Dark mode is a separate mapping of the scales, not an inversion.
+
+| Rule | Light | Dark |
+| :--- | :---- | :--- |
+| Page background | gray-50 or white | gray-950 (`l` ~0.15), not pure black |
+| Elevation | shadows | lighter surfaces: 950, 900, 800 as layers rise |
+| Body text | gray-950 | gray-100 (~`l` 0.93–0.97), not pure white |
+| Muted text | gray-600 | gray-400 |
+| Borders | gray-200 | gray-800, or white at ~10% alpha |
+| Accent / links | blue-600 | blue-400: lighter, less chroma, still 4.5:1 |
+| Text on accent | white | often dark (gray-950) on the lighter accent |
+| Saturation | full | lower chroma; saturated colors vibrate on dark |
+| Semantic colors | 600 steps | 400 steps for text, low-alpha fills for backgrounds |
+
+In this palette, blue-400 on gray-950 is 7.6:1 and gray-400 on gray-950 is 7.6:1. Re-check every pair,
+because mid-tone pairs that pass in light mode often fail after mapping. Use `color-scheme` so
+native controls and scrollbars follow the theme.
+
+## Data visualization palettes
+
+| Type | Data | Build it | Examples |
+| :--- | :--- | :------- | :------- |
+| Categorical (qualitative) | unordered groups | distinct hues at similar `l` and `c`; at most ~8, then group into "other" | Okabe–Ito, Tableau 10 |
+| Sequential | ordered, low to high | one hue (or a few) with lightness changing monotonically | viridis, cividis, Blues |
+| Diverging | two directions from a meaningful midpoint | two hues meeting at a light neutral | RdBu, PuOr, BrBG |
+
+Viridis and cividis are perceptually uniform, readable with color vision deficiency and in
+greyscale. Avoid rainbow ("jet") scales: their lightness goes up and down, which invents boundaries
+that aren't in the data. Encode important values with position or length first; color is the
+weakest channel.
+
+```css title="okabe-ito.css"
+/* color-blind-safe categorical palette */
+:root {
+  --cat-1: #e69f00; /* orange */
+  --cat-2: #56b4e9; /* sky blue */
+  --cat-3: #009e73; /* bluish green */
+  --cat-4: #f0e442; /* yellow */
+  --cat-5: #0072b2; /* blue */
+  --cat-6: #d55e00; /* vermillion */
+  --cat-7: #cc79a7; /* reddish purple */
+  --cat-8: #000000; /* black */
+}
+```
+
+## Gamut & wide color
+
+| Gamut | Size | Where |
+| :---- | :--- | :---- |
+| sRGB | the web default; everything hex, `rgb()`, `hsl()` can express | every screen |
+| Display P3 | noticeably wider, mostly in greens, reds and oranges; contains sRGB | Apple devices, most recent phones and many laptops |
+| Rec. 2020 | wider still | HDR video; few displays cover it |
+
+| CSS | Does |
+| :-- | :--- |
+| `color(display-p3 0.1 0.4 1)` | a color defined in the P3 space |
+| `oklch(0.55 0.25 260)` | OKLCH reaches outside sRGB when chroma is high |
+| `@media (color-gamut: p3)` | the screen can show roughly P3 or more |
+| `@media (dynamic-range: high)` | HDR-capable display |
+
+Colors outside the screen's gamut are mapped into it. CSS Color 4 asks for a perceptual mapping
+(reduce chroma in OKLCH); engines have historically clipped channels, which can shift hue. Keep an
+sRGB value as the default and put vivid P3 values behind `@media (color-gamut: p3)` (see Recipes).
+Hex can't express P3 colors, and design tokens exported as hex lose them.
+
+## CSS color toolkit
+
+| Feature | Example | Baseline |
+| :------ | :------ | :------- |
+| `oklch()` / `oklab()` | `oklch(0.55 0.2 260 / 80%)` | 2023 |
+| `color()` | `color(display-p3 1 0.5 0)` | 2023 |
+| `color-mix()` | `color-mix(in oklch, var(--a) 30%, white)` | 2023 |
+| Relative color syntax | `oklch(from var(--a) calc(l - 0.1) c h)` | 2024 |
+| `light-dark()` | `light-dark(var(--gray-50), var(--gray-950))` | 2024 |
+| `contrast-color()` | `contrast-color(var(--bg))`: black or white | 2026 |
+| `color-scheme` | `color-scheme: light dark` | widely |
+| `accent-color` | tints checkboxes, radios, range, progress | widely |
+| `@media (prefers-contrast: more)` | stronger borders and text for users who ask | widely |
+| `@media (forced-colors: active)` | Windows high contrast; use system colors (`Canvas`, `CanvasText`, `Highlight`) | widely |
+
+```css
+.tag {
+  /* tinted background from one token, 12% of the accent */
+  background: color-mix(in oklch, var(--accent) 12%,
+    transparent);
+  color: var(--accent);
+}
+
+.overlay {
+  /* same color, new alpha */
+  background: oklch(from var(--gray-950) l c h / 60%);
+}
+
+.badge {
+  background: var(--badge-bg);
+  color: contrast-color(var(--badge-bg));
+}
+```
+
+The interpolation space changes the result: `in srgb` mixes of blue and yellow pass through grey,
+`in oklch` keeps chroma through the middle. Use `in oklab` for gradients and neutral mixes, `in oklch`
+to keep colors vivid. In relative syntax, OKLCH `l` is a number from 0 to 1, so step it by `0.05`,
+not `5%`. `contrast-color()` only picks black or white and is new: give it a fallback, and don't
+rely on it for mid-tone backgrounds. More CSS in [CSS](/design/css/css/).
+
+## Tools
+
+| Tool | For |
+| :--- | :-- |
+| [oklch.com](https://oklch.com/) | OKLCH picker that shows the sRGB and P3 gamut edges |
+| [Adobe Leonardo](https://leonardocolor.io/) | scales generated from target contrast ratios, with themes |
+| [Radix Colors](https://www.radix-ui.com/colors) | ready 12-step scales with matching dark and P3 versions |
+| [Coolors](https://coolors.co/) | quick palette exploration and export |
+| [Huetone](https://huetone.ardov.me/) | editing scales in LCH/OKLCH with APCA checks |
+| [WebAIM contrast checker](https://webaim.org/resources/contrastchecker/) | WCAG 2 ratio for a pair |
+| [APCA calculator](https://apcacontrast.com/) | Lc values |
+| [ColorBrewer](https://colorbrewer2.org/) | sequential, diverging and categorical data palettes |
+| Chrome DevTools | contrast in the color picker, vision deficiency emulation, CSS Overview colors |
+| [culori](https://culorijs.org/), [Color.js](https://colorjs.io/) | convert, gamut-check and measure in TS (`bun add culori`) |
+
+## Recipes
+
+### Tonal scale from one hue variable
+When you want to re-theme by changing a hue; re-tune chroma if the new hue falls out of gamut.
+
+```css
+:root {
+  --brand-h: 260;
+  --brand-50: oklch(0.97 0.01 var(--brand-h));
+  --brand-100: oklch(0.93 0.02 var(--brand-h));
+  --brand-200: oklch(0.87 0.05 var(--brand-h));
+  --brand-300: oklch(0.8 0.09 var(--brand-h));
+  --brand-400: oklch(0.71 0.13 var(--brand-h));
+  --brand-500: oklch(0.62 0.18 var(--brand-h));
+  --brand-600: oklch(0.55 0.2 var(--brand-h));
+  --brand-700: oklch(0.48 0.17 var(--brand-h));
+  --brand-800: oklch(0.41 0.15 var(--brand-h));
+  --brand-900: oklch(0.35 0.12 var(--brand-h));
+  --brand-950: oklch(0.27 0.09 var(--brand-h));
+}
+
+.theme-green { --brand-h: 150; }
+```
+
+### Hover and active states from one token
+When every button color needs matching interaction states without extra tokens.
+
+```css
+.btn {
+  --bg: var(--brand-600);
+  background: var(--bg);
+  color: white;
+}
+
+.btn:hover {
+  background: oklch(from var(--bg) calc(l - 0.06) c h);
+}
+
+.btn:active {
+  background: oklch(from var(--bg) calc(l - 0.12) c h);
+}
+
+.btn:disabled {
+  background: oklch(from var(--bg) l calc(c * 0.3) h / 50%);
+}
+```
+
+### WCAG contrast check in TypeScript
+For tests, token pipelines or a lint step that fails on low-contrast pairs.
+
+```ts title="contrast.ts"
+// sRGB channel (0-255) to linear light, per WCAG 2.2
+const linear = (c8: number): number => {
+  const c = c8 / 255;
+  return c <= 0.04045
+    ? c / 12.92
+    : ((c + 0.055) / 1.055) ** 2.4;
+};
+
+export function luminance(hex: string): number {
+  const m = /^#?([\da-f]{6})$/i.exec(hex);
+  if (!m?.[1]) throw new Error(`Not a 6-digit hex: ${hex}`);
+  const n = Number.parseInt(m[1], 16);
+  const r = linear((n >> 16) & 255);
+  const g = linear((n >> 8) & 255);
+  const b = linear(n & 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function contrast(a: string, b: string): number {
+  const [la, lb] = [luminance(a), luminance(b)];
+  const hi = Math.max(la, lb);
+  const lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+```
+
+### Pass/fail and black-or-white text
+Builds on `contrast.ts`; `textOn` is the TS fallback for `contrast-color()`.
+
+```ts title="a11y-color.ts"
+import { contrast } from "./contrast.ts";
+
+type Level = "AA" | "AAA";
+
+const MIN: Record<Level, { text: number; large: number }> = {
+  AA: { text: 4.5, large: 3 },
+  AAA: { text: 7, large: 4.5 },
+};
+
+export const passes = (
+  fg: string,
+  bg: string,
+  level: Level = "AA",
+  large = false,
+) => {
+  const min = MIN[level][large ? "large" : "text"];
+  return contrast(fg, bg) >= min;
+};
+
+export const textOn = (bg: string): "#000000" | "#ffffff" =>
+  contrast("#000000", bg) >= contrast("#ffffff", bg)
+    ? "#000000"
+    : "#ffffff";
+
+passes("#1c69e3", "#ffffff");       // true  (5.02:1)
+passes("#3f82f0", "#ffffff");       // false (3.71:1)
+textOn("#3f82f0");                  // "#000000" (5.66:1)
+```
+
+### Audit an OKLCH scale
+Prints hex, gamut and contrast for each step, so you can tune `l` and `c` before shipping.
+
+```ts title="audit-scale.ts"
+import { formatHex, inGamut, wcagContrast } from "culori";
+
+const inSrgb = inGamut("rgb");
+const hue = 260;
+const steps = [
+  [50, 0.97, 0.01], [100, 0.93, 0.02], [200, 0.87, 0.05],
+  [300, 0.8, 0.09], [400, 0.71, 0.13], [500, 0.62, 0.18],
+  [600, 0.55, 0.2], [700, 0.48, 0.17], [800, 0.41, 0.15],
+  [900, 0.35, 0.12], [950, 0.27, 0.09],
+] as const;
+
+const rows = steps.map(([step, l, c]) => {
+  const color = { mode: "oklch", l, c, h: hue } as const;
+  return {
+    step,
+    hex: formatHex(color),
+    srgb: inSrgb(color),
+    onWhite: wcagContrast(color, "#ffffff").toFixed(2),
+  };
+});
+
+console.table(rows);   // bun audit-scale.ts
+```
+
+### Dark-mode token mapping
+Semantic tokens pick a primitive per scheme; components never reference primitives directly.
+
+```css title="theme.css"
+:root {
+  color-scheme: light dark;   /* follow the OS */
+  --bg: light-dark(var(--gray-50), var(--gray-950));
+  --surface: light-dark(white, var(--gray-900));
+  --fg: light-dark(var(--gray-950), var(--gray-100));
+  --fg-muted: light-dark(var(--gray-600), var(--gray-400));
+  --border: light-dark(var(--gray-200), var(--gray-800));
+  --accent: light-dark(var(--blue-600), var(--blue-400));
+  --on-accent: light-dark(white, var(--gray-950));
+}
+
+/* a manual toggle overrides the OS */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+body { background: var(--bg); color: var(--fg); }
+```
+
+### Vivid brand color on wide-gamut screens
+sRGB for everyone, a more saturated P3 version where the display can show it.
+
+```css
+:root {
+  --brand: oklch(0.55 0.2 260);    /* in sRGB */
+}
+
+@media (color-gamut: p3) {
+  :root {
+    --brand: oklch(0.55 0.245 260); /* P3 only */
+  }
+}
+```
+
+## References
+
+- MDN: [`<color>`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value), [`oklch()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/oklch), [`color()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/color), [`color-mix()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/color-mix), [Using relative colors](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Colors/Using_relative_colors), [`light-dark()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/light-dark), [`contrast-color()`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color), [`color-gamut`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/color-gamut), [`forced-colors`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/forced-colors), [Color contrast](https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Colors_and_Luminance)
+- W3C: [WCAG 2.2](https://www.w3.org/TR/WCAG22/) (relative luminance, 1.4.1, 1.4.3, 1.4.11), [CSS Color Module Level 4](https://www.w3.org/TR/css-color-4/), [CSS Color Module Level 5](https://www.w3.org/TR/css-color-5/)
+- Björn Ottosson, [A perceptual color space for image processing](https://bottosson.github.io/posts/oklab/): the OKLab definition
+- Evil Martians, [OKLCH in CSS: why we moved from RGB and HSL](https://evilmartians.com/chronicles/oklch-in-css-why-quit-rgb-hsl)
+- [APCA documentation](https://git.apcacontrast.com/documentation/APCA_in_a_Nutshell): Lc levels and use cases
+- [Okabe & Ito, Color Universal Design](https://jfly.uni-koeln.de/color/): the color-blind-safe palette
+- [Introduction to viridis](https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html): why perceptually uniform color maps
+- [Refactoring UI](https://www.refactoringui.com/): building palettes with enough shades

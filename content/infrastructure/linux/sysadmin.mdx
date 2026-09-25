@@ -1,0 +1,960 @@
+---
+title: Linux sysadmin
+date: 2026-09-25
+order: 1
+---
+
+Day-to-day administration of a modern Linux server: files, users, services, packages, disks,
+networking, firewalls, logs and triage. Targets Ubuntu 24.04/26.04 LTS, Debian 13 and Fedora /
+RHEL 10, with `apt` vs `dnf` shown where they differ. Keys and TLS live in
+[SSH, keys & certificates](/infrastructure/linux/ssh-keys-certs/).
+
+## Filesystem hierarchy
+
+All four distros use a merged `/usr`: `/bin`, `/sbin` and `/lib` are symlinks into `/usr`.
+
+```tree title="/ at a glance"
+/
+  boot/              # kernel, initramfs, bootloader
+  dev/               # device nodes: nvme0n1, sda, tty
+  etc/               # host config; back this up
+    systemd/system/  # your unit files and overrides
+    ssh/             # sshd_config, host keys
+    sudoers.d/       # sudo rules, one file per role
+  home/              # user homes; root's is /root
+  opt/               # self-contained third-party apps
+  proc/              # virtual: PIDs and kernel state
+  run/               # sockets, PID files; wiped at boot
+  srv/               # data served: sites, apps, repos
+  sys/               # virtual: devices, drivers, cgroups
+  tmp/               # scratch; tmpfs on Debian 13/Fedora
+  usr/
+    bin/             # commands; Fedora merges sbin here
+    lib/             # libraries, packaged unit files
+    local/           # software you installed by hand
+    share/           # docs, man pages, shared data
+  var/
+    cache/           # regenerable: apt, dnf caches
+    lib/             # persistent state: docker, postgres
+    log/             # logs; journal in var/log/journal
+```
+
+| Put… | In |
+| :--- | :-- |
+| Hand-installed binaries | `/usr/local/bin` |
+| A service's code | `/srv/app` or `/opt/app` |
+| A service's mutable state | `/var/lib/app` |
+| Config and secrets | `/etc/app/` (mode `0640`, group = service) |
+| Logs (if not journald) | `/var/log/app/` |
+| Runtime sockets | `/run/app/` (`RuntimeDirectory=app` in systemd) |
+
+`/proc/PID/` is handy: `cmdline`, `environ`, `cwd`, `exe`, `fd/`, `status`, `limits`.
+
+## Users, groups & sudo
+
+| Command | Does |
+| :------ | :--- |
+| `adduser alice` | Debian/Ubuntu friendly wrapper: home, shell, password prompt |
+| `useradd -m -s /bin/bash -G sudo alice` | low-level; `-m` makes the home. Admin group: `sudo` (Debian/Ubuntu), `wheel` (Fedora/RHEL) |
+| `useradd -r -s /usr/sbin/nologin -d /var/lib/app app` | system account for a service, no login |
+| `passwd alice` | set password; `-l` lock, `-u` unlock, `-e` force change |
+| `usermod -aG docker alice` | **append** a group; without `-a` it replaces all groups |
+| `gpasswd -d alice docker` | remove from a group |
+| `groupadd deploy` | new group |
+| `userdel -r alice` | delete user and home |
+| `id alice`, `groups alice` | UID, GID, groups |
+| `getent passwd alice` | lookup through NSS (covers LDAP/SSSD users too) |
+| `sudo -iu postgres` | login shell as another user |
+| `chage -l alice` | password ageing; `chage -E 0` expires the account |
+
+Group changes apply at the next login (or `newgrp docker` in the current shell).
+
+| File | Holds |
+| :--- | :---- |
+| `/etc/passwd` | users: name, UID, GID, home, shell |
+| `/etc/shadow` | password hashes, ageing (root-only) |
+| `/etc/group` | groups and members |
+| `/etc/sudoers`, `/etc/sudoers.d/` | sudo rules |
+| `/etc/skel/` | copied into every new home |
+| `/etc/login.defs` | UID ranges, default umask, hash method |
+
+### sudo rules
+
+```sh
+# always edit via visudo: it syntax-checks before saving
+sudo visudo -f /etc/sudoers.d/deploy
+sudo -l              # what may I run?
+sudo -k              # drop cached credentials
+sudoedit /etc/hosts  # edit as root with your own $EDITOR
+```
+
+```text title="/etc/sudoers.d/deploy"
+# who    where=(as whom)   [tags:] commands
+deploy   ALL=(root)        NOPASSWD: /usr/bin/systemctl restart app
+%ops     ALL=(ALL:ALL)     ALL
+```
+
+Files in `sudoers.d` whose names contain a `.` or end in `~` are ignored; keep mode `0440`.
+Ubuntu 26.04 ships `sudo-rs` (a Rust rewrite) as `sudo`; common sudoers syntax is unchanged.
+
+## Permissions
+
+`ls -l` shows `-rwxr-x---`: type, then owner / group / other triplets. A trailing `+` means
+ACLs are set.
+
+| Octal | Bits | On a file | On a directory |
+| :---- | :--- | :-------- | :------------- |
+| `4` | `r` | read contents | list names |
+| `2` | `w` | modify contents | create, rename, delete entries |
+| `1` | `x` | execute | enter / traverse |
+
+| Mode | Symbolic | Typical use |
+| :--- | :------- | :---------- |
+| `644` | `rw-r--r--` | regular files |
+| `755` | `rwxr-xr-x` | directories, scripts, binaries |
+| `640` | `rw-r-----` | config readable by a service group |
+| `600` | `rw-------` | secrets, private keys |
+| `700` | `rwx------` | private dirs (`~/.ssh`) |
+| `2775` | `rwxrwsr-x` | shared team dir (setgid) |
+| `1777` | `rwxrwxrwt` | `/tmp` (sticky) |
+
+| Special bit | Octal | Set with | Effect |
+| :---------- | :---- | :------- | :----- |
+| setuid | `4000` | `chmod u+s` | executable runs as the file's owner (`passwd`) |
+| setgid | `2000` | `chmod g+s` | file runs as its group; on a dir, new entries inherit the dir's group |
+| sticky | `1000` | `chmod +t` | on a dir, only an entry's owner may delete it |
+
+```sh
+chmod 640 app.env
+chmod u+x,go-w deploy.sh
+chmod -R u=rwX,go=rX site/   # X: exec only on dirs
+chown -R app:app /srv/app
+chown :www-data upload/      # group only
+stat -c '%a %U:%G %n' file   # 640 app:app file
+# audit setuid binaries
+sudo find / -xdev -perm -4000 -type f
+```
+
+### umask
+
+New files start at `666`, dirs at `777`, minus the umask.
+
+| umask | Files | Dirs | When |
+| :---- | :---- | :--- | :--- |
+| `022` | `644` | `755` | common default |
+| `002` | `664` | `775` | users with a private group (Debian/Ubuntu default) |
+| `027` | `640` | `750` | services; set `UMask=0027` in the unit |
+| `077` | `600` | `700` | secrets-only dirs |
+
+### ACLs
+
+For access beyond one owner and one group. Needs the `acl` package.
+
+```sh
+setfacl -m u:alice:rwX /srv/shared     # grant a user
+setfacl -R -m g:web:rX /srv/site       # recursive, group
+setfacl -d -m g:web:rwX /srv/uploads   # default ACL
+getfacl /srv/shared
+setfacl -x u:alice /srv/shared         # remove one entry
+setfacl -b /srv/shared                 # remove all ACLs
+```
+
+## Processes
+
+| Command | Shows / does |
+| :------ | :----------- |
+| `ps aux` | every process, BSD style |
+| `ps -ef --forest` | with parent/child tree |
+| `ps -eo pid,user,%cpu,%mem,etime,cmd --sort=-%cpu \| head` | top CPU users, custom columns |
+| `pgrep -af bun` | PIDs + full command lines matching |
+| `pstree -p` | tree with PIDs |
+| `top` | live; keys `P` CPU, `M` memory, `1` per-core, `c` full cmd, `k` kill |
+| `htop`, `btop` | friendlier live views (install them) |
+| `systemctl status PID` | which unit owns a process |
+| `lsof -p PID` | its open files and sockets |
+| `ls -l /proc/PID/cwd /proc/PID/exe` | working dir and binary |
+| `cat /proc/PID/environ \| tr '\0' '\n'` | its environment |
+
+### Signals
+
+| Signal | No. | Default | Use |
+| :----- | :-- | :------ | :-- |
+| `SIGHUP` | 1 | terminate | terminal closed; many daemons reload config on it |
+| `SIGINT` | 2 | terminate | Ctrl-C |
+| `SIGQUIT` | 3 | core dump | `Ctrl-\` |
+| `SIGKILL` | 9 | kill | cannot be caught; no cleanup, last resort |
+| `SIGUSR1`, `SIGUSR2` | 10, 12 | terminate | app-defined (reopen logs, dump state) |
+| `SIGTERM` | 15 | terminate | polite stop; default for `kill` and `systemctl stop` |
+| `SIGCONT` | 18 | continue | resume a stopped process |
+| `SIGSTOP` | 19 | stop | pause; cannot be caught |
+| `SIGTSTP` | 20 | stop | Ctrl-Z |
+
+```sh
+kill 1234              # SIGTERM
+kill -HUP 1234         # reload
+kill -9 1234           # only after TERM failed
+pkill -f 'bun run'     # match full command line
+killall nginx          # by name
+kill -l                # list signals
+```
+
+### Priority and jobs
+
+```sh
+nice -n 10 ./reindex.sh     # -20 (greedy) .. 19 (polite)
+renice -n 5 -p 1234
+ionice -c3 tar czf b.tgz d  # idle I/O class
+long-task &                 # background; Ctrl-Z then bg
+jobs -l; fg %1; disown %1
+nohup ./task.sh > task.log 2>&1 &
+# better: a transient unit with logs + limits
+sudo systemd-run --unit=reindex -p MemoryMax=2G \
+  /srv/app/reindex.sh
+journalctl -u reindex -f
+```
+
+## systemd
+
+| Command | Does |
+| :------ | :--- |
+| `systemctl status app` | state, PID, memory, last log lines |
+| `systemctl start` / `stop` / `restart app` | control now |
+| `systemctl reload app` | re-read config without restart (if supported) |
+| `systemctl enable --now app` | start at boot and start now |
+| `systemctl disable --now app` | the reverse |
+| `systemctl is-active app`, `is-enabled app` | scriptable checks (exit code) |
+| `systemctl list-units --failed` | what's broken |
+| `systemctl list-unit-files --state=enabled` | what starts at boot |
+| `systemctl cat app` | the unit plus all drop-ins |
+| `systemctl edit app` | create a drop-in override |
+| `systemctl edit --full app` | copy the whole unit to `/etc` and edit |
+| `systemctl daemon-reload` | after changing unit files by hand |
+| `systemctl mask app` | make it impossible to start |
+| `systemctl show app -p MainPID,Restart` | any property |
+| `systemctl reset-failed app` | clear failed state / start limit |
+| `systemctl --user …` | per-user units; `loginctl enable-linger zach` keeps them running after logout |
+| `systemd-analyze blame` | slow boot units |
+| `systemd-cgtop` | resource use per unit |
+
+### Where units live
+
+```tree title="unit search path (first wins)"
+/
+  etc/
+    systemd/
+      system/                   # yours; overrides all
+        app.service
+        app.service.d/
+          override.conf         # from systemctl edit app
+        backup.service
+        backup.timer
+        multi-user.target.wants/
+          app.service           # symlink made by enable
+        timers.target.wants/
+          backup.timer          # symlink made by enable
+  run/
+    systemd/
+      system/                   # runtime, transient units
+  usr/
+    lib/
+      systemd/
+        system/                 # packaged; don't edit
+          nginx.service
+```
+
+User units go in `~/.config/systemd/user/`.
+
+### Unit file anatomy
+
+| Section | Directive | Meaning |
+| :------ | :-------- | :------ |
+| `[Unit]` | `Description=` | shown in status and logs |
+| | `After=`, `Before=` | ordering only |
+| | `Wants=`, `Requires=` | pull in another unit (soft / hard) |
+| | `StartLimitBurst=`, `StartLimitIntervalSec=` | give up after N restarts in a window |
+| `[Service]` | `Type=` | `simple`, `exec`, `notify`, `oneshot`, `forking` |
+| | `ExecStart=` | absolute path + args; no shell unless you call one |
+| | `ExecReload=` | e.g. `kill -HUP $MAINPID` |
+| | `User=`, `Group=` | drop root |
+| | `WorkingDirectory=` | cwd |
+| | `Environment=`, `EnvironmentFile=` | env vars; file is `KEY=value` lines |
+| | `Restart=` | `no`, `on-failure`, `always` |
+| | `RestartSec=` | delay between restarts |
+| | `TimeoutStopSec=` | SIGTERM → SIGKILL grace (default 90s) |
+| | `MemoryMax=`, `CPUQuota=` | cgroup limits |
+| `[Install]` | `WantedBy=` | target that pulls it in on `enable` |
+
+| `Type=` | Considered started when |
+| :------ | :---------------------- |
+| `simple` | immediately after fork (default) |
+| `exec` | after the binary is exec'd; bad paths fail loudly |
+| `notify` | the process sends `READY=1` via `sd_notify` |
+| `oneshot` | the process exits (scripts; add `RemainAfterExit=yes` for "state" units) |
+| `forking` | the parent exits (legacy daemons; prefer not) |
+
+```ini title="/etc/systemd/system/worker.service"
+[Unit]
+Description=Queue worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=worker
+WorkingDirectory=/srv/worker
+EnvironmentFile=/etc/worker/env
+ExecStart=/usr/local/bin/bun run worker.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Drop-in overrides only change what they set. To replace a list setting such as `ExecStart`,
+clear it first:
+
+```ini title="/etc/systemd/system/worker.service.d/override.conf"
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/bun run --smol worker.ts
+Environment=LOG_LEVEL=debug
+MemoryMax=512M
+```
+
+### Stopping cleanly
+
+`systemctl stop` sends `SIGTERM`, waits `TimeoutStopSec`, then sends `SIGKILL`.
+
+```ts title="server.ts"
+const server = Bun.serve({
+  port: Number(process.env.PORT ?? 3000),
+  fetch: () => new Response("ok"),
+});
+
+process.on("SIGTERM", async () => {
+  await server.stop(); // let in-flight requests finish
+  process.exit(0);
+});
+```
+
+### journalctl
+
+| Command | Shows |
+| :------ | :---- |
+| `journalctl -u app -f` | follow one unit |
+| `journalctl -u app -n 200 --no-pager` | last 200 lines |
+| `journalctl -u app --since "1 hour ago"` | time window; also `--until`, `"2026-09-25 14:00"`, `today` |
+| `journalctl -b`, `-b -1` | this boot, previous boot |
+| `journalctl --list-boots` | boot IDs |
+| `journalctl -p err -b` | priority `err` and worse (`emerg`..`debug`) |
+| `journalctl -k` | kernel messages (like `dmesg`) |
+| `journalctl -g 'timeout\|refused'` | regex grep over messages |
+| `journalctl _PID=1234`, `_COMM=sshd`, `_UID=1000` | field matches |
+| `journalctl -u app -o json-pretty` | structured output; also `-o cat`, `-o short-iso` |
+| `journalctl -xe` | recent errors with explanations |
+| `journalctl --disk-usage` | journal size |
+| `journalctl --vacuum-time=2weeks`, `--vacuum-size=1G` | prune |
+
+## Scheduling: cron & timers
+
+```text
+┌──────── minute        0-59
+│ ┌────── hour          0-23
+│ │ ┌──── day of month  1-31
+│ │ │ ┌── month         1-12 or jan-dec
+│ │ │ │ ┌ day of week   0-7 or sun-sat (0 and 7 = Sunday)
+│ │ │ │ │
+* * * * *  command
+```
+
+| Expression | Runs |
+| :--------- | :--- |
+| `*/5 * * * *` | every 5 minutes |
+| `0 * * * *` | top of every hour |
+| `0 3 * * *` | 03:00 daily |
+| `30 9 * * 1-5` | 09:30 on weekdays |
+| `0 */6 * * *` | every 6 hours |
+| `0 0 1 * *` | midnight on the 1st |
+| `15 2 * * 0` | Sundays at 02:15 |
+| `0 9 1,15 * *` | 09:00 on the 1st and 15th |
+| `@reboot` | once at boot |
+| `@hourly`, `@daily`, `@weekly`, `@monthly` | shortcuts |
+
+When both day-of-month and day-of-week are restricted, cron fires if **either** matches.
+
+| Where | Format |
+| :---- | :----- |
+| `crontab -e` / `-l` / `-r` | per-user table (edit / list / remove) |
+| `/etc/cron.d/app` | system file; has a **user** column: `0 3 * * * app /srv/app/job.sh` |
+| `/etc/cron.daily/` etc. | executable scripts, no extension (run-parts) |
+
+Cron gotchas: minimal `PATH` (use absolute paths), `%` must be escaped as `\%`, output is
+mailed or lost (append `>> /var/log/job.log 2>&1`), and runs can overlap (wrap in
+`flock -n /run/lock/job.lock cmd`). Install `cron` (Debian/Ubuntu) or `cronie` (Fedora/RHEL)
+if missing.
+
+### systemd timers
+
+| `OnCalendar=` | Fires |
+| :------------ | :---- |
+| `hourly`, `daily`, `weekly` | at the start of each period |
+| `*-*-* 03:00:00` | 03:00 daily |
+| `Mon..Fri 09:30` | weekdays at 09:30 |
+| `*:0/15` | every 15 minutes |
+| `*-*-01 00:00` | 1st of the month |
+| `Sat *-*-1..7 04:00` | first Saturday of the month |
+
+Relative timers: `OnBootSec=5min`, `OnUnitActiveSec=1h`. Test expressions with
+`systemd-analyze calendar 'Mon..Fri 09:30'`. List with `systemctl list-timers`.
+
+| | cron | systemd timer |
+| :-- | :--- | :------------ |
+| Setup | one line | `.service` + `.timer` |
+| Logs | mail or manual redirect | journal (`journalctl -u job`) |
+| Missed run while off | skipped | `Persistent=true` catches up |
+| Overlap | possible | never; won't start while still running |
+| Jitter | manual `sleep` | `RandomizedDelaySec=` |
+| Limits, sandboxing | none | any `[Service]` directive |
+| Run now | copy the command | `systemctl start job.service` |
+
+## Packages
+
+| Task | Debian / Ubuntu | Fedora / RHEL |
+| :--- | :-------------- | :------------ |
+| Refresh index | `apt update` | automatic (`dnf makecache`) |
+| Upgrade all | `apt upgrade` | `dnf upgrade` |
+| Upgrade, allow removals | `apt full-upgrade` | `dnf distro-sync` |
+| Install / remove | `apt install x` / `apt remove x` | `dnf install x` / `dnf remove x` |
+| Remove + config | `apt purge x` | (config left as `.rpmsave`) |
+| Drop unused deps | `apt autoremove` | `dnf autoremove` |
+| Search / details | `apt search x` / `apt show x` | `dnf search x` / `dnf info x` |
+| Installed list | `apt list --installed` | `dnf list --installed` |
+| Which pkg owns a file | `dpkg -S /usr/bin/dig` | `rpm -qf /usr/bin/dig` |
+| Files in a pkg | `dpkg -L x` | `rpm -ql x` |
+| Which pkg provides a file | `apt-file search bin/dig` | `dnf provides '*/bin/dig'` |
+| History | `/var/log/apt/history.log` | `dnf history`, `dnf history undo N` |
+| Pin a version | `apt-mark hold x` | `dnf versionlock add x` |
+| Install a local file | `apt install ./x.deb` | `dnf install ./x.rpm` |
+| Clean cache | `apt clean` | `dnf clean all` |
+| Reboot needed? | `/run/reboot-required` exists (Ubuntu) | `dnf needs-restarting -r` |
+
+Fedora uses dnf5; RHEL 10 still ships dnf4. Everyday commands match. Extra software on RHEL
+usually comes from EPEL. Flatpak and Snap are for desktop apps; avoid them for server daemons.
+
+### Adding a third-party repo
+
+```ini title="/etc/apt/sources.list.d/example.sources"
+Types: deb
+URIs: https://pkg.example.com/apt
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/example.gpg
+```
+
+```sh
+curl -fsSL https://pkg.example.com/key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/example.gpg
+sudo apt modernize-sources   # Debian 13: old .list → deb822
+# Fedora (dnf5)
+sudo dnf config-manager addrepo \
+  --from-repofile=https://pkg.example.com/x.repo
+# RHEL 10 (dnf4)
+sudo dnf config-manager --add-repo \
+  https://pkg.example.com/x.repo
+```
+
+## Disks & filesystems
+
+| Command | Shows / does |
+| :------ | :----------- |
+| `lsblk -f` | block devices, filesystems, UUIDs, mount points |
+| `blkid` | UUIDs and types |
+| `df -hT` | usage per mounted filesystem; `df -i` for inodes |
+| `du -sh * \| sort -h` | size of each entry here |
+| `du -xh -d1 / \| sort -h` | top-level usage, one filesystem |
+| `ncdu -x /` | interactive explorer |
+| `findmnt` | mount tree with options |
+| `mount /dev/sdb1 /mnt`, `umount /mnt` | manual mount |
+| `mkfs.ext4 -L data /dev/sdb1` | format (`mkfs.xfs` on RHEL) |
+| `growpart /dev/sda 1` | grow a partition (cloud disk resized) |
+| `resize2fs /dev/sda1`, `xfs_growfs /` | grow ext4 / XFS online |
+| `smartctl -a /dev/nvme0` | disk health (`smartmontools`) |
+| `wipefs -a /dev/sdb` | erase signatures (destructive) |
+
+Defaults: ext4 on Debian/Ubuntu, XFS on LVM for RHEL and Fedora Server, Btrfs on Fedora
+Workstation.
+
+```text title="/etc/fstab"
+# what                                      where  type  options                  dump pass
+UUID=3f1c2a9e-0d4b-4c1e-9b7a-2e5f6d8c9a10  /data  ext4  defaults,noatime,nofail  0    2
+/swapfile                                   none   swap  sw                       0    0
+```
+
+Use `UUID=` (from `blkid`), not `/dev/sdX`. `nofail` keeps boot going if the disk is
+missing. After editing: `sudo systemctl daemon-reload && sudo mount -a` and fix any error
+**before** rebooting.
+
+### LVM in brief
+
+Physical volumes (disks) → volume group (pool) → logical volumes (resizable "partitions").
+
+| Command | Does |
+| :------ | :--- |
+| `pvs`, `vgs`, `lvs` | summaries |
+| `pvcreate /dev/sdb` | mark a disk for LVM |
+| `vgextend vg0 /dev/sdb` | add it to the pool |
+| `lvcreate -n data -L 50G vg0` | new volume `/dev/vg0/data` |
+| `lvextend -r -L +20G vg0/data` | grow volume **and** filesystem (`-r`) |
+| `lvextend -r -l +100%FREE ubuntu-vg/ubuntu-lv` | Ubuntu installer leaves space unallocated; claim it |
+| `lvcreate -s -n snap -L 5G vg0/data` | snapshot (copy-on-write) |
+
+## Networking
+
+| Command | Shows / does |
+| :------ | :----------- |
+| `ip -br a` | interfaces and addresses, one line each |
+| `ip r`, `ip route get 1.1.1.1` | routes; which route a packet takes |
+| `ip link set eth0 up` | bring up (not persistent) |
+| `ss -tulpn` | listening TCP/UDP sockets + process |
+| `ss -tnp state established` | open connections |
+| `ss -s` | socket summary |
+| `hostnamectl set-hostname web1` | set hostname |
+| `resolvectl status` | DNS servers per link (systemd-resolved) |
+| `resolvectl query example.com` | resolve via the system resolver |
+| `resolvectl flush-caches` | clear DNS cache |
+| `dig +short example.com A` | raw DNS answer (`dnsutils` / `bind-utils`) |
+| `dig @1.1.1.1 example.com MX` | ask a specific server |
+| `dig -x 203.0.113.7` | reverse lookup |
+| `dig +trace example.com` | walk from the root servers |
+| `curl -sSI https://example.com` | response headers only |
+| `curl -v https://example.com` | TLS handshake + headers |
+| `curl --resolve example.com:443:10.0.0.5 https://example.com` | test a backend before DNS changes |
+| `curl -so /dev/null -w '%{http_code} %{time_total}\n' URL` | status and timing |
+| `nc -zv db.internal 5432` | is a TCP port reachable? |
+| `mtr example.com` | live traceroute with loss per hop |
+
+Concepts (subnets, ports, DNS, TLS) are in
+[Communication networks](/infrastructure/communication-networks/).
+
+| Distro | Persistent config | Tool |
+| :----- | :---------------- | :--- |
+| Ubuntu Server | `/etc/netplan/*.yaml` → systemd-networkd | `netplan try`, `netplan apply` |
+| Fedora, RHEL | NetworkManager keyfiles in `/etc/NetworkManager/system-connections/` | `nmcli`, `nmtui` |
+| Debian 13 server | `/etc/network/interfaces` (ifupdown) | `ifup`, `ifdown` |
+
+```yaml title="/etc/netplan/60-static.yaml"
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+      addresses: [10.0.0.10/24]
+      routes:
+        - to: default
+          via: 10.0.0.1
+      nameservers:
+        addresses: [1.1.1.1, 9.9.9.9]
+```
+
+`netplan try` rolls back after 120 s unless you confirm, so a typo won't lock you out.
+Netplan files should be mode `600`.
+
+```sh
+nmcli device status
+nmcli con show
+nmcli con mod eth0 ipv4.method manual \
+  ipv4.addresses 10.0.0.10/24 ipv4.gateway 10.0.0.1 \
+  ipv4.dns "1.1.1.1 9.9.9.9"
+nmcli con up eth0
+```
+
+## Firewall
+
+| Front end | Default on | Backend |
+| :-------- | :--------- | :------ |
+| `ufw` | Ubuntu (installed, inactive); `apt install ufw` on Debian | nftables |
+| `firewalld` | Fedora, RHEL (active) | nftables |
+| `nft` | everywhere | the kernel's nftables directly |
+
+Use one front end per host. Always allow SSH **before** enabling a default-deny policy.
+
+```sh
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow OpenSSH           # or: ufw limit 22/tcp
+sudo ufw allow 80,443/tcp
+sudo ufw allow from 10.0.0.0/8 to any port 5432 proto tcp
+sudo ufw enable
+sudo ufw status numbered
+sudo ufw delete 4
+```
+
+```sh
+sudo firewall-cmd --get-active-zones
+sudo firewall-cmd --list-all
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --permanent --add-port=3000/tcp
+sudo firewall-cmd --permanent --zone=trusted \
+  --add-source=10.0.0.0/8
+sudo firewall-cmd --reload   # --permanent needs a reload
+```
+
+```text title="/etc/nftables.conf"
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    ct state established,related accept
+    iif lo accept
+    meta l4proto { icmp, ipv6-icmp } accept
+    tcp dport { 22, 80, 443 } accept
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+}
+```
+
+Check with `sudo nft -c -f /etc/nftables.conf`, load with `sudo systemctl enable --now
+nftables`, inspect with `sudo nft list ruleset`.
+
+<Note kind="warning">Docker publishes container ports with its own rules, which bypass
+`ufw` and `firewalld` zones. Bind to `127.0.0.1:8080:80` or use the `DOCKER-USER` chain. See
+[Docker](/infrastructure/containers/docker/).</Note>
+
+## Logs & monitoring
+
+| Where | What |
+| :---- | :--- |
+| `journalctl` | everything from systemd units, kernel, auth; the primary log on all four distros |
+| `/var/log/syslog`, `/var/log/auth.log` | Ubuntu (rsyslog installed); Debian 12+ has no rsyslog by default |
+| `/var/log/messages`, `/var/log/secure` | RHEL with rsyslog |
+| `/var/log/apt/`, `/var/log/dnf5.log` | package operations |
+| `/var/log/nginx/`, `/var/log/postgresql/` | per-daemon files |
+| `dmesg -T --level=err,warn` | kernel ring buffer with timestamps |
+| `last -n 20`, `lastb` | logins, failed logins |
+| `who`, `w` | who is on now and what they run |
+
+Cap the journal with a drop-in:
+
+```ini title="/etc/systemd/journald.conf.d/size.conf"
+[Journal]
+SystemMaxUse=1G
+MaxRetentionSec=1month
+```
+
+Then `sudo systemctl restart systemd-journald`.
+
+| Need | Reach for |
+| :--- | :-------- |
+| Metrics over time | `node_exporter` + Prometheus + [Grafana](/infrastructure/grafana/) |
+| Quick dashboards on one box | `btop`, `netdata`, Cockpit (Fedora/RHEL: `systemctl enable --now cockpit.socket`) |
+| Historical CPU/mem/IO | `sysstat` (`sar`), below |
+| Failed units | `systemctl list-units --failed` in a check |
+| Disk health | `smartd` from `smartmontools` |
+| Uptime | external HTTP checks; the box can't report its own outage |
+
+## Text & file toolkit
+
+| Tool | Common forms |
+| :--- | :----------- |
+| `grep` | `grep -rn 'TODO' src/`, `-i` ignore case, `-v` invert, `-E` regex, `-o` only match, `-l` files only, `-c` count, `-C3` context |
+| `rg` | ripgrep: recursive, respects `.gitignore`, fast. `rg -n 'fn \w+' -t ts`, `rg -l`, `rg --hidden` |
+| `sed` | `sed -n '10,20p' f`, `sed -i 's/old/new/g' f` (GNU; macOS needs `-i ''`), `sed '/^#/d'` |
+| `awk` | `awk '{print $1}'`, `awk -F: '$3>=1000 {print $1}' /etc/passwd`, `awk '{s+=$5} END {print s}'` |
+| `cut` | `cut -d: -f1,7 /etc/passwd`, `cut -c1-80` |
+| `sort` | `-n` numeric, `-h` human sizes, `-r` reverse, `-k2,2` by column, `-t,` separator, `-u` unique |
+| `uniq` | needs sorted input; `-c` count, `-d` dupes only |
+| `wc` | `-l` lines, `-w` words, `-c` bytes |
+| `head`, `tail` | `-n 50`; `tail -F` follows across rotation |
+| `tr` | `tr a-z A-Z`, `tr -d '\r'`, `tr -s ' '` |
+| `xargs` | `xargs -0` with `find -print0`, `-n1` one arg per run, `-P4` parallel, `-I{}` placeholder |
+| `find` | `find . -name '*.log' -mtime +7 -delete`, `-type f -size +100M`, `-newer ref`, `-exec cmd {} +` |
+| `jq` | `jq '.items[].name'`, `jq -r '.[] \| select(.ok) \| .id'`, `jq -c`, `jq --arg k v` |
+| `column -t` | align whitespace-separated output |
+| `diff -u a b` | unified diff; `comm -12` lines in both sorted files |
+| `tee` | `cmd \| sudo tee /etc/file` writes as root |
+
+```sh
+# top 10 client IPs in an access log
+awk '{print $1}' access.log | sort | uniq -c \
+  | sort -rn | head
+# count HTTP status codes
+awk '{print $9}' access.log | sort | uniq -c
+# replace across files safely (NUL-separated)
+rg -l -0 'old\.host' \
+  | xargs -0 sed -i 's/old\.host/new.host/g'
+# JSON logs: errors from the last hour
+journalctl -u app --since -1h -o cat \
+  | jq -c 'select(.level == "error")'
+```
+
+### Archives
+
+| Command | Does |
+| :------ | :--- |
+| `tar czf a.tgz dir/` | create gzip tarball |
+| `tar --zstd -cf a.tar.zst dir/` | create zstd tarball (fast, small) |
+| `tar -I 'zstd -19 -T0' -cf a.tar.zst dir/` | max compression, all cores |
+| `tar xf a.tar.zst -C /dest` | extract; format auto-detected |
+| `tar tf a.tgz` | list contents |
+| `tar czf - dir \| ssh host 'tar xzf - -C /srv'` | copy a tree over SSH |
+| `zstd -T0 big.sql`, `zstd -d big.sql.zst` | compress / decompress one file |
+| `gzip -k f`, `gunzip f.gz` | classic; `-k` keeps the original |
+| `xz -T0 f` | smallest, slowest |
+| `zip -r a.zip dir/`, `unzip -l a.zip` | for people on Windows |
+
+## Performance triage
+
+The first minute on a slow box, in order:
+
+| Command | Look at |
+| :------ | :------ |
+| `uptime` | load averages (1, 5, 15 min) vs `nproc`; above core count means queueing |
+| `dmesg -T \| tail`, `journalctl -k -p warning` | OOM kills, disk or NIC errors |
+| `free -h` | `available` column, not `free`; swap in use |
+| `vmstat 1 5` | `r` (runnable) above cores = CPU saturated; `si`/`so` swapping; `wa` I/O wait; `st` steal (noisy VM neighbour) |
+| `mpstat -P ALL 1` | one hot core = single-threaded bottleneck |
+| `pidstat 1` | which process uses CPU |
+| `iostat -xz 1` | `%util` near 100 and high `r_await`/`w_await` = disk bound |
+| `sar -n DEV 1` | network throughput per interface |
+| `ss -s`, `ss -tan \| awk '{print $1}' \| sort \| uniq -c` | connection counts and states |
+| `top` / `btop` | confirm the culprit |
+
+`mpstat`, `pidstat`, `iostat` and `sar` come from `sysstat`. Enable history with
+`sudo systemctl enable --now sysstat` (Debian/Ubuntu also want `ENABLED="true"` in
+`/etc/default/sysstat`); then `sar -u`, `sar -r`, `sar -q` show the day so far.
+
+```sh
+# who got OOM-killed?
+journalctl -k -g 'out of memory|oom-kill' -b
+# memory per unit (cgroups)
+systemd-cgtop -m
+# biggest RSS processes
+ps -eo pid,rss,cmd --sort=-rss | head
+```
+
+## Hardening checklist
+
+| Area | Do |
+| :--- | :- |
+| Updates | Debian/Ubuntu: `unattended-upgrades`. Fedora: `dnf5-plugin-automatic`, `dnf5-automatic.timer`. RHEL 10: `dnf-automatic`, `dnf-automatic.timer`. On dnf, set `apply_updates = yes` in `/etc/dnf/automatic.conf` |
+| SSH | keys only, no root login, `AllowGroups`; see [sshd hardening](/infrastructure/linux/ssh-keys-certs/) |
+| Firewall | default deny inbound; open only what `ss -tulpn` should show |
+| Brute force | `fail2ban` (or `ufw limit`), or keep SSH on a VPN / Tailscale only |
+| Least privilege | one system user per service; no shared `sudo` accounts; `sudoers.d` rules scoped to commands |
+| Service sandboxing | `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`; score with `systemd-analyze security app` |
+| MAC | keep AppArmor (Debian/Ubuntu) or SELinux enforcing (Fedora/RHEL); fix labels with `restorecon -Rv`, debug with `ausearch -m avc` |
+| Secrets | `/etc/app/env` mode `0640 root:app`, or systemd `LoadCredential=` |
+| Time | NTP on (`timedatectl`); logs and TLS need a correct clock |
+| Attack surface | remove unused packages and services; `systemctl list-unit-files --state=enabled` |
+| Backups | automated, off-host, and restore-tested |
+
+```ini title="/etc/apt/apt.conf.d/20auto-upgrades"
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+```
+
+```ini title="/etc/fail2ban/jail.local"
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled = true
+```
+
+`sudo fail2ban-client status sshd` shows bans; `fail2ban-client set sshd unbanip IP` lifts one.
+
+## Recipes
+
+### systemd service for a Bun app
+
+Run a Bun server as an unprivileged, sandboxed, auto-restarting service.
+
+```ini title="/etc/systemd/system/app.service"
+[Unit]
+Description=My Bun app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=app
+WorkingDirectory=/srv/app
+EnvironmentFile=/etc/app/env
+Environment=NODE_ENV=production PORT=3000
+ExecStart=/usr/local/bin/bun run src/index.ts
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+StateDirectory=app
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install Bun system-wide with `curl -fsSL https://bun.sh/install | sudo BUN_INSTALL=/usr/local
+bash`, create the user with `useradd -r -s /usr/sbin/nologin app`, then `sudo systemctl
+daemon-reload && sudo systemctl enable --now app`. `StateDirectory=app` gives a writable
+`/var/lib/app`; `bun build --compile` produces a single binary if you'd rather not ship Bun.
+
+### systemd timer
+
+Replace a cron job with something that logs to the journal and catches up after downtime.
+
+```ini
+# /etc/systemd/system/backup.service
+[Unit]
+Description=Nightly backup
+
+[Service]
+Type=oneshot
+User=backup
+ExecStart=/usr/local/bin/backup.sh
+
+# /etc/systemd/system/backup.timer
+[Unit]
+Description=Run backup nightly
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable the **timer**, not the service: `sudo systemctl enable --now backup.timer`. Run once
+by hand with `sudo systemctl start backup.service`.
+
+### Find what's using a port
+
+When `EADDRINUSE` says port 3000 is taken.
+
+```sh
+sudo ss -ltnp 'sport = :3000'
+sudo lsof -nP -iTCP:3000 -sTCP:LISTEN
+systemctl status 12345        # which unit owns the PID
+ps -o pid,user,etime,cmd -p 12345
+sudo fuser -k -TERM 3000/tcp  # stop whatever holds it
+```
+
+### Find big files
+
+When `df` says a disk is full.
+
+```sh
+df -hT -x tmpfs -x devtmpfs
+sudo du -xh -d1 / 2>/dev/null | sort -h | tail -15
+sudo ncdu -x /
+sudo find / -xdev -type f -size +500M \
+  -exec ls -lh {} + 2>/dev/null | sort -k5 -h
+sudo journalctl --vacuum-size=500M
+sudo apt clean              # or: sudo dnf clean all
+docker system df            # then: docker system prune
+# space not freed after rm? a process still holds it
+sudo lsof -nP +L1
+```
+
+### Rotate logs with logrotate
+
+For apps that write their own files instead of stdout; logrotate runs daily from
+`logrotate.timer`.
+
+```text title="/etc/logrotate.d/app"
+/var/log/app/*.log {
+    daily
+    rotate 14
+    maxsize 100M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 app app
+    sharedscripts
+    postrotate
+        systemctl kill -s HUP app.service
+    endscript
+}
+```
+
+Dry-run with `sudo logrotate -d /etc/logrotate.d/app`; force with `-f`. If the app can't
+reopen its log on `SIGHUP`, use `copytruncate` instead of `create` + `postrotate`.
+
+### Add a swap file
+
+Small VPS with no swap, to survive memory spikes instead of OOM-killing.
+
+```sh
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+swapon --show && free -h
+# prefer RAM; swap only under pressure
+echo 'vm.swappiness=10' \
+  | sudo tee /etc/sysctl.d/99-swappiness.conf
+sudo sysctl --system
+```
+
+On Btrfs use `sudo btrfs filesystem mkswapfile --size 2G /swapfile`. Fedora already has
+compressed swap in RAM (`zramctl`).
+
+### New server bootstrap
+
+First five minutes on a fresh Ubuntu/Debian VPS, as root. Keep your current session open
+and test a new login before logging out.
+
+```sh title="bootstrap.sh"
+#!/usr/bin/env bash
+# usage (as root): ./bootstrap.sh zach ~/zach.pub
+set -euo pipefail
+U=${1:?user}; KEY=$(cat "${2:?pubkey file}")
+
+apt-get update && apt-get -y full-upgrade
+apt-get -y install ufw fail2ban unattended-upgrades \
+  curl git htop ncdu jq sysstat
+
+id "$U" &>/dev/null || useradd -m -s /bin/bash -G sudo "$U"
+passwd "$U"   # sudo will ask for it
+install -d -m 700 -o "$U" -g "$U" "/home/$U/.ssh"
+install -m 600 -o "$U" -g "$U" /dev/null \
+  "/home/$U/.ssh/authorized_keys"
+echo "$KEY" >> "/home/$U/.ssh/authorized_keys"
+
+cat > /etc/ssh/sshd_config.d/00-hardening.conf <<'EOF'
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+sshd -t && systemctl try-reload-or-restart ssh
+ufw allow OpenSSH && ufw --force enable
+dpkg-reconfigure -f noninteractive unattended-upgrades
+```
+
+## References
+
+- [Filesystem Hierarchy Standard 3.0](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html): what each directory is for
+- [systemd.service(5)](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html), [systemd.exec(5)](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html), [systemd.timer(5)](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html): every directive
+- [systemd.time(7)](https://www.freedesktop.org/software/systemd/man/latest/systemd.time.html): `OnCalendar` syntax
+- [journalctl(1)](https://www.freedesktop.org/software/systemd/man/latest/journalctl.html): filters and output modes
+- [Ubuntu Server documentation](https://documentation.ubuntu.com/server/): netplan, ufw, unattended upgrades
+- [Debian Administrator's Handbook](https://debian-handbook.info/browse/stable/): apt, networking, security
+- [RHEL 10 documentation](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10): dnf, firewalld, SELinux, LVM
+- [Fedora DNF5 docs](https://dnf5.readthedocs.io/): dnf5 commands and plugins
+- [nftables wiki](https://wiki.nftables.org/): rule syntax and examples
+- [ArchWiki](https://wiki.archlinux.org/): distro-neutral depth on systemd, LVM, fstab, sysctl
+- [Brendan Gregg: Linux performance](https://www.brendangregg.com/linuxperf.html): the triage tools and the USE method
+- [crontab.guru](https://crontab.guru/): check a cron expression

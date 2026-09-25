@@ -1,0 +1,507 @@
+---
+title: String methods
+date: 2026-09-25
+order: 4
+---
+
+Built-in `String` methods, regular expressions, Unicode pitfalls and `Intl` formatting, plus the
+string-shaped types TypeScript builds on top. Strings are immutable: every method returns a new string.
+Arrays get the same treatment in [Array methods](/typescript/language/array-methods/).
+
+## Literals & templates
+
+| Syntax                      | Notes                                                  |
+| :-------------------------- | :----------------------------------------------------- |
+| `'single'`, `"double"`      | identical; pick one and let the formatter enforce it   |
+| `` `a ${expr} b` ``         | template literal: interpolation, real newlines         |
+| ``tag`a ${x}` ``            | tagged template: `tag(strings, ...values)`             |
+| ``String.raw`C:\new` ``     | backslashes stay literal                               |
+| `"\n"`, `"\t"`, `"\\"`      | newline, tab, backslash                                |
+| `"\x41"`, `"\u00e9"`        | hex byte `A`, code unit `é`                            |
+| `"\u{1F600}"`               | any code point (braces form)                           |
+| `String(x)`                 | convert; `String(null)` is `"null"`                    |
+| `` `${x}` ``                | same as `String(x)` for most values                    |
+| `x.toString()`              | throws on `null` / `undefined`                         |
+
+```ts
+const name = "Ada";
+const msg = `Hi ${name},
+you have ${2 + 3} messages`; // keeps the newline
+
+function html(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+): string {
+  return strings.reduce((out, s, i) => {
+    const v = i < values.length
+      ? esc(String(values[i]))
+      : "";
+    return out + s + v;
+  }, "");
+}
+const esc = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+html`<p>${"<b>"}</p>`; // "<p>&#60;b&#62;</p>"
+String.raw`C:\new\t${1 + 1}`; // "C:\new\t2"
+```
+
+`strings` always has one more element than `values`. `strings.raw` holds the unprocessed text.
+
+## Characters & code points
+
+| Method                       | Returns               | Notes                                     |
+| :--------------------------- | :-------------------- | :---------------------------------------- |
+| `s[i]`                       | `string`              | one UTF-16 code unit; `undefined` if out of range |
+| `s.at(i)`                    | `string \| undefined` | negative index from the end               |
+| `s.charAt(i)`                | `string`              | `""` if out of range                      |
+| `s.charCodeAt(i)`            | `number`              | UTF-16 code unit, 0 to 65535; `NaN` out of range |
+| `s.codePointAt(i)`           | `number \| undefined` | full code point if `i` starts a pair      |
+| `String.fromCharCode(...u)`  | `string`              | from code units                           |
+| `String.fromCodePoint(...c)` | `string`              | from code points; `RangeError` if invalid |
+| `[...s]`, `Array.from(s)`    | `string[]`            | splits by code point, not code unit       |
+
+```ts
+const s = "a😀";
+s.length;             // 3: "a" + two surrogate halves
+s.charCodeAt(1);      // 55357 (a lone high surrogate)
+s.codePointAt(1);     // 128512
+[...s];               // ["a", "😀"]
+String.fromCodePoint(0x1f600); // "😀"
+
+for (const ch of s) {
+  // iterates code points: "a", "😀"
+}
+```
+
+## Searching
+
+| Method                        | Returns                         | Notes                               |
+| :---------------------------- | :------------------------------ | :---------------------------------- |
+| `includes(sub, from?)`        | `boolean`                       | throws if `sub` is a RegExp         |
+| `startsWith(sub, pos?)`       | `boolean`                       |                                     |
+| `endsWith(sub, endPos?)`      | `boolean`                       |                                     |
+| `indexOf(sub, from?)`         | `number`                        | `-1` if absent                      |
+| `lastIndexOf(sub, from?)`     | `number`                        | searches backwards                  |
+| `search(regex)`               | `number`                        | index of first match or `-1`        |
+| `match(regex)`                | `RegExpMatchArray \| null`      | without `g`: first match + groups   |
+| `match(/…/g)`                 | `string[] \| null`              | with `g`: all matched strings only  |
+| `matchAll(/…/g)`              | iterator of matches             | each has `index` and `groups`; needs `g` |
+| `regex.test(s)`               | `boolean`                       | beware `lastIndex` with `g`/`y`     |
+| `regex.exec(s)`               | `RegExpExecArray \| null`       | step through matches with `g`       |
+
+```ts
+const log = "GET /a 200, POST /b 404";
+log.includes("POST");              // true
+log.search(/\d{3}/);               // 7
+
+const m = log.match(/(?<verb>[A-Z]+) (?<path>\S+)/);
+m?.groups?.verb;                   // "GET"
+log.match(/\d{3}/g);               // ["200", "404"]
+
+for (const hit of log.matchAll(/(\w+) (\S+) (\d+)/g)) {
+  const [, verb, path, code] = hit;
+  console.info(hit.index, verb, path, code);
+}
+```
+
+<Callout type="warn" title="Stateful global regexes">
+  A regex with `g` or `y` remembers `lastIndex`, so `re.test("a")` can return `true` then `false`
+  on the same input. Don't reuse a global regex with `test`, or reset `re.lastIndex = 0`.
+</Callout>
+
+## Extracting & splitting
+
+| Call                  | `"abcdef"` result | Negative args        | `start` greater than `end` |
+| :-------------------- | :---------------- | :------------------- | :------------------------- |
+| `slice(1, 4)`         | `"bcd"`           | count from the end   | returns `""`               |
+| `substring(1, 4)`     | `"bcd"`           | treated as `0`       | swaps the arguments        |
+| `slice(-2)`           | `"ef"`            |                      |                            |
+| `substring(-2)`       | `"abcdef"`        |                      |                            |
+| `substr(1, 3)`        | `"bcd"`           | start only           | deprecated: use `slice`    |
+
+Prefer `slice`: it matches `Array.prototype.slice` and handles negatives.
+
+| Call                          | Result                        | Notes                            |
+| :---------------------------- | :---------------------------- | :------------------------------- |
+| `"a,b,,c".split(",")`         | `["a", "b", "", "c"]`         | empty strings kept               |
+| `"a,b,,c".split(",", 2)`      | `["a", "b"]`                  | limit caps the count             |
+| `"a1b2c".split(/\d/)`         | `["a", "b", "c"]`             | regex separator                  |
+| `"a1b2c".split(/(\d)/)`       | `["a", "1", "b", "2", "c"]`   | capture groups are kept          |
+| `"a  b".split(/\s+/)`         | `["a", "b"]`                  | split on runs of whitespace      |
+| `"".split(",")`               | `[""]`                        | not `[]`                         |
+| `"ab".split("")`              | `["a", "b"]`                  | code units: breaks emoji; use `[...s]` |
+| `lines.join("\n")`            | `string`                      | inverse of `split`               |
+
+```ts
+const csvLine = "id, name ,  email";
+const cols = csvLine.split(",").map((c) => c.trim());
+// ["id", "name", "email"]
+
+const [user, domain = ""] = "ada@example.com".split("@");
+const ext = "photo.final.jpg".split(".").at(-1); // "jpg"
+```
+
+## Transforming
+
+| Method                         | Example → result                                | Notes                         |
+| :----------------------------- | :---------------------------------------------- | :---------------------------- |
+| `toUpperCase()` / `toLowerCase()` | `"Straße".toUpperCase()` → `"STRASSE"`        | length can change             |
+| `toLocaleUpperCase(loc)`       | `"I".toLocaleLowerCase("tr")` → `"ı"`           | locale-aware rules            |
+| `trim()`                       | `"  a  "` → `"a"`                               | also line terminators         |
+| `trimStart()` / `trimEnd()`    | one side only                                   |                               |
+| `padStart(n, fill)`            | `"7".padStart(3, "0")` → `"007"`                | pads to total length `n`      |
+| `padEnd(n, fill)`              | `"ab".padEnd(4, ".")` → `"ab.."`                | column alignment              |
+| `repeat(n)`                    | `"ab".repeat(3)` → `"ababab"`                   | `RangeError` if negative      |
+| `replace(pattern, rep)`        | first match only for a string pattern           | all matches with a `g` regex  |
+| `replaceAll(pattern, rep)`     | every match                                     | regex must have `g` or it throws |
+| `normalize(form)`              | `"é".normalize("NFD").length` → `2`             | `NFC` (default), `NFD`, `NFKC`, `NFKD` |
+| `concat(...strs)`              | `"a".concat("b", "c")` → `"abc"`                | `+` or templates are usual    |
+
+### Replacement patterns
+
+These work in the replacement string of `replace` and `replaceAll`:
+
+| Pattern     | Inserts                                   |
+| :---------- | :---------------------------------------- |
+| `$$`        | a literal dollar sign                     |
+| `$&`        | the whole match                           |
+| `` $` ``    | text before the match                     |
+| `$'`        | text after the match                      |
+| `$1`…`$99`  | numbered capture group                    |
+| `$<name>`   | named capture group                       |
+
+```ts
+"2026-09-25".replace(/(\d+)-(\d+)-(\d+)/, "$3/$2/$1");
+// "25/09/2026"
+
+"2026-09".replace(
+  /(?<y>\d{4})-(?<m>\d{2})/,
+  "$<m>/$<y>",
+); // "09/2026"
+
+"price: $5".replace("$5", "$$10"); // "price: $10"
+
+// Function replacer: (match, ...groups, offset, input)
+const camel = "a-b_c d".replace(
+  /[-_ ](\w)/g,
+  (_, c: string) => c.toUpperCase(),
+); // "aBCD"
+
+"a.b.c".replaceAll(".", "/"); // "a/b/c" (string, no regex)
+```
+
+<Note kind="tip">A function replacer never interprets `$` patterns, so it is the safe choice when the replacement comes from user input.</Note>
+
+## Comparing & sorting
+
+| Expression                                        | Result  | Notes                          |
+| :------------------------------------------------ | :------ | :----------------------------- |
+| `a === b`                                         | boolean | exact code-unit equality       |
+| `a < b`                                           | boolean | code-unit order: `"Z" < "a"`   |
+| `"a".localeCompare("b")`                          | `-1`    | negative, `0`, or positive     |
+| `"x".localeCompare("X", undefined, { sensitivity: "base" })` | `0` | case-insensitive     |
+| `"ä".localeCompare("a", "en", { sensitivity: "base" })` | `0` | ignore accents and case     |
+| `"ä".localeCompare("a", "en", { sensitivity: "accent" })` | `1` | accents matter, case doesn't |
+| `a.normalize() === b.normalize()`                 | boolean | compare composed forms         |
+
+| `sensitivity` | Treats as different                 |
+| :------------ | :---------------------------------- |
+| `"base"`      | only different letters (`a` vs `b`) |
+| `"accent"`    | letters and accents                 |
+| `"case"`      | letters and case                    |
+| `"variant"`   | everything (default for sorting)    |
+
+```ts
+const collator = new Intl.Collator("en", {
+  numeric: true,       // "file2" before "file10"
+  sensitivity: "base", // ignore case and accents
+});
+const files = ["file10", "File2", "file1"];
+files.toSorted(collator.compare); // file1, File2, file10
+
+const eqI = (a: string, b: string) =>
+  collator.compare(a, b) === 0;
+eqI("Résumé", "resume"); // true
+```
+
+`localeCompare` creates a collator on each call; reuse one `Intl.Collator` for large sorts.
+
+## Regular expressions
+
+| Flag | Name          | Effect                                                     |
+| :--- | :------------ | :--------------------------------------------------------- |
+| `g`  | global        | find all matches; enables `lastIndex`                      |
+| `i`  | ignoreCase    | case-insensitive                                           |
+| `m`  | multiline     | `^` and `$` match at every line break                      |
+| `s`  | dotAll        | `.` also matches newlines                                  |
+| `u`  | unicode       | code-point matching, `\u{…}`, `\p{…}` property escapes     |
+| `v`  | unicodeSets   | `u` plus set operations `--`, `&&`, `\q{…}`; ES2024        |
+| `y`  | sticky        | match only at `lastIndex` (tokenizers)                     |
+| `d`  | hasIndices    | adds `indices` (start/end) for each group                  |
+
+| Syntax                  | Meaning                                    |
+| :---------------------- | :----------------------------------------- |
+| `(?<year>\d{4})`        | named group; read via `match.groups.year`  |
+| `\k<year>`              | backreference to a named group             |
+| `(?:…)`                 | non-capturing group                        |
+| `x(?=y)`                | lookahead: `x` followed by `y`             |
+| `x(?!y)`                | negative lookahead                         |
+| `(?<=y)x`               | lookbehind: `x` preceded by `y`            |
+| `(?<!y)x`               | negative lookbehind                        |
+| `\p{L}`, `\p{Lu}`, `\p{N}` | any letter, uppercase letter, number (`u`/`v`) |
+| `a*?`, `a+?`            | lazy quantifiers                           |
+
+```ts
+const date = /(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})/d;
+const r = date.exec("on 2026-09-25");
+r?.groups?.y;           // "2026"
+r?.indices?.groups?.m;  // [8, 10]
+
+/\d+(?=px)/.exec("12px 3em")?.[0];  // "12"
+/(?<=\$)\d+/.exec("cost $40")?.[0]; // "40"
+
+/[\p{L}--[a-z]]/v.test("B");        // true: letter, not a-z
+// true: whole family emoji
+/^\p{RGI_Emoji}$/v.test("👨‍👩‍👧");
+
+const escaped = RegExp.escape("1+1=2?"); // ES2025
+new RegExp(`^${escaped}$`).test("1+1=2?"); // true
+```
+
+<Note kind="info">`RegExp.escape` is Baseline 2025 (since May 2025). TypeScript declares it in `lib: es2025` from TS 6.0; on older setups escape by hand with `s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")`. ES2025 also adds inline modifiers like `(?i:abc)` and duplicate named groups in alternatives; check MDN support before using them.</Note>
+
+### Common patterns
+
+| Goal                       | Pattern                                   |
+| :------------------------- | :---------------------------------------- |
+| digits only                | `/^\d+$/`                                 |
+| integer with sign          | `/^[+-]?\d+$/`                            |
+| collapse whitespace        | `s.replace(/\s+/g, " ").trim()`           |
+| hex colour                 | `/^#(?:[0-9a-f]{3}){1,2}$/i`              |
+| ISO date `YYYY-MM-DD`      | `/^\d{4}-\d{2}-\d{2}$/`                   |
+| slug                       | `/^[a-z0-9]+(?:-[a-z0-9]+)*$/`            |
+| rough email check          | `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`            |
+| strip trailing slashes     | `s.replace(/\/+$/, "")`                   |
+| thousands separators       | `/\B(?=(\d{3})+(?!\d))/g` with `","`      |
+| `a` or `b` word            | `/\b(?:cat\|dog)\b/`                      |
+| all Unicode letters        | `/^\p{L}+$/u`                             |
+
+For real validation of emails, URLs and dates, prefer `URL.canParse`, `Intl`, or a schema library like Zod
+over regexes.
+
+## Unicode
+
+JavaScript strings are sequences of UTF-16 code units. `length`, indexing and `slice` all count code
+units, so anything outside the Basic Multilingual Plane (most emoji) takes two, a surrogate pair.
+
+| String      | `.length` | `[...s].length` (code points) | Graphemes |
+| :---------- | --------: | ----------------------------: | --------: |
+| `"a"`       | 1         | 1                             | 1         |
+| `"é"` (NFC) | 1         | 1                             | 1         |
+| `"é"` (NFD) | 2         | 2                             | 1         |
+| `"😀"`      | 2         | 1                             | 1         |
+| `"👨‍👩‍👧"`      | 8         | 5 (3 people + 2 joiners)      | 1         |
+
+```ts
+const seg = new Intl.Segmenter("en", {
+  granularity: "grapheme", // also "word", "sentence"
+});
+const graphemes = (s: string) =>
+  Array.from(seg.segment(s), (x) => x.segment);
+
+graphemes("👨‍👩‍👧!").length;         // 2
+const reverse = (s: string) =>
+  graphemes(s).toReversed().join(""); // emoji-safe
+
+const words = Array.from(
+  new Intl.Segmenter("en", { granularity: "word" })
+    .segment("Hi, you!"),
+).filter((x) => x.isWordLike).map((x) => x.segment);
+// ["Hi", "you"]
+```
+
+| Method              | Returns   | Notes                                              |
+| :------------------ | :-------- | :------------------------------------------------- |
+| `s.isWellFormed()`  | `boolean` | `false` if it contains a lone surrogate; ES2024    |
+| `s.toWellFormed()`  | `string`  | replaces lone surrogates with U+FFFD `�`           |
+| `s.normalize("NFC")` | `string` | compose before comparing or hashing                |
+
+`s.slice(0, n)` can cut a surrogate pair in half and leave a lone surrogate, which makes
+`encodeURIComponent` throw a `URIError`. Truncate with graphemes, or call `toWellFormed()` first.
+
+## Formatting with Intl
+
+| Constructor                | Formats                              | Example output                |
+| :------------------------- | :----------------------------------- | :---------------------------- |
+| `Intl.NumberFormat`        | numbers, currency, units, percent    | `1.2M`, `50 km/h`             |
+| `Intl.DateTimeFormat`      | dates and times in a time zone       | `Sep 25, 2026, 10:30 AM`      |
+| `Intl.RelativeTimeFormat`  | relative time                        | `yesterday`, `in 3 weeks`     |
+| `Intl.ListFormat`          | lists                                | `a, b, and c`                 |
+| `Intl.PluralRules`         | picks a plural category              | `"one"`, `"few"`, `"other"`   |
+| `Intl.Collator`            | comparison for sorting               | see above                     |
+| `Intl.Segmenter`           | graphemes, words, sentences          | see above                     |
+
+```ts
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+usd.format(1234.5); // "$1,234.50"
+
+new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+}).format(1234.5); // "1.234,50 €"
+
+const compact = new Intl.NumberFormat("en", {
+  notation: "compact",
+});
+compact.format(1_234_567); // "1.2M"
+
+new Intl.NumberFormat("en", {
+  style: "unit",
+  unit: "kilometer-per-hour",
+}).format(50); // "50 km/h"
+
+new Intl.NumberFormat("en", {
+  style: "percent",
+  maximumFractionDigits: 1,
+}).format(0.256); // "25.6%"
+```
+
+```ts
+const d = new Date(Date.UTC(2026, 8, 25, 14, 30));
+
+new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "America/New_York",
+}).format(d); // "Sep 25, 2026, 10:30 AM"
+
+new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "long",
+  timeZone: "UTC",
+}).format(d); // "25 September 2026"
+
+const rtf = new Intl.RelativeTimeFormat("en", {
+  numeric: "auto",
+});
+rtf.format(-1, "day"); // "yesterday"
+rtf.format(3, "week"); // "in 3 weeks"
+
+new Intl.ListFormat("en", { type: "disjunction" })
+  .format(["tea", "coffee"]); // "tea or coffee"
+```
+
+```ts
+const ordinal = new Intl.PluralRules("en", {
+  type: "ordinal",
+});
+const suffix: Record<Intl.LDMLPluralRule, string> = {
+  zero: "th", one: "st", two: "nd",
+  few: "rd", many: "th", other: "th",
+};
+const nth = (n: number) =>
+  `${n}${suffix[ordinal.select(n)]}`;
+nth(1);  // "1st"
+nth(22); // "22nd"
+nth(11); // "11th"
+```
+
+<Note kind="tip">Constructing a formatter is the expensive part. Create it once at module level and reuse `format`. Omit the locale to use the runtime's default.</Note>
+
+## String types in TS
+
+| Type                                     | Accepts                                  |
+| :--------------------------------------- | :--------------------------------------- |
+| `string`                                 | any string                               |
+| `"GET"`                                  | exactly `"GET"` (literal type)           |
+| `"GET" \| "POST"`                        | a union of literals                      |
+| `` `${number}px` ``                      | `"12px"`, `"1.5px"`, not `"px"`          |
+| `` `on${Capitalize<E>}` ``               | derived names such as `"onClick"`        |
+| `Uppercase<S>`, `Lowercase<S>`           | intrinsic case changes on literal types  |
+| `Capitalize<S>`, `Uncapitalize<S>`       | first character only                     |
+| `"sm" \| "lg" \| (string & {})`          | any string, but keeps autocomplete for the literals |
+| `string & { __brand: "Email" }`          | branded: a string you must validate first |
+
+```ts
+type Method = "GET" | "POST";
+let m: Method = "GET";
+// @ts-expect-error: "PUT" is not a Method
+m = "PUT";
+
+const verb = "GET";  // type "GET" (const infers literal)
+let v2 = "GET";      // type string (let widens)
+
+type Px = `${number}px`;
+const w: Px = "12px";
+// @ts-expect-error: "12em" does not match `${number}px`
+const bad: Px = "12em";
+
+type UiEvent = "click" | "focus";
+type Handler = `on${Capitalize<UiEvent>}`;
+// "onClick" | "onFocus"
+
+type Axis = "x" | "y";
+type Prop = `${Axis}${"Min" | "Max"}`;
+// "xMin" | "xMax" | "yMin" | "yMax"
+```
+
+Template literal types can also parse strings with `infer`, and remap object keys:
+
+```ts
+type Param<S extends string> =
+  S extends `${string}:${infer P}/${infer Rest}`
+    ? P | Param<`/${Rest}`>
+    : S extends `${string}:${infer P}`
+      ? P
+      : never;
+
+type P = Param<"/users/:id/posts/:postId">;
+// "id" | "postId"
+
+type Getters<T> = {
+  [K in keyof T & string as `get${Capitalize<K>}`]:
+    () => T[K];
+};
+type G = Getters<{ name: string; age: number }>;
+// { getName: () => string; getAge: () => number }
+```
+
+### Branded strings
+
+A brand makes a validated string incompatible with a plain `string` at compile time; at runtime it is still a string.
+
+```ts
+type Email = string & { readonly __brand: "Email" };
+
+function toEmail(s: string): Email {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
+    throw new Error(`Invalid email: ${s}`);
+  }
+  return s as Email;
+}
+
+function send(to: Email) {
+  return to.toLowerCase(); // all string methods still work
+}
+
+send(toEmail("ada@example.com"));
+// @ts-expect-error: plain string is not an Email
+send("ada@example.com");
+```
+
+Zod can produce the same shape with `z.email().brand<"Email">()`. More type tools in
+[Fundamentals](/typescript/language/fundamentals/) and [Objects](/typescript/language/objects/).
+
+## References
+
+- [MDN: String](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String)
+- [MDN: Regular expressions guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions)
+- [MDN: RegExp.escape](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/escape)
+- [MDN: Intl](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)
+- [MDN: Intl.Segmenter](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter)
+- [TypeScript handbook: Template literal types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)
+- [TypeScript 6.0 release notes: es2025 lib](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
+- [Zod: brand](https://zod.dev/api#branded-types)

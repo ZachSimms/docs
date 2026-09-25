@@ -1,0 +1,848 @@
+---
+title: Async & Promises
+date: 2026-09-25
+order: 6
+---
+
+How JavaScript schedules asynchronous work and how to create, combine, cancel, iterate and
+type promises in TypeScript. Network specifics live in [Fetch API](/typescript/web-apis/fetch-api/),
+streams in [Streaming](/typescript/backend/streaming/).
+
+## Event loop
+
+One thread runs one task at a time from the call stack. When the stack empties, the loop
+drains **all** microtasks, lets the browser render if needed, then takes the next task.
+
+| Queue | Filled by | Drained |
+| :---- | :-------- | :------ |
+| Call stack | synchronous code | runs to completion, never interrupted |
+| Microtasks | promise reactions (`then`/`catch`/`finally`, code after `await`), `queueMicrotask`, `MutationObserver` | entirely, after each task, including microtasks queued meanwhile |
+| Tasks (macrotasks) | `setTimeout`, `setInterval`, I/O, UI events, `MessageChannel`, `setImmediate` (Node) | one per loop turn |
+| Render steps | `requestAnimationFrame`, style, layout, paint | browser, between tasks, ~per frame |
+
+```ts title="order.ts"
+console.log("1 sync");
+
+setTimeout(() => console.log("6 task"), 0);
+
+Promise.resolve()
+  .then(() => console.log("3 micro"))
+  .then(() => console.log("5 micro (chained)"));
+
+queueMicrotask(() => console.log("4 micro"));
+
+(async () => {
+  console.log("2 sync (async fn body)");
+  await null;
+  console.log("4b micro (after await)");
+})();
+
+console.log("2b sync");
+```
+
+```text
+1 sync
+2 sync (async fn body)
+2b sync
+3 micro
+4 micro
+4b micro (after await)
+5 micro (chained)
+6 task
+```
+
+An `async` function runs synchronously up to its first `await`. Microtasks run in FIFO
+order; a chained `then` is queued only when its predecessor settles, so it lands behind
+everything already queued.
+
+<Note kind="warning">An endless chain of microtasks starves the loop: no timers, no input,
+no rendering. Break long CPU work into tasks (`setTimeout`, `scheduler.yield()` where
+supported) or move it to a worker.</Note>
+
+In Node, `process.nextTick` callbacks run before promise microtasks in CommonJS; at ES
+module top level the ordering differs, so prefer `queueMicrotask` for portable code.
+
+## Creating promises
+
+A promise is **pending** until it settles once, to **fulfilled** (value) or **rejected**
+(reason). Settling again is a no-op.
+
+```ts
+const p = new Promise<number>((resolve, reject) => {
+  const n = Math.random();
+  if (n > 0.5) resolve(n);
+  else reject(new Error("too small"));
+  // a throw here also rejects
+});
+
+// Promise<number>, fulfilled
+Promise.resolve(42);
+Promise.reject(new Error("x"));  // Promise<never>, rejected
+Promise.resolve(p) === p;        // true: same native promise
+
+// ES2025: run sync-or-async fn, capture sync throws too
+const safe = Promise.try(() => JSON.parse("{bad"));
+safe.catch(() => {});
+```
+
+### `Promise.withResolvers` (ES2024)
+
+Resolve from outside the executor, without the `let resolve!` dance.
+
+```ts
+function nextMessage(ws: WebSocket): Promise<string> {
+  const { promise, resolve, reject } =
+    Promise.withResolvers<string>();
+  ws.addEventListener(
+    "message",
+    (e) => resolve(String(e.data)),
+    { once: true },
+  );
+  ws.addEventListener(
+    "error",
+    () => reject(new Error("ws")),
+    { once: true },
+  );
+  return promise;
+}
+```
+
+### Promisifying callbacks
+
+```ts
+import { readFile } from "node:fs";
+import { promisify } from "node:util";
+
+type Cb<T> = (err: Error | null, value?: T) => void;
+
+function toPromise<T>(fn: (cb: Cb<T>) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    fn((err, value) =>
+      err ? reject(err) : resolve(value as T),
+    );
+  });
+}
+
+const text = await toPromise<string>((cb) =>
+  readFile("a.txt", "utf8", cb),
+);
+
+const readFileP = promisify(readFile);   // Node helper
+const sleep = (ms: number) =>
+  new Promise<void>((r) => setTimeout(r, ms));
+```
+
+Most Node APIs already ship promise versions: `node:fs/promises`,
+`node:timers/promises`, `node:stream/promises`.
+
+## Consuming
+
+`then`, `catch` and `finally` each return a **new** promise, whose fate depends on what
+the handler does.
+
+| Handler | Handler does | Returned promise |
+| :------ | :----------- | :--------------- |
+| `then(onFul)` | returns a value `v` | fulfils with `v` |
+| `then(onFul)` | returns a promise/thenable | adopts its state |
+| `then(onFul)` | throws `e` | rejects with `e` |
+| `then(onFul)` on a rejection | (not called) | passes the rejection through |
+| `catch(onRej)` | returns `v` | fulfils with `v` (recovered) |
+| `catch(onRej)` | rethrows | rejects again |
+| `catch` on a fulfilment | (not called) | passes the value through |
+| `finally(fn)` | returns anything | ignored; original outcome passes through |
+| `finally(fn)` | throws / returns a rejected promise | rejects with the new reason |
+
+```ts
+declare function getUser(
+  id: string,
+): Promise<{ name: string }>;
+
+getUser("u1")
+  .then((u) => u.name)                 // Promise<string>
+  .then((name) => name.toUpperCase())
+  .catch((err: unknown) => "anonymous")  // recovers
+  .finally(() => console.log("done"))
+  .then((label) => console.log(label));
+```
+
+`then(onFul, onRej)` differs from `.then(onFul).catch(onRej)`: the two-argument form does
+not catch errors thrown inside `onFul`.
+
+## async / await
+
+| Construct | Behaviour |
+| :-------- | :-------- |
+| `async function f()` | always returns a promise; `return v` fulfils, `throw` rejects |
+| `return v` where `v` is a promise | adopted (no double wrap): `Promise<T>`, never `Promise<Promise<T>>` |
+| `await x` | pauses the function; non-promises are wrapped with `Promise.resolve` |
+| `await` rejected promise | throws at that line |
+| Top-level `await` | ES modules only; TS needs `module` `es2022`+/`nodenext`/`preserve` and `target` `es2017`+ |
+| `await` in `for...of` | runs iterations one after another |
+| Async arrow / method | `async () => {}`, `async m() {}` |
+| Async constructor | not allowed: use a `static async create()` factory |
+
+```ts
+type User = { id: string; name: string };
+declare function fetchUser(id: string): Promise<User>;
+
+async function names(ids: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of ids) {
+    const u = await fetchUser(id);   // sequential on purpose
+    out.push(u.name);
+  }
+  return out;
+}
+
+class Db {
+  private constructor(readonly url: string) {}
+  static async connect(url: string): Promise<Db> {
+    await Promise.resolve();         // e.g. handshake
+    return new Db(url);
+  }
+}
+
+const db = await Db.connect("postgres://local"); // top level
+```
+
+## Error handling
+
+```ts
+class NotFoundError extends Error {
+  override name = "NotFoundError";
+}
+
+async function load(id: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/items/${id}`);
+    if (res.status === 404) throw new NotFoundError(id);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } catch (err) {                    // err: unknown (strict)
+    if (err instanceof NotFoundError) return "";
+    throw new Error(`load(${id}) failed`, { cause: err });
+  } finally {
+    console.log("load finished");    // runs on every path
+  }
+}
+```
+
+| Tool | Notes |
+| :--- | :---- |
+| `catch (err)` | typed `unknown` under `strict` (`useUnknownInCatchVariables`); narrow before use |
+| `err instanceof Error` | common narrowing; fails across realms |
+| `new Error(msg, { cause })` | ES2022; keeps the original error for logs |
+| `.catch()` at the edge | every chain needs a terminal handler somewhere |
+| `finally` | cleanup; don't `return` from it (overrides the outcome) |
+
+### Unhandled rejections
+
+A rejection with no handler by the time microtasks drain is "unhandled".
+
+| Runtime | Signal | Default |
+| :------ | :----- | :------ |
+| Browser | `unhandledrejection` event on `window` | logged to console |
+| Node 15+ | `process.on("unhandledRejection")` | crashes the process (`--unhandled-rejections=throw`) |
+| Bun / Deno | `unhandledrejection` event on `globalThis` | error, exits |
+
+```ts
+// browser: e is PromiseRejectionEvent
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("unhandled", e.reason);
+  e.preventDefault();                // suppress default log
+});
+
+// Node: log, then exit deliberately
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandled", reason);
+  process.exitCode = 1;
+});
+```
+
+## Combinators
+
+| Method | Fulfils when | Rejects when | Result type |
+| :----- | :----------- | :----------- | :---------- |
+| `Promise.all(ps)` | all fulfil | first rejection (fail fast) | tuple/array of values |
+| `Promise.allSettled(ps)` | all settle | never | `PromiseSettledResult<T>[]` |
+| `Promise.race(ps)` | first to settle fulfils | first to settle rejects | value of the winner |
+| `Promise.any(ps)` | first fulfilment | all reject: `AggregateError` | value of the first fulfilled |
+
+None cancels the losers: the other operations keep running. Pair with an `AbortSignal`.
+
+```ts
+declare function getA(): Promise<number>;
+declare function getB(): Promise<string>;
+
+const [a, b] = await Promise.all([getA(), getB()]);
+//     ^ number, string: tuples are preserved
+
+const results = await Promise.allSettled([getA(), getA()]);
+const ok = results
+  .filter((r) => r.status === "fulfilled")
+  .map((r) => r.value);   // number[] (TS 5.5+ inference)
+
+const fastest = await Promise.any([
+  fetch("https://a.example/data"),
+  fetch("https://b.example/data"),
+]);
+```
+
+## Concurrency patterns
+
+### Sequential vs parallel
+
+```ts
+declare function job(n: number): Promise<number>;
+
+// sequential: total = sum of durations
+for (const n of [1, 2, 3]) await job(n);
+
+// parallel: total = slowest duration
+const all = await Promise.all([1, 2, 3].map(job));
+
+// start early, await late
+const pa = job(1);
+const pb = job(2);
+const sum = (await pa) + (await pb);
+```
+
+<Callout type="warn" title="Start early, await late">
+  If `pa` rejects while you are still awaiting `pb`, the rejection is unhandled until you
+  reach it. `Promise.all` avoids that edge case.
+</Callout>
+
+### Limited-concurrency pool
+
+```ts title="pool.ts"
+async function mapPool<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++;              // safe: single thread
+      results[i] = await fn(items[i] as T, i);
+    }
+  }
+
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, worker));
+  return results;
+}
+
+const pages = await mapPool(
+  ["/a", "/b", "/c", "/d"],
+  2,
+  (url) => fetch(url).then((r) => r.text()),
+);
+```
+
+### Retry with exponential backoff + jitter
+
+```ts title="retry.ts"
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    signal?.throwIfAborted();
+    const id = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(id);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
+}
+
+type RetryOpts = {
+  retries?: number;
+  baseMs?: number;
+  capMs?: number;
+  signal?: AbortSignal;
+  shouldRetry?: (err: unknown) => boolean;
+};
+
+async function retry<T>(
+  fn: (attempt: number) => Promise<T>,
+  opts: RetryOpts = {},
+): Promise<T> {
+  const { retries = 3, baseMs = 200, capMs = 5_000 } = opts;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      const give_up =
+        attempt >= retries ||
+        opts.signal?.aborted ||
+        opts.shouldRetry?.(err) === false;
+      if (give_up) throw err;
+      const ceiling = Math.min(capMs, baseMs * 2 ** attempt);
+      await sleep(Math.random() * ceiling, opts.signal);
+    }
+  }
+}
+```
+
+"Full jitter" (random delay between 0 and the exponential ceiling) spreads retries from
+many clients so they don't stampede the server in sync. Only retry idempotent work.
+
+### Timeout helper
+
+```ts
+function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+): Promise<T> {
+  let id: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    id = setTimeout(
+      () => reject(new Error(`Timed out after ${ms} ms`)),
+      ms,
+    );
+  });
+  return Promise.race([p, timeout]).finally(() =>
+    clearTimeout(id),
+  );
+}
+```
+
+This only stops waiting; the underlying work continues. When the API accepts a signal,
+use `AbortSignal.timeout(ms)` instead.
+
+## Cancellation & timeouts
+
+| API | Does | Baseline |
+| :-- | :--- | :------- |
+| `new AbortController()` | `.signal` + `.abort(reason?)` | widely available |
+| `signal.aborted`, `signal.reason` | current state | widely available |
+| `signal.throwIfAborted()` | throws `reason` if aborted | 2022 |
+| `AbortSignal.abort(reason?)` | already-aborted signal | 2022 |
+| `AbortSignal.timeout(ms)` | aborts with a `TimeoutError` `DOMException` | 2022 |
+| `AbortSignal.any([s1, s2])` | aborts when any input aborts | 2024 |
+
+```ts
+async function search(q: string, userSignal?: AbortSignal) {
+  const signal = AbortSignal.any(
+    [AbortSignal.timeout(5_000), userSignal].filter(
+      (s): s is AbortSignal => s !== undefined,
+    ),
+  );
+  try {
+    const res = await fetch(`/search?q=${q}`, { signal });
+    return (await res.json()) as unknown;
+  } catch (err) {
+    if (err instanceof DOMException) {
+      if (err.name === "TimeoutError") return "timed out";
+      if (err.name === "AbortError") return "cancelled";
+    }
+    throw err;
+  }
+}
+
+const ctrl = new AbortController();
+const pending = search("ts", ctrl.signal);
+ctrl.abort();                        // user navigated away
+```
+
+### Passing signals through
+
+Accept `{ signal?: AbortSignal }` in every async helper, forward it to every inner call,
+and check it between steps.
+
+```ts
+async function syncAll(
+  ids: string[],
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<void> {
+  for (const id of ids) {
+    signal?.throwIfAborted();        // stop between steps
+    await fetch(`/sync/${id}`, { method: "POST", signal });
+  }
+}
+```
+
+Node APIs (`fs/promises`, `timers/promises`, `events.once`, `child_process`) accept
+`signal` too. Aborted fetches reject with `signal.reason`; the default reason is an
+`AbortError` `DOMException`.
+
+## Async iteration
+
+```ts
+type Page = { items: string[]; next: string | null };
+
+async function* paginate(start: string) {
+  let url: string | null = start;
+  while (url) {
+    const res: Response = await fetch(url);
+    const page = (await res.json()) as Page;
+    yield* page.items;
+    url = page.next;
+  }
+}
+
+for await (const item of paginate("/api/items")) {
+  // calls return(): cleanup
+  if (item === "stop") break;
+}
+
+// Baseline 2024: collect an async iterable
+const everything = await Array.fromAsync(
+  paginate("/api/items"),
+);
+```
+
+| Construct | Notes |
+| :-------- | :---- |
+| `for await (const x of it)` | works on async iterables and sync iterables of promises |
+| `async function*` | returns `AsyncGenerator<Y, R, N>` |
+| `yield*` in async gen | delegates to sync or async iterables |
+| `Symbol.asyncIterator` | implement to make a class async-iterable |
+| `Array.fromAsync(it, mapFn?)` | awaits each item sequentially |
+| Node streams | `Readable` is async-iterable: `for await (const chunk of stream)` |
+| `events.on(emitter, "x")` | Node: event stream as an async iterator |
+
+## Typing async code
+
+| Type | Means |
+| :--- | :---- |
+| `Promise<T>` | eventual `T`; the return type of every `async` fn |
+| `Awaited<T>` | recursively unwraps promises/thenables: `Awaited<Promise<Promise<number>>>` is `number` |
+| `ReturnType<typeof f>` | `Promise<T>` for an async `f`; wrap in `Awaited` for `T` |
+| `PromiseLike<T>` | any thenable; accept it in library inputs |
+| `PromiseSettledResult<T>` | `PromiseFulfilledResult<T> \| PromiseRejectedResult` |
+| `AsyncIterable<T>` / `AsyncGenerator<T>` | async iteration types |
+| `() => Promise<void>` | an async callback you intend to await |
+
+```ts
+async function getConfig() {
+  return { port: 3000, debug: false };
+}
+type Config = Awaited<ReturnType<typeof getConfig>>;
+//   ^ { port: number; debug: boolean }
+
+type Task<T> = (signal: AbortSignal) => Promise<T>;
+
+async function runAll<T>(tasks: Task<T>[]): Promise<T[]> {
+  const ctrl = new AbortController();
+  return Promise.all(tasks.map((t) => t(ctrl.signal)));
+}
+
+function summarise<T>(rs: PromiseSettledResult<T>[]) {
+  return rs.map((r) =>
+    r.status === "fulfilled" ? r.value : String(r.reason),
+  );
+}
+
+// a void-returning callback type accepts async functions,
+// and nobody awaits them: a floating promise
+const onSave: () => void = async () => {
+  await Promise.resolve();
+};
+```
+
+## Pitfalls
+
+### `forEach` with async callbacks
+
+```ts
+declare function save(id: string): Promise<void>;
+const ids = ["a", "b"];
+
+ids.forEach(async (id) => {
+  await save(id);                    // not awaited by anyone
+});
+// ...code here runs before any save finishes
+
+for (const id of ids) await save(id);    // sequential
+await Promise.all(ids.map((id) => save(id))); // parallel
+```
+
+`map`, `filter`, `reduce` and `some` don't await either: `filter(async ...)` keeps every
+item, because a promise is truthy.
+
+### Floating promises
+
+A promise nobody awaits or `.catch`es hides failures and races with later code. Enable
+typescript-eslint's `no-floating-promises` (and `no-misused-promises` for async callbacks
+in `void` positions). Mark deliberate fire-and-forget with `void`:
+
+```ts
+declare function track(event: string): Promise<void>;
+void track("page_view").catch(() => {});
+```
+
+### Sequential await waterfalls
+
+```ts
+declare function getUser(): Promise<{ id: string }>;
+declare function getFeed(): Promise<string[]>;
+
+// slow: getFeed waits for getUser for no reason
+const u1 = await getUser();
+const f1 = await getFeed();
+
+// fast: independent work in parallel
+const [u2, f2] = await Promise.all([getUser(), getFeed()]);
+```
+
+### `return await` inside `try`
+
+```ts
+declare function risky(): Promise<string>;
+
+async function bad(): Promise<string> {
+  try {
+    return risky();                  // rejection skips catch
+  } catch {
+    return "fallback";
+  }
+}
+
+async function good(): Promise<string> {
+  try {
+    return await risky();            // rejection caught here
+  } catch {
+    return "fallback";
+  }
+}
+```
+
+Outside `try`, `return await` is redundant but harmless, and it keeps the function in
+async stack traces.
+
+| Other traps | Fix |
+| :---------- | :-- |
+| `new Promise(async (res) => ...)` | executor errors after `await` are lost; call an async fn directly |
+| Wrapping a promise in `new Promise` | the "explicit construction" anti-pattern: just return it |
+| `await` inside a hot loop of independent items | batch with `Promise.all` or a pool |
+| `Promise.all` over thousands of requests | unbounded concurrency: use a pool |
+| Forgetting `.finally` / `clearTimeout` | leaked timers keep Node processes alive |
+
+## Recipes
+
+Retry with backoff, a limited-concurrency pool and a timeout helper are in [Concurrency patterns](#concurrency-patterns).
+
+### Deduplicate in-flight calls
+
+When several callers ask for the same resource at once and should share one request instead of firing one each.
+
+```ts
+function dedupe<A extends unknown[], R>(
+  key: (...args: A) => string,
+  fn: (...args: A) => Promise<R>,
+): (...args: A) => Promise<R> {
+  const inFlight = new Map<string, Promise<R>>();
+  return (...args) => {
+    const k = key(...args);
+    const hit = inFlight.get(k);
+    if (hit) return hit;
+    const p = fn(...args).finally(() => inFlight.delete(k));
+    inFlight.set(k, p);
+    return p;
+  };
+}
+
+const getUser = dedupe(
+  (id: string) => id,
+  async (id: string): Promise<unknown> =>
+    (await fetch(`/api/users/${id}`)).json(),
+);
+// two components mount at once: one request
+await Promise.all([getUser("u1"), getUser("u1")]);
+```
+
+### Initialise once
+
+When an expensive async setup (DB pool, WASM module, remote config) should run on first use only, and be retried if it failed.
+
+```ts
+function once<T>(init: () => Promise<T>): () => Promise<T> {
+  let cached: Promise<T> | undefined;
+  return () =>
+    (cached ??= init().catch((err: unknown) => {
+      cached = undefined; // let the next caller retry
+      throw err;
+    }));
+}
+
+declare function connect(url: string): Promise<{ ok: true }>;
+const getDb = once(() => connect("postgres://db/app"));
+
+// every caller shares the same connection promise
+const [a, b] = await Promise.all([getDb(), getDb()]);
+a === b; // true
+```
+
+### Keep only the latest call
+
+When a newer call makes older ones pointless (search-as-you-type, route changes): abort the stale request so its result can't overwrite the newer one.
+
+```ts
+function latestOnly<A extends unknown[], R>(
+  fn: (signal: AbortSignal, ...args: A) => Promise<R>,
+): (...args: A) => Promise<R> {
+  let current: AbortController | undefined;
+  return (...args) => {
+    current?.abort(); // the previous call rejects AbortError
+    current = new AbortController();
+    return fn(current.signal, ...args);
+  };
+}
+
+const search = latestOnly(async (signal, q: string) => {
+  const url = `/api/search?q=${encodeURIComponent(q)}`;
+  const res = await fetch(url, { signal });
+  return res.json() as Promise<string[]>;
+});
+
+declare function render(hits: string[]): void;
+const isAbort = (e: unknown) =>
+  e instanceof DOMException && e.name === "AbortError";
+search("typ").then(render, (e) => {
+  if (!isAbort(e)) throw e;
+});
+search("typescript").then(render); // only this one renders
+```
+
+### Poll until ready
+
+When an API hands back a job id and you check it until it finishes, with a hard deadline.
+
+```ts
+async function pollUntil<T>(
+  fn: () => Promise<T>,
+  done: (value: T) => boolean,
+  { intervalMs = 1_000, signal }: {
+    intervalMs?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<T> {
+  for (;;) {
+    signal?.throwIfAborted();
+    const value = await fn();
+    if (done(value)) return value;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+type Job = { status: "queued" | "done" | "failed" };
+const job = await pollUntil(
+  async (): Promise<Job> => (await fetch("/jobs/42")).json(),
+  (j) => j.status === "done" || j.status === "failed",
+  { intervalMs: 2_000, signal: AbortSignal.timeout(60_000) },
+);
+```
+
+### Serialise with a mutex
+
+When async read-modify-write steps on shared state must not interleave (a file, a balance, a token refresh).
+
+```ts
+class Mutex {
+  #tail: Promise<void> = Promise.resolve();
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.#tail;
+    const next = Promise.withResolvers<void>();
+    this.#tail = next.promise; // the next caller waits on it
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      next.resolve();
+    }
+  }
+}
+
+declare function readBalance(): Promise<number>;
+declare function writeBalance(n: number): Promise<void>;
+const lock = new Mutex();
+// read-modify-write without lost updates
+const deposit = (amount: number) =>
+  lock.run(async () => {
+    await writeBalance((await readBalance()) + amount);
+  });
+await Promise.all([deposit(10), deposit(20)]);
+```
+
+### Fail fast and cancel the rest
+
+When tasks are all-or-nothing: the first failure aborts the siblings, which `Promise.all` alone never does.
+
+```ts
+type Task<T> = (signal: AbortSignal) => Promise<T>;
+
+async function allOrCancel<T>(
+  tasks: readonly Task<T>[],
+  outer?: AbortSignal,
+): Promise<T[]> {
+  const ctrl = new AbortController();
+  const signal = outer
+    ? AbortSignal.any([outer, ctrl.signal])
+    : ctrl.signal;
+  try {
+    return await Promise.all(tasks.map((t) => t(signal)));
+  } catch (err) {
+    ctrl.abort(err); // stop the siblings still running
+    throw err;
+  }
+}
+
+const pages = await allOrCancel(
+  ["/a", "/b", "/c"].map((url) => async (signal) => {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`${url}: ${res.status}`);
+    return res.text();
+  }),
+);
+```
+
+### Summarise `allSettled`
+
+When every job should run regardless of failures and you need a report of what worked (batch emails, webhooks, migrations).
+
+```ts
+type Report<T> = {
+  ok: T[];
+  failed: { index: number; reason: unknown }[];
+};
+async function settle<T>(
+  work: readonly Promise<T>[],
+): Promise<Report<T>> {
+  const results = await Promise.allSettled(work);
+  return {
+    ok: results.flatMap((r) =>
+      r.status === "fulfilled" ? [r.value] : [],
+    ),
+    failed: results.flatMap((r, index) =>
+      r.status === "rejected"
+        ? [{ index, reason: r.reason as unknown }]
+        : [],
+    ),
+  };
+}
+declare function sendEmail(to: string): Promise<string>;
+
+const to = ["a@x.dev", "b@x.dev", "c@x.dev"];
+const { ok, failed } = await settle(to.map(sendEmail));
+console.info(`${ok.length} sent, ${failed.length} failed`);
+for (const f of failed) console.error(to[f.index], f.reason);
+```
+
+## References
+
+- [MDN: Using promises](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises)
+- [MDN: Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
+- [MDN: async function](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function)
+- [MDN: Microtask guide](https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide)
+- [MDN: AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal)
+- [MDN: Array.fromAsync](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync)
+- [TS Handbook: `Awaited`](https://www.typescriptlang.org/docs/handbook/utility-types.html#awaitedtype)
+- [Node.js: The event loop](https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick)
+- [typescript-eslint: no-floating-promises](https://typescript-eslint.io/rules/no-floating-promises/)
+- [AWS: Exponential backoff and jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)

@@ -1,0 +1,652 @@
+---
+title: Array methods
+date: 2026-09-25
+order: 3
+---
+
+Every built-in `Array` method grouped by job, with what it returns, whether it mutates, and
+how TypeScript types it. Strings get the same treatment in [String methods](/typescript/language/string-methods/).
+
+## Creating & converting
+
+| Expression                          | Result                   | Notes                                   |
+| :---------------------------------- | :----------------------- | :-------------------------------------- |
+| `[1, 2, 3]`                         | `[1, 2, 3]`              | literal; the usual way                  |
+| `Array(3)`                          | `[ , , ]`                | 3 empty slots (holes), not `undefined`s |
+| `Array.of(3)`                       | `[3]`                    | no single-number trap                   |
+| `Array.from("abc")`                 | `["a", "b", "c"]`        | any iterable or array-like              |
+| `Array.from({ length: 3 }, (_, i) => i)` | `[0, 1, 2]`         | range with a map fn                     |
+| `Array.from(new Set([1, 1, 2]))`    | `[1, 2]`                 | de-duplicate                            |
+| `[...new Set(xs)]`                  | unique values            | spread any iterable                     |
+| `[...map.entries()]`                | `[K, V][]`               | `Map` to array of pairs                 |
+| `new Array(3).fill(0)`              | `[0, 0, 0]`              | `fill(value, start?, end?)` mutates     |
+| `Array.fromAsync(asyncIterable)`    | `Promise<T[]>`           | awaits each item; ES2024                |
+| `Object.entries(obj)`               | `[string, V][]`          | also `keys`, `values`                   |
+| `Array.isArray(x)`                  | `boolean`                | narrows `x` to `any[]`                  |
+
+```ts
+const range = (n: number) =>
+  Array.from({ length: n }, (_, i) => i);
+range(4); // [0, 1, 2, 3]
+
+const grid = Array.from({ length: 2 }, () =>
+  Array<number>(3).fill(0),
+); // [[0,0,0],[0,0,0]], rows are separate arrays
+```
+
+<Callout type="warn" title="fill shares one reference">
+  `Array(3).fill([])` puts the same array in every slot; pushing to one row pushes to all.
+  Use `Array.from` with a factory function instead.
+</Callout>
+
+```ts
+async function* pages() {
+  yield "a";
+  yield "b";
+}
+const all = await Array.fromAsync(pages()); // string[]
+const upper = await Array.fromAsync(
+  pages(),
+  (s) => s.toUpperCase(),
+); // ["A", "B"]
+```
+
+`Array.fromAsync` is Baseline 2024 and awaits items one by one; use `Promise.all` to run
+promises concurrently (see [Async & promises](/typescript/language/async-promises/)).
+
+## Accessing
+
+| Syntax                     | Returns            | Notes                                    |
+| :------------------------- | :----------------- | :--------------------------------------- |
+| `xs[0]`                    | `T`                | out of range gives `undefined` at runtime |
+| `xs.at(-1)`                | `T \| undefined`   | negative index counts from the end       |
+| `xs[xs.length - 1]`        | `T`                | old way to get the last item             |
+| `const [a, b] = xs`        | first two          | array destructuring                      |
+| `const [, second] = xs`    | skip with a comma  |                                          |
+| `const [head, ...rest] = xs` | `T`, `T[]`       | rest element must be last                |
+| `const [x = 0] = xs`       | default            | used only when the slot is `undefined`   |
+| `xs.slice(start, end)`     | new `T[]`          | `end` exclusive; negatives allowed       |
+| `xs.slice()`               | shallow copy       | same as `[...xs]`                        |
+| `xs.length`                | `number`           | writable: `xs.length = 0` empties it     |
+
+```ts
+const xs = [10, 20, 30, 40];
+xs.at(-1);        // 40, typed number | undefined
+xs.slice(1, 3);   // [20, 30]
+xs.slice(-2);     // [30, 40]
+let [a, b] = xs;
+[a, b] = [b, a];  // swap without a temp
+```
+
+## Adding & removing
+
+| Method                          | Returns             | Mutates | Copying alternative              |
+| :------------------------------ | :------------------ | :-----: | :------------------------------- |
+| `push(...items)`                | new length          | yes     | `[...xs, item]`                  |
+| `pop()`                         | removed `T \| undefined` | yes | `xs.slice(0, -1)`              |
+| `unshift(...items)`             | new length          | yes     | `[item, ...xs]`                  |
+| `shift()`                       | removed `T \| undefined` | yes | `xs.slice(1)`                  |
+| `splice(start, count, ...items)` | removed `T[]`      | yes     | `toSpliced(start, count, ...items)` |
+| `concat(...arrays)`             | new `T[]`           | no      | `[...xs, ...ys]`                 |
+| `copyWithin(target, start, end?)` | same array        | yes     | none                             |
+| `length = n`                    | n                   | yes     | `xs.slice(0, n)`                 |
+
+```ts
+const xs = ["a", "b", "c", "d"];
+// returns ["b","c"]; xs is ["a","d"]
+xs.splice(1, 2);
+xs.splice(1, 0, "x");    // insert at 1; xs is ["a","x","d"]
+
+const ys = ["a", "b", "c"];
+ys.toSpliced(1, 1);      // ["a","c"]; ys unchanged
+ys.toSpliced(1, 0, "z"); // ["a","z","b","c"]
+const removeAt = <T,>(arr: readonly T[], i: number) =>
+  [...arr.slice(0, i), ...arr.slice(i + 1)];
+```
+
+<Note kind="tip">`push` and `unshift` return the new length, not the array. Chaining `xs.push(1).map(...)` is a type error.</Note>
+
+## Iterating & transforming
+
+| Method                         | Returns                  | Notes                                     |
+| :----------------------------- | :----------------------- | :---------------------------------------- |
+| `forEach(fn)`                  | `undefined`              | can't `break`; ignores returned promises  |
+| `for (const x of xs)`          | statement                | supports `break`, `continue`, `await`     |
+| `map(fn)`                      | `U[]`, same length       | `fn(value, index, array)`                 |
+| `flatMap(fn)`                  | `U[]`                    | map then flatten one level; return `[]` to drop |
+| `flat(depth = 1)`              | new array                | `flat(Infinity)` flattens fully           |
+| `entries()`                    | iterator of `[number, T]` | `for (const [i, x] of xs.entries())`     |
+| `keys()`                       | iterator of indexes      | includes holes                            |
+| `values()`                     | iterator of values       | same as `xs[Symbol.iterator]()`           |
+
+```ts
+const words = ["a b", "c"];
+words.map((w) => w.length);       // [3, 1]
+words.flatMap((w) => w.split(" ")); // ["a", "b", "c"]
+[1, [2, [3, [4]]]].flat(2);         // [1, 2, 3, [4]]
+
+// flatMap as filter + map in one pass
+const nums = ["1", "x", "3"].flatMap((s) => {
+  const n = Number(s);
+  return Number.isNaN(n) ? [] : [n];
+}); // number[]: [1, 3]
+
+for (const [i, w] of words.entries()) {
+  console.info(i, w);
+}
+```
+
+<Callout type="warn" title="map passes the index">
+  `["1", "2", "3"].map(parseInt)` gives `[1, NaN, NaN]` because the index becomes the radix.
+  Write `.map((s) => parseInt(s, 10))` or `.map(Number)`.
+</Callout>
+
+## Searching & testing
+
+| Method                   | Returns              | When nothing matches | Notes                          |
+| :----------------------- | :------------------- | :------------------- | :----------------------------- |
+| `find(fn)`               | `T \| undefined`     | `undefined`          | first match                    |
+| `findLast(fn)`           | `T \| undefined`     | `undefined`          | searches from the end; ES2023  |
+| `findIndex(fn)`          | `number`             | `-1`                 |                                |
+| `findLastIndex(fn)`      | `number`             | `-1`                 | ES2023                         |
+| `indexOf(x, from?)`      | `number`             | `-1`                 | uses `===`                     |
+| `lastIndexOf(x, from?)`  | `number`             | `-1`                 | uses `===`                     |
+| `includes(x, from?)`     | `boolean`            | `false`              | SameValueZero: finds `NaN`     |
+| `some(fn)`               | `boolean`            | `false`              | stops at first `true`          |
+| `every(fn)`              | `boolean`            | `true` on `[]`       | stops at first `false`         |
+| `filter(fn)`             | new `T[]`            | `[]`                 | keeps items where `fn` is truthy |
+
+```ts
+const xs = [1, NaN, 3];
+xs.indexOf(NaN);  // -1, since NaN !== NaN
+xs.includes(NaN); // true
+
+type User = { id: number; admin: boolean };
+declare const users: User[];
+const u = users.find((u) => u.id === 7); // User | undefined
+if (u) u.admin;                          // narrowed
+
+[].every((x) => x); // true: vacuous truth
+[].some((x) => x);  // false
+```
+
+`find` and `filter` accept type predicates, so they can narrow the element type:
+
+```ts
+type Shape =
+  | { kind: "circle"; r: number }
+  | { kind: "square"; side: number };
+declare const shapes: Shape[];
+
+const circles = shapes.filter(
+  (s): s is Extract<Shape, { kind: "circle" }> =>
+    s.kind === "circle",
+); // { kind: "circle"; r: number }[]
+```
+
+## Reducing & grouping
+
+| Method                             | Returns                  | Notes                                   |
+| :--------------------------------- | :----------------------- | :-------------------------------------- |
+| `reduce(fn, init)`                 | accumulator type         | throws `TypeError` on `[]` with no `init` |
+| `reduceRight(fn, init)`            | accumulator type         | walks from the end                      |
+| `Object.groupBy(xs, fn)`           | `Partial<Record<K, T[]>>` | null-prototype object; ES2024          |
+| `Map.groupBy(xs, fn)`              | `Map<K, T[]>`            | keys can be any value; ES2024           |
+
+```ts
+const prices = [3, 4.5, 10];
+const total = prices.reduce((sum, p) => sum + p, 0); // 17.5
+
+// Type the accumulator with a generic or the initial value
+const counts = ["a", "b", "a"]
+  .reduce<Record<string, number>>(
+    (acc, k) => ({ ...acc, [k]: (acc[k] ?? 0) + 1 }),
+    {},
+  ); // { a: 2, b: 1 }
+
+const byId = new Map(
+  [{ id: 1, n: "x" }].map((o) => [o.id, o] as const),
+); // Map<number, { id: number; n: string }>
+
+[[1, 2], [3]].reduceRight<number[]>(
+  (acc, xs) => acc.concat(xs),
+  [],
+); // [3, 1, 2]
+```
+
+```ts
+type Item = { name: string; qty: number };
+const stock: Item[] = [
+  { name: "apple", qty: 0 },
+  { name: "pear", qty: 4 },
+];
+
+const g = Object.groupBy(stock, (i) =>
+  i.qty > 0 ? "inStock" : "soldOut",
+);
+g.inStock; // Item[] | undefined
+
+const m = Map.groupBy(stock, (i) => i.qty > 0);
+m.get(true); // Item[] | undefined
+```
+
+<Note kind="info">`Object.groupBy` and `Map.groupBy` are Baseline 2024 and need `lib: es2024` or later in `tsconfig.json`. Spreading into a new object on every step of `reduce` is O(n²); for big inputs mutate a local accumulator or use `groupBy`.</Note>
+
+## Sorting & reordering
+
+| Method                      | Returns        | Mutates | Notes                                   |
+| :-------------------------- | :------------- | :-----: | :-------------------------------------- |
+| `sort(compare?)`            | same array     | yes     | default compares as strings (UTF-16)    |
+| `toSorted(compare?)`        | new array      | no      | ES2023                                  |
+| `reverse()`                 | same array     | yes     |                                         |
+| `toReversed()`              | new array      | no      | ES2023                                  |
+| `with(index, value)`        | new array      | no      | negative index ok; `RangeError` if out of range |
+
+<Callout type="error" title="The default sort is string order">
+  `[10, 9, 1].sort()` returns `[1, 10, 9]`. Always pass a compare function for numbers.
+</Callout>
+
+A compare function returns a negative number if `a` goes first, positive if `b` goes first, `0` to keep
+their order. Sorting is stable (ES2019+), so equal items keep their original order and
+you can sort by several keys in sequence.
+
+```ts
+const n = [10, 9, 1];
+n.toSorted((a, b) => a - b); // [1, 9, 10] ascending
+n.toSorted((a, b) => b - a); // [10, 9, 1] descending
+
+type P = { name: string; age: number };
+declare const people: P[];
+const sorted = people.toSorted(
+  (a, b) => a.age - b.age || a.name.localeCompare(b.name),
+); // by age, then by name
+
+["é", "z", "a"].toSorted((a, b) => a.localeCompare(b));
+// ["a", "é", "z"]; default sort gives ["a", "z", "é"]
+
+const coll = new Intl.Collator("en", { numeric: true });
+["v10", "v9", "v1"].toSorted(coll.compare); // v1, v9, v10
+
+const xs = ["a", "b", "c"];
+xs.with(-1, "z");  // ["a", "b", "z"]
+xs.toReversed();   // ["c", "b", "a"]
+```
+
+<Note kind="tip">`localeCompare` builds a collator per call. For large sorts, create one `Intl.Collator` and pass `collator.compare`. Dates sort with `a.getTime() - b.getTime()`.</Note>
+
+## Mutating vs copying
+
+| Method           | Mutates | Copying counterpart                     |
+| :--------------- | :-----: | :-------------------------------------- |
+| `push`           | yes     | `[...xs, x]` or `concat`                |
+| `pop`            | yes     | `slice(0, -1)`                          |
+| `shift`          | yes     | `slice(1)`                              |
+| `unshift`        | yes     | `[x, ...xs]`                            |
+| `splice`         | yes     | `toSpliced`                             |
+| `sort`           | yes     | `toSorted`                              |
+| `reverse`        | yes     | `toReversed`                            |
+| `xs[i] = v`      | yes     | `with(i, v)`                            |
+| `fill`           | yes     | `Array.from({ length }, () => v)`       |
+| `copyWithin`     | yes     | none                                    |
+| `length = n`     | yes     | `slice(0, n)`                           |
+| `map`, `filter`, `flatMap`, `flat` | no | already copies                |
+| `slice`, `concat` | no     | already copies                          |
+| `toSorted`, `toReversed`, `toSpliced`, `with` | no | ES2023 copies    |
+| `reduce`, `find`, `some`, `every`, `includes`, `indexOf`, `join` | no | read only |
+| `forEach`        | no      | but the callback may mutate             |
+
+All copies are shallow: objects inside are shared. Use `structuredClone(xs)` for a deep copy.
+On a `readonly T[]`, TypeScript removes every mutating method, so the compiler enforces this table.
+
+```ts
+const frozen: readonly number[] = [3, 1, 2];
+// @ts-expect-error: sort does not exist on readonly number[]
+frozen.sort();
+frozen.toSorted(); // fine: returns number[]
+```
+
+## Iterator helpers
+
+ES2025 adds lazy, chainable methods to iterators, so you can transform a generator, `Map`, or
+`Set` without building intermediate arrays. Baseline 2025 (Chrome 122, Firefox 131, Safari 18.4,
+Node 22). Types ship in TS 5.6+ under `lib: esnext` (`es2025` in TS 6.0).
+
+| Method                         | Returns                | Notes                                  |
+| :----------------------------- | :--------------------- | :------------------------------------- |
+| `Iterator.from(x)`             | iterator helper        | wraps any iterable or iterator         |
+| `.map(fn)`, `.filter(fn)`      | lazy iterator          | `fn(value, index)`                     |
+| `.flatMap(fn)`                 | lazy iterator          | `fn` must return an iterable (not a string) |
+| `.take(n)`, `.drop(n)`         | lazy iterator          | makes infinite iterators usable        |
+| `.toArray()`                   | `T[]`                  | consumes the iterator                  |
+| `.reduce`, `.some`, `.every`, `.find`, `.forEach` | value | consume and stop early where possible |
+
+```ts
+function* naturals() {
+  let n = 0;
+  while (true) yield n++;
+}
+
+const evens = naturals()
+  .filter((n) => n % 2 === 0)
+  .map((n) => n * 10)
+  .take(3)
+  .toArray(); // [0, 20, 40]
+
+const ages = new Map([["ann", 31], ["bo", 17]]);
+const adults = ages
+  .entries()
+  .filter(([, age]) => age >= 18)
+  .map(([name]) => name)
+  .toArray(); // ["ann"]
+
+const firstBig = Iterator.from(new Set([1, 50, 200]))
+  .find((n) => n > 10); // 50
+```
+
+<Note kind="warning">Iterators are single-use: once consumed, calling `.toArray()` again gives `[]`. Newer helpers (`Iterator.concat`, `zip`, `chunks`, `windows`) are still rolling out; check MDN before relying on them.</Note>
+
+## Typing arrays
+
+| Type                           | Meaning                                         |
+| :----------------------------- | :---------------------------------------------- |
+| `T[]` / `Array<T>`             | identical; use `(A \| B)[]` or `Array<A \| B>` for unions |
+| `readonly T[]` / `ReadonlyArray<T>` | no mutating methods, no index assignment   |
+| `[string, number]`             | tuple: fixed length, typed positions            |
+| `[x: number, y: number]`       | named tuple members (labels for docs and hints) |
+| `[string, number?]`            | optional last element; `length` is `1 \| 2`     |
+| `[string, ...number[]]`        | rest element: a string then any numbers         |
+| `readonly [number, number]`    | read-only tuple                                 |
+| `(typeof xs)[number]`          | element type of an array value                  |
+
+```ts
+type Point = [x: number, y: number];
+const p: Point = [1, 2];
+const [x, y] = p;
+
+type Row = [id: string, ...scores: number[]];
+const r: Row = ["ann", 9, 7];
+
+const dirs = ["n", "e", "s", "w"] as const;
+// readonly ["n", "e", "s", "w"]
+type Dir = (typeof dirs)[number]; // "n" | "e" | "s" | "w"
+
+function sum(xs: readonly number[]) {
+  return xs.reduce((a, b) => a + b, 0);
+} // accepts number[] and readonly number[]
+```
+
+### Inferred type predicates (TS 5.5)
+
+TypeScript 5.5+ infers `x is T` from simple arrow functions, so `filter` narrows without a manual predicate.
+
+```ts
+const maybe = [1, undefined, 3];
+const nums = maybe.filter((n) => n !== undefined);
+// number[] (was (number | undefined)[] before 5.5)
+
+const mixed = ["a", null, "b"];
+const strs = mixed.filter((s) => s != null); // string[]
+
+// filter(Boolean) still does not narrow
+const loose = mixed.filter(Boolean); // (string | null)[]
+```
+
+### noUncheckedIndexedAccess
+
+With `"noUncheckedIndexedAccess": true`, indexing returns `T | undefined`, matching runtime. Tuples
+with known positions and `for...of` loops are unaffected.
+
+```ts
+declare const names: string[];
+const first = names[0];
+// string without the flag, string | undefined with it
+if (first !== undefined) first.toUpperCase();
+```
+
+### Empty-array inference
+
+```ts
+const a: string[] = [];     // annotate empty arrays
+const b = [] as number[];   // or assert
+
+const c = [];               // evolving array: any[] so far
+c.push(1);
+c.push("x");
+const d = c;                // (string | number)[]
+```
+
+`let xs = []` evolves its type from the pushes that follow; once it escapes (returned, passed on)
+the type is fixed. In object literals and class fields an empty `[]` widens to `never[]`, so annotate it.
+More on these types in [Fundamentals](/typescript/language/fundamentals/).
+
+## Recipes
+
+### Unique by key
+
+When items are objects and `new Set(xs)` can't see that two of them are the same record.
+
+```ts
+function uniqueBy<T, K>(
+  xs: readonly T[],
+  key: (x: T) => K,
+): T[] {
+  const seen = new Set<K>();
+  return xs.filter((x) => {
+    const k = key(x);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+type User = { id: number; email: string };
+declare const users: User[];
+uniqueBy(users, (u) => u.email.toLowerCase()); // first wins
+
+// last wins: later Map entries overwrite earlier ones
+const byId = new Map(users.map((u) => [u.id, u]));
+const lastWins = [...byId.values()];
+```
+
+### Chunk
+
+When an API, SQL statement or UI page accepts at most N items at a time.
+
+```ts
+function chunk<T>(xs: readonly T[], size: number): T[][] {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new RangeError(`size must be >= 1, got ${size}`);
+  }
+  return Array.from(
+    { length: Math.ceil(xs.length / size) },
+    (_, i) => xs.slice(i * size, i * size + size),
+  );
+}
+
+chunk([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
+
+declare const ids: string[];
+declare function deleteMany(ids: string[]): Promise<void>;
+for (const batch of chunk(ids, 100)) await deleteMany(batch);
+```
+
+### Zip
+
+When two parallel arrays (labels and values, headers and cells) need to become pairs.
+
+```ts
+function zip<A, B>(
+  as: readonly A[],
+  bs: readonly B[],
+): [A, B][] {
+  const n = Math.min(as.length, bs.length);
+  return Array.from(
+    { length: n },
+    (_, i) => [as[i], bs[i]] as [A, B],
+  );
+}
+
+zip(["a", "b", "c"], [1, 2]); // [["a", 1], ["b", 2]]
+
+// unzip back into two arrays
+const pairs = zip(["x", "y"], [10, 20]);
+const names = pairs.map(([n]) => n);   // string[]
+const values = pairs.map(([, v]) => v); // number[]
+
+// pairs to an object
+Object.fromEntries(pairs); // { x: 10, y: 20 }
+```
+
+### Partition
+
+When one pass should split items into matches and non-matches; with a type predicate both halves are narrowed.
+
+```ts
+function partition<T, S extends T>(
+  xs: readonly T[],
+  pred: (x: T) => x is S,
+): [S[], Exclude<T, S>[]];
+function partition<T>(
+  xs: readonly T[],
+  pred: (x: T) => boolean,
+): [T[], T[]];
+function partition<T>(
+  xs: readonly T[],
+  pred: (x: T) => boolean,
+): [T[], T[]] {
+  const yes: T[] = [];
+  const no: T[] = [];
+  for (const x of xs) (pred(x) ? yes : no).push(x);
+  return [yes, no];
+}
+
+const isEven = (n: number) => n % 2 === 0;
+const [evens, odds] = partition([1, 2, 3, 4], isEven);
+const mixed: (string | number)[] = ["a", 1, "b"];
+const [strs, nums] = partition(
+  mixed,
+  (x) => typeof x === "string",
+); // string[], number[]
+```
+
+### Sum, average and max by a field
+
+When aggregating a numeric field of objects, with the empty array handled on purpose.
+
+```ts
+type Num<T> = (x: T) => number;
+
+const sumBy = <T>(xs: readonly T[], f: Num<T>) =>
+  xs.reduce((total, x) => total + f(x), 0);
+const averageBy = <T>(xs: readonly T[], f: Num<T>) =>
+  xs.length === 0 ? Number.NaN : sumBy(xs, f) / xs.length;
+
+function maxBy<T>(xs: readonly T[], f: Num<T>) {
+  return xs.reduce<T | undefined>(
+    (best, x) =>
+      best === undefined || f(x) > f(best) ? x : best,
+    undefined,
+  );
+}
+
+type Line = { sku: string; price: number; qty: number };
+declare const cart: Line[];
+sumBy(cart, (l) => l.price * l.qty);  // order total
+averageBy(cart, (l) => l.price);      // NaN when empty
+maxBy(cart, (l) => l.qty)?.sku;       // biggest line
+Math.max(...cart.map((l) => l.price)); // -Infinity if empty
+```
+
+### Sort by several keys
+
+When the order has tie-breakers and mixed directions; `by()` builds one comparator for `toSorted`.
+
+```ts
+type Key<T> = (x: T) => string | number | Date;
+type Dir = "asc" | "desc";
+
+function by<T>(
+  ...keys: [Key<T>, Dir?][]
+): (a: T, b: T) => number {
+  return (a, b) => {
+    for (const [key, dir = "asc"] of keys) {
+      const x = key(a).valueOf();
+      const y = key(b).valueOf();
+      if (x === y) continue;
+      const cmp = x < y ? -1 : 1;
+      return dir === "asc" ? cmp : -cmp;
+    }
+    return 0;
+  };
+}
+
+type Task = { done: boolean; due: Date; title: string };
+declare const tasks: Task[];
+tasks.toSorted(by<Task>(
+  [(t) => Number(t.done)],     // open first
+  [(t) => t.due, "asc"],       // then soonest
+  [(t) => t.title.toLowerCase()],
+));
+```
+
+### Diff two lists with `Set` methods
+
+When you need what was added, removed or kept between two lists.
+
+```ts
+const before = ["ann", "bo", "cy"];
+const after = ["bo", "cy", "di"];
+const a = new Set(before);
+const b = new Set(after);
+
+[...b.difference(a)];          // ["di"]   added
+[...a.difference(b)];          // ["ann"]  removed
+[...a.intersection(b)];        // ["bo", "cy"] kept
+[...a.union(b)];               // all four
+[...a.symmetricDifference(b)]; // ["ann", "di"] changed
+a.isSubsetOf(b);               // false
+
+// objects: diff by key, keep the full items
+type Row = { id: number; name: string };
+declare const oldRows: Row[];
+declare const newRows: Row[];
+const oldIds = new Set(oldRows.map((r) => r.id));
+const added = newRows.filter((r) => !oldIds.has(r.id));
+```
+
+The `Set` methods are Baseline 2024 (ES2025); TypeScript needs `lib` `es2025` or `esnext`.
+
+### Move an item
+
+When reordering a list without mutating it, for example after a drag and drop.
+
+```ts
+function move<T>(
+  xs: readonly T[],
+  from: number,
+  to: number,
+): T[] {
+  const item = xs[from];
+  if (item === undefined) return [...xs];
+  return xs.toSpliced(from, 1).toSpliced(to, 0, item);
+}
+
+move(["a", "b", "c", "d"], 0, 2); // ["b", "c", "a", "d"]
+move(["a", "b", "c", "d"], 3, 0); // ["d", "a", "b", "c"]
+
+// e.g. a drag-and-drop list in React state
+declare function setItems(
+  update: (prev: string[]) => string[],
+): void;
+setItems((prev) => move(prev, 1, 0));
+```
+
+## References
+
+- [MDN: Array](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array)
+- [MDN: Iterator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator)
+- [MDN: Object.groupBy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy)
+- [MDN: Intl.Collator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator)
+- [TypeScript handbook: Object types, arrays and tuples](https://www.typescriptlang.org/docs/handbook/2/objects.html)
+- [TypeScript 5.5 release notes: inferred type predicates](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html)
+- [TSConfig: noUncheckedIndexedAccess](https://www.typescriptlang.org/tsconfig/#noUncheckedIndexedAccess)

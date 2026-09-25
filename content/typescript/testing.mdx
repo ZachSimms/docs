@@ -1,0 +1,996 @@
+---
+title: Testing
+date: 2026-09-25
+order: 8
+---
+
+Unit, component and end-to-end testing for TypeScript: the four main runners, matchers, mocks and
+fake timers, type tests, Testing Library, MSW and Playwright. Examples use `bun test` (what this
+site runs) and Vitest side by side; the APIs are Jest-compatible, so most lines port directly.
+
+## Runners compared
+
+| Runner      | TypeScript                                   | Speed                     | Watch                     | Mocking                                          | DOM env                                        | Coverage                         |
+| :---------- | :------------------------------------------- | :------------------------ | :------------------------ | :----------------------------------------------- | :--------------------------------------------- | :------------------------------- |
+| Vitest      | native, via Vite transform (no type-check)   | fast, parallel workers    | default in a terminal     | `vi.fn`, `vi.spyOn`, hoisted `vi.mock`, timers   | `jsdom`, `happy-dom`, or real browser (Browser Mode) | `--coverage`, v8 or istanbul |
+| `bun test`  | native TS and JSX, zero config               | fastest; one process      | `--watch`                 | `mock`, `spyOn`, `mock.module`, timers (1.3.4+)  | `happy-dom` via `--preload`                    | `--coverage`, built in           |
+| Jest        | `babel-jest` (strips), `ts-jest` (checks), `@swc/jest` | slowest to start | `--watch` (git-aware)     | `jest.fn`, `jest.spyOn`, hoisted `jest.mock`     | `jest-environment-jsdom` package               | `--coverage`, babel or v8        |
+| `node:test` | type stripping (Node 22.18+), erasable syntax only | fast, no transform  | `node --test --watch`     | `mock.fn`, `mock.method`, `mock.timers`; `mock.module` behind a flag | none built in              | `--experimental-test-coverage`   |
+
+| Pick                | When                                                                         |
+| :------------------ | :--------------------------------------------------------------------------- |
+| Vitest              | Vite or framework apps, Browser Mode, the richest ecosystem outside Jest     |
+| `bun test`          | the project already runs on Bun; fastest feedback loop                       |
+| Jest                | existing Jest codebases, React Native                                        |
+| `node:test`         | libraries and CLIs that want zero dependencies                               |
+
+None of them type-check your tests while running. Run `tsc --noEmit` separately (see
+[Testing types](#testing-types)).
+
+```bash
+bun test
+# all *.test.ts / *.spec.ts files
+bun test cart --watch
+# filter by path, re-run on save
+bun test -t "totals"          # filter by test name
+bunx vitest
+# watch mode; `vitest run` for CI
+node --test "**/*.test.ts"    # Node 22+ glob
+```
+
+## Anatomy
+
+<Tabs items={["bun test", "Vitest"]} persist="runner">
+  <Tab>
+
+    ```ts title="cart.test.ts"
+    import { beforeEach, describe, expect, it } from "bun:test";
+    import { Cart } from "./cart";
+
+    describe("Cart", () => {
+      let cart: Cart;
+      beforeEach(() => {
+        cart = new Cart();
+      });
+
+      it("totals line items", () => {
+        cart.add({ sku: "tea", price: 4.5, qty: 2 }); // Arrange
+        const total = cart.total();                   // Act
+        expect(total).toBe(9);                        // Assert
+      });
+
+      it.todo("applies discount codes", () => {});
+    });
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```ts title="cart.test.ts"
+    import { beforeEach, describe, expect, it } from "vitest";
+    import { Cart } from "./cart";
+
+    describe("Cart", () => {
+      let cart: Cart;
+      beforeEach(() => {
+        cart = new Cart();
+      });
+
+      it("totals line items", () => {
+        cart.add({ sku: "tea", price: 4.5, qty: 2 }); // Arrange
+        const total = cart.total();                   // Act
+        expect(total).toBe(9);                        // Assert
+      });
+
+      it.todo("applies discount codes");
+    });
+    ```
+
+  </Tab>
+</Tabs>
+
+**Arrange, Act, Assert**: set up state, do one thing, check the outcome. One behaviour per test;
+name it as a sentence (`it("rejects an expired token")`). `it` and `test` are aliases.
+
+```tree title="Where tests live"
+repo/
+  bunfig.toml             # preloads dom.ts + setup.ts
+  playwright.config.ts    # testDir: "tests/e2e"
+  src/
+    cart.ts
+    cart.test.ts          # unit test next to its code
+    components/
+      Counter.tsx
+      Counter.test.tsx
+  tests/
+    dom.ts                # preload: happy-dom globals
+    setup.ts              # preload: jest-dom, cleanup
+    matchers.d.ts         # types for those matchers
+    mocks/
+      server.ts           # MSW handlers
+    e2e/
+      sign-in.spec.ts     # Playwright, not bun test
+```
+
+`bun test` also picks up `*.spec.ts`, so keep Playwright's folder out of its way: run `bun test src`
+or list the folder in `pathIgnorePatterns` under `[test]` in `bunfig.toml`.
+
+| Hook         | Runs                                    | Typical use                           |
+| :----------- | :-------------------------------------- | :------------------------------------ |
+| `beforeAll`  | once before the tests in its scope      | start a server, open a DB             |
+| `beforeEach` | before every test in scope              | fresh fixtures, reset state           |
+| `afterEach`  | after every test, even failed ones      | cleanup, restore mocks, `cleanup()`   |
+| `afterAll`   | once after the scope finishes           | close connections                     |
+
+Hooks in a `describe` apply to that block only; outer `beforeEach` runs before inner. Hooks in a
+preload or setup file apply to every test file.
+
+| Modifier                             | Effect                                                     |
+| :----------------------------------- | :--------------------------------------------------------- |
+| `it.only` / `describe.only`          | run only these (Vitest fails on `.only` in CI by default)  |
+| `it.skip` / `describe.skip`          | skip, reported as skipped                                  |
+| `it.todo("…")`                       | placeholder; Bun's types want a body, run with `--todo`   |
+| `it.skipIf(cond)` / `it.runIf(cond)` | conditional skip (Vitest); Bun: `test.skipIf`, `test.if`   |
+| `it.failing`                         | passes only if the body fails (Bun, Jest)                  |
+| `it.concurrent`                      | run in parallel with siblings (Vitest, Bun)                |
+| `it(name, fn, 10_000)`               | per-test timeout in ms (default 5 s; none in `node:test`)  |
+
+## Matchers
+
+| Matcher                                | Passes when                                                    |
+| :------------------------------------- | :------------------------------------------------------------- |
+| `toBe(v)`                              | `Object.is(actual, v)`: same primitive or same reference       |
+| `toEqual(v)`                           | deep equality; ignores `undefined` props and class identity    |
+| `toStrictEqual(v)`                     | deep equality plus `undefined` props, class, sparse slots      |
+| `toMatchObject(subset)`                | object contains at least these props (recursively)             |
+| `toContain(item)`                      | array includes item (`===`), or string includes substring      |
+| `toContainEqual(item)`                 | array includes a deep-equal item                               |
+| `toHaveLength(n)`                      | `.length === n`                                                |
+| `toHaveProperty("a.b", v?)`            | property path exists (and equals `v`)                          |
+| `toBeTruthy()` / `toBeFalsy()`         | truthy / falsy                                                 |
+| `toBeNull()` / `toBeUndefined()` / `toBeDefined()` | as named                                           |
+| `toBeGreaterThan(n)` / `toBeLessThanOrEqual(n)` | numeric comparison                                    |
+| `toBeCloseTo(n, digits?)`              | float equality (`0.1 + 0.2`)                                   |
+| `toMatch(/re/ \| "s")`                 | string matches                                                 |
+| `toThrow(msg? \| /re/ \| Class)`       | wrapped function throws: `expect(() => f()).toThrow()`         |
+| `resolves` / `rejects`                 | unwrap a promise: `await expect(p).rejects.toThrow("x")`       |
+| `toHaveBeenCalled()`                   | mock was called at least once                                  |
+| `toHaveBeenCalledTimes(n)`             | called exactly `n` times                                       |
+| `toHaveBeenCalledWith(...args)`        | some call had these args (deep equality)                       |
+| `toHaveBeenLastCalledWith(...args)`    | the last call had these args                                   |
+| `toHaveReturnedWith(v)`                | some call returned `v`                                         |
+| `toMatchSnapshot()` / `toMatchInlineSnapshot()` | output equals the stored snapshot                     |
+| `.not.…`                               | negates any matcher                                            |
+
+Asymmetric matchers go inside `toEqual`, `toHaveBeenCalledWith` and friends:
+
+| Matcher                               | Matches                                        |
+| :------------------------------------ | :--------------------------------------------- |
+| `expect.anything()`                   | anything except `null` and `undefined`         |
+| `expect.any(Number)`                  | any value of that constructor or primitive     |
+| `expect.objectContaining({ … })`      | object with at least these props               |
+| `expect.arrayContaining([ … ])`       | array containing these items, any order        |
+| `expect.stringContaining("s")`        | string with substring                          |
+| `expect.stringMatching(/re/)`         | string matching regex                          |
+| `expect.closeTo(n, digits?)`          | number close to `n`                            |
+
+```ts
+import { expect, it } from "bun:test";
+
+it("creates a user", () => {
+  const user = { id: 7, name: "Ada", createdAt: new Date() };
+  expect(user).toEqual({
+    id: expect.any(Number),
+    name: "Ada",
+    createdAt: expect.any(Date),
+  });
+  const loose: { a?: number; b: number } = {
+    a: undefined,
+    b: 2,
+  };
+  expect(loose).toEqual({ b: 2 });           // ✅
+  expect(loose).not.toStrictEqual({ b: 2 }); // ✅
+  expect(() => JSON.parse("{")).toThrow(SyntaxError);
+});
+```
+
+## Mocks, spies & fake timers
+
+| Tool                 | `bun test`                         | Vitest                             |
+| :------------------- | :--------------------------------- | :--------------------------------- |
+| mock function        | `mock(impl?)` or `jest.fn`         | `vi.fn(impl?)`                     |
+| typed, no impl       | `mock<(id: number) => string>()`   | `vi.fn<(id: number) => string>()`  |
+| spy on a method      | `spyOn(obj, "method")`             | `vi.spyOn(obj, "method")`          |
+| mock a module        | `mock.module(path, factory)`       | `vi.mock(import(path), factory)`   |
+| mock type            | `Mock<typeof fn>`                  | `Mock<typeof fn>`                  |
+| clear all history    | `mock.clearAllMocks()`             | `vi.clearAllMocks()`               |
+| restore all spies    | `mock.restore()`                   | `vi.restoreAllMocks()`             |
+
+| Per-mock method              | Does                                                     |
+| :--------------------------- | :------------------------------------------------------- |
+| `mockReturnValue(v)`         | always return `v` (`…Once` for the next call only)       |
+| `mockResolvedValue(v)`       | return `Promise.resolve(v)`                              |
+| `mockRejectedValue(e)`       | return `Promise.reject(e)`                               |
+| `mockImplementation(fn)`     | replace the body                                         |
+| `mockClear()`                | forget calls and results                                 |
+| `mockReset()`                | `mockClear` plus drop the implementation                 |
+| `mockRestore()`              | `mockReset` plus put the original back (spies)           |
+| `.mock.calls`, `.mock.results` | call arguments and return values, for manual checks    |
+
+```ts
+import {
+  afterEach,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
+
+type Notify = (
+  userId: number,
+  text: string,
+) => Promise<void>;
+
+afterEach(() => mock.restore());
+
+it("notifies once per user", async () => {
+  const notify = mock<Notify>(async () => {});
+  await Promise.all([notify(1, "hi"), notify(2, "hi")]);
+  expect(notify).toHaveBeenCalledTimes(2);
+  expect(notify).toHaveBeenCalledWith(2, "hi");
+});
+
+it("silences expected errors", () => {
+  const err = spyOn(console, "error")
+    .mockImplementation(() => {});
+  console.error("boom");
+  expect(err).toHaveBeenCalledWith("boom");
+});
+```
+
+### Module mocks
+
+<Tabs items={["bun test", "Vitest"]} persist="runner">
+  <Tab>
+
+    ```ts
+    import { expect, it, mock } from "bun:test";
+
+    mock.module("./email", () => ({
+      sendEmail: mock(async () => ({ id: "msg_1" })),
+    }));
+
+    it("sends a welcome email", async () => {
+      const { signUp } = await import("./signup");
+      const { sendEmail } = await import("./email");
+      await signUp("ada@example.com");
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+    });
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```ts
+    import { expect, it, vi } from "vitest";
+    import { signUp } from "./signup";
+    import { sendEmail } from "./email";
+
+    // hoisted above the imports; must be top-level (Vitest 5)
+    vi.mock(import("./email"), () => ({
+      sendEmail: vi.fn(async () => ({ id: "msg_1" })),
+    }));
+
+    it("sends a welcome email", async () => {
+      await signUp("ada@example.com");
+      expect(vi.mocked(sendEmail)).toHaveBeenCalledTimes(1);
+    });
+    ```
+
+  </Tab>
+</Tabs>
+
+`mock.module` is not hoisted: it rewrites live bindings of modules already loaded, but their
+top-level side effects have run. Put such mocks in a `--preload` file. `mock.restore()` does **not**
+undo `mock.module`. In Vitest, `vi.mock(import("…"))` type-checks the factory against the real
+module, and `importOriginal` lets you keep the rest of it.
+
+<Note kind="tip">Prefer passing dependencies in (a `sendEmail` parameter, an injected `fetch`) over
+module mocking. It is typed for free, runner-agnostic, and doesn't leak between files.</Note>
+
+### Fake timers
+
+```ts
+import { afterEach, expect, it, jest, mock } from "bun:test";
+
+afterEach(() => jest.useRealTimers());
+
+function debounce(fn: () => void, ms: number) {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return () => {
+    clearTimeout(t);
+    t = setTimeout(fn, ms);
+  };
+}
+
+it("debounces", () => {
+  jest.useFakeTimers({ now: new Date("2026-01-01") });
+  const fn = mock(() => {});
+  const run = debounce(fn, 300);
+  run(); run(); run();
+  jest.advanceTimersByTime(299);
+  expect(fn).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(1);
+  expect(fn).toHaveBeenCalledTimes(1);
+  expect(Date.now()).toBe(Date.parse("2026-01-01") + 300);
+});
+```
+
+| Action                     | `bun test` (`jest.*`)          | Vitest (`vi.*`)                     |
+| :------------------------- | :----------------------------- | :---------------------------------- |
+| enable / disable           | `useFakeTimers()`, `useRealTimers()` | same names                    |
+| advance                    | `advanceTimersByTime(ms)`      | same, plus `advanceTimersByTimeAsync` |
+| run everything             | `runAllTimers()`, `runOnlyPendingTimers()` | same, plus `…Async`     |
+| next timer                 | `advanceTimersToNextTimer()`   | same                                |
+| set the clock              | `setSystemTime(date)`          | `vi.setSystemTime(date)`            |
+
+Always restore real timers in `afterEach`, or later tests hang. Vitest 5 also fakes `Temporal.Now`.
+
+## Async tests
+
+```ts
+import { expect, it } from "bun:test";
+
+async function load(id: number) {
+  if (id < 0) throw new RangeError("bad id");
+  return { id };
+}
+
+it("awaits", async () => {
+  expect(await load(1)).toEqual({ id: 1 });
+});
+
+it("unwraps with resolves/rejects", async () => {
+  await expect(load(1)).resolves.toEqual({ id: 1 });
+  await expect(load(-1)).rejects.toThrow(RangeError);
+});
+
+it("counts assertions in callbacks", async () => {
+  expect.assertions(1);
+  await load(-1).catch((e) => {
+    expect(e).toBeInstanceOf(RangeError);
+  });
+});
+```
+
+| Mistake                                  | Symptom                          | Fix                             |
+| :--------------------------------------- | :------------------------------- | :------------------------------ |
+| `expect(p).rejects…` without `await`     | passes even when it shouldn't    | `await` or `return` it          |
+| forgetting `async` on the test           | assertions run after it ends     | make the callback `async`       |
+| real `setTimeout` in the code under test | slow or flaky tests              | fake timers or inject a clock   |
+| unhandled rejection in a helper          | error blamed on another test     | `await` everything you start    |
+
+### Promises plus timers
+
+With fake timers, a timer callback that awaits something needs the microtask queue flushed between
+steps. Vitest's `…Async` variants do that:
+
+```ts
+import { expect, it, vi } from "vitest";
+
+async function retry<T>(fn: () => Promise<T>, tries = 3) {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
+    }
+  }
+}
+
+it("backs off between attempts", async () => {
+  vi.useFakeTimers();
+  const fn = vi.fn<() => Promise<string>>()
+    .mockRejectedValueOnce(new Error("503"))
+    .mockResolvedValueOnce("ok");
+  const p = retry(fn);
+  await vi.advanceTimersByTimeAsync(1000);
+  await expect(p).resolves.toBe("ok");
+  expect(fn).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
+});
+```
+
+Bun has no `…Async` timer helpers; inject the delay (`sleep: (ms: number) => Promise<void>`) and
+pass `async () => {}` in the test instead.
+
+## Table-driven tests & factories
+
+```ts
+import { describe, expect, test } from "bun:test";
+
+const slugify = (s: string) =>
+  s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+describe("slugify", () => {
+  test.each<[input: string, expected: string]>([
+    ["Hello World", "hello-world"],
+    ["  trim me  ", "trim-me"],
+    ["a--b__c", "a-b-c"],
+    ["", ""],
+  ])("slugify(%p) -> %p", (input, expected) => {
+    expect(slugify(input)).toBe(expected);
+  });
+});
+```
+
+| Placeholder        | Prints                                      |
+| :----------------- | :------------------------------------------ |
+| `%s` / `%d` / `%i` | string / number / integer                   |
+| `%p` / `%j` / `%o` | pretty-format / JSON / object               |
+| `%#`               | row index                                   |
+| `$name`            | property of an object row (Vitest, Jest)    |
+
+Vitest also has `test.for(rows)`, which doesn't spread array rows and passes the test context as a
+second argument (needed for `expect` in concurrent tests).
+
+### Test data builders
+
+```ts title="factories.ts"
+type User = {
+  id: number;
+  name: string;
+  email: string;
+  role: "admin" | "member";
+};
+
+let seq = 0;
+export function buildUser(
+  overrides: Partial<User> = {},
+): User {
+  seq += 1;
+  return {
+    id: seq,
+    name: `User ${seq}`,
+    email: `user${seq}@example.com`,
+    role: "member",
+    ...overrides,
+  };
+}
+
+const admin = buildUser({ role: "admin" });
+// only what matters
+```
+
+Builders keep each test focused on the fields it cares about, and a new required field is added in
+one place. Unique values (`seq`) avoid accidental collisions in maps and databases.
+
+## Testing types
+
+Type-level behaviour (generics, overloads, inference) needs its own assertions; nothing fails at
+runtime when a type widens to `any`.
+
+```ts
+import { expectTypeOf, test } from "bun:test"; // or "vitest"
+
+declare function parse<T extends "int" | "bool">(
+  kind: T,
+  s: string,
+): T extends "int" ? number : boolean;
+
+test("parse return types", () => {
+  expectTypeOf(parse("int", "1")).toEqualTypeOf<number>();
+  expectTypeOf(parse("bool", "1")).toEqualTypeOf<boolean>();
+  expectTypeOf(parse).parameter(1).toBeString();
+  // @ts-expect-error: "date" is not a valid kind
+  parse("date", "2026-01-01");
+});
+```
+
+| Tool                            | How it runs                                                   |
+| :------------------------------ | :------------------------------------------------------------ |
+| `expectTypeOf` (Vitest, Bun)    | checked by the compiler; no-op at runtime                     |
+| `vitest --typecheck`            | runs `tsc` over `*.test-d.ts` and reports failures as tests   |
+| `// @ts-expect-error`           | line must error, else `tsc` fails: tests "this must not compile" |
+| `tsd` / `expectType<T>(v)`      | separate CLI for `.test-d.ts` files; common in libraries      |
+| `tsc --noEmit` in CI            | the baseline: catches every type error the runners ignore     |
+
+A zero-dependency equality check, from the type-challenges project:
+
+```ts
+type Equal<X, Y> =
+  (<T>() => T extends X ? 1 : 2) extends
+  (<T>() => T extends Y ? 1 : 2) ? true : false;
+type Expect<T extends true> = T;
+
+type Cases = [
+  Expect<Equal<ReturnType<typeof JSON.parse>, any>>,
+  // @ts-expect-error: string is not number
+  Expect<Equal<string, number>>,
+];
+```
+
+With `bun test`, `expectTypeOf` does nothing unless `tsc` runs, so keep `tsc --noEmit` in CI (this
+site: `bun run typecheck`). See [Fundamentals](/typescript/language/fundamentals/).
+
+## Testing React
+
+Testing Library renders components into a DOM (happy-dom or jsdom) and queries them the way a user
+would: by role, label and text.
+
+| Priority | Query                   | Use for                                            |
+| -------: | :---------------------- | :------------------------------------------------- |
+| 1        | `getByRole`             | almost everything: `getByRole("button", { name: /save/i })` |
+| 2        | `getByLabelText`        | form fields                                        |
+| 3        | `getByPlaceholderText`  | inputs with no label (fix the label instead)       |
+| 4        | `getByText`             | non-interactive text                               |
+| 5        | `getByDisplayValue`     | current value of a filled field                    |
+| 6        | `getByAltText`          | `img`, `area`, `input type="image"`                |
+| 7        | `getByTitle`            | `title` attribute; unreliable for screen readers   |
+| 8        | `getByTestId`           | last resort: `data-testid`                         |
+
+| Variant     | 0 matches      | 1 match   | 2+ matches | Async                   |
+| :---------- | :------------- | :-------- | :--------- | :---------------------- |
+| `getBy…`    | throws         | element   | throws     | no                      |
+| `queryBy…`  | `null`         | element   | throws     | no: assert absence      |
+| `findBy…`   | rejects        | element   | rejects    | retries, 1000 ms default |
+| `…AllBy…`   | throws / `[]`  | array     | array      | as above                |
+
+```tsx title="counter.test.tsx"
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, it } from "bun:test";
+import { Counter } from "./Counter";
+
+it("increments and saves", async () => {
+  const user = userEvent.setup();
+  render(<Counter initial={1} />);
+
+  await user.click(
+    screen.getByRole("button", { name: "+1" }),
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("2");
+
+  const save = screen.getByRole("button", { name: /save/i });
+  await user.click(save);
+  expect(
+    await screen.findByText("Saved"),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("alert"),
+  ).not.toBeInTheDocument();
+});
+```
+
+| Helper                                   | Why                                                          |
+| :--------------------------------------- | :----------------------------------------------------------- |
+| `userEvent.setup()` then `await user.…`  | real event sequences (focus, keydown, input, click)          |
+| `fireEvent.click(el)`                    | one synthetic event; fine for simple cases                   |
+| `await screen.findBy…`                   | wait for something to appear                                 |
+| `await waitFor(() => expect(…))`         | retry an assertion until it passes                           |
+| `renderHook(() => useThing())`           | test a custom hook via `result.current`                      |
+| `screen.debug()`                         | print the current DOM                                        |
+
+jest-dom adds DOM matchers: `toBeInTheDocument`, `toBeVisible`, `toBeDisabled`, `toHaveTextContent`,
+`toHaveValue`, `toBeChecked`, `toHaveAttribute`, `toHaveClass`, `toHaveAccessibleName`.
+
+<Callout type="warn" title="Test behaviour, not implementation">
+  Don't assert on state variables, hook calls, class names used for styling or component internals.
+  Assert what a user sees and can do. A refactor that keeps behaviour should keep the tests green.
+</Callout>
+
+### Setup with `bun test` + happy-dom
+
+```toml title="bunfig.toml"
+[test]
+preload = ["./tests/dom.ts", "./tests/setup.ts"]
+```
+
+```ts title="tests/dom.ts"
+import {
+  GlobalRegistrator,
+} from "@happy-dom/global-registrator";
+
+// must run before anything imports @testing-library/*
+GlobalRegistrator.register({
+  url: "http://localhost:3000/",
+});
+```
+
+```ts title="tests/setup.ts"
+import * as matchers
+  from "@testing-library/jest-dom/matchers";
+import { cleanup } from "@testing-library/react";
+import { afterEach, expect } from "bun:test";
+
+expect.extend(matchers);
+afterEach(() => cleanup());
+```
+
+```ts title="tests/matchers.d.ts"
+import type {
+  TestingLibraryMatchers,
+} from "@testing-library/jest-dom/matchers";
+import type { expect } from "bun:test";
+
+type Any = typeof expect.stringContaining;
+declare module "bun:test" {
+  interface Matchers<T>
+    extends TestingLibraryMatchers<Any, T> {}
+}
+```
+
+In Vitest: `test: { environment: "happy-dom", setupFiles: ["./setup.ts"] }` and
+`import "@testing-library/jest-dom/vitest"`. More on components in
+[TypeScript + React](/typescript/react/typescript-react/).
+
+## Mocking the network
+
+**MSW** (Mock Service Worker) intercepts real `fetch` calls at the network layer, so the code under
+test is unchanged. The same handlers work in Node tests, the browser and Storybook.
+
+```ts title="mocks/server.ts"
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+
+const API = "https://api.example.com";
+
+export const handlers = [
+  http.get(`${API}/users/:id`, ({ params }) =>
+    HttpResponse.json({
+      id: Number(params.id),
+      name: "Ada",
+    }),
+  ),
+  http.post(`${API}/users`, async ({ request }) => {
+    const body = (await request.json()) as { name: string };
+    const user = { id: 2, ...body };
+    return HttpResponse.json(user, { status: 201 });
+  }),
+];
+
+export const server = setupServer(...handlers);
+```
+
+```ts title="users.test.ts"
+import {
+  afterAll, afterEach, beforeAll, expect, it,
+} from "bun:test";
+import { http, HttpResponse } from "msw";
+import { server } from "./mocks/server";
+import { getUser } from "./users";
+
+beforeAll(() =>
+  server.listen({ onUnhandledRequest: "error" }),
+);
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+it("surfaces a 500", async () => {
+  server.use(
+    http.get("https://api.example.com/users/:id", () =>
+      new HttpResponse(null, { status: 500 }),
+    ),
+  );
+  await expect(getUser(1)).rejects.toThrow("HTTP 500");
+});
+```
+
+| MSW v2 API                          | Does                                                |
+| :---------------------------------- | :-------------------------------------------------- |
+| `http.get/post/put/delete/all`      | match method and URL (`:param`, `*` wildcards)      |
+| `HttpResponse.json(body, init?)`    | JSON response                                       |
+| `HttpResponse.text` / `.html`       | other body types                                    |
+| `HttpResponse.error()`              | simulate a network failure (`TypeError` in fetch)   |
+| `server.use(...handlers)`           | per-test override, removed by `resetHandlers()`     |
+| `onUnhandledRequest: "error"`       | fail on any request you didn't mock                 |
+| `setupWorker` (`msw/browser`)       | same handlers in the browser via a service worker   |
+
+### Or inject `fetch`
+
+```ts
+import { expect, it, mock } from "bun:test";
+
+const API = "https://api.example.com";
+
+type Fetch = (input: string | URL, init?: RequestInit) =>
+  Promise<Response>;
+
+function makeUsers(fetchFn: Fetch = fetch) {
+  return async (id: number): Promise<unknown> => {
+    const res = await fetchFn(`${API}/users/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  };
+}
+
+it("calls the right URL", async () => {
+  const fake = mock<Fetch>(async () =>
+    Response.json({ id: 1 }),
+  );
+  const getUser = makeUsers(fake);
+  expect(await getUser(1)).toEqual({ id: 1 });
+  expect(fake).toHaveBeenCalledWith(`${API}/users/1`);
+});
+```
+
+Injection is simplest for unit tests; MSW is better for integration tests where the request goes
+through your real client code. See [Fetch API](/typescript/web-apis/fetch-api/#a-typed-api-client).
+
+## E2E with Playwright
+
+Playwright drives Chromium, Firefox and WebKit against the running app.
+
+```ts title="tests/e2e/sign-in.spec.ts"
+import { expect, test } from "@playwright/test";
+
+test("signs in and sees the dashboard", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("ada@example.com");
+  await page.getByLabel("Password").fill("correct horse");
+  await page
+    .getByRole("button", { name: "Sign in" })
+    .click();
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { level: 1 }))
+    .toHaveText("Welcome, Ada");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+```
+
+| Concept                  | What to know                                                            |
+| :----------------------- | :---------------------------------------------------------------------- |
+| locators                 | `getByRole`, `getByLabel`, `getByText`, `getByTestId`; lazy, re-queried each use |
+| strictness               | an action on a locator matching 2+ elements throws; narrow it or use `.first()` |
+| auto-waiting             | actions wait until the element is attached, visible, stable, enabled   |
+| web-first assertions     | `await expect(locator).toBeVisible()` retries until timeout (5 s)      |
+| no manual sleeps         | never `waitForTimeout`; assert on the state you're waiting for         |
+| isolation                | each test gets a fresh browser context (cookies, storage)              |
+| fixtures                 | `page`, `context`, `request`, `browser`; add your own with `test.extend` |
+| auth                     | log in once in a setup project, reuse `storageState`                   |
+| trace viewer             | `trace: "on-first-retry"`, then `bunx playwright show-trace trace.zip` |
+| UI mode / codegen        | `playwright test --ui`, `playwright codegen <url>`                     |
+
+```ts title="fixtures.ts"
+import { test as base, type Page } from "@playwright/test";
+
+type Fixtures = { adminPage: Page };
+
+export const test = base.extend<Fixtures>({
+  adminPage: async ({ browser }, use) => {
+    const context = await browser.newContext({
+      storageState: "playwright/.auth/admin.json",
+    });
+    await use(await context.newPage());
+    await context.close();
+  },
+});
+export { expect } from "@playwright/test";
+```
+
+```ts title="playwright.config.ts"
+import { defineConfig, devices } from "@playwright/test";
+
+const CI = !!process.env.CI;
+
+export default defineConfig({
+  testDir: "tests/e2e",
+  fullyParallel: true,
+  forbidOnly: CI,
+  retries: CI ? 2 : 0,
+  use: {
+    baseURL: "http://localhost:3000",
+    trace: "on-first-retry",
+  },
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
+  webServer: {
+    command: "bun run build && bun run start",
+    url: "http://localhost:3000",
+    reuseExistingServer: !CI,
+  },
+});
+```
+
+## Coverage & TDD
+
+**Red, green, refactor**: write a failing test for the next small behaviour (red), write the least
+code that passes (green), then clean up with the tests as a safety net (refactor). Repeat in
+minutes, not hours.
+
+| Runner      | Run                                   | Threshold                                              |
+| :---------- | :------------------------------------ | :----------------------------------------------------- |
+| `bun test`  | `bun test --coverage`                 | `coverageThreshold = 0.8` in `bunfig.toml` `[test]`    |
+| Vitest      | `vitest run --coverage`               | `coverage: { thresholds: { lines: 80, branches: 80 } }` |
+| Jest        | `jest --coverage`                     | `coverageThreshold: { global: { lines: 80 } }`         |
+| `node:test` | `node --test --experimental-test-coverage` | `--test-coverage-lines=80`                        |
+
+What coverage **doesn't** tell you:
+
+- a line ran, not that anything checked its result (a test with no `expect` still "covers")
+- whether the behaviour is correct, or whether a requirement is missing entirely
+- branch coverage misses combinations of conditions and short-circuit paths
+- 100% can be gamed; aim for a floor (e.g. 80%) and review what's uncovered
+- mutation testing (Stryker) measures whether tests catch deliberately injected bugs
+
+| Model               | Shape                                                        | Emphasis                                          |
+| :------------------ | :----------------------------------------------------------- | :------------------------------------------------ |
+| Test pyramid        | many unit, fewer integration, few E2E                        | fast, isolated unit tests                         |
+| Testing trophy      | static types and lint, some unit, **most integration**, few E2E | tests that resemble real use, best confidence per cost |
+
+Either way: types and lint catch the cheapest bugs, E2E covers the few flows that must never break
+(sign-up, checkout, search), and everything else sits in between.
+
+## Recipes
+
+### Test a route without a server
+
+When the handler is a `Request` to `Response` function (Hono, Next.js route handlers, Bun `fetch`): call it directly, with no port and no network.
+
+```ts title="app.test.ts"
+import { expect, it } from "bun:test";
+import { Hono } from "hono";
+
+const app = new Hono()
+  .get("/health", (c) => c.json({ ok: true }))
+  .post("/echo", async (c) => c.json(await c.req.json()));
+
+it("GET /health", async () => {
+  const res = await app.request("/health");
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ ok: true });
+});
+
+it("POST /echo", async () => {
+  const res = await app.request("/echo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ n: 1 }),
+  });
+  expect(await res.json()).toEqual({ n: 1 });
+});
+// plain (req) => Response: handler(new Request("http://x/"))
+```
+
+### Real server on a random port
+
+When the request must go through real HTTP (middleware, headers, streaming); `port: 0` lets the OS pick a free port.
+
+```ts title="server.test.ts"
+import { afterAll, beforeAll, expect, it } from "bun:test";
+
+let server: Bun.Server<undefined>;
+
+beforeAll(() => {
+  server = Bun.serve({
+    port: 0, // any free port: parallel runs never clash
+    routes: { "/ping": new Response("pong") },
+    fetch: () => new Response("Not found", { status: 404 }),
+  });
+});
+afterAll(() => server.stop(true)); // also close keep-alives
+
+it("answers over real HTTP", async () => {
+  const res = await fetch(new URL("/ping", server.url));
+  expect(res.status).toBe(200);
+  expect(await res.text()).toBe("pong");
+});
+```
+
+### Temp directory per test
+
+When code reads or writes files: every test gets a fresh folder, removed afterwards.
+
+```ts title="report.test.ts"
+import { afterEach, beforeEach, expect, it } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile }
+  from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(path.join(tmpdir(), "app-test-"));
+});
+afterEach(() => rm(dir, { recursive: true, force: true }));
+
+async function saveReport(out: string, rows: string[]) {
+  const file = path.join(out, "report.csv");
+  await writeFile(file, rows.join("\n"));
+}
+
+it("writes report.csv", async () => {
+  await saveReport(dir, ["a,1", "b,2"]);
+  const file = path.join(dir, "report.csv");
+  const text = await readFile(file, "utf8");
+  expect(text.split("\n")).toHaveLength(2);
+});
+```
+
+### Stub environment variables
+
+When code reads `process.env` and the originals must come back after each test.
+
+```ts title="config.test.ts"
+import { afterEach, expect, it } from "bun:test";
+
+type Env = Record<string, string | undefined>;
+const saved = new Map<string, string | undefined>();
+
+function put(key: string, value: string | undefined) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+function setEnv(vars: Env): void {
+  for (const [key, value] of Object.entries(vars)) {
+    if (!saved.has(key)) saved.set(key, process.env[key]);
+    put(key, value);
+  }
+}
+afterEach(() => {
+  for (const [key, value] of saved) put(key, value);
+  saved.clear();
+});
+
+const port = () => Number(process.env.PORT ?? 3000);
+it("reads PORT", () => {
+  setEnv({ PORT: "8080", DEBUG: undefined });
+  expect(port()).toBe(8080);
+});
+```
+
+Vitest has this built in: `vi.stubEnv(name, value)` and `vi.unstubAllEnvs()`.
+
+### Assert on an error's fields
+
+When the type and data of a failure matter, not only its message.
+
+```ts title="users.test.ts"
+import { expect, it } from "bun:test";
+
+class HttpError extends Error {
+  override name = "HttpError";
+  constructor(
+    readonly status: number,
+    readonly url: string,
+  ) {
+    super(`HTTP ${status} ${url}`);
+  }
+}
+
+async function getUser(id: number): Promise<{ id: number }> {
+  if (id <= 0) throw new HttpError(404, `/users/${id}`);
+  return { id };
+}
+
+it("rejects with a typed 404", async () => {
+  const err = await getUser(0).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(HttpError);
+  expect(err).toMatchObject({
+    status: 404,
+    url: "/users/0",
+  });
+});
+```
+
+## References
+
+- [Vitest](https://vitest.dev/guide/): mocking, fake timers, `expectTypeOf`, coverage, migration to v5
+- [Bun test runner](https://bun.com/docs/test): writing tests, mocks, `mock.module`, DOM with happy-dom, coverage
+- [Node.js `node:test`](https://nodejs.org/api/test.html) and [Jest](https://jestjs.io/docs/getting-started)
+- [Testing Library](https://testing-library.com/docs/queries/about/#priority): query priority, [user-event](https://testing-library.com/docs/user-event/intro), [jest-dom](https://github.com/testing-library/jest-dom)
+- [Mock Service Worker](https://mswjs.io/docs/): `http`, `HttpResponse`, `setupServer`
+- [Playwright](https://playwright.dev/docs/intro): locators, assertions, fixtures, trace viewer
+- MDN: [`fetch()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch), [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response)
+- Kent C. Dodds, [The Testing Trophy](https://kentcdodds.com/blog/the-testing-trophy-and-testing-classifications)

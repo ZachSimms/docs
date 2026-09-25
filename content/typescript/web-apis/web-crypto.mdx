@@ -1,0 +1,465 @@
+---
+title: Web Crypto
+date: 2026-09-25
+order: 10
+---
+
+`crypto.getRandomValues`, `crypto.randomUUID` and `crypto.subtle` (SubtleCrypto): hashing, encryption,
+signatures, key derivation and key formats, typed for TypeScript. The same API runs in browsers,
+workers, Bun, Node 20+ and Deno. For sessions, JWTs and password storage see
+[Authentication](/typescript/backend/authentication/).
+
+## Availability
+
+| Where                   | Access                            | Notes                                                 |
+| :---------------------- | :-------------------------------- | :---------------------------------------------------- |
+| Browser, secure context | `crypto`, `crypto.subtle`         | HTTPS, `localhost`, `127.0.0.1`, `file:`              |
+| Browser, plain `http:`  | `getRandomValues` only            | `crypto.subtle` is `undefined`, `randomUUID` missing  |
+| Web / service workers   | `self.crypto`                     | same rules as the page                                |
+| Bun                     | `globalThis.crypto`               | full WebCrypto, Ed25519/X25519; plus `node:crypto`    |
+| Node 20+                | `globalThis.crypto`               | global since 19; older: `require("node:crypto").webcrypto` |
+| Deno, Cloudflare Workers| `globalThis.crypto`               | Workers add a non-standard `timingSafeEqual`          |
+
+`crypto.subtle` is Baseline widely available (since 2017); `randomUUID` since 2022. Ed25519 and
+X25519 are **Baseline 2025** (Chrome 137 was last to ship Ed25519).
+
+```ts
+if (!globalThis.isSecureContext || !crypto.subtle) {
+  throw new Error("Web Crypto needs HTTPS or localhost");
+}
+```
+
+## Random values
+
+```ts
+const key = crypto.getRandomValues(new Uint8Array(32));
+const id = crypto.randomUUID(); // v4, 36 chars
+
+// Uniform integer in [0, max): reject the biased tail
+function randomInt(max: number): number {
+  const limit = Math.floor(2 ** 32 / max) * max;
+  const buf = new Uint32Array(1);
+  do crypto.getRandomValues(buf);
+  while (buf[0]! >= limit);
+  return buf[0]! % max;
+}
+```
+
+- `getRandomValues` fills an integer typed array in place and returns it; at most **65,536 bytes** per
+  call, else `QuotaExceededError`. Float arrays throw.
+- `randomUUID()` is typed as a template literal of five `string` parts.
+- `Math.random()` is predictable. Never use it for ids, tokens, salts or IVs.
+
+## SubtleCrypto methods
+
+Every method is async and works on `BufferSource` (an `ArrayBuffer` or a typed-array view) and
+`CryptoKey` objects.
+
+| Method                                                   | Resolves to                     |
+| :------------------------------------------------------- | :------------------------------ |
+| `digest(alg, data)`                                      | `ArrayBuffer` (hash)            |
+| `encrypt(alg, key, data)` / `decrypt(...)`               | `ArrayBuffer`                   |
+| `sign(alg, key, data)`                                   | `ArrayBuffer` (signature / MAC) |
+| `verify(alg, key, signature, data)`                      | `boolean`                       |
+| `generateKey(alg, extractable, usages)`                  | `CryptoKey` or `CryptoKeyPair`  |
+| `importKey(format, keyData, alg, extractable, usages)`   | `CryptoKey`                     |
+| `exportKey(format, key)`                                 | `ArrayBuffer`, or `JsonWebKey` for `"jwk"` |
+| `deriveKey(alg, baseKey, derivedAlg, extractable, usages)` | `CryptoKey`                   |
+| `deriveBits(alg, baseKey, lengthInBits)`                 | `ArrayBuffer`                   |
+| `wrapKey(format, key, wrappingKey, wrapAlg)`             | `ArrayBuffer` (encrypted key)   |
+| `unwrapKey(format, wrapped, unwrappingKey, unwrapAlg, keyAlg, extractable, usages)` | `CryptoKey` |
+
+| Error (`DOMException.name`) | Usually means                                             |
+| :-------------------------- | :-------------------------------------------------------- |
+| `OperationError`            | decrypt/auth tag failed: wrong key, IV, AAD or tampering   |
+| `InvalidAccessError`        | key's `usages` or algorithm don't allow this operation    |
+| `NotSupportedError`         | unknown algorithm or format for this key type             |
+| `DataError`                 | malformed key data on import                              |
+
+## Algorithms
+
+| Algorithm           | Kind                     | Operations            | Use it for                                          |
+| :------------------ | :----------------------- | :-------------------- | :-------------------------------------------------- |
+| `AES-GCM`           | symmetric, authenticated | encrypt, wrap         | default for encrypting data; 12-byte IV             |
+| `AES-CTR`           | symmetric, **no auth**   | encrypt, wrap         | seekable streams, only paired with a MAC            |
+| `AES-CBC`           | symmetric, no auth       | encrypt, wrap         | legacy interop only                                 |
+| `AES-KW`            | key wrap                 | wrap                  | wrapping other keys (RFC 3394)                      |
+| `RSA-OAEP`          | asymmetric encryption    | encrypt, wrap         | encrypt a small secret to a public key              |
+| `RSA-PSS`           | signature                | sign, verify          | RSA signatures (JWT `PS256`)                        |
+| `RSASSA-PKCS1-v1_5` | signature, legacy        | sign, verify          | JWT `RS256`, old interop                            |
+| `ECDSA`             | signature (P-256/384/521)| sign, verify          | JWT `ES256`, WebAuthn-style keys                    |
+| `Ed25519`           | signature                | sign, verify          | modern signatures: small keys, deterministic        |
+| `ECDH`              | key agreement            | deriveKey, deriveBits | shared secret between two NIST-curve key pairs      |
+| `X25519`            | key agreement            | deriveKey, deriveBits | shared secret, modern curve                         |
+| `HMAC`              | MAC                      | sign, verify          | webhooks, signed cookies/URLs, JWT `HS256`          |
+| `SHA-256/384/512`   | hash                     | digest                | integrity, content addressing, cache keys           |
+| `SHA-1`             | hash, broken             | digest                | legacy checksums only                               |
+| `PBKDF2`            | password KDF             | deriveKey, deriveBits | password to key (slow on purpose)                   |
+| `HKDF`              | KDF                      | deriveKey, deriveBits | expand one strong secret into several keys          |
+
+Not in Web Crypto: SHA-3, Argon2, scrypt, bcrypt, ChaCha20-Poly1305. Use a library (e.g.
+`@noble/hashes`) or the runtime (`Bun.password`, `node:crypto`).
+
+| Algorithm param object                  | Fields                                                |
+| :-------------------------------------- | :---------------------------------------------------- |
+| `AesGcmParams`                          | `iv` (12 bytes), `additionalData?`, `tagLength?` (128) |
+| `AesCtrParams`                          | `counter` (16 bytes), `length` (counter bits, e.g. 64) |
+| `RsaOaepParams`                         | `label?`                                              |
+| `RsaPssParams`                          | `saltLength` (e.g. 32 for SHA-256)                    |
+| `EcdsaParams`                           | `hash`                                                |
+| `Pbkdf2Params`                          | `salt`, `iterations`, `hash`                          |
+| `HkdfParams`                            | `salt`, `info`, `hash`                                |
+| `EcdhKeyDeriveParams`                   | `public` (the peer's `CryptoKey`)                     |
+| `HmacImportParams`                      | `hash`, `length?`                                     |
+
+## Keys
+
+```ts
+const aes = await crypto.subtle.generateKey(
+  { name: "AES-GCM", length: 256 },
+  false,                     // extractable
+  ["encrypt", "decrypt"],    // usages
+); // CryptoKey
+
+const pair = await crypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  false,
+  ["sign", "verify"],
+); // CryptoKeyPair; publicKey is always extractable
+
+aes.type;         // "secret" | "public" | "private"
+aes.extractable;  // false: exportKey/wrapKey throw
+aes.algorithm;    // { name: "AES-GCM", length: 256 }
+aes.usages;       // ["encrypt", "decrypt"]
+```
+
+| Usage                     | Allowed on                                 |
+| :------------------------ | :----------------------------------------- |
+| `encrypt` / `decrypt`     | AES keys, RSA-OAEP public / private        |
+| `sign` / `verify`         | HMAC; private / public signature keys      |
+| `deriveKey` / `deriveBits`| PBKDF2/HKDF base keys, ECDH/X25519 private |
+| `wrapKey` / `unwrapKey`   | AES keys, RSA-OAEP public / private        |
+
+- Keep keys **non-extractable** unless you must export them. A `CryptoKey` is structured-cloneable,
+  so a non-extractable key can live in IndexedDB and be reused without its bytes ever reaching JS.
+- Give each key the fewest usages; one key per purpose.
+
+## Key formats
+
+| Format  | Data                              | Holds                                               | Typical source                  |
+| :------ | :-------------------------------- | :-------------------------------------------------- | :------------------------------ |
+| `raw`   | bytes                             | AES/HMAC secrets, PBKDF2/HKDF input, EC/Ed25519/X25519 public keys | secrets, compact public keys |
+| `pkcs8` | DER `PrivateKeyInfo`              | private RSA, EC, Ed25519, X25519 keys               | PEM `BEGIN PRIVATE KEY`         |
+| `spki`  | DER `SubjectPublicKeyInfo`        | public RSA, EC, Ed25519, X25519 keys                | PEM `BEGIN PUBLIC KEY`          |
+| `jwk`   | `JsonWebKey` object               | any key type                                        | JWKS endpoints, JSON config     |
+
+```ts
+// PEM is base64 DER between header lines
+function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
+  const b64 = pem.replace(/-----[^-]+-----|\s/g, "");
+  return Uint8Array.fromBase64(b64);
+}
+
+declare const pem: string;
+const pub = await crypto.subtle.importKey(
+  "spki",
+  pemToDer(pem),
+  { name: "RSA-PSS", hash: "SHA-256" },
+  true,
+  ["verify"],
+);
+const jwk = await crypto.subtle.exportKey("jwk", pub);
+jwk.kty; // "RSA"
+```
+
+## Hashing
+
+```ts
+const data = new TextEncoder().encode("hello");
+const buf = await crypto.subtle.digest("SHA-256", data);
+new Uint8Array(buf).toHex(); // "2cf24dba5fb0a30e..."
+```
+
+- `digest` is one-shot: no streaming/incremental API. For large files use `Bun.CryptoHasher`,
+  `node:crypto` `createHash`, or a library.
+- A plain hash is not a MAC (length extension, no secret) and not a password hash (too fast).
+
+## Encryption
+
+```ts
+declare const key: CryptoKey; // AES-GCM, 256-bit
+declare const userIdBytes: Uint8Array<ArrayBuffer>;
+const iv = crypto.getRandomValues(new Uint8Array(12));
+const ct = await crypto.subtle.encrypt(
+  { name: "AES-GCM", iv, additionalData: userIdBytes },
+  key,
+  new TextEncoder().encode("secret"),
+); // ciphertext + 16-byte tag, appended
+// store iv next to ct; AAD must match on decrypt
+```
+
+| Rule                          | Why                                                          |
+| :---------------------------- | :----------------------------------------------------------- |
+| Fresh random 12-byte IV each call | a repeated (key, IV) pair in GCM leaks plaintext XOR and lets attackers forge |
+| IV is public                  | prepend it to the ciphertext                                 |
+| Rotate after ~2^32 messages   | random-IV collision bound for one GCM key                    |
+| Bind context with `additionalData` | stops swapping ciphertexts between users/records      |
+| RSA-OAEP only for small data  | 2048-bit + SHA-256 caps at 190 bytes; encrypt an AES key instead |
+
+## Signatures & MACs
+
+| Need                                   | Use                     | Key                    |
+| :------------------------------------- | :---------------------- | :--------------------- |
+| Both sides share a secret              | `HMAC` + `SHA-256`      | one secret key         |
+| Anyone can verify, only you sign       | `Ed25519`               | private / public pair  |
+| Interop with JWT/X.509 tooling          | `ECDSA` P-256 or `RSA-PSS` | private / public pair |
+
+```ts
+declare const privateKey: CryptoKey, publicKey: CryptoKey;
+const msg = new TextEncoder().encode("payload");
+const alg = { name: "ECDSA", hash: "SHA-256" };
+const sig = await crypto.subtle.sign(alg, privateKey, msg);
+await crypto.subtle.verify(alg, publicKey, sig, msg);
+```
+
+`ECDSA` signatures are raw `r \|\| s` (IEEE P1363, 64 bytes for P-256). OpenSSL, Java and many
+libraries emit DER, so convert at the boundary. `Ed25519` always hashes with SHA-512 internally
+and takes no params.
+
+## Key derivation
+
+```ts
+declare const secret: CryptoKey; // HKDF base key
+const k = await crypto.subtle.deriveKey(
+  {
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: new Uint8Array(32),
+    info: new TextEncoder().encode("app:v1:enc"),
+  },
+  secret,
+  { name: "AES-GCM", length: 256 },
+  false,
+  ["encrypt", "decrypt"],
+);
+```
+
+| Input                             | Derive with                      | Notes                                  |
+| :-------------------------------- | :------------------------------- | :------------------------------------- |
+| User password                     | `PBKDF2`, SHA-256, 600k+ iterations | random 16-byte salt per password (OWASP) |
+| Strong random secret              | `HKDF`                           | `info` separates keys per purpose      |
+| Your private + peer public key    | `ECDH` or `X25519` then `HKDF`   | never use the raw shared bits directly |
+
+Base keys for PBKDF2/HKDF are imported as `raw` with `extractable: false` and usage
+`["deriveKey"]` or `["deriveBits"]`.
+
+## Bytes, base64 & hex
+
+```ts
+const bytes = new TextEncoder().encode("hi");
+bytes.toBase64();                // "aGk="
+bytes.toBase64({ alphabet: "base64url", omitPadding: true });
+bytes.toHex();                   // "6869"
+Uint8Array.fromBase64("aGk=");   // Uint8Array [104, 105]
+Uint8Array.fromHex("6869");
+new TextDecoder().decode(bytes); // "hi"
+```
+
+`Uint8Array.fromBase64`/`toBase64`/`fromHex`/`toHex` are **Baseline 2025** (Sep), Node 25+, Bun.
+Types need TypeScript 6.0+ with `"lib": ["esnext"]` (or `esnext.typedarrays`). Fallbacks:
+
+```ts
+const toHex = (b: Uint8Array): string =>
+  Array.from(b, (x) => x.toString(16).padStart(2, "0"))
+    .join("");
+
+const toB64 = (b: Uint8Array): string => {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s); // spread would overflow on big arrays
+};
+
+const fromB64 = (s: string): Uint8Array<ArrayBuffer> =>
+  Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+```
+
+## TypeScript notes
+
+- `BufferSource` means `ArrayBuffer \| ArrayBufferView<ArrayBuffer>`. A bare `Uint8Array` is
+  `Uint8Array<ArrayBufferLike>` (TS 5.7+), which TS 5.9+ rejects there because it could sit on a
+  `SharedArrayBuffer`. Annotate helpers as `Uint8Array<ArrayBuffer>`.
+- `generateKey` overloads return `CryptoKeyPair` for asymmetric algorithms and `CryptoKey` for
+  symmetric ones. Passing a widened `AlgorithmIdentifier` gives `CryptoKey \| CryptoKeyPair`.
+- `exportKey("jwk", k)` returns `JsonWebKey`; any other format returns `ArrayBuffer`.
+- `crypto.subtle` is typed non-optional even though it's `undefined` on insecure origins.
+- In Bun, `@types/bun` declares the globals; in Node, `@types/node`. No `lib.dom` needed server-side.
+
+## Pitfalls
+
+| Pitfall                                       | Do instead                                           |
+| :-------------------------------------------- | :--------------------------------------------------- |
+| Designing your own scheme or protocol         | AES-GCM + HKDF as shown, or `jose` / libsodium        |
+| Reusing an AES-GCM IV with the same key       | random 12-byte IV per message                        |
+| AES-CTR or AES-CBC without a MAC              | AES-GCM                                              |
+| `sigA === sigB` or hex string compare          | `subtle.verify("HMAC", ...)`, or `timingSafeEqual`   |
+| SHA-256 of a password                         | PBKDF2 (600k+), or Argon2id via `Bun.password`       |
+| `Math.random()` for tokens                    | `crypto.getRandomValues`                             |
+| Signing re-serialised JSON                    | sign/verify the exact bytes you received             |
+| Decrypt failure shown to the user in detail   | treat any `OperationError` as "invalid or tampered"  |
+| Extractable long-lived keys                   | `extractable: false`, store the `CryptoKey` in IndexedDB |
+| Passing base64 strings where bytes are needed | decode to `Uint8Array` first                         |
+| ECDSA DER vs raw signature mismatch           | convert formats at the interop boundary              |
+
+## Recipes
+
+### SHA-256 hex digest
+Content hashes, ETags, cache keys, integrity checks.
+
+```ts
+export async function sha256Hex(
+  input: string | Uint8Array<ArrayBuffer>,
+): Promise<string> {
+  const data = typeof input === "string"
+    ? new TextEncoder().encode(input)
+    : input;
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return new Uint8Array(buf).toHex();
+}
+
+await sha256Hex("hello"); // "2cf24dba5fb0a30e26e8..."
+```
+
+### Password to AES key (PBKDF2)
+Derive a non-extractable AES-GCM key from a user's passphrase and a stored salt.
+
+```ts
+export async function keyFromPassword(
+  password: string,
+  salt: Uint8Array<ArrayBuffer>, // 16 random bytes
+  iterations = 600_000,
+): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+```
+
+### Encrypt and decrypt a string with a password
+End-to-end encrypted notes or exports; output is `salt | iv | ciphertext` as base64.
+
+```ts
+const enc = new TextEncoder();
+
+export async function seal(text: string, pw: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await keyFromPassword(pw, salt);
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, enc.encode(text));
+  const out = new Uint8Array(28 + ct.byteLength);
+  out.set(salt); out.set(iv, 16);
+  out.set(new Uint8Array(ct), 28);
+  return out.toBase64();
+}
+
+export async function unseal(b64: string, pw: string) {
+  const b = Uint8Array.fromBase64(b64);
+  const key = await keyFromPassword(pw, b.slice(0, 16));
+  const pt = await crypto.subtle.decrypt( // OperationError
+    { name: "AES-GCM", iv: b.slice(16, 28) }, // if wrong pw
+    key, b.slice(28));
+  return new TextDecoder().decode(pt);
+}
+```
+
+### Sign and verify a webhook (HMAC)
+Receive GitHub/Stripe-style webhooks: verify the raw body before parsing it.
+
+```ts
+const hmacKey = (secret: string) =>
+  crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false,
+    ["sign", "verify"]);
+
+export async function sign(secret: string, body: string) {
+  const sig = await crypto.subtle.sign("HMAC",
+    await hmacKey(secret), new TextEncoder().encode(body));
+  return `sha256=${new Uint8Array(sig).toHex()}`;
+}
+
+export async function verifyWebhook(
+  req: Request, secret: string,
+): Promise<boolean> {
+  const header = req.headers.get("x-hub-signature-256");
+  const hex = header?.match(/^sha256=([0-9a-f]{64})$/i)?.[1];
+  if (!hex) return false;
+  const body = await req.clone().text(); // raw bytes
+  return crypto.subtle.verify("HMAC", await hmacKey(secret),
+    Uint8Array.fromHex(hex), new TextEncoder().encode(body));
+}
+```
+
+`subtle.verify` compares in constant time, unlike `===` on hex strings.
+
+### Ed25519 sign and verify
+Signed licence keys, tokens or messages that others verify with a published public key.
+
+```ts
+const { privateKey, publicKey } =
+  await crypto.subtle.generateKey(
+    "Ed25519", false, ["sign", "verify"]);
+
+// Share the 32-byte public key as base64url
+const raw = await crypto.subtle.exportKey("raw", publicKey);
+const pubB64 = new Uint8Array(raw)
+  .toBase64({ alphabet: "base64url", omitPadding: true });
+
+const msg = new TextEncoder().encode("licence:acme:2027");
+const sig = await crypto.subtle.sign(
+  "Ed25519", privateKey, msg); // 64 bytes
+
+// Verifier side
+const pub = await crypto.subtle.importKey("raw",
+  Uint8Array.fromBase64(pubB64, { alphabet: "base64url" }),
+  "Ed25519", true, ["verify"]);
+await crypto.subtle.verify("Ed25519", pub, sig, msg); // true
+```
+
+### Random token
+Session ids, API keys, reset links: send the token, store only its hash.
+
+```ts
+export async function newToken(bytes = 32) {
+  const raw = crypto.getRandomValues(new Uint8Array(bytes));
+  const token = raw.toBase64({
+    alphabet: "base64url",
+    omitPadding: true,
+  }); // 43 chars for 32 bytes, URL-safe
+  const hash = await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(token));
+  return { token, hash: new Uint8Array(hash).toHex() };
+}
+```
+
+## References
+
+- MDN: [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API), [SubtleCrypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto), [CryptoKey](https://developer.mozilla.org/en-US/docs/Web/API/CryptoKey): methods, algorithms and key objects
+- MDN: [`importKey()`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey), [`sign()`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/sign), [`deriveKey()`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey): formats and per-algorithm params
+- MDN: [`getRandomValues()`](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues), [`randomUUID()`](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID), [Secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts)
+- MDN: [`Uint8Array.fromBase64()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/fromBase64), [`toHex()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toHex): native base64/hex
+- [W3C Web Cryptography API](https://w3c.github.io/webcrypto/), [Secure Curves in WebCrypto](https://wicg.github.io/webcrypto-secure-curves/)
+- [Node.js Web Crypto](https://nodejs.org/api/webcrypto.html), [Bun: Web APIs](https://bun.com/docs/runtime/web-apis)
+- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html): PBKDF2 iteration counts, Argon2id
+- [jose](https://github.com/panva/jose): JWT/JWS/JWE on top of Web Crypto

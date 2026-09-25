@@ -1,0 +1,946 @@
+---
+title: Object-oriented programming
+date: 2026-09-25
+order: 5
+---
+
+Classes, modifiers, inheritance, interfaces, generics, `this`, mixins, decorators and the
+prototype machinery underneath, as TypeScript 5.9 on an ES2022+ target sees them. Plain
+object types live in [Objects](/typescript/language/objects/); pattern catalogues in
+[Design patterns](/typescript/design-architecture/design-patterns/).
+
+## Classes
+
+```ts title="account.ts"
+class Account {
+  readonly id: string;           // field declaration
+  balance = 0;                   // initialiser infers number
+  owner?: string;                // optional field
+  label!: string;                // definitely assigned later
+
+  constructor(id: string, opening = 0) {
+    this.id = id;
+    this.balance = opening;
+  }
+
+  deposit(amount: number): this {
+    this.balance += amount;
+    return this;                 // enables chaining
+  }
+}
+
+const acc = new Account("a1", 50).deposit(25);
+```
+
+| Member                | Syntax                                     | Notes |
+| :-------------------- | :----------------------------------------- | :---- |
+| Field                 | `name: T` / `name = value`                 | `strictPropertyInitialization` requires an initialiser, a constructor assignment, `?` or `!` |
+| Constructor           | `constructor(a: T) {}`                     | no return type; overloads allowed |
+| Parameter property    | `constructor(private x: T) {}`             | declares and assigns in one go (TS-only syntax) |
+| Method                | `m(): R {}`                                | lives on the prototype, shared by instances |
+| Getter / setter       | `get x(): T {}` / `set x(v: T) {}`         | getter alone makes the property `readonly` |
+| Auto-accessor         | `accessor x = 1`                           | ES decorators' storage-backed get/set pair |
+| Static member         | `static count = 0`                         | on the constructor, not instances |
+| Static block          | `static { ... }`                           | runs once at class evaluation (ES2022) |
+| Index signature       | `[key: string]: unknown`                   | rare on classes |
+
+### Parameter properties
+
+```ts
+class Point {
+  constructor(
+    public readonly x: number,
+    public readonly y: number,
+  ) {}
+}
+// same as: x: number; y: number; + this.x = x; this.y = y;
+```
+
+<Callout type="warn" title="erasableSyntaxOnly">
+  TS 5.8 added `erasableSyntaxOnly`, which rejects syntax that emits runtime code:
+  parameter properties, `enum`, namespaces with values and `import =`. Turn it on when
+  running `.ts` directly with Node's type stripping or Bun-style strip-only tools, and
+  write fields plus explicit assignments instead.
+</Callout>
+
+### Accessors
+
+```ts
+class Temperature {
+  #celsius = 0;
+  get fahrenheit(): number {
+    return this.#celsius * 1.8 + 32;
+  }
+  set fahrenheit(f: number) {
+    this.#celsius = (f - 32) / 1.8;
+  }
+  // TS 5.1+: get and set may use unrelated types
+  get raw(): string {
+    return `${this.#celsius}C`;
+  }
+  set raw(v: string | number) {
+    this.#celsius = Number.parseFloat(String(v));
+  }
+}
+```
+
+### Static members and static blocks
+
+```ts
+class Config {
+  static readonly defaults = { retries: 3 };
+  static #instances = 0;
+  static env: string;
+
+  static {
+    // one-time setup with access to private statics
+    Config.env = globalThis.process?.env.NODE_ENV ?? "dev";
+  }
+
+  constructor() {
+    Config.#instances++;
+  }
+  static count(): number {
+    return Config.#instances;
+  }
+}
+```
+
+Statics cannot use the class's type parameters, and `name`, `length` and `call` are
+reserved on the constructor function.
+
+## Access modifiers & `#private`
+
+| Modifier       | Visible from               | Enforced      | Emitted JS          | Notes |
+| :------------- | :------------------------- | :------------ | :------------------ | :---- |
+| `public`       | anywhere                   | n/a           | plain property      | default, rarely written |
+| `protected`    | class + subclasses         | compile time  | plain property      | subclass may widen to `public` |
+| `private`      | declaring class            | compile time  | plain property      | `obj["x"]` bypasses; `JSON.stringify` shows it |
+| `#x`           | declaring class body       | runtime       | real private field  | invisible to `Object.keys`, proxies, subclasses |
+| `readonly`     | (combines with any)        | compile time  | plain property      | assignable only in declaration or constructor |
+
+```ts
+class Vault {
+  private pin = 1234;          // soft private
+  #secret = "s3cret";          // hard private
+  protected readonly owner = "zach";
+
+  has(other: Vault): boolean {
+    return #secret in other;   // ergonomic brand check
+  }
+}
+
+const v = new Vault();
+// @ts-expect-error: 'pin' is private
+v.pin;
+const leaked = v["pin"];       // allowed: escape hatch
+```
+
+<Note kind="tip">Prefer `#private` for real encapsulation; `private` is fine when you need
+subclass-style testing access or must target runtimes without private fields.</Note>
+
+## Inheritance & override
+
+```ts
+class Animal {
+  constructor(public name: string) {}
+  move(m = 0): string {
+    return `${this.name} moved ${m}m`;
+  }
+}
+
+class Dog extends Animal {
+  constructor(name: string, public breed: string) {
+    super(name);               // must run before `this`
+  }
+  override move(m = 5): string {
+    return `Woof! ${super.move(m)}`;
+  }
+}
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Single inheritance | one `extends`; use mixins or composition for more |
+| `super(...)` | required in derived constructors before any `this` access |
+| `super.method()` | calls the parent prototype's version |
+| Override compatibility | overriding member must be assignable to the base member |
+| `override` | marks intent; error if the base has no such member |
+| `noImplicitOverride` | error when an override lacks the keyword |
+| Extending built-ins | `extends Error`/`Array` works on ES2015+ targets |
+
+### Field initialisation order
+
+1. Base class fields initialise, then the base constructor body runs.
+2. `super()` returns; derived fields initialise; the derived constructor body runs.
+
+```ts
+class Base {
+  constructor() {
+    // Derived's fields don't exist yet
+    this.setup();
+  }
+  setup(): void {}
+}
+class Derived extends Base {
+  items: string[] = [];
+  override setup(): void {
+    this.items.push("x");         // TypeError at runtime
+  }
+}
+```
+
+### `useDefineForClassFields`
+
+Default `true` for targets ES2022+ (and ESNext). Fields use `Object.defineProperty`
+semantics, so a redeclared field in a subclass resets the value set by the base.
+
+```ts
+class Model {
+  data: unknown = { id: 1 };
+}
+class User extends Model {
+  // @ts-expect-error: would overwrite the base property
+  data: { id: number };
+}
+class Admin extends Model {
+  declare data: { id: number };   // type-only, no emit
+}
+```
+
+## Abstract classes
+
+```ts
+abstract class Shape {
+  abstract readonly kind: string;
+  abstract area(): number;
+  describe(): string {              // shared implementation
+    return `${this.kind}: ${this.area().toFixed(2)}`;
+  }
+}
+
+class Circle extends Shape {
+  readonly kind = "circle";
+  constructor(private r: number) {
+    super();
+  }
+  area(): number {
+    return Math.PI * this.r ** 2;
+  }
+}
+
+// @ts-expect-error: cannot create an abstract class
+new Shape();
+
+// an "any concrete subclass" constructor type
+type ShapeCtor = abstract new (...args: never[]) => Shape;
+```
+
+Abstract members have no body; concrete subclasses must implement them all. Abstract
+classes can have constructors, fields and protected helpers (template method pattern).
+
+## Interfaces & implements
+
+```ts
+interface Serializable {
+  serialize(): string;
+}
+interface Identified {
+  readonly id: string;
+}
+
+class Order implements Serializable, Identified {
+  constructor(readonly id: string, private total: number) {}
+  serialize(): string {
+    return JSON.stringify({
+      id: this.id,
+      total: this.total,
+    });
+  }
+}
+```
+
+| Aspect                  | `interface` + `implements`   | `abstract class` + `extends` |
+| :---------------------- | :--------------------------- | :--------------------------- |
+| Runtime presence        | none, erased                 | real class + prototype       |
+| Implementation sharing  | no                           | yes (concrete methods, fields) |
+| How many               | implement any number         | extend exactly one           |
+| Constructor             | cannot declare one           | can, with `super()` chain    |
+| Access modifiers        | public only                  | `protected`, `private`, `#`  |
+| `instanceof` check      | impossible                   | works                        |
+| Best for                | contracts across unrelated types | family with shared code  |
+
+### `implements` does not change types
+
+`implements` only checks the class against the interface; it does not contextually type
+the class members.
+
+```ts
+interface Checker {
+  check(name: string): boolean;
+}
+class NameChecker implements Checker {
+  // @ts-expect-error: 's' implicitly has an 'any' type
+  check(s) {
+    return s.length > 0;
+  }
+}
+```
+
+Optional interface members are not added to the class either: declare them yourself.
+
+## Structural typing & polymorphism
+
+TypeScript compares shapes, not names. A class type is just the shape of its instances.
+
+```ts
+class Point2D {
+  x = 0;
+  y = 0;
+}
+const p: Point2D = { x: 1, y: 2 };    // OK: same shape
+
+interface Speaker {
+  speak(): string;
+}
+const duck = { speak: () => "quack" };
+const robot = new (class {
+  speak() { return "beep"; }
+})();
+const all: Speaker[] = [duck, robot]; // duck typing
+
+class Kilometres {
+  #brand!: void;                      // private field
+  constructor(readonly value: number) {}
+}
+// @ts-expect-error: # or private members make it nominal
+const km: Kilometres = { value: 5 };
+```
+
+### `instanceof` narrowing
+
+```ts
+class HttpError extends Error {
+  constructor(readonly status: number, msg: string) {
+    super(msg);
+    this.name = "HttpError";
+  }
+}
+
+function report(e: unknown): string {
+  if (e instanceof HttpError) return `HTTP ${e.status}`;
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+```
+
+`instanceof` walks the prototype chain, so it fails across realms (iframes, `vm`) and
+with duplicated package copies. Custom checks: `static [Symbol.hasInstance]`.
+
+## Generic classes
+
+```ts
+class TypedEmitter<
+  Events extends Record<string, unknown[]>,
+> {
+  #handlers: {
+    [K in keyof Events]?: Array<(...a: Events[K]) => void>;
+  } = {};
+
+  on<K extends keyof Events>(
+    ev: K,
+    fn: (...args: Events[K]) => void,
+  ): () => void {
+    const list = (this.#handlers[ev] ??= []);
+    list.push(fn);
+    return () => {
+      this.#handlers[ev] = list.filter((f) => f !== fn);
+    };
+  }
+
+  emit<K extends keyof Events>(
+    ev: K,
+    ...args: Events[K]
+  ): void {
+    this.#handlers[ev]?.forEach((fn) => fn(...args));
+  }
+}
+
+const bus = new TypedEmitter<{ login: [user: string] }>();
+bus.on("login", (user) => user.toUpperCase());
+// @ts-expect-error: number is not string
+bus.emit("login", 42);
+```
+
+| Feature | Syntax |
+| :------ | :----- |
+| Type parameter | `class Box<T> {}` |
+| Constraint | `class Repo<T extends { id: string }> {}` |
+| Default | `class Cache<V = string> {}` |
+| Inferred from constructor | `new Box(1)` gives `Box<number>` |
+| Method generics | `map<U>(f: (v: T) => U): Box<U>` |
+| Statics | cannot reference `T` |
+
+## this
+
+| Form | Binding | Cost |
+| :--- | :------ | :--- |
+| Method `m() {}` | caller decides (`obj.m()` vs detached `const f = obj.m`) | one copy on prototype |
+| Arrow field `m = () => {}` | lexically bound to the instance | one copy per instance; not on prototype, `super.m` impossible |
+| `.bind(this)` in constructor | fixed | per instance |
+
+```ts
+class Counter {
+  count = 0;
+  inc() {
+    this.count++;
+  }
+  incBound = () => {
+    this.count++;
+  };
+}
+const c = new Counter();
+const detached = c.inc;
+// detached();   // TypeError: this is undefined
+setTimeout(c.incBound, 0);         // safe
+```
+
+### `this` parameters
+
+A fake first parameter that types `this`; erased from emit.
+
+```ts
+function onClick(this: HTMLButtonElement, ev: MouseEvent) {
+  this.disabled = true;
+}
+document.querySelector("button")?.addEventListener(
+  "click",
+  onClick,
+);
+
+class Handler {
+  info = "x";
+  // forbid calling detached
+  run(this: Handler) {
+    return this.info;
+  }
+}
+const h = new Handler();
+const r = h.run;
+// @ts-expect-error: 'this' context of type 'void'
+r();
+```
+
+### Polymorphic `this` and `this` guards
+
+```ts
+class QueryBuilder {
+  protected parts: string[] = [];
+  where(clause: string): this {
+    this.parts.push(`WHERE ${clause}`);
+    return this;           // subclasses keep their type
+  }
+}
+class PgBuilder extends QueryBuilder {
+  returning(col: string): this {
+    this.parts.push(`RETURNING ${col}`);
+    return this;
+  }
+}
+new PgBuilder().where("id = 1").returning("*"); // OK
+
+class Node2 {
+  children?: Node2[];
+  isParent(): this is { children: Node2[] } {
+    return Array.isArray(this.children);
+  }
+}
+```
+
+## Composition & mixins
+
+Favour "has-a" over "is-a": inject collaborators behind interfaces instead of growing a
+deep class tree.
+
+```ts
+interface Logger {
+  info(msg: string): void;
+}
+interface Store<T> {
+  get(id: string): Promise<T | undefined>;
+}
+
+class UserService {
+  readonly #store: Store<{ name: string }>;
+  readonly #log: Logger;
+  constructor(store: Store<{ name: string }>, log: Logger) {
+    this.#store = store;
+    this.#log = log;
+  }
+  async name(id: string): Promise<string> {
+    this.#log.info(`lookup ${id}`);
+    return (await this.#store.get(id))?.name ?? "unknown";
+  }
+}
+```
+
+### Typed mixins
+
+A mixin is a function from a base class to a subclass. The constructor constraint must be
+`new (...args: any[]) => ...` exactly.
+
+```ts
+type Ctor<T = object> = new (...args: any[]) => T;
+
+function Timestamped<TBase extends Ctor>(Base: TBase) {
+  return class extends Base {
+    createdAt = new Date();
+  };
+}
+
+function Activatable<TBase extends Ctor>(Base: TBase) {
+  return class extends Base {
+    active = false;
+    activate() {
+      this.active = true;
+    }
+  };
+}
+
+class Entity {
+  constructor(public id: string) {}
+}
+const Rich = Timestamped(Activatable(Entity));
+type Rich = InstanceType<typeof Rich>;
+
+const e: Rich = new Rich("u1");
+e.activate();
+e.createdAt.getTime();
+```
+
+Constrain the base when the mixin needs members: `TBase extends Ctor<{ id: string }>`.
+
+## Decorators
+
+TS 5.0+ implements the standard (TC39 stage 3) decorators with no flag. A decorator is a
+function receiving the decorated `value` and a `context` object.
+
+| Target | `value` | `context` type | May return |
+| :----- | :------ | :------------- | :--------- |
+| class | the class | `ClassDecoratorContext` | replacement class |
+| method | the function | `ClassMethodDecoratorContext` | replacement function |
+| getter / setter | the accessor fn | `ClassGetterDecoratorContext` / `ClassSetterDecoratorContext` | replacement fn |
+| field | `undefined` | `ClassFieldDecoratorContext` | `(initial) => newInitial` |
+| `accessor` field | `{ get, set }` | `ClassAccessorDecoratorContext` | `{ get?, set?, init? }` |
+
+`context` carries `kind`, `name`, `static`, `private`, `access` (`get`/`set`/`has`),
+`addInitializer(fn)` and `metadata` (TS 5.2+, needs `Symbol.metadata`).
+
+```ts title="decorators.ts"
+function logged<This, A extends unknown[], R>(
+  target: (this: This, ...args: A) => R,
+  ctx: ClassMethodDecoratorContext<
+    This,
+    (this: This, ...args: A) => R
+  >,
+) {
+  const name = String(ctx.name);
+  return function (this: This, ...args: A): R {
+    console.log(`call ${name}`, args);
+    return target.call(this, ...args);
+  };
+}
+
+function bound<This, F extends (this: This) => unknown>(
+  _t: F,
+  ctx: ClassMethodDecoratorContext<This, F>,
+) {
+  ctx.addInitializer(function () {
+    const self = this as Record<PropertyKey, unknown>;
+    const fn = self[ctx.name] as F;
+    self[ctx.name] = fn.bind(this);
+  });
+}
+
+function sealed(cls: Function, _ctx: ClassDecoratorContext) {
+  Object.seal(cls);
+  Object.seal(cls.prototype);
+}
+
+function clamp(min: number, max: number) {
+  return <This>(
+    _v: undefined,
+    _ctx: ClassFieldDecoratorContext<This, number>,
+  ) =>
+    (initial: number) =>
+      Math.min(max, Math.max(min, initial));
+}
+
+function tracked<This, V>(
+  target: ClassAccessorDecoratorTarget<This, V>,
+  ctx: ClassAccessorDecoratorContext<This, V>,
+): ClassAccessorDecoratorResult<This, V> {
+  return {
+    set(v) {
+      console.log(`${String(ctx.name)} =`, v);
+      target.set.call(this, v);
+    },
+  };
+}
+
+@sealed
+class Player {
+  @clamp(0, 100) hp = 150;          // becomes 100
+  @tracked accessor score = 0;
+
+  @logged
+  hit(dmg: number): number {
+    this.hp -= dmg;
+    return this.hp;
+  }
+
+  @bound
+  reset(): void {
+    this.hp = 100;
+  }
+}
+```
+
+| | Standard (TS 5.0+) | Legacy `experimentalDecorators` |
+| :- | :----------------- | :------------------------------ |
+| Spec | TC39 stage 3 proposal | old stage 1 draft |
+| Flag | none | `"experimentalDecorators": true` |
+| Signature | `(value, context)` | `(target, key, descriptor)` |
+| Parameter decorators | no | yes (Angular, NestJS DI) |
+| `emitDecoratorMetadata` | no (use `context.metadata`) | yes, with `reflect-metadata` |
+| Mixing | cannot combine the two in one project | |
+
+<Note kind="warning">No browser or major engine ships decorators natively yet; TypeScript,
+Babel and esbuild downlevel them. Frameworks built on DI (Angular, NestJS, TypeORM) still
+rely on the legacy flag.</Note>
+
+## Prototypes under the hood
+
+`class` is mostly syntax over constructor functions and prototype links.
+
+```ts
+class Animal {
+  constructor(public name: string) {}
+  speak() {
+    return `${this.name} makes a sound`;
+  }
+}
+class Dog extends Animal {
+  override speak() {
+    return `${this.name} barks`;
+  }
+}
+const rex = new Dog("Rex");
+
+const proto = Object.getPrototypeOf;
+proto(rex) === Dog.prototype;              // true
+proto(Dog.prototype) === Animal.prototype; // true
+proto(Dog) === Animal;                     // statics
+Object.hasOwn(rex, "name");                // true
+Object.hasOwn(rex, "speak");               // false
+```
+
+```text
+rex { name }
+ └─[[Prototype]]─▶ Dog.prototype { speak, constructor: Dog }
+    └─[[Prototype]]─▶ Animal.prototype { speak, constructor }
+       └─[[Prototype]]─▶ Object.prototype { toString, ... }
+          └─[[Prototype]]─▶ null
+
+Dog ─[[Prototype]]─▶ Animal ─▶ Function.prototype ─▶ ...
+```
+
+Roughly what ES5 output looks like (with `--target es5`):
+
+```js
+function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.speak = function () {
+  return this.name + " makes a sound";
+};
+function Dog(name) {
+  return Animal.call(this, name) || this;
+}
+Object.setPrototypeOf(Dog, Animal);
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.constructor = Dog;
+```
+
+| Differences from functions | |
+| :------------------------- | :- |
+| Calling without `new` | throws `TypeError` |
+| Body | always strict mode |
+| Hoisting | declared but in the temporal dead zone until evaluated |
+| Methods | non-enumerable, not constructible |
+
+## SOLID in TS
+
+| Principle | Meaning | TS move |
+| :-------- | :------ | :------ |
+| Single responsibility | one reason to change | split `ReportService` into `ReportBuilder` + `ReportMailer` |
+| Open/closed | extend without editing | new `PaymentMethod` class instead of another `switch` case |
+| Liskov substitution | subtypes honour the base contract | `Square extends Rectangle` with coupled setters breaks callers |
+| Interface segregation | small, focused interfaces | `Readable` and `Writable`, not one `FileLike` |
+| Dependency inversion | depend on abstractions | constructor takes `Logger`, not `ConsoleLogger` |
+
+```ts
+// Open/closed + dependency inversion in one sketch
+interface PaymentMethod {
+  pay(cents: number): Promise<string>;
+}
+class Card implements PaymentMethod {
+  async pay(cents: number) {
+    return `card:${cents}`;
+  }
+}
+class Checkout {
+  constructor(private readonly method: PaymentMethod) {}
+  total(cents: number) {
+    return this.method.pay(cents);
+  }
+}
+await new Checkout(new Card()).total(999);
+```
+
+## Recipes
+
+### Singleton, and why a module is usually better
+
+When exactly one lazily created instance must exist, though an exported module object usually does the job with less ceremony.
+
+```ts
+class Config {
+  static #instance: Config | undefined;
+  private constructor(readonly env: string) {}
+
+  static get(): Config {
+    return (Config.#instance ??= new Config(
+      process.env.NODE_ENV ?? "development",
+    ));
+  }
+}
+Config.get() === Config.get(); // true
+// @ts-expect-error: constructor is private
+new Config("prod");
+
+// usually better: a module is evaluated once per process
+export const config = Object.freeze({
+  env: process.env.NODE_ENV ?? "development",
+});
+```
+
+A module is evaluated once per process, so its exports are already singletons; pass them in as dependencies so tests can swap them.
+
+### Fluent builder
+
+When an object has many optional settings and you want a readable call chain that ends in a validated, frozen result.
+
+```ts
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+type Req = Readonly<{
+  url: string;
+  method: Method;
+  headers: Readonly<Record<string, string>>;
+}>;
+class RequestBuilder {
+  #url = "";
+  #method: Method = "GET";
+  #headers: Record<string, string> = {};
+
+  url(u: string): this { this.#url = u; return this; }
+  method(m: Method): this { this.#method = m; return this; }
+  header(k: string, v: string): this {
+    this.#headers = { ...this.#headers, [k]: v };
+    return this;
+  }
+  build(): Req {
+    if (!this.#url) throw new Error("url is required");
+    const headers = Object.freeze({ ...this.#headers });
+    return Object.freeze({
+      url: this.#url, method: this.#method, headers,
+    });
+  }
+}
+```
+
+Returning `this` rather than `RequestBuilder` keeps the chain typed when a subclass adds methods.
+
+### Value object
+
+When two values are equal by content, not identity (money, email, date range): private constructor, validating static factory, `equals`, and new instances instead of mutation.
+
+```ts
+type Currency = "EUR" | "GBP" | "USD";
+
+class Money {
+  readonly #cents: number;
+  readonly #cur: Currency;
+  private constructor(cents: number, cur: Currency) {
+    this.#cents = cents;
+    this.#cur = cur;
+  }
+  static of(n: number, cur: Currency): Money {
+    if (!Number.isFinite(n)) throw new RangeError("amount");
+    return new Money(Math.round(n * 100), cur);
+  }
+  add(o: Money): Money {
+    if (o.#cur !== this.#cur) throw new TypeError("mixed");
+    return new Money(this.#cents + o.#cents, this.#cur);
+  }
+  equals(o: Money): boolean {
+    return this.#cents === o.#cents && this.#cur === o.#cur;
+  }
+}
+
+const sum = Money.of(0.1, "EUR").add(Money.of(0.2, "EUR"));
+sum.equals(Money.of(0.3, "EUR")); // true: no float drift
+```
+
+The `#private` fields also make `Money` nominal: a plain object with the same public shape is not assignable to it.
+
+### Abstract repository base
+
+When several storage back ends share helper logic but each implements its own reads and writes.
+
+```ts
+interface Entity { readonly id: string }
+abstract class Repository<T extends Entity> {
+  abstract findById(id: string): Promise<T | undefined>;
+  abstract save(entity: T): Promise<T>;
+
+  async getOrThrow(id: string): Promise<T> { // shared
+    const found = await this.findById(id);
+    if (!found) throw new Error(`Not found: ${id}`);
+    return found;
+  }
+}
+class MemoryRepository<T extends Entity>
+  extends Repository<T> {
+  #rows = new Map<string, T>();
+  override async findById(id: string) {
+    return this.#rows.get(id);
+  }
+  override async save(entity: T) {
+    this.#rows.set(entity.id, entity);
+    return entity;
+  }
+}
+
+const users: Repository<{ id: string; name: string }> =
+  new MemoryRepository(); // swap for a SQL one later
+```
+
+### Disposable resource with `await using`
+
+When a connection, file handle or lock must be released on every exit path without a `try`/`finally`.
+
+```ts
+type Conn = {
+  query(sql: string): Promise<unknown[]>;
+  end(): Promise<void>;
+};
+declare function connect(url: string): Promise<Conn>;
+class Db implements AsyncDisposable {
+  #conn: Conn;
+  private constructor(conn: Conn) {
+    this.#conn = conn;
+  }
+  static async open(url: string): Promise<Db> {
+    return new Db(await connect(url));
+  }
+  query(sql: string): Promise<unknown[]> {
+    return this.#conn.query(sql);
+  }
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.#conn.end();
+  }
+}
+
+async function countUsers(): Promise<unknown[]> {
+  await using db = await Db.open("postgres://localhost/app");
+  return db.query("select count(*) from users");
+} // db is disposed here, even if query throws
+```
+
+Needs TS 5.2+ and `lib` `esnext` (or `esnext.disposable`). Node 24+ and Bun run it natively; it is not Baseline in browsers yet, so TypeScript downlevels it there. Use `using` with `[Symbol.dispose]()` for synchronous cleanup, and `DisposableStack` to collect several resources.
+
+### Class to JSON and back
+
+When instances hold `Date`s, private state or derived fields and must cross a JSON boundary (an API, `localStorage`, a queue).
+
+```ts
+type OrderJSON = { id: string; total: number; at: string };
+
+class Order {
+  #notes: string[] = []; // private: never serialised
+  constructor(
+    readonly id: string,
+    readonly total: number,
+    readonly at: Date,
+  ) {}
+
+  toJSON(): OrderJSON { // JSON.stringify calls this
+    const { id, total } = this;
+    return { id, total, at: this.at.toISOString() };
+  }
+  static fromJSON(j: OrderJSON): Order {
+    return new Order(j.id, j.total, new Date(j.at));
+  }
+}
+
+const text = JSON.stringify(new Order("o1", 42, new Date()));
+// {"id":"o1","total":42,"at":"2026-09-25T10:00:00.000Z"}
+const back = Order.fromJSON(JSON.parse(text) as OrderJSON);
+```
+
+Validate the parsed JSON with Zod before `fromJSON` when it comes from outside your process.
+
+### Error hierarchy with codes
+
+When callers branch on the kind of failure, for example to map domain errors to HTTP status codes at the edge.
+
+```ts
+type ErrorCode = "NOT_FOUND" | "CONFLICT" | "INVALID";
+
+class AppError extends Error {
+  override name = "AppError";
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+    options?: ErrorOptions, // { cause }
+  ) {
+    super(message, options);
+  }
+}
+
+class NotFoundError extends AppError {
+  override name = "NotFoundError";
+  constructor(what: string, options?: ErrorOptions) {
+    super("NOT_FOUND", `${what} not found`, options);
+  }
+}
+
+const STATUS: Record<ErrorCode, number> =
+  { NOT_FOUND: 404, CONFLICT: 409, INVALID: 400 };
+
+const toStatus = (err: unknown): number =>
+  err instanceof AppError ? STATUS[err.code] : 500;
+```
+
+## References
+
+- [MDN: Classes](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes)
+- [MDN: Private elements](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_elements)
+- [MDN: Inheritance and the prototype chain](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Inheritance_and_the_prototype_chain)
+- [TS Handbook: Classes](https://www.typescriptlang.org/docs/handbook/2/classes.html)
+- [TS Handbook: Mixins](https://www.typescriptlang.org/docs/handbook/mixins.html)
+- [TS 5.0 release notes: Decorators](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html#decorators)
+- [TS 5.8 release notes: `erasableSyntaxOnly`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-8.html)
+- [TSConfig: `useDefineForClassFields`](https://www.typescriptlang.org/tsconfig/#useDefineForClassFields)
+- [TC39 decorators proposal](https://github.com/tc39/proposal-decorators)

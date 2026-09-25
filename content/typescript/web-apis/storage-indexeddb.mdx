@@ -1,0 +1,637 @@
+---
+title: Storage & IndexedDB
+date: 2026-09-25
+order: 6
+---
+
+Where a web app can keep data in the browser: Web Storage, IndexedDB (raw and with `idb` 8), the Cache
+API and OPFS, plus quotas, persistence, eviction and what never to store client-side.
+
+## Choosing storage
+
+| Store | Capacity | API | In workers | Holds | Lifetime | Baseline |
+| :---- | :------- | :-- | :--------- | :---- | :------- | :------- |
+| Cookies | ~4 KB each | sync string (`document.cookie`), async `cookieStore` | `cookieStore` in service workers | strings | `Expires`/`Max-Age`, or session | widely available |
+| `localStorage` | 5 MiB per origin | sync | no | strings | until cleared | widely available |
+| `sessionStorage` | 5 MiB per origin | sync | no | strings | the tab's lifetime | widely available |
+| IndexedDB | origin quota (GBs) | async, event-based | yes | structured-cloneable values, `Blob`s | until cleared or evicted | widely available |
+| Cache API | origin quota | async, promises | yes | `Request` → `Response` pairs | until cleared or evicted | widely available |
+| OPFS | origin quota | async; sync handles in workers | yes | files and directories | until cleared or evicted | widely available (2023) |
+
+| Need | Use |
+| :--- | :-- |
+| session identity sent to the server | `HttpOnly` cookie, set by the server |
+| small UI prefs (theme, collapsed panels) | `localStorage` |
+| per-tab wizard state that should survive reload | `sessionStorage` |
+| records, offline data, queues, blobs | IndexedDB |
+| offline copies of HTTP responses | Cache API; see [Service workers](/typescript/web-apis/service-workers/) |
+| big binary files, SQLite in WASM | OPFS |
+| cross-tab messaging, not storage | `BroadcastChannel` |
+
+IndexedDB, Cache API and OPFS share one quota per origin; see [Quota & persistence](#quota--persistence).
+
+## Web Storage API
+
+`localStorage` and `sessionStorage` are both `Storage` objects: synchronous, string-only, per origin.
+
+| Member | Effect |
+| :----- | :----- |
+| `getItem(key)` | `string \| null` |
+| `setItem(key, value)` | stores `String(value)`; throws `QuotaExceededError` when full |
+| `removeItem(key)` | delete one key |
+| `clear()` | delete everything for this origin |
+| `key(i)`, `length` | enumerate |
+
+```ts
+localStorage.setItem("theme", "dark");
+localStorage.getItem("theme");     // "dark"
+localStorage.setItem("n", String(42));
+Number(localStorage.getItem("n")); // 42: parse it back
+
+localStorage.setItem("obj", String({ a: 1 }));
+localStorage.getItem("obj");       // "[object Object]"
+```
+
+| `sessionStorage` detail | Behaviour |
+| :---------------------- | :-------- |
+| scope | origin **and** tab; two tabs of the same page have separate stores |
+| reload / restore | survives |
+| duplicate tab | copies the store into the new tab |
+| tab closed | gone |
+
+Calls are synchronous and run on the main thread: keep values small and stay out of hot paths.
+Avoid property access (`localStorage.theme`), since keys can collide with `Storage` methods.
+
+### The storage event
+
+Other same-origin tabs get a `storage` event when `localStorage` changes. The tab that made the
+change does not.
+
+```ts
+window.addEventListener("storage", (e: StorageEvent) => {
+  if (e.storageArea !== localStorage) return;
+  if (e.key === null) {
+    // clear() was called
+    return;
+  }
+  if (e.key === "theme" && e.newValue) {
+    document.documentElement.dataset.theme = e.newValue;
+  }
+});
+```
+
+| `StorageEvent` field | Value |
+| :------------------- | :---- |
+| `key` | changed key; `null` after `clear()` |
+| `oldValue` / `newValue` | strings or `null` (removed) |
+| `url` | page that made the change |
+| `storageArea` | `localStorage` (or `sessionStorage` for same-tab frames) |
+
+For messages that are not storage (logout everywhere, "data changed, refetch"), `BroadcastChannel`
+is cleaner and works in workers too.
+
+## A typed JSON wrapper
+
+Web Storage only knows strings, so every read is `unknown` in disguise. Keep one key map and a pair
+of typed helpers.
+
+```ts title="prefs.ts"
+type Prefs = {
+  theme: "light" | "dark";
+  sidebar: { open: boolean; width: number };
+  recent: string[];
+};
+
+export function readPref<K extends keyof Prefs>(
+  key: K,
+  fallback: Prefs[K],
+): Prefs[K] {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return fallback;
+  try {
+    // unchecked cast: see the Zod recipe
+    return JSON.parse(raw) as Prefs[K];
+  } catch {
+    return fallback;
+  }
+}
+
+export function writePref<K extends keyof Prefs>(
+  key: K,
+  value: Prefs[K],
+): void {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+writePref("sidebar", { open: true, width: 280 });
+```
+
+The `as` is a lie the moment a user edits DevTools or an old app version wrote another shape. For
+data you depend on, validate on read: see the Zod recipe below.
+
+| JSON round-trip loses | Store instead |
+| :-------------------- | :------------ |
+| `Date` | ISO string, parse on read |
+| `Map`, `Set` | `[...map]` entries / arrays |
+| `undefined` values, functions | nothing: they vanish |
+| `BigInt` | string (`JSON.stringify` throws on `BigInt`) |
+
+## IndexedDB concepts
+
+A transactional object database per origin. Values are stored by structured clone, so `Date`, `Map`,
+`Blob`, `File`, typed arrays and `CryptoKey` survive intact.
+
+| Concept | Meaning |
+| :------ | :------ |
+| Database | named, versioned container; `indexedDB.open(name, version)` |
+| Version | positive integer; raising it fires `upgradeneeded`, the only place to change schema |
+| Object store | a table of values keyed by a primary key |
+| `keyPath` | key taken from the value, e.g. `"id"` or `"user.id"` |
+| `autoIncrement` | the store generates numeric keys |
+| Index | a secondary lookup on a value property; can be `unique` or `multiEntry` (array values) |
+| Transaction | scope of stores plus a mode: `readonly`, `readwrite`, `versionchange` |
+| Request | `IDBRequest`: every call returns one; `success`/`error` events |
+| Cursor | iterate a store or index in key order, optionally within a key range |
+| Key range | `IDBKeyRange.bound`, `lowerBound`, `upperBound`, `only` |
+
+| Valid keys | Not keys |
+| :--------- | :------- |
+| `number` (not `NaN`), `string`, `Date`, `ArrayBuffer`/typed arrays, arrays of keys | `boolean`, `null`, `undefined`, objects |
+
+Key order: numbers, then dates, then strings, then binary, then arrays. A boolean "done" flag cannot
+be indexed; store `0`/`1` instead.
+
+## Opening & upgrading
+
+```ts title="open.ts"
+export function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("app", 2);
+    req.onupgradeneeded = (e) => {
+      const db = req.result;
+      // run every step the user has not seen yet
+      if (e.oldVersion < 1) {
+        const s = db.createObjectStore("notes", {
+          keyPath: "id",
+        });
+        s.createIndex("by-updated", "updatedAt");
+      }
+      if (e.oldVersion < 2) {
+        const notes = req.transaction!.objectStore("notes");
+        notes.createIndex("by-tag", "tags", {
+          multiEntry: true,
+        });
+      }
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      // another tab wants a newer version: let it
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    req.onerror = () => reject(req.error);
+    req.onblocked = () =>
+      reject(new Error("Close other tabs to upgrade"));
+  });
+}
+```
+
+| Event | When |
+| :---- | :--- |
+| `upgradeneeded` | new database or higher version; `oldVersion` is `0` for new ones |
+| `blocked` | another connection on an older version didn't close |
+| `versionchange` (on `db`) | someone else is upgrading; close this connection |
+| `error` with `VersionError` | you opened with a **lower** version than exists |
+
+Never edit old upgrade steps; always append an `if (oldVersion < n)` block.
+
+## Transactions
+
+```ts
+declare const db: IDBDatabase;
+
+const tx = db.transaction(["notes"], "readwrite", {
+  durability: "relaxed", // faster; Baseline 2024
+});
+const notes = tx.objectStore("notes");
+notes.put({ id: "n1", title: "Hi", updatedAt: Date.now() });
+notes.delete("n0");
+tx.oncomplete = () => { /* both committed */ };
+tx.onerror = () => { /* both rolled back */ };
+tx.commit(); // optional: don't wait for auto-commit
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| auto-commit | a transaction commits once it has no pending requests and control returns to the event loop |
+| no foreign awaits | `await fetch()` inside a transaction lets it commit; the next request throws `TransactionInactiveError` |
+| atomic | any failed request (unhandled) aborts the whole transaction |
+| scope | readonly transactions on the same store run in parallel; readwrite ones queue |
+| `put` vs `add` | `put` upserts; `add` fails with `ConstraintError` if the key exists |
+| `durability` | `"strict"` flushes to disk, `"relaxed"` returns earlier, `"default"` lets the browser choose |
+
+Fetch first, then open the transaction and write.
+
+## Reading: get, getAll, cursors
+
+| Method | Returns |
+| :----- | :------ |
+| `get(key)` | value or `undefined` |
+| `getAll(query?, count?)` | array of values |
+| `getAllKeys(query?, count?)` | array of keys |
+| `count(query?)` | number |
+| `openCursor(query?, direction?)` | cursor over values; `direction`: `next`, `prev`, `nextunique`, `prevunique` |
+| `openKeyCursor(...)` | cursor over keys only (cheaper) |
+| `index(name).get/getAll/openCursor` | same, by index key |
+| `getAllRecords(options?)` | keys, primary keys and values in one call; Chromium 141+, Firefox 153+, not Baseline |
+
+| Key range | Matches |
+| :-------- | :------ |
+| `IDBKeyRange.only(k)` | exactly `k` |
+| `IDBKeyRange.lowerBound(a)` | `key >= a` |
+| `IDBKeyRange.lowerBound(a, true)` | `key > a` |
+| `IDBKeyRange.upperBound(b)` | `key <= b` |
+| `IDBKeyRange.bound(a, b, false, true)` | `a <= key`, `key < b` |
+| `IDBKeyRange.bound("ab", "ab￿")` | string prefix `"ab"` |
+
+```ts
+declare const db: IDBDatabase;
+
+// newest 20 notes, by the "by-updated" index
+const idx = db
+  .transaction("notes")
+  .objectStore("notes")
+  .index("by-updated");
+const req = idx.openCursor(null, "prev");
+const out: unknown[] = [];
+req.onsuccess = () => {
+  const cursor = req.result;
+  if (!cursor || out.length === 20) return;
+  out.push(cursor.value);
+  cursor.continue(); // fires onsuccess again
+};
+```
+
+Cursor extras: `advance(n)`, `continue(key)`, `update(value)` and `delete()` (readwrite only).
+
+## A promise wrapper
+
+The raw API is events all the way down. Two helpers make it awaitable; each `await` on an IDB request
+keeps the transaction alive in current browsers.
+
+```ts title="idb-promise.ts"
+export function request<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export function done(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () =>
+      reject(tx.error ?? new DOMException("Aborted"));
+  });
+}
+
+// usage
+declare const db: IDBDatabase;
+const tx = db.transaction("notes", "readwrite");
+const store = tx.objectStore("notes");
+const note = await request(store.get("n1"));
+store.put({ ...(note as object), title: "Edited" });
+await done(tx);
+```
+
+## The idb library
+
+[`idb`](https://github.com/jakearchibald/idb) (~1.2 kB brotli) is the same API with promises and a typed
+schema. `bun add idb` (or `npm i idb`).
+
+```ts title="db.ts"
+import { openDB, type DBSchema } from "idb";
+
+export type Note = {
+  id: string;
+  title: string;
+  tags: string[];
+  updatedAt: number;
+};
+
+interface AppDB extends DBSchema {
+  notes: {
+    key: string;
+    value: Note;
+    indexes: { "by-updated": number; "by-tag": string };
+  };
+  kv: { key: string; value: unknown };
+}
+
+export const dbPromise = openDB<AppDB>("app", 2, {
+  upgrade(db, oldVersion, _newVersion, tx) {
+    if (oldVersion < 1) {
+      const notes = db.createObjectStore("notes", {
+        keyPath: "id",
+      });
+      notes.createIndex("by-updated", "updatedAt");
+      db.createObjectStore("kv");
+    }
+    if (oldVersion < 2) {
+      tx.objectStore("notes").createIndex("by-tag", "tags", {
+        multiEntry: true,
+      });
+    }
+  },
+  blocking() {
+    void dbPromise.then((db) => db.close());
+  },
+});
+```
+
+| `idb` API | Notes |
+| :-------- | :---- |
+| `openDB(name, version, { upgrade, blocked, blocking, terminated })` | `upgrade(db, oldVersion, newVersion, tx, event)` |
+| `db.get/getAll/put/add/delete/clear/count(store, ...)` | one-shot, own transaction |
+| `db.getAllFromIndex(store, index, query?)` | also `getFromIndex`, `countFromIndex` |
+| `db.transaction(stores, mode)` | `tx.store`, `tx.objectStore(name)`, `await tx.done` |
+| `for await (const c of tx.store)` | cursor iteration; import from `idb/with-async-ittr` |
+| `deleteDB(name)`, `wrap`, `unwrap` | delete / convert raw objects |
+
+Alternatives: Dexie (query builder, live queries), `idb-keyval` (key-value only).
+
+## Quota & persistence
+
+```ts
+const { usage = 0, quota = 0 } =
+  await navigator.storage.estimate();
+const pct = quota ? (usage / quota) * 100 : 0;
+
+const persisted = await navigator.storage.persisted();
+```
+
+| API | Returns | Baseline |
+| :-- | :------ | :------- |
+| `navigator.storage.estimate()` | `{ usage?, quota? }` in bytes, padded estimates | widely available (2023) |
+| `navigator.storage.persist()` | `true` if the origin is now exempt from eviction | widely available (2021) |
+| `navigator.storage.persisted()` | current persistence state | widely available (2021) |
+| `navigator.storage.getDirectory()` | OPFS root `FileSystemDirectoryHandle` | widely available (2023) |
+
+All require a secure context (HTTPS or `localhost`) and work in workers.
+
+| Browser | Best-effort quota | Persistent |
+| :------ | :---------------- | :--------- |
+| Chrome, Edge | up to 60% of total disk per origin | same |
+| Firefox | smaller of 10% of disk or 10 GiB per site (eTLD+1) | up to 50% of disk, max 8 TiB |
+| Safari 17+ (browser app) | about 60% of disk per origin | same |
+| Safari in a `WKWebView` app | about 15% of disk | same |
+
+| `persist()` | Behaviour |
+| :---------- | :-------- |
+| Firefox | shows a permission prompt |
+| Chrome, Edge | decides silently (engagement, installed PWA, bookmarks, notification permission) |
+| Safari | decides silently |
+
+## Eviction & private browsing
+
+| Rule | Detail |
+| :--- | :----- |
+| storage pressure | best-effort origins are evicted least-recently-used first; persistent ones are skipped |
+| all or nothing | an origin's IndexedDB, Cache API, OPFS and service worker registrations go together |
+| Safari 7-day cap | script-written storage is deleted after 7 days of browser use without a user interaction on the site; installed home-screen apps are exempt |
+| user clearing | "Clear site data" wins over everything, persistent included |
+| private browsing | storage works but is kept in memory or wiped at session end; quotas are smaller |
+| third-party iframes | storage is partitioned by top-level site in all major engines |
+
+Treat client storage as a cache: the server (or a sync layer) holds the truth, and the app rebuilds
+if the database is empty.
+
+## OPFS
+
+The origin private file system: a sandboxed, per-origin file tree, invisible to the user, fast enough
+for SQLite-in-WASM.
+
+```ts
+const root = await navigator.storage.getDirectory();
+const dir = await root.getDirectoryHandle("exports", {
+  create: true,
+});
+const file = await dir.getFileHandle("report.csv", {
+  create: true,
+});
+const w = await file.createWritable();
+await w.write("a,b\n1,2\n");
+await w.close(); // committed atomically
+
+const text = await (await file.getFile()).text();
+```
+
+`createSyncAccessHandle()` gives synchronous, in-place `read`/`write` at an offset, but only in
+dedicated workers; see [Web workers](/typescript/web-apis/web-workers/). It needs the `webworker`
+lib in TypeScript.
+
+## Security
+
+<Note kind="warning">Never keep access tokens, refresh tokens or session IDs in `localStorage`,
+`sessionStorage` or IndexedDB. Any script running on the origin (an XSS bug, a compromised npm
+package, a third-party tag) can read them and send them anywhere.</Note>
+
+| Do | Why |
+| :- | :-- |
+| session in an `HttpOnly; Secure; SameSite=Lax` cookie | script can't read it; see [Authentication](/typescript/backend/authentication/) |
+| treat stored data as untrusted input | users and extensions can edit it; validate on read |
+| clear user data on logout | `localStorage.clear()`, delete databases, `caches.delete()` |
+| keep secrets off the client | storage is plaintext on disk |
+| encrypt sensitive offline data | non-extractable `CryptoKey` kept in IndexedDB; see [Web Crypto](/typescript/web-apis/web-crypto/) |
+| respond with `Clear-Site-Data: "storage"` on logout | server-driven wipe of every store |
+
+A non-extractable key protects against the database being copied off disk, not against XSS: an
+attacker's script can still call `decrypt()` with it.
+
+## Pitfalls
+
+| Trap | Fix |
+| :--- | :-- |
+| `JSON.parse(localStorage.getItem(k))` | `getItem` returns `null`; guard and `try`/`catch` |
+| `setItem` throws in a full or restricted store | wrap writes in `try`/`catch` (`QuotaExceededError`) |
+| reading storage during SSR | `localStorage` is `undefined` on the server; read in `useEffect` or guard `typeof window` |
+| hydration mismatch from stored prefs | render a neutral default, apply the stored value after mount |
+| `await fetch()` inside an IDB transaction | fetch first, then open the transaction |
+| schema change without a version bump | raise the version and add an `upgradeneeded` step |
+| upgrade stuck on `blocked` | close connections in `onversionchange` / `blocking` |
+| indexing a boolean | booleans are not valid keys; store `0`/`1` |
+| storing class instances | structured clone drops prototypes and methods; store plain data |
+| counting on data being there | eviction happens; rebuild from the server |
+
+## Recipes
+
+### Typed localStorage with Zod
+Read a stored value through a schema so old or tampered data falls back instead of crashing.
+
+```ts title="local-store.ts"
+import { z } from "zod";
+
+export function localStore<T>(
+  key: string,
+  schema: z.ZodType<T>,
+  fallback: T,
+) {
+  return {
+    get(): T {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return fallback;
+        const r = schema.safeParse(JSON.parse(raw));
+        return r.success ? r.data : fallback;
+      } catch {
+        return fallback; // bad JSON, or storage blocked
+      }
+    },
+    set(value: T): void {
+      localStorage.setItem(key, JSON.stringify(value));
+    },
+    remove: () => localStorage.removeItem(key),
+  };
+}
+```
+
+```ts
+import { z } from "zod";
+import { localStore } from "./local-store.ts";
+
+const Settings = z.object({
+  theme: z.enum(["light", "dark"]),
+  fontSize: z.number().int().min(10).max(32),
+});
+const settings = localStore("settings", Settings, {
+  theme: "light",
+  fontSize: 16,
+});
+settings.set({ ...settings.get(), theme: "dark" });
+```
+
+### Open with versioned upgrades
+Raw IndexedDB with numbered migrations; add an entry to `steps` for each new version.
+
+```ts title="migrations.ts"
+type Step = (db: IDBDatabase, tx: IDBTransaction) => void;
+
+const steps: Step[] = [
+  (db) => db.createObjectStore("todos", { keyPath: "id" }),
+  (_db, tx) =>
+    tx.objectStore("todos").createIndex("by-due", "due"),
+];
+
+export function open(name: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, steps.length);
+    req.onupgradeneeded = (e) => {
+      for (let v = e.oldVersion; v < steps.length; v++) {
+        steps[v]?.(req.result, req.transaction!);
+      }
+    };
+    req.onsuccess = () => {
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+```
+
+### CRUD with idb
+Typed create, read, update, delete and an index query on top of the `db.ts` schema above.
+
+```ts title="notes.ts"
+import { dbPromise, type Note } from "./db.ts";
+
+export async function saveNote(note: Note) {
+  const db = await dbPromise;
+  await db.put("notes", { ...note, updatedAt: Date.now() });
+}
+export const getNote = async (id: string) =>
+  (await dbPromise).get("notes", id);
+export const notesByTag = async (tag: string) =>
+  (await dbPromise).getAllFromIndex("notes", "by-tag", tag);
+export const deleteNote = async (id: string) =>
+  (await dbPromise).delete("notes", id);
+export async function renameAll(from: string, to: string) {
+  const db = await dbPromise;
+  const tx = db.transaction("notes", "readwrite");
+  for (const n of await tx.store.getAll()) {
+    if (n.title !== from) continue;
+    await tx.store.put({ ...n, title: to });
+  }
+  await tx.done;
+}
+```
+
+### Tiny key-value store
+An async `localStorage` replacement that holds any cloneable value (Blobs included) and works in
+workers.
+
+```ts title="kv.ts"
+import { openDB } from "idb";
+
+const kvDb = openDB("kv-store", 1, {
+  upgrade: (db) => void db.createObjectStore("kv"),
+});
+
+export const kv = {
+  get: async <T>(key: string): Promise<T | undefined> =>
+    (await kvDb).get("kv", key) as Promise<T | undefined>,
+  set: async (key: string, value: unknown) => {
+    await (await kvDb).put("kv", value, key);
+  },
+  del: async (key: string) => {
+    await (await kvDb).delete("kv", key);
+  },
+  keys: async () => (await kvDb).getAllKeys("kv"),
+};
+
+await kv.set("avatar", new Blob(["..."]));
+const avatar = await kv.get<Blob>("avatar");
+```
+
+### Request persistent storage
+Ask once the user has shown intent (saved a draft, installed the app), not on first load.
+
+```ts
+type StorageStatus = {
+  persisted: boolean;
+  usedMb: number;
+  quotaMb: number;
+};
+export async function ensurePersisted(): Promise<
+  StorageStatus
+> {
+  const s = navigator.storage;
+  const persisted =
+    (await s.persisted()) || (await s.persist());
+  const { usage = 0, quota = 0 } = await s.estimate();
+  const mb = (n: number) => Math.round(n / 1024 ** 2);
+  return {
+    persisted,
+    usedMb: mb(usage),
+    quotaMb: mb(quota),
+  };
+}
+
+// e.g. after the first saved draft
+const status = await ensurePersisted();
+if (!status.persisted) {
+  // show "export a backup" in settings
+}
+```
+
+## References
+
+- MDN: [Web Storage API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API), [`StorageEvent`](https://developer.mozilla.org/en-US/docs/Web/API/StorageEvent), [Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)
+- MDN: [IndexedDB API](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), [Using IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB), [`IDBKeyRange`](https://developer.mozilla.org/en-US/docs/Web/API/IDBKeyRange)
+- MDN: [`StorageManager`](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager), [Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system), [`CacheStorage`](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage)
+- MDN: [Structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), [`Clear-Site-Data`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
+- [W3C: Indexed Database API 3.0](https://w3c.github.io/IndexedDB/), [WHATWG: Storage](https://storage.spec.whatwg.org/)
+- [idb](https://github.com/jakearchibald/idb), [idb-keyval](https://github.com/jakearchibald/idb-keyval), [Dexie](https://dexie.org/)
+- web.dev: [Storage for the web](https://web.dev/articles/storage-for-the-web)
+- OWASP: [HTML5 Security Cheat Sheet, local storage](https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage)

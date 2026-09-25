@@ -1,0 +1,527 @@
+---
+title: Web Audio
+date: 2026-09-25
+order: 11
+---
+
+The Web Audio API: an `AudioContext` running a graph of nodes, with sample-accurate scheduling,
+decoding, effects, spatial audio, analysis, `AudioWorklet` and offline rendering. Types come from
+TypeScript's `lib.dom`. Microphone capture lives in [Media Devices](/typescript/web-apis/media-devices/).
+
+## AudioContext & autoplay
+
+```ts
+const ctx = new AudioContext({ latencyHint: "interactive" });
+ctx.state; // "suspended" until the user interacts
+
+document.querySelector("#play")!.addEventListener(
+  "click",
+  async () => {
+    if (ctx.state !== "running") await ctx.resume();
+  },
+);
+ctx.addEventListener("statechange", () => {
+  document.body.dataset.audio = ctx.state;
+});
+```
+
+| Member                     | Notes                                                           |
+| :------------------------- | :-------------------------------------------------------------- |
+| `state`                    | `"suspended"`, `"running"`, `"closed"`, `"interrupted"`         |
+| `resume()` / `suspend()`   | start or pause the audio clock and hardware (saves battery)     |
+| `close()`                  | release the device; the context can't be reused                |
+| `currentTime`              | seconds on the audio clock, the timebase for all scheduling     |
+| `sampleRate`               | the device rate (usually 48000 or 44100) unless set in options  |
+| `destination`              | the speakers; connect the end of the graph here                 |
+| `baseLatency` / `outputLatency` | processing / output delay in seconds                       |
+| `latencyHint` (option)     | `"interactive"` (default), `"balanced"`, `"playback"`, or seconds |
+| `setSinkId(id)`            | pick the output device; limited availability                    |
+
+- **Autoplay policy**: a context created before any user gesture starts `"suspended"`. Call
+  `resume()` inside a click/key/touch handler; `start()` on sources before that makes no sound.
+- Create **one** context per app and reuse it; contexts hold a hardware stream.
+- `"interrupted"` means the OS took the device (phone call, laptop lid); the browser resumes it.
+
+## The audio graph
+
+Sources produce samples, processing nodes transform them, and everything ends at
+`ctx.destination`. Any `AudioParam` can also take a node as input (modulation).
+
+```text
+  Oscillator ──┐                        ┌──▶ Analyser (tap)
+               ├──▶ BiquadFilter ──▶ Gain ──▶ destination
+BufferSource ──┘         ▲
+                         │ frequency (AudioParam)
+        LFO Oscillator ──▶ Gain (depth)
+```
+
+```ts
+const osc = new OscillatorNode(ctx, { frequency: 220 });
+const filter = new BiquadFilterNode(ctx, {
+  type: "lowpass", frequency: 800, Q: 4,
+});
+const amp = new GainNode(ctx, { gain: 0.3 });
+osc.connect(filter).connect(amp).connect(ctx.destination);
+
+// LFO modulates the cutoff by +/-400 Hz
+const lfo = new OscillatorNode(ctx, { frequency: 2 });
+const depth = new GainNode(ctx, { gain: 400 });
+lfo.connect(depth).connect(filter.frequency);
+osc.start(); lfo.start();
+```
+
+- `connect(node)` returns that node, so chains read left to right; `connect(param)` returns `void`.
+- Signals into the same input are summed. Use a `GainNode` as a mixer bus.
+- `disconnect()` with no arguments cuts every output of a node.
+- Constructors (`new GainNode(ctx, opts)`) and factories (`ctx.createGain()`) are equivalent.
+
+## Nodes
+
+| Node                          | Role                              | Key options / params                                      |
+| :---------------------------- | :-------------------------------- | :-------------------------------------------------------- |
+| `OscillatorNode`              | tone source (one-shot)            | `type` (`sine` `square` `sawtooth` `triangle`), `frequency`, `detune` |
+| `AudioBufferSourceNode`       | play an `AudioBuffer` (one-shot)  | `buffer`, `loop`, `loopStart/End`, `playbackRate`, `detune` |
+| `MediaElementAudioSourceNode` | route an `audio`/`video` element  | `ctx.createMediaElementSource(el)`                        |
+| `MediaStreamAudioSourceNode`  | mic, WebRTC, screen capture       | `ctx.createMediaStreamSource(stream)`                     |
+| `ConstantSourceNode`          | constant signal, drive many params| `offset`                                                  |
+| `GainNode`                    | volume, mixing, envelopes         | `gain` (linear; 0.5 is about -6 dB)                       |
+| `BiquadFilterNode`            | EQ and filters                    | `type` (`lowpass` `highpass` `bandpass` `peaking` `notch` `lowshelf` `highshelf` `allpass`), `frequency`, `Q`, `gain` |
+| `DelayNode`                   | echo, chorus, flanger             | `delayTime`; `maxDelayTime` fixed at creation (default 1 s) |
+| `ConvolverNode`               | reverb from an impulse response   | `buffer`, `normalize`                                     |
+| `DynamicsCompressorNode`      | compressor / limiter              | `threshold`, `knee`, `ratio`, `attack`, `release`; `reduction` (read) |
+| `WaveShaperNode`              | distortion                        | `curve` (`Float32Array`), `oversample`                    |
+| `StereoPannerNode`            | left/right pan                    | `pan` from -1 to 1                                        |
+| `PannerNode`                  | 3D position                       | `panningModel`, `distanceModel`, `positionX/Y/Z`, cone    |
+| `AnalyserNode`                | FFT and waveform data (pass-through) | `fftSize`, `smoothingTimeConstant`, `min/maxDecibels`  |
+| `ChannelSplitterNode` / `ChannelMergerNode` | per-channel routing  | `numberOfOutputs` / `numberOfInputs`                      |
+| `MediaStreamAudioDestinationNode` | graph out as a `MediaStream`  | `.stream` for `MediaRecorder` or WebRTC                   |
+| `AudioWorkletNode`            | your own DSP on the audio thread  | processor name, `parameterData`, `port`                   |
+
+Source nodes play **once**: after `stop()` or the end of the buffer they're done. Create a new
+`OscillatorNode`/`AudioBufferSourceNode` per note; they are cheap. The `AudioBuffer` is reusable.
+
+## AudioParam automation
+
+| Method                                    | Curve                                                   |
+| :---------------------------------------- | :------------------------------------------------------ |
+| `setValueAtTime(v, t)`                    | jump at `t`                                             |
+| `linearRampToValueAtTime(v, t)`           | straight line from the **previous event** to `v` at `t` |
+| `exponentialRampToValueAtTime(v, t)`      | exponential; `v` must be non-zero with the same sign    |
+| `setTargetAtTime(v, t, tau)`              | approach `v` from `t`; about 63% per `tau`, ~99% by `5 * tau` |
+| `setValueCurveAtTime(values, t, dur)`     | follow an array of values over `dur`                    |
+| `cancelScheduledValues(t)`                | drop events at or after `t`                             |
+| `cancelAndHoldAtTime(t)`                  | drop and hold the current value; not in Firefox         |
+| `param.value = v`                         | immediate set; conflicts with scheduled ramps           |
+
+```ts
+const g = amp.gain;
+const now = ctx.currentTime;
+g.cancelScheduledValues(now);
+g.setValueAtTime(g.value, now);        // anchor the ramp
+g.linearRampToValueAtTime(1, now + 0.01);
+g.setTargetAtTime(0.6, now + 0.01, 0.1); // decay
+```
+
+- Ramps start at the previous event, not "now". Without an anchoring `setValueAtTime` a ramp may
+  jump or start seconds earlier.
+- Ramp to `0.0001`, not `0`, with `exponentialRamp`; `0` throws a `RangeError`.
+- Instant gain changes click. Ramp over 5 to 20 ms instead.
+- `a-rate` params take a value per sample, `k-rate` per 128-frame block; `minValue`/`maxValue`
+  clamp the result.
+
+## Timing & scheduling
+
+`ctx.currentTime` is the audio hardware clock, independent of the main thread. Schedule by
+passing absolute times to `start(when)`, `stop(when)` and automation methods.
+
+```ts
+// Lookahead scheduler: timers only decide *what* to queue
+const LOOKAHEAD = 0.1; // seconds queued ahead
+let next = ctx.currentTime;
+const bpm = 120;
+
+setInterval(() => {
+  while (next < ctx.currentTime + LOOKAHEAD) {
+    tick(next);                 // start(next) inside
+    next += 60 / bpm;
+  }
+}, 25);
+declare function tick(when: number): void;
+```
+
+- `setTimeout`/`requestAnimationFrame` jitter by milliseconds and pause in background tabs;
+  the audio clock doesn't. Never trigger sounds directly from timers when timing matters.
+- `ctx.getOutputTimestamp()` maps `contextTime` to `performance.now()` for syncing visuals.
+- A time in the past means "now"; `start()` with no argument also means now.
+
+## Loading & decoding
+
+```ts
+async function loadBuffer(
+  url: string,
+): Promise<AudioBuffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  return ctx.decodeAudioData(await res.arrayBuffer());
+}
+
+const kick = await loadBuffer("/sounds/kick.mp3");
+kick.duration;          // seconds
+kick.numberOfChannels;  // 1 or 2
+kick.getChannelData(0); // Float32Array of -1..1 samples
+```
+
+- `decodeAudioData` needs the **whole file**, resamples to `ctx.sampleRate`, and detaches the
+  `ArrayBuffer` you pass. Use the promise form; the callbacks are legacy.
+- Formats follow the browser's codecs: MP3, AAC (`.m4a`), WAV work everywhere; check Opus/FLAC.
+- Decoded audio is raw float PCM: one minute of 48 kHz stereo is about 23 MB. Stream long tracks
+  through a media element instead.
+- Cross-origin files need CORS like any `fetch`.
+- Build buffers by hand with `ctx.createBuffer(channels, length, sampleRate)`.
+
+## Media elements & streams
+
+| Need                                     | `audio` element            | Web Audio buffers          |
+| :--------------------------------------- | :------------------------- | :------------------------- |
+| Long tracks, podcasts, live streams      | yes, streams progressively | no, decodes all in memory  |
+| Many short overlapping sounds (games, UI)| poor, per-element latency  | yes                        |
+| Sample-accurate timing, sequencing       | no                         | yes                        |
+| Effects, analysis                        | via `createMediaElementSource` | yes                    |
+| Lock-screen controls, Media Session      | yes                        | no                         |
+| Pitch/rate per voice                     | `playbackRate` only        | `playbackRate`, `detune`   |
+
+```ts
+const el = document.querySelector("audio")!;
+el.crossOrigin = "anonymous"; // before src, for CDN audio
+const track = ctx.createMediaElementSource(el);
+track.connect(new GainNode(ctx, { gain: 0.8 }))
+  .connect(ctx.destination);
+
+// Mic in, recorded mix out
+const mic = await navigator.mediaDevices.getUserMedia({
+  audio: true,
+});
+const micNode = ctx.createMediaStreamSource(mic);
+const out = ctx.createMediaStreamDestination();
+micNode.connect(out);
+const rec = new MediaRecorder(out.stream);
+```
+
+- After `createMediaElementSource`, the element's audio goes **only** into the graph; connect it to
+  `destination` or it's silent. An element can be wrapped once; a second call throws.
+- A cross-origin element without CORS outputs silence.
+- Connecting a mic straight to `destination` causes feedback without headphones.
+
+## Spatial audio
+
+```ts
+const pan = new StereoPannerNode(ctx, { pan: -0.5 });
+
+const panner = new PannerNode(ctx, {
+  panningModel: "HRTF",       // or "equalpower" (cheaper)
+  distanceModel: "inverse",   // "linear" | "exponential"
+  refDistance: 1,
+  rolloffFactor: 1,
+  positionX: 3, positionY: 0, positionZ: -2,
+});
+source.connect(panner).connect(ctx.destination);
+panner.positionX.linearRampToValueAtTime(
+  -3, ctx.currentTime + 2,
+); // fly past
+declare const source: AudioNode;
+```
+
+| Piece           | Notes                                                               |
+| :-------------- | :------------------------------------------------------------------ |
+| `StereoPannerNode` | simple equal-power L/R; use for UI and 2D games                  |
+| `PannerNode`    | position, orientation, cone; `HRTF` sounds 3D on headphones         |
+| `ctx.listener`  | the ears: position, forward and up vectors                          |
+| Coordinates     | right-handed: +x right, +y up, -z forward (the default listener faces -z) |
+| Listener params | `listener.positionX` etc. are limited availability; fall back to `setPosition()` |
+
+## Visualisation
+
+```ts
+declare const track: AudioNode;
+const analyser = new AnalyserNode(ctx, {
+  fftSize: 2048,              // power of 2, 32..32768
+  smoothingTimeConstant: 0.8,
+});
+track.connect(analyser); // pass-through tap
+
+const freq = new Uint8Array(analyser.frequencyBinCount);
+const wave = new Float32Array(analyser.fftSize);
+analyser.getByteFrequencyData(freq);  // 0..255 per bin
+analyser.getFloatTimeDomainData(wave); // -1..1 samples
+const hzPerBin = ctx.sampleRate / analyser.fftSize;
+```
+
+- `frequencyBinCount` is `fftSize / 2`; bin `i` is centred near `i * sampleRate / fftSize` Hz.
+- Byte data maps `minDecibels..maxDecibels` (default -100..-30 dB) onto 0..255.
+- Read inside `requestAnimationFrame` and reuse the arrays; allocating per frame causes GC stutter.
+
+## AudioWorklet
+
+Custom DSP on the audio rendering thread, in 128-frame blocks. Replaces the deprecated
+`ScriptProcessorNode`. Needs a secure context.
+
+```ts title="noise.worklet.ts"
+// tsconfig for this file: "types": ["audioworklet"]
+class Noise extends AudioWorkletProcessor {
+  static parameterDescriptors = [
+    { name: "gain", defaultValue: 0.1, minValue: 0 },
+  ];
+  process(
+    _in: Float32Array[][],
+    out: Float32Array[][],
+    params: Record<string, Float32Array>,
+  ): boolean {
+    const gain = params.gain!;
+    for (const ch of out[0]!) {
+      for (let i = 0; i < ch.length; i++) {
+        const g = gain.length > 1 ? gain[i]! : gain[0]!;
+        ch[i] = (Math.random() * 2 - 1) * g;
+      }
+    }
+    return true; // keep alive
+  }
+}
+registerProcessor("noise", Noise);
+```
+
+```ts title="main.ts"
+await ctx.audioWorklet.addModule("/worklets/noise.js");
+const noise = new AudioWorkletNode(ctx, "noise", {
+  parameterData: { gain: 0.05 },
+});
+noise.connect(ctx.destination);
+noise.parameters.get("gain")
+  ?.linearRampToValueAtTime(0, ctx.currentTime + 2);
+noise.port.postMessage({ type: "reset" });
+```
+
+- The worklet scope has `sampleRate`, `currentTime`, `currentFrame` and a `port`; no DOM, `fetch`
+  or timers. Load the file as a separate JS module (build it as its own entry).
+- `lib.dom` has no worklet-scope types: add `@types/audioworklet` in a separate tsconfig for
+  worklet files so their globals don't leak into DOM code.
+- Params arrive as length 1 (constant this block) or 128 (automated). Handle both.
+- Don't allocate or `postMessage` in every `process()` call; glitches follow.
+
+## Offline rendering
+
+```ts
+const off = new OfflineAudioContext({
+  numberOfChannels: 2,
+  length: 44_100 * 3, // frames = seconds * rate
+  sampleRate: 44_100,
+});
+const o = new OscillatorNode(off, { frequency: 440 });
+o.connect(off.destination);
+o.start(0); o.stop(3);
+const rendered: AudioBuffer = await off.startRendering();
+```
+
+Renders as fast as the CPU allows, with no device and no autoplay rules. Use it to bounce a mix
+to WAV, pre-render effects, draw waveforms, or unit-test graph output deterministically.
+
+## Support & TypeScript
+
+| Feature                                   | Baseline (MDN)                          |
+| :---------------------------------------- | :-------------------------------------- |
+| `AudioContext`, core nodes, `AudioParam`  | widely available (unprefixed since 2021)|
+| `AudioWorklet`, `PannerNode.positionX`    | widely available (since April 2021)     |
+| `OfflineAudioContext`, `decodeAudioData` promise | widely available                 |
+| `cancelAndHoldAtTime()`                   | limited (not in Firefox)                |
+| `AudioListener.positionX/Y/Z`             | limited; `setPosition()` fallback       |
+| `AudioContext.setSinkId()`                | limited, experimental                   |
+| `navigator.getAutoplayPolicy()`           | experimental                            |
+
+- All node, param and context types are in `lib.dom`; `AudioContextState` already includes
+  `"interrupted"`, so exhaustive `switch`es must handle it.
+- `webkitAudioContext` is only needed for Safari older than 14.1; drop the prefix.
+- TS 5.9+ wants `Uint8Array<ArrayBuffer>` / `Float32Array<ArrayBuffer>` for analyser buffers;
+  `new Uint8Array(n)` already has that type.
+- Bun and Node have no Web Audio. For server-side rendering or tests use a package such as
+  `node-web-audio-api`, or run in a real browser with Playwright.
+
+## Pitfalls
+
+| Pitfall                                         | Fix                                                  |
+| :---------------------------------------------- | :--------------------------------------------------- |
+| Silence on load                                 | `await ctx.resume()` in a user gesture               |
+| Calling `start()` twice on a source             | new source node per play                             |
+| Clicks when starting/stopping                   | 5 to 20 ms gain ramps at both ends                   |
+| `exponentialRamp` to `0`                        | ramp to `0.0001`, then `setValueAtTime(0, t)`        |
+| Ramps starting in the past                      | anchor with `setValueAtTime(param.value, now)`       |
+| New `AudioContext` per sound                    | one shared context                                   |
+| Decoding a 1-hour file                          | `audio` element + `createMediaElementSource`         |
+| Timing notes with `setTimeout`                  | lookahead scheduler on `ctx.currentTime`             |
+| Clipping when summing voices                    | lower per-voice gain, or a `DynamicsCompressorNode`  |
+| Silent CDN audio through the graph              | CORS headers + `crossOrigin = "anonymous"`           |
+| Allocating in `process()` or per animation frame| preallocate buffers once                             |
+| Nodes piling up                                 | `disconnect()` on `ended`; keep no references        |
+
+## Recipes
+
+### Play a beep or UI sound
+Tiny feedback sounds with no audio files.
+
+```ts
+const ctx = new AudioContext();
+
+export async function beep(
+  freq = 880, ms = 120, volume = 0.2,
+): Promise<void> {
+  if (ctx.state !== "running") await ctx.resume();
+  const t = ctx.currentTime;
+  const end = t + ms / 1000;
+  const osc = new OscillatorNode(ctx, { frequency: freq });
+  const amp = new GainNode(ctx, { gain: 0 });
+  amp.gain
+    .setValueAtTime(0, t)
+    .linearRampToValueAtTime(volume, t + 0.005)
+    .exponentialRampToValueAtTime(0.0001, end);
+  osc.connect(amp).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(end + 0.01);
+  osc.onended = () => amp.disconnect();
+}
+```
+
+### Load and play a sample
+Game or UI sound effects: decode once, play many overlapping copies.
+
+```ts
+const cache = new Map<string, Promise<AudioBuffer>>();
+
+function load(url: string): Promise<AudioBuffer> {
+  let p = cache.get(url);
+  if (!p) {
+    p = fetch(url)
+      .then((r) => r.arrayBuffer())
+      .then((b) => ctx.decodeAudioData(b));
+    cache.set(url, p);
+  }
+  return p;
+}
+
+export async function play(
+  url: string,
+  { volume = 1, rate = 1, when = 0 } = {},
+): Promise<AudioBufferSourceNode> {
+  const buffer = await load(url);
+  const src = new AudioBufferSourceNode(ctx, {
+    buffer, playbackRate: rate,
+  });
+  src.connect(new GainNode(ctx, { gain: volume }))
+    .connect(ctx.destination);
+  src.start(when);
+  return src;
+}
+```
+
+### Volume envelope (ADSR)
+Shape any `AudioParam` (usually a gain) for notes that start and end without clicks.
+
+```ts
+type Adsr = { a: number; d: number; s: number; r: number };
+
+export function noteOn(
+  p: AudioParam, t: number, peak: number, e: Adsr,
+): void {
+  p.cancelScheduledValues(t);
+  p.setValueAtTime(p.value, t);
+  p.linearRampToValueAtTime(peak, t + e.a);
+  p.setTargetAtTime(peak * e.s, t + e.a, e.d / 3);
+}
+
+export function noteOff(
+  p: AudioParam, t: number, e: Adsr,
+): number {
+  p.cancelScheduledValues(t);
+  p.setValueAtTime(p.value, t);
+  p.setTargetAtTime(0, t, e.r / 3);
+  return t + e.r; // stop the source after this
+}
+```
+
+`setTargetAtTime` with `tau = time / 3` reaches ~95% in the given time. `p.value` reads the
+current automated value in current browsers.
+
+### Visualiser with canvas
+A frequency-bar display for any node in the graph.
+
+```ts
+export function visualise(
+  input: AudioNode, canvas: HTMLCanvasElement,
+): () => void {
+  const g = canvas.getContext("2d")!;
+  const an = new AnalyserNode(input.context, {
+    fftSize: 256,
+  });
+  input.connect(an);
+  const bins = new Uint8Array(an.frequencyBinCount);
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    an.getByteFrequencyData(bins);
+    const { width: w, height: h } = canvas;
+    g.clearRect(0, 0, w, h);
+    const bw = w / bins.length;
+    bins.forEach((v, i) => {
+      const bh = (v / 255) * h;
+      g.fillRect(i * bw, h - bh, bw - 1, bh);
+    });
+  };
+  draw();
+  return () => {
+    cancelAnimationFrame(raf);
+    an.disconnect();
+  };
+}
+```
+
+### Simple synth
+A keyboard-playable polyphonic synth: oscillator per note into a shared filter.
+
+```ts
+const bus = new BiquadFilterNode(ctx, {
+  type: "lowpass", frequency: 2000,
+});
+bus.connect(ctx.destination);
+const env = { a: 0.01, d: 0.2, s: 0.6, r: 0.3 };
+const voices = new Map<number, [OscillatorNode, GainNode]>();
+const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
+
+export function press(midi: number): void {
+  if (voices.has(midi)) return;
+  const osc = new OscillatorNode(ctx, {
+    type: "sawtooth", frequency: hz(midi),
+  });
+  const amp = new GainNode(ctx, { gain: 0 });
+  osc.connect(amp).connect(bus);
+  noteOn(amp.gain, ctx.currentTime, 0.2, env);
+  osc.start();
+  voices.set(midi, [osc, amp]);
+}
+
+export function release(midi: number): void {
+  const v = voices.get(midi);
+  if (!v) return;
+  voices.delete(midi);
+  v[0].stop(noteOff(v[1].gain, ctx.currentTime, env));
+}
+```
+
+Wire it to keys with a map such as `{ a: 60, w: 61, s: 62 }` on `keydown`/`keyup` (ignore
+`e.repeat`), and call `ctx.resume()` on the first key.
+
+## References
+
+- MDN: [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API), [Using the Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API), [Best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices): concepts and node reference
+- MDN: [AudioParam](https://developer.mozilla.org/en-US/docs/Web/API/AudioParam), [AudioContext](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext), [`decodeAudioData()`](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/decodeAudioData): scheduling and loading
+- MDN: [Using AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet), [OfflineAudioContext](https://developer.mozilla.org/en-US/docs/Web/API/OfflineAudioContext), [Web audio spatialization basics](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Web_audio_spatialization_basics), [Visualizations with Web Audio](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API)
+- MDN: [Autoplay guide for media and Web Audio APIs](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay)
+- [W3C Web Audio API](https://webaudio.github.io/web-audio-api/): the spec, with exact automation formulas
+- web.dev: [A tale of two clocks](https://web.dev/articles/audio-scheduling): the lookahead scheduler
+- [`@types/audioworklet`](https://www.npmjs.com/package/@types/audioworklet): worklet-scope typings

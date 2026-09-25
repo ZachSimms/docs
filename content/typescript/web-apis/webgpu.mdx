@@ -1,0 +1,762 @@
+---
+title: WebGPU
+date: 2026-09-25
+order: 4
+---
+
+WebGPU and WGSL typed for TypeScript: adapter and device, canvas setup, buffers, bind groups, render
+and compute pipelines, textures, errors and fallbacks. Status checked against MDN browser-compat-data
+in September 2026. For the older API see [WebGL](/typescript/web-apis/webgl/).
+
+## Support & typing
+
+MDN status: **Limited availability** (not Baseline). Secure contexts only (HTTPS or `localhost`).
+Available in windows and dedicated/shared workers.
+
+| Browser | Since | Scope |
+| :------ | :---- | :---- |
+| Chrome, Edge | 113 | Windows, macOS, ChromeOS; Linux since 144 (Intel Gen12+ GPUs only) |
+| Chrome Android | 121 | device and GPU dependent |
+| Safari (macOS, iOS, iPadOS, visionOS) | 26 | |
+| Firefox | 141 | Windows; Apple-silicon macOS since 145 (Tahoe) / 147 (older); not Linux, Intel Macs or Android; not in service workers |
+| Deno | built in | `navigator.gpu` |
+| Bun, Node | via npm `webgpu` (Dawn) | no built-in `navigator.gpu` |
+
+Even in a supporting browser, `requestAdapter()` can resolve `null` (blocklisted GPU, no hardware
+acceleration). Always keep a fallback.
+
+| TypeScript | Setup |
+| :--------- | :---- |
+| TS 5.x | `bun add -d @webgpu/types`, then `"types": ["@webgpu/types"]` in `tsconfig.json` |
+| TS 6.0 | `lib.dom` has the `GPU*` interfaces but not the `GPUBufferUsage`/`GPUTextureUsage`/`GPUShaderStage`/`GPUMapMode` constants, and types `getContext("webgpu")` as `RenderingContext`; keep `@webgpu/types` (no conflicts) |
+| Worker files | same types; `navigator.gpu` is on `WorkerNavigator` |
+| Usage flags | `GPUBufferUsage.*` etc. are plain numbers OR-ed together |
+| Typed arrays (TS 5.7+) | `writeBuffer` wants `Float32Array<ArrayBuffer>`; a bare `Float32Array` param is `ArrayBufferLike` and fails |
+
+Setting `"types"` turns off automatic `@types/*` loading, so list the others too
+(`["@webgpu/types", "bun"]`), or use `/// <reference types="@webgpu/types" />` in one file.
+
+```tree title="Keeping WGSL in files"
+src/
+  gpu/
+    shaders/
+      triangle.wgsl
+      blur.wgsl
+    renderer.ts     # imports the .wgsl files as text
+  wgsl.d.ts         # types for *.wgsl imports
+```
+
+Bun imports text files with `import code from "./shaders/triangle.wgsl" with { type: "text" }`; Vite uses
+`"./x.wgsl?raw"`. Type them once in `wgsl.d.ts`: `declare module "*.wgsl" { const s: string; export default s }`.
+
+## Adapter & device
+
+```ts
+export async function initGPU() {
+  if (!navigator.gpu) throw new Error("WebGPU unsupported");
+  const adapter = await navigator.gpu.requestAdapter({
+    powerPreference: "high-performance",
+  });
+  if (!adapter) throw new Error("No suitable GPU adapter");
+
+  const hasF16 = adapter.features.has("shader-f16");
+  const device = await adapter.requestDevice({
+    label: "main",
+    requiredFeatures: hasF16 ? ["shader-f16"] : [],
+    requiredLimits: {
+      // ask for more than the default only when needed
+      maxStorageBufferBindingSize:
+        adapter.limits.maxStorageBufferBindingSize,
+    },
+  });
+  return { adapter, device, hasF16 };
+}
+```
+
+| Member | Meaning |
+| :----- | :------ |
+| `requestAdapter({ powerPreference })` | `"high-performance"` or `"low-power"`; a hint |
+| `requestAdapter({ featureLevel: "compatibility" })` | OpenGL ES 3.1 / D3D11-class GPUs (Chromium) |
+| `adapter.features` / `.limits` | what the hardware could give you |
+| `adapter.info` | `vendor`, `architecture`, `description`, `isFallbackAdapter` |
+| `requestDevice({ requiredFeatures, requiredLimits })` | you only get what you ask for; defaults otherwise |
+| `device.queue` | submits work and uploads data |
+| `device.lost` | promise, see [Error handling](#error-handling) |
+| `device.destroy()` | free everything; `lost` resolves with reason `"destroyed"` |
+
+An adapter is single-use: after `requestDevice` (or a device loss) request a fresh adapter.
+
+| Default limit | Value |
+| :------------ | :---- |
+| `maxTextureDimension2D` | 8192 |
+| `maxBindGroups` | 4 |
+| `maxUniformBufferBindingSize` | 64 KiB |
+| `maxStorageBufferBindingSize` | 128 MiB |
+| `maxBufferSize` | 256 MiB |
+| `maxVertexBuffers` / `maxColorAttachments` | 8 / 8 |
+| `minUniformBufferOffsetAlignment` | 256 bytes |
+| `maxComputeInvocationsPerWorkgroup` | 256 |
+| `maxComputeWorkgroupSizeX` / `Y` / `Z` | 256 / 256 / 64 |
+| `maxComputeWorkgroupsPerDimension` | 65535 |
+| `maxComputeWorkgroupStorageSize` | 16 KiB |
+
+## Canvas configuration
+
+```ts
+export function configureCanvas(
+  canvas: HTMLCanvasElement, device: GPUDevice,
+) {
+  const context = canvas.getContext("webgpu");
+  if (!context) throw new Error("webgpu context failed");
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format,              // "bgra8unorm" or "rgba8unorm"
+    alphaMode: "premultiplied", // default "opaque"
+  });
+  return { context, format };
+}
+```
+
+| `configure()` option | Notes |
+| :------------------- | :---- |
+| `device` | required |
+| `format` | use `getPreferredCanvasFormat()`; other formats cost an extra copy |
+| `alphaMode` | `"opaque"` (default) or `"premultiplied"` for see-through canvases |
+| `usage` | default `RENDER_ATTACHMENT`; add `COPY_SRC` for screenshots |
+| `viewFormats` | e.g. `["bgra8unorm-srgb"]` to render through an sRGB view |
+| `colorSpace` | `"srgb"` (default) or `"display-p3"` |
+| `toneMapping` | `{ mode: "extended" }` for HDR output (Chromium) |
+
+| Fact | Detail |
+| :--- | :----- |
+| Per frame | call `context.getCurrentTexture()` **every frame**; the texture expires when the frame is presented |
+| Size | the texture follows `canvas.width`/`height`; no reconfigure needed on resize |
+| HiDPI | size the canvas as in [Canvas 2D](/typescript/web-apis/canvas-2d/#setup--hidpi) |
+| One context type | a canvas that returned `"webgpu"` can never give `"webgl2"` or `"2d"` |
+| Workers | `canvas.transferControlToOffscreen()` then `offscreen.getContext("webgpu")` |
+
+## WGSL basics
+
+```wgsl title="textured.wgsl"
+struct Uniforms {
+  mvp: mat4x4f,
+  tint: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+};
+
+@vertex
+fn vs(
+  @location(0) pos: vec3f,
+  @location(1) uv: vec2f,
+) -> VSOut {
+  var out: VSOut;
+  out.pos = u.mvp * vec4f(pos, 1.0);
+  out.uv = uv;
+  return out;
+}
+
+@fragment
+fn fs(v: VSOut) -> @location(0) vec4f {
+  return textureSample(tex, samp, v.uv) * u.tint;
+}
+```
+
+| Category | Syntax |
+| :------- | :----- |
+| Scalars | `bool`, `i32`, `u32`, `f32`, `f16` (needs `enable f16;` + `shader-f16`) |
+| Literals | `1` (abstract int), `1u`, `1i`, `1.0`, `1f`, `1h`; no implicit conversion: `f32(i)` |
+| Vectors | `vec2f`, `vec3i`, `vec4u`, `vec2h` = `vec2<f32>` etc.; swizzle `.xyzw` / `.rgba` |
+| Matrices | `mat4x4f`, `mat3x3f`: column-major, `m * v` |
+| Arrays | `array<f32, 4>`; runtime-sized `array<f32>` only as the last storage member |
+| Structs | `struct S { a: f32, b: vec3f }`; fields may carry `@location` / `@builtin` |
+| Atomics | `atomic<u32>`, `atomicAdd(&x, 1u)`; storage or workgroup only |
+| Textures | `texture_2d<f32>`, `texture_cube<f32>`, `texture_depth_2d`, `texture_storage_2d<rgba8unorm, write>`, `texture_external` |
+| Samplers | `sampler`, `sampler_comparison` |
+| Declarations | `let` (immutable), `var` (mutable), `const` (compile time), `override` (set from JS) |
+| Address spaces | `var<uniform>`, `var<storage, read>`, `var<storage, read_write>`, `var<workgroup>`, `var<private>` |
+| Bindings | `@group(g) @binding(b)` match bind group `g`, entry `b` |
+| Control flow | `if`, `switch`, `for`, `while`, `loop`, `break`, `continue`; no ternary: `select(f, t, cond)` |
+
+| Entry point | Attribute | Common built-ins |
+| :---------- | :-------- | :--------------- |
+| Vertex | `@vertex` | in: `vertex_index`, `instance_index`; out: `position` |
+| Fragment | `@fragment` | in: `position` (px), `front_facing`, `sample_index`; out: `@location(n)`, `frag_depth` |
+| Compute | `@compute @workgroup_size(x, y?, z?)` | `global_invocation_id`, `local_invocation_id`, `local_invocation_index`, `workgroup_id`, `num_workgroups` |
+
+| Alignment (host-shareable) | Size / align in bytes |
+| :------------------------- | :-------------------- |
+| `f32`, `i32`, `u32` | 4 / 4 |
+| `vec2f` | 8 / 8 |
+| `vec3f` | 12 / **16** (next field packs into the gap) |
+| `vec4f` | 16 / 16 |
+| `mat4x4f` | 64 / 16 |
+| `mat3x3f` | 48 / 16 (each column padded to 16) |
+| Struct | rounded up to its largest member alignment |
+
+Mirror layouts on the JS side by hand, or generate them with `webgpu-utils` or TypeGPU.
+
+## Buffers & mapping
+
+```ts
+const verts = new Float32Array([0, .5, -.5, -.5, .5, -.5]);
+
+// 1. Create + queue upload (most common)
+const vbuf = device.createBuffer({
+  label: "triangle",
+  size: verts.byteLength,
+  usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+});
+device.queue.writeBuffer(vbuf, 0, verts);
+
+// 2. Mapped at creation (static data, no COPY_DST needed)
+const ibuf = device.createBuffer({
+  size: 8, // multiple of 4
+  usage: GPUBufferUsage.INDEX,
+  mappedAtCreation: true,
+});
+new Uint16Array(ibuf.getMappedRange()).set([0, 1, 2]);
+ibuf.unmap();
+```
+
+| `GPUBufferUsage` | For |
+| :--------------- | :-- |
+| `VERTEX`, `INDEX` | `setVertexBuffer`, `setIndexBuffer` |
+| `UNIFORM` | `var<uniform>`, up to 64 KiB per binding by default |
+| `STORAGE` | `var<storage>`, large and writable from shaders |
+| `INDIRECT` | `drawIndirect` / `dispatchWorkgroupsIndirect` arguments |
+| `COPY_SRC`, `COPY_DST` | source / target of copies and `writeBuffer` |
+| `MAP_READ` | CPU readback; only combinable with `COPY_DST` |
+| `MAP_WRITE` | CPU upload staging; only combinable with `COPY_SRC` |
+| `QUERY_RESOLVE` | `resolveQuerySet` target (timestamps) |
+
+| Rule | Detail |
+| :--- | :----- |
+| Sizes | `writeBuffer` and mapped ranges work in multiples of 4 bytes |
+| Uniform structs | pad the buffer to the WGSL struct size (multiple of 16) |
+| Dynamic offsets | multiples of `minUniformBufferOffsetAlignment` (256) |
+| `mapAsync(GPUMapMode.READ)` | resolves after the GPU is done with the buffer |
+| `getMappedRange()` | `ArrayBuffer` detached on `unmap()`: copy with `.slice(0)` first |
+| `mapState` | `"unmapped"`, `"pending"`, `"mapped"` |
+| A mapped buffer | cannot be used in a submit |
+| `buffer.destroy()` | free now instead of waiting for GC |
+
+## Bind groups & layouts
+
+A **bind group** is the set of resources (buffers, textures, samplers) a pipeline reads; its **layout**
+is the matching shape. `layout: "auto"` derives it from the shader but ties bind groups to one
+pipeline; explicit layouts let pipelines share bind groups.
+
+```ts
+const bgl = device.createBindGroupLayout({
+  entries: [
+    { binding: 0, buffer: { type: "uniform" },
+      visibility: GPUShaderStage.VERTEX
+        | GPUShaderStage.FRAGMENT },
+    { binding: 1, texture: { sampleType: "float" },
+      visibility: GPUShaderStage.FRAGMENT },
+    { binding: 2, sampler: { type: "filtering" },
+      visibility: GPUShaderStage.FRAGMENT },
+  ],
+});
+const layout = device.createPipelineLayout({
+  bindGroupLayouts: [bgl], // index = @group
+});
+const bindGroup = device.createBindGroup({
+  layout: bgl,
+  entries: [
+    { binding: 0, resource: { buffer: ubuf } },
+    { binding: 1, resource: texture.createView() },
+    { binding: 2, resource: sampler },
+  ],
+});
+```
+
+| Layout entry | WGSL |
+| :----------- | :--- |
+| `buffer: { type: "uniform" }` | `var<uniform>` |
+| `buffer: { type: "read-only-storage" }` | `var<storage, read>` |
+| `buffer: { type: "storage" }` | `var<storage, read_write>` |
+| `buffer: { hasDynamicOffset: true }` | offset passed in `setBindGroup(i, bg, [offset])` |
+| `texture: { sampleType: "float" \| "unfilterable-float" \| "depth" \| "uint" \| "sint" }` | `texture_2d<f32>` etc. |
+| `storageTexture: { format, access }` | `texture_storage_2d<…>` |
+| `sampler: { type: "filtering" \| "non-filtering" \| "comparison" }` | `sampler` / `sampler_comparison` |
+| `externalTexture: {}` | `texture_external` (video frames) |
+
+Group by update frequency: `@group(0)` per frame (camera), `@group(1)` per material, `@group(2)` per
+object. Switching a low group index is cheapest to keep stable.
+
+## Render pipeline
+
+```ts
+const pipeline = device.createRenderPipeline({
+  label: "mesh",
+  layout, // or "auto"
+  vertex: {
+    module,
+    entryPoint: "vs", // optional if the module has one
+    buffers: [{
+      arrayStride: 5 * 4, // bytes per vertex
+      stepMode: "vertex", // "instance" for per-instance
+      attributes: [
+        { shaderLocation: 0, offset: 0,
+          format: "float32x3" }, // pos
+        { shaderLocation: 1, offset: 12,
+          format: "float32x2" }, // uv
+      ],
+    }],
+  },
+  fragment: {
+    module,
+    entryPoint: "fs",
+    targets: [{ format }],
+  },
+  primitive: { topology: "triangle-list", cullMode: "back" },
+  depthStencil: {
+    format: "depth24plus",
+    depthWriteEnabled: true,
+    depthCompare: "less",
+  },
+  multisample: { count: 1 }, // 1 or 4
+});
+```
+
+| Descriptor field | Values |
+| :--------------- | :----- |
+| `primitive.topology` | `point-list`, `line-list`, `line-strip`, `triangle-list`, `triangle-strip` |
+| `primitive.stripIndexFormat` | `uint16`/`uint32` for strips with an index buffer |
+| `primitive.cullMode` / `frontFace` | `none`, `front`, `back` / `ccw` (default), `cw` |
+| Vertex `format` | `float32`, `float32x2..4`, `uint32`, `sint32x2`, `unorm8x4`, `float16x4`, … |
+| `targets[].blend` | `{ color: { srcFactor, dstFactor, operation }, alpha: {…} }` |
+| `targets[].writeMask` | `GPUColorWrite.ALL` (default), `RED`, `GREEN`, `BLUE`, `ALPHA` |
+| `depthStencil.depthCompare` | `less`, `less-equal`, `greater` (reverse-Z), `always`, … |
+| `vertex.constants` / `fragment.constants` | values for WGSL `override` declarations |
+
+```ts
+// Straight alpha blending for a target
+const blend: GPUBlendState = {
+  color: {
+    srcFactor: "src-alpha",
+    dstFactor: "one-minus-src-alpha",
+    operation: "add",
+  },
+  alpha: {
+    srcFactor: "one",
+    dstFactor: "one-minus-src-alpha",
+  },
+};
+```
+
+Pipelines are immutable and expensive to build. Create them at load time; prefer
+`createRenderPipelineAsync()` to avoid a main-thread stall.
+
+## Compute pipeline & workgroups
+
+```wgsl title="sum-rows.wgsl"
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> o: array<f32>;
+
+var<workgroup> tile: array<f32, 64>;
+
+@compute @workgroup_size(64)
+fn main(
+  @builtin(global_invocation_id) gid: vec3u,
+  @builtin(local_invocation_index) lid: u32,
+  @builtin(workgroup_id) wid: vec3u,
+) {
+  let n = arrayLength(&src);
+  tile[lid] = select(0.0, src[gid.x], gid.x < n);
+  workgroupBarrier();
+  if (lid == 0u) {
+    var s = 0.0;
+    for (var i = 0u; i < 64u; i++) { s += tile[i]; }
+    o[wid.x] = s; // one partial sum per workgroup
+  }
+}
+```
+
+| Concept | Meaning |
+| :------ | :------ |
+| Invocation | one run of the entry point (a GPU "thread") |
+| Workgroup | `@workgroup_size(x, y, z)` invocations that share `var<workgroup>` memory and barriers |
+| `pass.dispatchWorkgroups(x, y?, z?)` | how many workgroups to launch |
+| `global_invocation_id` | `workgroup_id * workgroup_size + local_invocation_id` |
+| Size choice | 64 is a safe default; total per workgroup max 256 by default |
+| Count | `Math.ceil(n / 64)`; guard `if (id.x >= n) { return; }` for the tail |
+| `workgroupBarrier()` | sync workgroup memory; must be in uniform control flow |
+| `storageBarrier()` | order storage accesses within a workgroup |
+| No global barrier | split dependent steps into separate dispatches or passes |
+
+```ts
+const cp = device.createComputePipeline({
+  layout: "auto",
+  compute: { module, constants: { /* overrides */ } },
+});
+```
+
+## Command encoders & queue
+
+Nothing runs until you `submit`. Record passes into an encoder, `finish()` it into a command buffer,
+submit the buffer to the queue.
+
+```ts
+function frame() {
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: [0.1, 0.1, 0.1, 1],
+      loadOp: "clear", // or "load" to keep contents
+      storeOp: "store",
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.setVertexBuffer(0, vbuf);
+  pass.draw(3); // vertexCount, instanceCount = 1
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+```
+
+| Object | Calls |
+| :----- | :---- |
+| `GPUCommandEncoder` | `beginRenderPass`, `beginComputePass`, `copyBufferToBuffer`, `copyBufferToTexture`, `copyTextureToBuffer`, `copyTextureToTexture`, `clearBuffer`, `resolveQuerySet`, `finish` |
+| `GPURenderPassEncoder` | `setPipeline`, `setBindGroup`, `setVertexBuffer`, `setIndexBuffer`, `draw`, `drawIndexed`, `drawIndirect`, `setViewport`, `setScissorRect`, `executeBundles`, `end` |
+| `GPUComputePassEncoder` | `setPipeline`, `setBindGroup`, `dispatchWorkgroups`, `dispatchWorkgroupsIndirect`, `end` |
+| `GPUQueue` | `submit`, `writeBuffer`, `writeTexture`, `copyExternalImageToTexture`, `onSubmittedWorkDone` |
+
+| Tip | Detail |
+| :-- | :----- |
+| One submit per frame | batch all passes into one encoder |
+| `writeBuffer` ordering | runs before the next `submit`, not at the call site in a pass |
+| Render bundles | `device.createRenderBundleEncoder()` prerecords static draws |
+| `copyTextureToBuffer` | `bytesPerRow` must be a multiple of 256 |
+| Labels | `label` on every object shows up in error messages |
+
+## Textures & samplers
+
+```ts
+async function loadTexture(device: GPUDevice, url: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  const bmp = await createImageBitmap(await res.blob());
+  const texture = device.createTexture({
+    size: [bmp.width, bmp.height],
+    format: "rgba8unorm-srgb",
+    usage: GPUTextureUsage.TEXTURE_BINDING
+      | GPUTextureUsage.COPY_DST
+      // RENDER_ATTACHMENT is required by the copy below
+      | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  device.queue.copyExternalImageToTexture(
+    { source: bmp }, { texture }, [bmp.width, bmp.height],
+  );
+  bmp.close();
+  return texture;
+}
+
+const sampler = device.createSampler({
+  magFilter: "linear",
+  minFilter: "linear",
+  mipmapFilter: "linear",
+  addressModeU: "repeat",
+  addressModeV: "repeat",
+});
+```
+
+| Format | Use |
+| :----- | :-- |
+| `rgba8unorm` / `rgba8unorm-srgb` | data / color images (sRGB decode on sample) |
+| `bgra8unorm` | typical canvas format |
+| `rgba16float` | HDR, render targets, blendable |
+| `rgba32float` | data; filtering needs `float32-filterable` |
+| `r32float`, `r32uint` | single-channel data, storage textures |
+| `depth24plus`, `depth32float` | depth buffers (`depth24plus-stencil8` with stencil) |
+| `bc*`, `etc2-*`, `astc-*` | compressed; need `texture-compression-*` features |
+
+| `GPUTextureUsage` | For |
+| :---------------- | :-- |
+| `TEXTURE_BINDING` | sample in shaders |
+| `STORAGE_BINDING` | write from shaders (`texture_storage_*`) |
+| `RENDER_ATTACHMENT` | render target, depth buffer, `copyExternalImageToTexture` destination |
+| `COPY_SRC`, `COPY_DST` | copies and `writeTexture` |
+
+| Fact | Detail |
+| :--- | :----- |
+| Mipmaps | no `generateMipmap`: set `mipLevelCount`, then fill levels with a render or compute pass (`webgpu-utils` has one) |
+| Views | `texture.createView({ dimension, baseMipLevel, format })`; bind groups take views |
+| Raw bytes | `queue.writeTexture({ texture }, data, { bytesPerRow }, size)` |
+| Video | `device.importExternalTexture({ source: video })` → `texture_external`; valid for the current task only |
+| Texture origin | texel (0, 0) is top-left; framebuffer y points down, NDC y points up |
+| Comparison sampler | `compare: "less"` + `texture_depth_2d` for shadow maps |
+| MSAA | `sampleCount: 4` texture as `view`, canvas texture as `resolveTarget` |
+
+## Error handling
+
+Most WebGPU errors are **asynchronous**: calls don't throw, invalid objects poison whatever uses them,
+and the message arrives later. Label objects and listen.
+
+```ts
+device.lost.then((info) => {
+  console.error(`GPU lost (${info.reason})`, info.message);
+  if (info.reason !== "destroyed") void restartRenderer();
+});
+
+device.onuncapturederror = (e) => {
+  console.error("WebGPU error:", e.error.message);
+};
+
+// Catch errors from a specific block of calls
+device.pushErrorScope("validation");
+const p = device.createRenderPipeline(desc);
+const err = await device.popErrorScope();
+if (err) throw new Error(`Invalid pipeline: ${err.message}`);
+```
+
+```ts
+// Shader diagnostics with line numbers
+const shader = device.createShaderModule({ code });
+const { messages } = await shader.getCompilationInfo();
+for (const m of messages) {
+  const where = `${m.lineNum}:${m.linePos}`;
+  if (m.type === "error") console.error(where, m.message);
+}
+```
+
+| Mechanism | Catches |
+| :-------- | :------ |
+| `pushErrorScope("validation")` | invalid descriptors, bad bindings, wrong usage |
+| `pushErrorScope("out-of-memory")` | allocation failures |
+| `pushErrorScope("internal")` | driver or implementation failures |
+| `onuncapturederror` / `uncapturederror` event | anything not caught by a scope; the console also logs it |
+| `createRenderPipelineAsync()` | rejects with `GPUPipelineError` (`reason`: `validation`, `internal`) |
+| `device.lost` | resolves once: `reason` `"destroyed"` (you called `destroy`) or `"unknown"` (driver reset, GPU process crash) |
+
+After a loss, request a new adapter and device and recreate every resource; keep CPU-side sources so
+this is possible.
+
+## Pitfalls
+
+| Pitfall | Symptom | Fix |
+| :------ | :------ | :-- |
+| Plain HTTP (not localhost) | `navigator.gpu` undefined | serve over HTTPS |
+| Caching `getCurrentTexture()` | "destroyed texture" errors | fetch it every frame |
+| Depth texture not resized | attachment size mismatch | recreate it when the canvas size changes |
+| `vec3f` in a uniform struct | fields shifted | it aligns to 16; use `vec4f` or pad |
+| Uniform buffer smaller than the struct | binding validation error | round size up to 16 |
+| Reading mapped data after `unmap()` | detached `ArrayBuffer` | `getMappedRange().slice(0)` |
+| `textureSample` inside a non-uniform `if` | shader compile error | sample first, or `textureSampleLevel` |
+| `rgba32float` with a filtering sampler | layout error | `"unfilterable-float"` + `"non-filtering"`, or the `float32-filterable` feature |
+| Passing a `GPUBuffer` or `GPUTexture` straight as `resource`/`view` | works in Chromium only | use `{ buffer }` and `createView()` |
+| Integer / float mixing in WGSL | type error | explicit `f32(x)`, `u32(y)` |
+| Expecting WebGL NDC | geometry clipped | depth is 0..1; use `wgpu-matrix` or adjust projection |
+
+## WebGPU vs WebGL
+
+| WebGL2 | WebGPU equivalent |
+| :----- | :---------------- |
+| GLSL ES 3.00 | WGSL |
+| `createProgram` + global state (`enable`, `blendFunc`, `depthFunc`) | one immutable `GPURenderPipeline` |
+| `uniform*()` calls | uniform buffer + bind group |
+| texture units + `uniform1i` | bind group entries |
+| VAO | `vertex.buffers` layout + `setVertexBuffer` |
+| FBO | render pass `colorAttachments` / `depthStencilAttachment` |
+| `gl.clear()` | `loadOp: "clear"` + `clearValue` |
+| `drawElementsInstanced` | `drawIndexed(count, instances)` |
+| `readPixels` (sync) | `copyTextureToBuffer` + `mapAsync` |
+| transform feedback / GPGPU hacks | compute shaders + storage buffers |
+| `getError()` | error scopes, `uncapturederror` |
+| `webglcontextlost` | `device.lost` |
+| NDC z -1..1, framebuffer origin bottom-left | NDC z 0..1, framebuffer origin top-left |
+
+| Choose | When |
+| :----- | :--- |
+| WebGL2 | you need every browser today, or a library already abstracts it |
+| WebGPU | compute, many draw calls, modern features; ship a WebGL2 fallback |
+| An engine | three.js and Babylon.js pick the backend for you |
+
+More on the WebGL side in [WebGL](/typescript/web-apis/webgl/#libraries--webgpu).
+
+## Libraries
+
+| Library | What it gives |
+| :------ | :------------ |
+| [three.js](https://threejs.org/) | `WebGPURenderer` (`three/webgpu`) with automatic WebGL2 fallback; TSL node shaders compile to WGSL or GLSL |
+| [Babylon.js](https://www.babylonjs.com/) | full engine with a WebGPU backend (v9) |
+| [PixiJS](https://pixijs.com/) | 2D; v8 picks WebGPU or WebGL |
+| [TypeGPU](https://typegpu.com/) | type-safe buffers, bind groups and WGSL from TypeScript (0.x) |
+| [webgpu-utils](https://github.com/greggman/webgpu-utils) | buffer views from WGSL reflection, mipmap generation |
+| [wgpu-matrix](https://github.com/greggman/wgpu-matrix) | `mat4`/`vec3` math with WebGPU's 0..1 depth |
+| [webgpu (npm)](https://github.com/dawn-gpu/node-webgpu) | Dawn for Node and Bun: headless compute and tests |
+| `@webgpu/types` | TypeScript definitions (TS 5.x) |
+
+## Recipes
+
+### Hello triangle
+Use as a first smoke test; builds on `initGPU` and `configureCanvas` above.
+
+```ts
+const code = /* wgsl */ `
+@vertex fn vs(@builtin(vertex_index) i: u32)
+    -> @builtin(position) vec4f {
+  var p = array(vec2f(0, .5), vec2f(-.5), vec2f(.5, -.5));
+  return vec4f(p[i], 0, 1); }
+@fragment fn fs() -> @location(0) vec4f {
+  return vec4f(1, .4, .2, 1); }`;
+const { device } = await initGPU();
+const canvas = document.querySelector("canvas")!;
+const { context, format } = configureCanvas(canvas, device);
+const module = device.createShaderModule({ code });
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module },
+  fragment: { module, targets: [{ format }] },
+});
+const enc = device.createCommandEncoder();
+const pass = enc.beginRenderPass({
+  colorAttachments: [{ view: context.getCurrentTexture()
+    .createView(), loadOp: "clear", storeOp: "store" }],
+});
+pass.setPipeline(pipeline);
+pass.draw(3);
+pass.end();
+device.queue.submit([enc.finish()]);
+```
+
+### Read a GPU buffer back to JS
+Use to get compute results or debug data; copies through a `MAP_READ` staging buffer.
+
+```ts
+export async function readBuffer(
+  device: GPUDevice, src: GPUBuffer, size = src.size,
+): Promise<ArrayBuffer> {
+  const staging = device.createBuffer({
+    size,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(src, 0, staging, 0, size);
+  device.queue.submit([enc.finish()]);
+  await staging.mapAsync(GPUMapMode.READ);
+  const copy = staging.getMappedRange().slice(0); // own it
+  staging.unmap();
+  staging.destroy();
+  return copy;
+}
+```
+
+### Compute: double an array
+Use as the template for any data-parallel job: upload, dispatch, read back with `readBuffer`.
+`await gpuDouble(device, Float32Array.of(1, 2, 3))` gives `[2, 4, 6]`.
+
+```ts
+const code = /* wgsl */ `
+@group(0) @binding(0) var<storage, read_write> d: array<f32>;
+@compute @workgroup_size(64) fn main(
+    @builtin(global_invocation_id) id: vec3u) {
+  if (id.x < arrayLength(&d)) { d[id.x] *= 2.0; } }`;
+async function gpuDouble(dev: GPUDevice, xs: Float32Array) {
+  const pipe = dev.createComputePipeline({ layout: "auto",
+    compute: { module: dev.createShaderModule({ code }) } });
+  const buf = dev.createBuffer({ size: xs.byteLength,
+    mappedAtCreation: true, usage: GPUBufferUsage.STORAGE
+      | GPUBufferUsage.COPY_SRC });
+  new Float32Array(buf.getMappedRange()).set(xs); // upload
+  buf.unmap();
+  const enc = dev.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(pipe);
+  pass.setBindGroup(0, dev.createBindGroup({
+    layout: pipe.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: buf } }],
+  }));
+  pass.dispatchWorkgroups(Math.ceil(xs.length / 64));
+  pass.end();
+  dev.queue.submit([enc.finish()]);
+  return new Float32Array(await readBuffer(dev, buf));
+}
+```
+
+### Resize-safe render loop with depth
+Use for 3D scenes; the canvas texture follows the canvas size, the depth texture must be rebuilt.
+
+```ts
+let depth: GPUTexture | undefined;
+function frame() {
+  const color = context.getCurrentTexture();
+  const { width, height } = color;
+  if (depth?.width !== width || depth.height !== height) {
+    depth?.destroy();
+    depth = device.createTexture({
+      size: [width, height],
+      format: "depth24plus",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+  }
+  const enc = device.createCommandEncoder();
+  const pass = enc.beginRenderPass({
+    colorAttachments: [{ view: color.createView(),
+      loadOp: "clear", storeOp: "store" }],
+    depthStencilAttachment: { view: depth.createView(),
+      depthClearValue: 1, depthLoadOp: "clear",
+      depthStoreOp: "store" },
+  });
+  drawScene(pass); // setPipeline, setBindGroup, draw…
+  pass.end();
+  device.queue.submit([enc.finish()]);
+  requestAnimationFrame(frame);
+}
+```
+
+Size the canvas itself with the `ResizeObserver` recipe from
+[Canvas 2D](/typescript/web-apis/canvas-2d/#resize-with-resizeobserver), clamped to
+`device.limits.maxTextureDimension2D`.
+
+### Feature detection with WebGL fallback
+Use when the app must run everywhere; get the device **before** touching the canvas, since a canvas
+keeps the first context type it hands out.
+
+```ts
+type Backend =
+  | { kind: "webgpu"; device: GPUDevice;
+      context: GPUCanvasContext }
+  | { kind: "webgl2"; gl: WebGL2RenderingContext };
+
+async function pickBackend(
+  canvas: HTMLCanvasElement,
+): Promise<Backend> {
+  try {
+    const adapter = await navigator.gpu?.requestAdapter();
+    const device = await adapter?.requestDevice();
+    const context = device && canvas.getContext("webgpu");
+    if (device && context) {
+      context.configure({ device,
+        format: navigator.gpu.getPreferredCanvasFormat() });
+      return { kind: "webgpu", device, context };
+    }
+  } catch { /* fall through to WebGL2 */ }
+  const gl = canvas.getContext("webgl2");
+  if (gl) return { kind: "webgl2", gl };
+  throw new Error("Neither WebGPU nor WebGL2 is available");
+}
+```
+
+## References
+
+- MDN: [WebGPU API](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API), [`GPUDevice`](https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice), [`GPUCanvasContext`](https://developer.mozilla.org/en-US/docs/Web/API/GPUCanvasContext), [`GPUBuffer.mapAsync()`](https://developer.mozilla.org/en-US/docs/Web/API/GPUBuffer/mapAsync), [`GPUDevice.lost`](https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/lost)
+- W3C: [WebGPU specification](https://www.w3.org/TR/webgpu/), [WGSL specification](https://www.w3.org/TR/WGSL/)
+- [WebGPU Fundamentals](https://webgpufundamentals.org/): the best from-scratch guide, including a [WGSL offset computer](https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html)
+- Chrome for Developers: [WebGPU overview](https://developer.chrome.com/docs/web-platform/webgpu/overview), [troubleshooting tips](https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips)
+- [gpuweb implementation status](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status), [caniuse: WebGPU](https://caniuse.com/webgpu)
+- [`@webgpu/types`](https://github.com/gpuweb/types), [TypeGPU](https://typegpu.com/), [three.js WebGPURenderer](https://threejs.org/docs/#api/en/renderers/webgpu/WebGPURenderer)

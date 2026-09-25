@@ -1,0 +1,306 @@
+---
+title: Fullscreen
+date: 2026-09-25
+order: 19
+---
+
+The Fullscreen API (`requestFullscreen`, `exitFullscreen`, `fullscreenElement`) and its CSS hooks,
+the iPhone video-only exception, plus two APIs that usually come with it: Screen Orientation lock and
+Screen Wake Lock. Support data is from MDN as of September 2026.
+
+## Support
+
+| Feature                                   | Status (MDN)                   | Notes                                         |
+| :---------------------------------------- | :----------------------------- | :-------------------------------------------- |
+| Fullscreen API (unprefixed)               | not Baseline                   | Chrome 71, Firefox 64, Safari 16.4; **not iPhone** |
+| iPad Safari                               | 16.4+ unprefixed, 12+ `webkit` | forced overlay button; swipe down exits       |
+| iPhone Safari                             | `<video>` only                 | `video.webkitEnterFullscreen()`               |
+| `navigationUI` option                     | Chromium, Safari 16.4          | Firefox ignores it                            |
+| `::backdrop`                              | Baseline widely available      | also used by `<dialog>` and popovers          |
+| Screen Orientation (`type`, `angle`, `change`) | Baseline widely available (2025) |                                         |
+| `screen.orientation.lock()`               | not Baseline                   | Chrome Android, Firefox 144+; not Safari      |
+| Screen Wake Lock                          | Baseline 2025                  | iOS 18.4 for home-screen apps                 |
+
+## Requirements
+
+| Requirement          | Detail                                                                    |
+| :------------------- | :------------------------------------------------------------------------ |
+| transient activation | `requestFullscreen()` only from a click, key press or similar             |
+| iframes              | `<iframe allow="fullscreen">` (legacy `allowfullscreen`); Permissions Policy `fullscreen` |
+| connected element    | the element must be in the document; `<dialog>` and popovers work too     |
+| one at a time        | requesting another element swaps which one is fullscreen                  |
+| exit                 | `Esc` always exits; the page can't block it                               |
+| F11 / browser menu   | browser fullscreen, not the API: `fullscreenElement` stays `null`         |
+
+## API
+
+| Member                                    | Type / returns        | Notes                                           |
+| :---------------------------------------- | :-------------------- | :---------------------------------------------- |
+| `el.requestFullscreen(options?)`          | `Promise<void>`       | rejects with `TypeError` when refused           |
+| `document.exitFullscreen()`               | `Promise<void>`       | rejects if nothing is fullscreen                |
+| `document.fullscreenElement`              | `Element \| null`     | also on `ShadowRoot` for elements inside it     |
+| `document.fullscreenEnabled`              | `boolean`             | `false` if the policy or platform forbids it    |
+
+```ts
+declare const player: HTMLElement;
+
+async function toggle(el: HTMLElement) {
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+  } else {
+    await el.requestFullscreen({ navigationUI: "hide" });
+  }
+}
+```
+
+| Event              | Target                             | When                                        |
+| :----------------- | :--------------------------------- | :------------------------------------------ |
+| `fullscreenchange` | the element, bubbles to `document` | entered or left, by code, `Esc` or swipe    |
+| `fullscreenerror`  | the element, bubbles to `document` | a request was refused (the promise rejects too) |
+
+Listen on `document` so you catch changes from every element and from `Esc`.
+
+## Options
+
+| `FullscreenOptions` | Values                          | Support                     | Effect                                         |
+| :------------------ | :------------------------------ | :-------------------------- | :--------------------------------------------- |
+| `navigationUI`      | `"auto"`, `"hide"`, `"show"`    | Chromium, Safari 16.4       | hide or keep the browser's navigation bar (mobile) |
+| `screen`            | `ScreenDetailed`                | Chrome 100 desktop          | fullscreen on another monitor (Window Management API) |
+| `keyboardLock`      | `"none"`, `"browser"`, `"system"` | Firefox 151, Safari 26.4  | non-standard; capture `Esc` and system keys    |
+
+`screen` and `keyboardLock` aren't in `lib.dom`; widen the options type if you use them.
+
+## CSS
+
+```css
+/* the element while it is fullscreen */
+.player:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  background: black;
+}
+
+/* everything behind it (black by default) */
+.player::backdrop {
+  background: rgb(0 0 0 / 0.9);
+}
+
+/* style the page around it; :modal matches it too */
+:root:has(:fullscreen) .site-header {
+  display: none;
+}
+```
+
+| Fact                          | Detail                                                       |
+| :---------------------------- | :----------------------------------------------------------- |
+| top layer                     | the element renders above everything; `z-index` is irrelevant |
+| UA styles                     | `position: fixed`, `inset: 0`, `width`/`height: 100%`, all `!important`; plus `object-fit: contain` |
+| ancestors                     | `:fullscreen` matches only the element itself, not its parents |
+| prefixed                      | `:-webkit-full-screen` for Safari before 16.4 and iPadOS 12–16.3 |
+
+See [CSS](/design/css/css/) for `:has()` and the top layer.
+
+## iPhone & older Safari
+
+iPhone Safari has no element fullscreen at all: `requestFullscreen` is `undefined` and
+`document.fullscreenEnabled` is never `true`. The only option is the native video player.
+
+| Member (on `HTMLVideoElement`)  | Meaning                                                 |
+| :------------------------------ | :------------------------------------------------------ |
+| `webkitEnterFullscreen()`       | opens the native player; call after `loadedmetadata`    |
+| `webkitExitFullscreen()`        | closes it                                               |
+| `webkitDisplayingFullscreen`    | `boolean`                                               |
+| `webkitSupportsFullscreen`      | `boolean`; `false` until metadata is loaded             |
+| `webkitbeginfullscreen` / `webkitendfullscreen` | events on the `<video>`                 |
+
+Custom controls, overlays and canvas games can't go fullscreen on iPhone. The closest thing is a web
+app installed to the Home Screen with manifest `"display": "fullscreen"` or `"standalone"`.
+
+```ts
+type WebkitVideo = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+};
+
+function videoFullscreen(video: WebkitVideo) {
+  if (video.requestFullscreen) {
+    return video.requestFullscreen();
+  }
+  video.webkitEnterFullscreen?.(); // iPhone
+}
+```
+
+## Screen Orientation
+
+| Member                              | Type / returns    | Notes                                          |
+| :---------------------------------- | :---------------- | :--------------------------------------------- |
+| `screen.orientation.type`           | `OrientationType` | `"portrait-primary"`, `"landscape-secondary"`, … |
+| `screen.orientation.angle`          | `number`          | 0, 90, 180 or 270                              |
+| `change` event                      | `Event`           | on `screen.orientation`                        |
+| `screen.orientation.lock(type)`     | `Promise<void>`   | mobile, in fullscreen                          |
+| `screen.orientation.unlock()`       | `void`            | back to the user's setting                     |
+
+| `lock()` value                 | Locks to                                        |
+| :----------------------------- | :---------------------------------------------- |
+| `"landscape"` / `"portrait"`   | either landscape / either portrait              |
+| `"landscape-primary"` etc.     | one exact orientation                           |
+| `"natural"`                    | the device's natural orientation                |
+| `"any"`                        | all four; undoes a previous lock                |
+
+| `lock()` rejection  | Cause                                                            |
+| :------------------ | :--------------------------------------------------------------- |
+| `NotSupportedError` | desktop, Safari, or not fullscreen on Chrome Android             |
+| `SecurityError`     | page hidden, or a sandboxed iframe without `allow-orientation-lock` |
+| `AbortError`        | another `lock()` started, or `unlock()` was called meanwhile     |
+
+For layout, prefer CSS `@media (orientation: landscape)` over the API. For installed apps, the
+manifest `orientation` member sets a default without fullscreen.
+
+## Screen Wake Lock
+
+Keeps the screen on while visible content matters: recipes, presentations, boarding passes, video
+calls. It's a **screen** lock only; there's no CPU lock on the web.
+
+| Member                                  | Type / returns               | Notes                                     |
+| :-------------------------------------- | :--------------------------- | :---------------------------------------- |
+| `navigator.wakeLock.request("screen")`  | `Promise<WakeLockSentinel>`  | secure context; page must be visible      |
+| `sentinel.release()`                    | `Promise<void>`              | release early                             |
+| `sentinel.released`                     | `boolean`                    | `true` once released by you or the browser |
+| `release` event                         | `Event`                      | fires on the sentinel                     |
+
+| Behaviour / error      | Detail                                                                     |
+| :--------------------- | :------------------------------------------------------------------------- |
+| page hidden            | the browser releases the lock; request a new one on `visibilitychange`     |
+| `NotAllowedError`      | page hidden, not fully active, blocked by policy `screen-wake-lock`, or low battery |
+| Permissions API        | `"screen-wake-lock"`; granted without a prompt in practice                  |
+| iOS home-screen apps   | work from iOS 18.4; before that only in Safari tabs                         |
+
+## Typing in TS
+
+| Situation                                   | Fix                                                        |
+| :------------------------------------------ | :--------------------------------------------------------- |
+| `el.requestFullscreen` typed as always present | test `typeof el.requestFullscreen === "function"` for iPhone |
+| `webkitEnterFullscreen`, `webkitRequestFullscreen` | not in `lib.dom`; intersect with an optional member type |
+| `document.fullscreenElement`                | `Element \| null`; not generic, so narrow with `instanceof` |
+| `screen.orientation.lock()`                 | missing from TS 5.x `lib.dom` (present in TS 7); widen the type as in the recipe |
+| wake lock                                   | `WakeLockSentinel`, `WakeLockType` (`"screen"`)             |
+
+## Recipes
+
+### Toggle fullscreen helper
+A framework-free helper: state, toggle and a subscription, with the iPhone case reported as unsupported.
+
+```ts title="fullscreen.ts"
+export const fullscreenSupported = () =>
+  document.fullscreenEnabled === true;
+
+export const isFullscreen = (el?: Element) =>
+  el
+    ? document.fullscreenElement === el
+    : document.fullscreenElement !== null;
+
+export async function toggleFullscreen(el: HTMLElement) {
+  if (!fullscreenSupported()) return false;
+  if (isFullscreen(el)) await document.exitFullscreen();
+  else await el.requestFullscreen({ navigationUI: "hide" });
+  return true;
+}
+
+export function onFullscreenChange(cb: () => void) {
+  document.addEventListener("fullscreenchange", cb);
+  return () =>
+    document.removeEventListener("fullscreenchange", cb);
+}
+```
+
+### useFullscreen hook
+The same helper wired into React with `useSyncExternalStore`, so every component sees one truth.
+
+```tsx
+import { useCallback, useSyncExternalStore } from "react";
+import type { RefObject } from "react";
+import {
+  isFullscreen,
+  onFullscreenChange,
+  toggleFullscreen,
+} from "./fullscreen.ts";
+
+export function useFullscreen(
+  ref: RefObject<HTMLElement | null>,
+) {
+  const active = useSyncExternalStore(
+    onFullscreenChange,
+    () => (ref.current ? isFullscreen(ref.current) : false),
+    () => false, // server render
+  );
+  const toggle = useCallback(async () => {
+    if (ref.current) await toggleFullscreen(ref.current);
+  }, [ref]);
+  return { active, toggle };
+}
+```
+
+### Fullscreen video with orientation lock
+Landscape playback on Android; the native player on iPhone; plain fullscreen on desktop.
+
+```ts
+type Video = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+};
+// lock() is missing from TypeScript 5.x lib.dom
+type Lockable = ScreenOrientation & {
+  lock?(type: "landscape" | "portrait"): Promise<void>;
+};
+
+export async function playFullscreen(video: Video) {
+  if (typeof video.requestFullscreen !== "function") {
+    video.webkitEnterFullscreen?.(); // iPhone
+    return video.play();
+  }
+  await video.requestFullscreen({ navigationUI: "hide" });
+  const orientation = screen.orientation as Lockable;
+  await orientation.lock?.("landscape").catch(() => {
+    // desktop or Safari: no lock, that's fine
+  });
+  await video.play();
+}
+// on exit, call screen.orientation.unlock()
+```
+
+### Wake lock during a presentation
+Keep the screen on while a slideshow runs, re-acquiring after tab switches.
+
+```ts
+export function keepAwake() {
+  let sentinel: WakeLockSentinel | null = null;
+  let wanted = true;
+  const acquire = async () => {
+    if (!wanted || document.hidden) return;
+    try {
+      sentinel = await navigator.wakeLock.request("screen");
+    } catch {
+      // NotAllowedError: battery saver, policy
+    }
+  };
+  const onVisible = () => void acquire();
+  document.addEventListener("visibilitychange", onVisible);
+  void acquire();
+  return async () => {
+    wanted = false;
+    document.removeEventListener(
+      "visibilitychange",
+      onVisible,
+    );
+    await sentinel?.release();
+  };
+}
+```
+
+Call `keepAwake()` when the presentation starts and the returned function when it ends.
+
+## References
+
+- MDN: [Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Fullscreen_API), [`Element.requestFullscreen()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen), [`:fullscreen`](https://developer.mozilla.org/en-US/docs/Web/CSS/:fullscreen), [`::backdrop`](https://developer.mozilla.org/en-US/docs/Web/CSS/::backdrop): API, options, iOS notes
+- MDN: [Screen Orientation API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Orientation_API), [`ScreenOrientation.lock()`](https://developer.mozilla.org/en-US/docs/Web/API/ScreenOrientation/lock), [Screen Wake Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API)
+- WHATWG: [Fullscreen API Standard](https://fullscreen.spec.whatwg.org/)
+- Apple: [`webkitEnterFullscreen()`](https://developer.apple.com/documentation/webkitjs/htmlvideoelement/1633500-webkitenterfullscreen): the iPhone video path
+- Chrome for Developers: [Stay awake with the Screen Wake Lock API](https://developer.chrome.com/docs/capabilities/web-apis/wake-lock): re-acquire pattern

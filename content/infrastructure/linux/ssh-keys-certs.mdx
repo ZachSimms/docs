@@ -1,0 +1,694 @@
+---
+title: SSH, keys & certificates
+date: 2026-09-25
+order: 2
+---
+
+SSH keys, client config, agents, tunnels and server hardening, then TLS certificates: X.509,
+`openssl`, ACME, local dev certs and mTLS. Targets OpenSSH 10.x and OpenSSL 3.x. Server
+admin basics are in [Linux sysadmin](/infrastructure/linux/sysadmin/).
+
+## Keys & ssh-keygen
+
+| Type | `-t` | Use |
+| :--- | :--- | :-- |
+| Ed25519 | `ed25519` | the default since OpenSSH 9.5; small, fast, no parameter choices |
+| ECDSA | `ecdsa` (P-256) | when a system (FIPS, some HSMs) lacks Ed25519 |
+| RSA | `rsa -b 4096` | legacy peers only; SHA-1 `ssh-rsa` signatures are disabled, `rsa-sha2-*` are used |
+| FIDO2 Ed25519 | `ed25519-sk` | private key stays on a hardware token (YubiKey); touch per login |
+| FIDO2 ECDSA | `ecdsa-sk` | tokens without Ed25519 support |
+| DSA | — | removed in OpenSSH 10.0 |
+
+| Command | Does |
+| :------ | :--- |
+| `ssh-keygen -t ed25519 -C "zach@laptop"` | new key pair; prompts for path and passphrase |
+| `ssh-keygen -t ed25519 -f ~/.ssh/id_work` | custom filename |
+| `ssh-keygen -a 100 …` | more KDF rounds: slower passphrase brute force |
+| `ssh-keygen -t ed25519-sk -O resident -O verify-required` | FIDO key stored on the token, PIN + touch |
+| `ssh-keygen -K` | pull resident keys off a token onto a new machine |
+| `ssh-keygen -p -f ~/.ssh/id_ed25519` | change or add a passphrase |
+| `ssh-keygen -y -f key > key.pub` | rebuild the public key from the private one |
+| `ssh-keygen -lf key.pub` | fingerprint (`SHA256:…`) |
+| `ssh-keygen -F host` / `-R host` | find / remove a host in `known_hosts` |
+| `ssh-keyscan -t ed25519 host` | fetch a host key (verify it out of band) |
+| `ssh-copy-id -i ~/.ssh/id_ed25519.pub user@host` | append your key to the server's `authorized_keys` |
+
+OpenSSH 10 negotiates the post-quantum hybrid `mlkem768x25519-sha256` key exchange by
+default; 10.1+ prints a warning when a server can't do post-quantum key exchange.
+
+## ~/.ssh layout & permissions
+
+```tree title="~/.ssh (mode 700)"
+.ssh/
+  config                # 600  client settings
+  config.d/             # 700  files pulled in by Include
+    work
+  known_hosts           # 644  host keys you have accepted
+  authorized_keys       # 600  keys that may log in HERE
+  id_ed25519            # 600  private: never copy/commit
+  id_ed25519.pub        # 644  public half: share freely
+  id_ed25519-cert.pub   # 644  CA-signed cert (optional)
+  allowed_signers       # 644  who may sign git commits
+  sockets/              # 700  ControlMaster sockets
+```
+
+```sh
+chmod 700 ~/.ssh ~/.ssh/sockets
+chmod 600 ~/.ssh/config ~/.ssh/authorized_keys ~/.ssh/id_*
+chmod 644 ~/.ssh/*.pub ~/.ssh/known_hosts
+chmod go-w ~  # sshd rejects group-writable homes
+```
+
+### authorized_keys options
+
+Prefix a key with options to limit what it may do (deploy keys, backup jobs):
+
+```text title="~/.ssh/authorized_keys"
+ssh-ed25519 AAAAC3Nz... zach@laptop
+from="10.0.0.0/8",restrict ssh-ed25519 AAAAC3Nz... ci@runner
+command="/usr/local/bin/backup-recv",restrict ssh-ed25519 AAAAC3Nz... backup
+restrict,port-forwarding,permitopen="localhost:5432" ssh-ed25519 AAAAC3Nz... db-tunnel
+```
+
+`restrict` turns off forwarding, PTY and agent; add back only what's needed.
+
+## Client config
+
+For each option, ssh uses the **first** value it finds, so specific `Host` blocks go at the
+top and `Host *` defaults go last. `ssh -G host` prints the effective config.
+
+```ssh-config title="~/.ssh/config"
+Include config.d/*
+
+Host bastion
+  HostName bastion.example.com
+  User zach
+
+Host app-1 app-2
+  HostName %h.internal.example.com
+  User deploy
+  ProxyJump bastion
+
+Host github-work
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_work
+
+Host *
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  AddKeysToAgent yes
+  IgnoreUnknown UseKeychain
+  UseKeychain yes
+  ServerAliveInterval 60
+  ControlMaster auto
+  ControlPath ~/.ssh/sockets/%C
+  ControlPersist 10m
+```
+
+| Option | Meaning |
+| :----- | :------ |
+| `Host a b *.dev !prod` | patterns matched against what you typed; `!` negates |
+| `Match host x exec "cmd"` | conditional block (e.g. only on a given network) |
+| `HostName` | real address; `%h` is the typed name |
+| `User`, `Port` | login user, port |
+| `IdentityFile` | key to offer; may point at a `.pub` when the private half is in an agent |
+| `IdentitiesOnly yes` | offer only `IdentityFile` keys, not every agent key |
+| `ProxyJump a,b` | hop through jump hosts (`-J` on the CLI) |
+| `ControlMaster auto`, `ControlPath`, `ControlPersist` | reuse one connection; later sessions and `scp` start instantly |
+| `ForwardAgent yes` | exposes your agent to the remote root; prefer `ProxyJump` |
+| `LocalForward 5433 localhost:5432` | permanent `-L` |
+| `ServerAliveInterval 60` | keepalives through NAT and idle firewalls |
+| `StrictHostKeyChecking accept-new` | trust new hosts automatically, still reject **changed** keys |
+| `UseKeychain yes` | macOS only; `IgnoreUnknown UseKeychain` keeps Linux from erroring |
+| `Include file` | put at the very top; inside a `Host` block it only applies to that block |
+| `RemoteCommand tmux new -A -s main` + `RequestTTY yes` | land in a persistent tmux session |
+
+Multiplexing commands: `ssh -O check host`, `ssh -O exit host` (close the master).
+
+## Agents
+
+The agent holds decrypted keys so you type the passphrase once. ssh finds it through
+`SSH_AUTH_SOCK` or `IdentityAgent`.
+
+| Agent | Setup |
+| :---- | :---- |
+| OpenSSH `ssh-agent` | `eval "$(ssh-agent -s)"`; most desktops already start one |
+| macOS Keychain | `ssh-add --apple-use-keychain ~/.ssh/id_ed25519` once, plus `UseKeychain yes` and `AddKeysToAgent yes` |
+| 1Password | enable the SSH agent in settings; `IdentityAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"` (macOS) or `~/.1password/agent.sock` (Linux) |
+| Secretive (macOS) | keys generated in the Secure Enclave, never exportable; `IdentityAgent ~/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh` |
+| FIDO `-sk` keys | work with any agent; the token does the signing |
+
+| Command | Does |
+| :------ | :--- |
+| `ssh-add` | add default keys |
+| `ssh-add -l` / `-L` | list fingerprints / public keys |
+| `ssh-add -t 1h key` | expire after an hour |
+| `ssh-add -c key` | confirm each use |
+| `ssh-add -d key`, `ssh-add -D` | remove one / all |
+
+With 1Password or Secretive, point `IdentityFile` at the exported `.pub` and keep
+`IdentitiesOnly yes`, so each host gets the right key instead of the agent trying them all.
+
+## Port forwarding
+
+| Flag | Direction | Typical use |
+| :--- | :-------- | :---------- |
+| `-L lport:host:hport` | local port → through server → `host:hport` | reach a private DB or admin UI |
+| `-R rport:host:hport` | server port → back through you → `host:hport` | expose a local dev server |
+| `-D port` | local SOCKS5 proxy → anywhere the server can reach | browse as the server |
+| `-N` | no remote command | tunnel only |
+| `-f` | background after auth | with `-N` |
+| `-o ExitOnForwardFailure=yes` | fail if the port can't bind | scripts |
+
+```text
+ssh -L 5433:db.internal:5432 bastion
+
+ laptop                      bastion                 db.internal
+ psql → 127.0.0.1:5433 ══ssh══► sshd ───tcp───► :5432
+```
+
+```text
+ssh -R 8080:localhost:3000 vps
+
+ internet → vps:8080 ══ssh══► laptop → localhost:3000
+ (vps listens on 127.0.0.1 only unless sshd has GatewayPorts yes)
+```
+
+```text
+ssh -D 1080 vps
+
+ browser (SOCKS5 127.0.0.1:1080) ══ssh══► vps ───► any host:port
+```
+
+Forwarded ports bind to `127.0.0.1` by default; writing `0.0.0.0:5433:…` exposes them to
+your LAN.
+
+## Copying files
+
+| Command | Does |
+| :------ | :--- |
+| `scp f host:/tmp/` | copy; uses the SFTP protocol since OpenSSH 9.0 |
+| `scp -r dir host:` | recursive, into the remote home |
+| `rsync -avz --progress src/ host:/srv/app/` | incremental; trailing `/` on `src/` copies its **contents** |
+| `rsync -avz --delete src/ host:dst/` | exact mirror: deletes extra files at `dst` |
+| `rsync -avzn …` | dry run first |
+| `rsync -a --exclude node_modules --exclude .git …` | skip paths |
+| `rsync -e 'ssh -p 2222' …` | custom ssh options |
+| `sftp host` | interactive: `ls`, `get`, `put`, `lcd`, `mkdir` |
+| `sshfs host:/srv /mnt/srv` | mount a remote dir (FUSE) |
+| `tar czf - dir \| ssh host 'tar xzf - -C /srv'` | stream a tree without temp files |
+
+All of them honour `~/.ssh/config`, including `ProxyJump` and multiplexing.
+
+## sshd hardening
+
+Put settings in a drop-in. sshd also keeps the **first** value it reads, and
+`sshd_config.d/*.conf` is included at the top in name order, so `00-` beats cloud images'
+`50-cloud-init.conf`.
+
+| Directive | Set to | Why |
+| :-------- | :----- | :-- |
+| `PermitRootLogin` | `no` | log in as a user, then `sudo` (default is `prohibit-password`) |
+| `PasswordAuthentication` | `no` | keys only |
+| `KbdInteractiveAuthentication` | `no` | closes the PAM password path too |
+| `AuthenticationMethods` | `publickey` | or `publickey,keyboard-interactive` for key + TOTP |
+| `AllowGroups` | `ssh-users` | allowlist who may log in at all |
+| `MaxAuthTries` | `3` | fewer guesses per connection |
+| `LoginGraceTime` | `20` | drop idle unauthenticated sockets |
+| `X11Forwarding` | `no` | not needed on servers |
+| `AllowAgentForwarding` | `no` | stops agent hijacking on this host |
+| `AllowTcpForwarding` | `no` or `local` | unless it's a jump host |
+| `ClientAliveInterval`, `ClientAliveCountMax` | `300`, `2` | reap dead sessions |
+| `TrustedUserCAKeys` | `/etc/ssh/user_ca.pub` | accept CA-signed user certs |
+| `PerSourcePenalties` | (default on, 9.8+) | built-in throttling of abusive source IPs |
+
+```sh
+sudo sshd -t                        # syntax check
+sudo sshd -T | grep -Ei 'passw|root|kbd'   # effective values
+sudo systemctl reload ssh   # Fedora/RHEL: sshd
+```
+
+<Note kind="warning">Keep a working session open until a **new** login succeeds. Ubuntu
+uses socket activation: after changing `Port`, run `sudo systemctl daemon-reload && sudo
+systemctl restart ssh.socket`, and open the new port in the firewall first.</Note>
+
+## SSH certificates
+
+A CA key signs user and host keys with an identity, principals and an expiry. Servers trust
+the CA instead of per-user `authorized_keys`; clients trust the CA instead of TOFU host
+prompts.
+
+```sh
+# one-time: CA keys (keep offline or in a secrets manager)
+ssh-keygen -t ed25519 -f user_ca -C user_ca
+ssh-keygen -t ed25519 -f host_ca -C host_ca
+
+# user cert: valid 8h for logins as alice or deploy
+ssh-keygen -s user_ca -I alice@laptop -n alice,deploy \
+  -V +8h ~/.ssh/id_ed25519.pub   # → id_ed25519-cert.pub
+ssh-keygen -Lf ~/.ssh/id_ed25519-cert.pub   # inspect
+
+# host cert: run with the host's public key
+ssh-keygen -s host_ca -I web1 -h \
+  -n web1.example.com,10.0.0.5 -V +52w \
+  /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+| Side | Config |
+| :--- | :----- |
+| Server trusts user CA | `TrustedUserCAKeys /etc/ssh/user_ca.pub` in `sshd_config` |
+| Server presents host cert | `HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub` |
+| Client trusts host CA | `@cert-authority *.example.com ssh-ed25519 AAAA…` in `known_hosts` |
+| Revoke | `ssh-keygen -k -f revoked.krl key.pub`; `RevokedKeys /etc/ssh/revoked.krl` |
+| Map principals | `AuthorizedPrincipalsFile /etc/ssh/principals/%u` |
+
+ssh picks up `id_ed25519-cert.pub` next to the key automatically. For short-lived certs at
+scale, use step-ca, Vault's SSH engine or Teleport.
+
+## Git over SSH
+
+| Task | Command / config |
+| :--- | :--------------- |
+| Test auth | `ssh -T git@github.com` |
+| Clone | `git clone git@github.com:org/repo.git` |
+| Second account | `Host github-work` alias (above), then `git@github-work:org/repo.git` |
+| Per-repo key | `git config core.sshCommand "ssh -i ~/.ssh/id_work -o IdentitiesOnly=yes"` |
+| Per-directory identity | `[includeIf "gitdir:~/work/"]` + `path = ~/.gitconfig-work` in `~/.gitconfig` |
+| Upload a key | `gh ssh-key add ~/.ssh/id_ed25519.pub --type authentication` |
+
+### Signing commits with SSH keys
+
+| Setting | Value |
+| :------ | :---- |
+| `gpg.format` | `ssh` |
+| `user.signingkey` | path to the `.pub`, or the key text itself |
+| `commit.gpgsign`, `tag.gpgsign` | `true` |
+| `gpg.ssh.allowedSignersFile` | file of `email key` lines trusted for `git log --show-signature` |
+| `gpg.ssh.program` | `/Applications/1Password.app/Contents/MacOS/op-ssh-sign` when 1Password holds the key |
+
+GitHub and GitLab show "Verified" only if the key is also uploaded as a **signing** key
+(`gh ssh-key add --type signing`). Setup steps are in the recipe below.
+
+## TLS & X.509 basics
+
+```text
+Root CA          self-signed; ships in the OS / browser trust store
+  │ signs
+Intermediate CA  sent by the server
+  │ signs
+Leaf cert        SAN: example.com, www.example.com; sent by the server
+
+The server sends leaf + intermediates ("fullchain"), never the root.
+The client builds a path to a root it already trusts.
+```
+
+| Term | Meaning |
+| :--- | :------ |
+| CSR | certificate signing request: public key + requested names, signed by your private key |
+| SAN | Subject Alternative Name: the DNS names/IPs the cert is valid for; clients ignore CN |
+| CN | Common Name in the subject; informational now |
+| EKU | extended key usage: `serverAuth`, `clientAuth`, `codeSigning` |
+| SNI | client sends the hostname in the handshake so one IP can serve many certs |
+| ALPN | protocol negotiation inside TLS (`h2`, `http/1.1`) |
+| Chain / bundle | leaf followed by intermediates in one PEM file |
+| Fingerprint | hash of the DER cert; `openssl x509 -fingerprint -sha256` |
+| Validity | public TLS certs max 200 days since March 2026, 100 in 2027, 47 in 2029 |
+
+### Formats and extensions
+
+| Format | What | Usual extensions |
+| :----- | :--- | :--------------- |
+| PEM | Base64 between `-----BEGIN …-----` lines; can hold several objects | `.pem`, `.crt`, `.cer`, `.key` |
+| DER | binary, one object | `.der`, `.cer` |
+| PKCS#8 | private key container: `BEGIN PRIVATE KEY` (or `ENCRYPTED`) | `.key`, `.pem` |
+| PKCS#1 | legacy RSA-only key: `BEGIN RSA PRIVATE KEY` | `.key` |
+| PKCS#10 | CSR: `BEGIN CERTIFICATE REQUEST` | `.csr` |
+| PKCS#12 / PFX | binary bundle of key + cert + chain, password-protected | `.p12`, `.pfx` |
+| PKCS#7 | certs only, no key (Windows, Java) | `.p7b`, `.p7c` |
+
+The extension doesn't tell you the encoding: a `.crt` may be PEM or DER. `head -1 file` shows
+a `BEGIN` line for PEM.
+
+### Trust stores
+
+```tree title="Debian / Ubuntu"
+/
+  etc/ssl/
+    certs/                     # trusted CAs (hashed links)
+      ca-certificates.crt      # the bundle most tools read
+    private/                   # keys; 710 root:ssl-cert
+    openssl.cnf
+  etc/letsencrypt/live/example.com/
+    fullchain.pem              # leaf + chain: serve this
+    privkey.pem                # private key
+    cert.pem                   # leaf only
+    chain.pem                  # intermediates only
+  usr/local/share/
+    ca-certificates/           # your own CAs (.crt, PEM)
+```
+
+| Add a private CA | Command |
+| :--------------- | :------ |
+| Debian / Ubuntu | copy to `/usr/local/share/ca-certificates/corp.crt`, run `sudo update-ca-certificates` |
+| Fedora / RHEL | copy to `/etc/pki/ca-trust/source/anchors/`, run `sudo update-ca-trust`; bundle is `/etc/pki/tls/certs/ca-bundle.crt` |
+| macOS | `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain corp.crt` |
+| Bun / Node | `NODE_EXTRA_CA_CERTS=/path/corp.pem` (read once at startup) |
+
+## openssl commands
+
+| Task | Command |
+| :--- | :------ |
+| Ed25519 key | `openssl genpkey -algorithm ed25519 -out k.pem` |
+| ECDSA P-256 key | `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out k.pem` |
+| RSA 3072 key | `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out k.pem` |
+| CSR with SANs | `openssl req -new -key k.pem -subj "/CN=example.com" -addext "subjectAltName=DNS:example.com,DNS:www.example.com" -out r.csr` |
+| Read a CSR | `openssl req -in r.csr -noout -text` |
+| Read a cert | `openssl x509 -in c.pem -noout -text` |
+| Just the essentials | `openssl x509 -in c.pem -noout -subject -issuer -dates -ext subjectAltName` |
+| Fingerprint | `openssl x509 -in c.pem -noout -fingerprint -sha256` |
+| Expires within 30 days? | `openssl x509 -in c.pem -noout -checkend 2592000` (exit 1 if so) |
+| Remote chain | `openssl s_client -connect host:443 -servername host -showcerts </dev/null` |
+| Remote summary | `openssl s_client -connect host:443 -servername host -brief </dev/null` |
+| STARTTLS | `openssl s_client -connect mail:587 -starttls smtp` |
+| Verify a chain | `openssl verify -CAfile root.pem -untrusted inter.pem leaf.pem` |
+| Key matches cert? | compare `openssl x509 -in c.pem -noout -pubkey` with `openssl pkey -in k.pem -pubout` |
+| PEM → DER | `openssl x509 -in c.pem -outform der -out c.der` |
+| DER → PEM | `openssl x509 -inform der -in c.der -out c.pem` |
+| Make PFX | `openssl pkcs12 -export -inkey k.pem -in c.pem -certfile chain.pem -out c.pfx` |
+| Unpack PFX | `openssl pkcs12 -in c.pfx -noenc` (add `-legacy` for old RC2 files) |
+| Strip key passphrase | `openssl pkey -in enc.pem -out plain.pem` |
+| Random secret | `openssl rand -hex 32` |
+
+`-noenc` replaces the deprecated `-nodes` in OpenSSL 3. Browsers don't accept Ed25519 TLS
+certs, so use ECDSA P-256 (or RSA) for anything a browser will see.
+
+## Getting certificates
+
+### Let's Encrypt & ACME
+
+| Challenge | Proves control by | Good for |
+| :-------- | :---------------- | :------- |
+| HTTP-01 | serving a token at `http://host/.well-known/acme-challenge/` on port 80 | public web servers; no wildcards |
+| DNS-01 | a `_acme-challenge` TXT record | wildcards, internal hosts, no open ports; needs DNS API creds |
+| TLS-ALPN-01 | a special cert on port 443 | proxies like Caddy and Traefik |
+
+| Profile (Let's Encrypt) | Lifetime |
+| :---------------------- | :------- |
+| `classic` (default) | 90 days; 64 from Feb 2027, 45 from Feb 2028 |
+| `tlsserver` | 45 days (since May 2026) |
+| `shortlived` | about 6 days; IP-address certs allowed |
+
+Let's Encrypt no longer sends expiry emails and has dropped OCSP, so monitor expiry yourself
+(recipe below).
+
+```sh
+# Debian/Ubuntu; on Fedora/RHEL: dnf install (EPEL on RHEL)
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d example.com -d www.example.com
+sudo certbot certonly --webroot -w /var/www/html \
+  -d example.com                  # any server, no edits
+sudo certbot certonly --standalone -d example.com
+sudo certbot certificates         # what's installed
+sudo certbot renew --dry-run      # test renewal
+systemctl list-timers | grep certbot
+```
+
+Renewal runs from `certbot.timer`. Put reload commands in
+`/etc/letsencrypt/renewal-hooks/deploy/` (e.g. `systemctl reload nginx`). Opt in to a
+profile with `--preferred-profile tlsserver`. Wildcards need DNS-01 with a plugin such as
+`python3-certbot-dns-cloudflare`.
+
+### Caddy: automatic HTTPS
+
+```text title="/etc/caddy/Caddyfile"
+example.com, www.example.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Caddy obtains and renews certificates, redirects HTTP to HTTPS and staples OCSP where the CA
+offers it. It needs DNS pointing at the box and ports 80 and 443 open. Hostnames like
+`localhost` get a cert from Caddy's own local CA (`caddy trust` installs it).
+
+### mkcert for local dev
+
+```sh
+brew install mkcert nss     # nss: Firefox trust store
+mkcert -install             # create and trust a local CA
+mkcert localhost 127.0.0.1 ::1 app.test
+# → localhost+3.pem, localhost+3-key.pem
+export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
+```
+
+```ts title="dev-https.ts"
+Bun.serve({
+  port: 3443,
+  tls: {
+    cert: Bun.file("localhost+3.pem"),
+    key: Bun.file("localhost+3-key.pem"),
+  },
+  fetch: () => new Response("https on localhost"),
+});
+```
+
+Next.js: `next dev --experimental-https` generates and trusts a cert for you. Never share
+`rootCA-key.pem`: anyone holding it can mint certs your machine trusts.
+
+### Private CA & mTLS
+
+Mutual TLS: the server also demands a client certificate signed by a CA it trusts. Use a
+private CA; public CAs are dropping the `clientAuth` usage.
+
+```sh
+openssl req -x509 -newkey ec \
+  -pkeyopt ec_paramgen_curve:P-256 -noenc -days 3650 \
+  -keyout ca.key -out ca.crt -subj "/CN=Internal mTLS CA"
+openssl req -new -newkey ec \
+  -pkeyopt ec_paramgen_curve:P-256 -noenc \
+  -keyout client.key -out client.csr -subj "/CN=svc-a"
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
+  -days 90 -out client.crt \
+  -extfile <(printf "extendedKeyUsage=clientAuth")
+curl --cert client.crt --key client.key \
+  --cacert ca.crt https://api.internal/
+```
+
+```ts title="mtls-server.ts"
+Bun.serve({
+  port: 8443,
+  tls: {
+    cert: Bun.file("server.crt"),
+    key: Bun.file("server.key"),
+    ca: Bun.file("ca.crt"), // CA that signs client certs
+    requestCert: true,
+    rejectUnauthorized: true,
+  },
+  fetch: () => new Response("hello, trusted client"),
+});
+```
+
+nginx equivalent: `ssl_client_certificate /etc/nginx/client-ca.crt;` plus
+`ssl_verify_client on;`. For more than a handful of services, run step-ca or a service mesh.
+
+## GPG
+
+Still used for signing apt/rpm repositories and release tarballs, encrypted email, and tools
+like `pass` or `sops`. For commit signing SSH keys are simpler; for file encryption `age`
+(`age -R ~/.ssh/id_ed25519.pub`) is simpler.
+
+| Command | Does |
+| :------ | :--- |
+| `gpg --full-generate-key` | new key pair (choose ECC / Curve25519) |
+| `gpg --list-secret-keys --keyid-format=long` | your keys and IDs |
+| `gpg --armor --export KEYID` | public key to share |
+| `gpg --import key.asc` | import someone's key |
+| `gpg -e -r alice@x.dev file` | encrypt → `file.gpg` |
+| `gpg -d file.gpg` | decrypt |
+| `gpg --detach-sign -a file` | signature → `file.asc` |
+| `gpg --verify file.asc file` | check a download |
+| `gpg --dearmor` | ASCII key → binary keyring (for apt `Signed-By`) |
+
+## Common errors
+
+| Message | Cause | Fix |
+| :------ | :---- | :-- |
+| `Permissions 0644 for 'id_ed25519' are too open` | private key readable by others | `chmod 600 ~/.ssh/id_ed25519` |
+| `Authentication refused: bad ownership or modes` (server log) | `~` or `~/.ssh` writable by others | `chmod go-w ~`, `chmod 700 ~/.ssh`, `chmod 600 ~/.ssh/authorized_keys` |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED!` | host rebuilt, IP reused, or a MITM | verify the new fingerprint out of band, then `ssh-keygen -R host` |
+| `Permission denied (publickey)` | wrong user/key, key not in `authorized_keys` | `ssh -v host`; `ssh -G host`; server: `journalctl -u ssh` |
+| `Too many authentication failures` | agent offered many keys first | `IdentitiesOnly yes` with an explicit `IdentityFile` |
+| `no matching host key type found. Their offer: ssh-rsa` | ancient server, SHA-1 only | upgrade it; one-off: `-o HostKeyAlgorithms=+ssh-rsa` |
+| `agent refused operation` | agent locked, token not touched, or key perms | unlock 1Password, touch the key, `ssh-add -l` |
+| `bind: Address already in use` (tunnel) | local port taken | pick another port; `lsof -i :5433` |
+| `unable to get local issuer certificate` | server didn't send intermediates, or CA not trusted | serve `fullchain.pem`; trust the private CA / `NODE_EXTRA_CA_CERTS` |
+| `self-signed certificate in certificate chain` | corporate TLS proxy or private CA | add that CA to the trust store; don't disable verification |
+| `certificate has expired` | expired leaf or intermediate, or wrong clock | renew; check `timedatectl` |
+| `ERR_TLS_CERT_ALTNAME_INVALID` | hostname not in SAN | reissue with the name in SAN |
+| `key values mismatch` (nginx) | cert and key don't pair | compare public keys (openssl table) |
+| `wrong version number` | TLS spoken to a plain HTTP port | check port and scheme |
+
+## Recipes
+
+### New machine key setup
+
+First hour on a new laptop: one key, stored in the agent, registered with GitHub.
+
+```sh
+ssh-keygen -t ed25519 -a 100 -C "zach@$(hostname -s)"
+mkdir -p ~/.ssh/sockets && chmod 700 ~/.ssh ~/.ssh/sockets
+# macOS: keep the passphrase in Keychain
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+# Linux: ssh-add ~/.ssh/id_ed25519
+gh ssh-key add ~/.ssh/id_ed25519.pub \
+  --type authentication --title "$(hostname -s)"
+gh ssh-key add ~/.ssh/id_ed25519.pub \
+  --type signing --title "$(hostname -s) signing"
+ssh -T git@github.com
+ssh-copy-id -i ~/.ssh/id_ed25519.pub zach@server
+```
+
+### Jump host config
+
+Reach private hosts through a bastion without agent forwarding.
+
+```ssh-config title="~/.ssh/config"
+Host bastion
+  HostName bastion.example.com
+  User zach
+  IdentityFile ~/.ssh/id_ed25519
+
+Host 10.0.* *.internal
+  User deploy
+  ProxyJump bastion
+  IdentityFile ~/.ssh/id_ed25519
+
+# one-off without config:
+#   ssh -J zach@bastion.example.com deploy@10.0.1.12
+# scp and rsync hop the same way:
+#   rsync -avz dist/ 10.0.1.12:/srv/app/
+```
+
+### SSH tunnel to a remote Postgres
+
+Connect local tools to a database that only listens on a private network. See
+[Postgres](/databases/postgres/).
+
+```sh
+# local 5433 → db.internal:5432, via the bastion
+ssh -fN -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:5433:db.internal:5432 bastion
+psql "postgres://app@127.0.0.1:5433/app"
+DATABASE_URL=postgres://app:pw@127.0.0.1:5433/app \
+  bun run migrate
+# DB on the SSH host itself
+ssh -N -L 5433:localhost:5432 db-host
+# close the backgrounded tunnel
+pkill -f 'L 127.0.0.1:5433'
+```
+
+### Inspect a site's certificate chain
+
+Debug "unable to get local issuer" or check which CA a site uses.
+
+```sh
+H=example.com
+# every cert the server sends: s = subject, i = issuer
+openssl s_client -connect "$H:443" -servername "$H" \
+  -showcerts </dev/null 2>/dev/null \
+  | grep -E '^ *[0-9]+ s:|^ +i:'
+# leaf details
+openssl s_client -connect "$H:443" -servername "$H" \
+  </dev/null 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates \
+    -ext subjectAltName
+# protocol, cipher, key exchange, verification result
+openssl s_client -connect "$H:443" -servername "$H" \
+  -brief </dev/null
+```
+
+### Self-signed cert with SAN
+
+For an internal service or test box where mkcert isn't available.
+
+```sh
+SAN="DNS:dev.local,DNS:localhost,IP:127.0.0.1"
+openssl req -x509 -newkey ec \
+  -pkeyopt ec_paramgen_curve:P-256 -noenc -days 365 \
+  -keyout dev.key -out dev.crt -subj "/CN=dev.local" \
+  -addext "subjectAltName=$SAN"
+openssl x509 -in dev.crt -noout -ext subjectAltName
+# clients must trust dev.crt explicitly:
+curl --cacert dev.crt https://dev.local:8443/
+```
+
+### Check certificate expiry
+
+Run from a timer or CI; exits non-zero if any host expires within `WARN_DAYS` or fails
+verification.
+
+```ts title="cert-expiry.ts"
+import { connect } from "node:tls";
+
+const WARN = Number(process.env.WARN_DAYS ?? 21);
+
+const days = (host: string) =>
+  new Promise<number>((resolve, reject) => {
+    const s = connect({ host, port: 443, servername: host });
+    s.once("secureConnect", () => {
+      const { valid_to } = s.getPeerCertificate();
+      const ms = Date.parse(valid_to) - Date.now();
+      resolve(Math.floor(ms / 86_400_000));
+      s.end();
+    });
+    s.setTimeout(1e4, () => s.destroy(Error("timeout")));
+    s.once("error", reject); // also fires on invalid chains
+  });
+
+let failed = false;
+for (const host of process.argv.slice(2)) {
+  const d = await days(host).catch((e: Error) => e.message);
+  const ok = typeof d === "number" && d >= WARN;
+  failed ||= !ok;
+  console.log(`${ok ? "ok  " : "WARN"} ${host}: ${d}`);
+}
+process.exit(failed ? 1 : 0);
+```
+
+Run with `bun cert-expiry.ts example.com api.example.com`. For a local file:
+`openssl x509 -in c.pem -noout -checkend $((21*86400))`.
+
+### Sign git commits with SSH
+
+Get the "Verified" badge without GPG.
+
+```sh
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+# let git verify your own (and teammates') signatures
+printf '%s %s\n' "$(git config user.email)" \
+  "$(cat ~/.ssh/id_ed25519.pub)" >> ~/.ssh/allowed_signers
+git config --global gpg.ssh.allowedSignersFile \
+  ~/.ssh/allowed_signers
+git commit --allow-empty -m "test: signed commit"
+git log --show-signature -1
+# GitHub: gh ssh-key add ~/.ssh/id_ed25519.pub --type signing
+```
+
+## References
+
+- [MDN: Transport Layer Security](https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security): TLS on the web platform
+- [MDN: Strict-Transport-Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security): forcing HTTPS once you have a cert
+- [OpenSSH manual pages](https://www.openssh.com/manual.html): `ssh_config`, `sshd_config`, `ssh-keygen` (certificates, FIDO, signing)
+- [OpenSSH release notes](https://www.openssh.com/releasenotes.html): what changed per version (PQ key exchange, DSA removal)
+- [OpenSSL 3 command docs](https://docs.openssl.org/master/man1/): `req`, `x509`, `s_client`, `pkcs12`
+- [Let's Encrypt docs](https://letsencrypt.org/docs/): challenge types, profiles, certificate lifetimes
+- [Certbot documentation](https://eff-certbot.readthedocs.io/): plugins, hooks, renewal
+- [Caddy: Automatic HTTPS](https://caddyserver.com/docs/automatic-https): how Caddy gets and renews certs
+- [mkcert](https://github.com/FiloSottile/mkcert): locally trusted dev certificates
+- [Git: gpg.format and SSH signing](https://git-scm.com/docs/git-config#Documentation/git-config.txt-gpgformat): signing config reference
+- [GitHub: About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification): SSH, GPG and S/MIME signing
+- [1Password SSH agent](https://developer.1password.com/docs/ssh/): agent setup and git signing
+- [ssh-audit](https://github.com/jtesta/ssh-audit): check a server's algorithms and config

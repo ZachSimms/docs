@@ -1,0 +1,1157 @@
+---
+title: PostgreSQL
+date: 2026-09-25
+order: 1
+---
+
+Everyday PostgreSQL 18 (current minor 18.6; 19 is in beta with GA expected October 2026): psql,
+types, SQL, indexes, plans, locking, operations and TypeScript clients. Schema modelling lives in
+[DB design & schemas](/databases/db-design/).
+
+## psql
+
+| Command | Does |
+| :------ | :--- |
+| `\?`, `\h ALTER TABLE` | psql help; SQL syntax help for a command |
+| `\l` | list databases |
+| `\c db [user]` | reconnect to another database |
+| `\conninfo` | current connection (a table since 18) |
+| `\dn` | schemas |
+| `\dt [pattern]` | tables; `\dt+` adds size, `\dt app.*` one schema |
+| `\d name` | columns, indexes, constraints, triggers of a relation |
+| `\di`, `\dv`, `\dm`, `\ds` | indexes, views, materialized views, sequences |
+| `\df [pattern]` | functions |
+| `\du` | roles and their attributes |
+| `\dp [table]` | privileges (ACLs) |
+| `\dx` | installed extensions |
+| `\x auto` | expanded rows when a result is too wide |
+| `\gx` | run the query buffer once in expanded mode |
+| `\timing on` | print each query's duration |
+| `\e` | edit the last query in `$EDITOR` |
+| `\i file.sql` | run a file |
+| `\copy t TO 'f.csv' CSV HEADER` | client-side COPY: file lives on your machine |
+| `\watch 2` | rerun the last query every 2 s |
+| `\gset` | store result columns in psql variables |
+| `\set ON_ERROR_STOP on` | abort a script at the first error |
+| `\q` | quit |
+
+Most `\d` commands take `+` (more detail), `S` (include system objects) and, since 18, an `x`
+suffix for expanded output (`\dtx`).
+
+```sh
+psql "postgres://app:secret@localhost:5432/app"
+psql -h localhost -U app -d app -c 'select now()'
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrate.sql
+psql -X -At -c 'select count(*) from users'  # bare value
+```
+
+```text title="~/.psqlrc"
+\set QUIET 1
+\pset null '∅'
+\x auto
+\timing on
+\set HISTCONTROL ignoredups
+\set PROMPT1 '%n@%/%R%x%# '
+\unset QUIET
+```
+
+## Running & connecting
+
+### Docker
+
+```sh
+docker run -d --name pg \
+  -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=app \
+  -p 5432:5432 \
+  -v pgdata:/var/lib/postgresql \
+  postgres:18 -c shared_preload_libraries=pg_stat_statements
+docker exec -it pg psql -U postgres -d app
+```
+
+```yaml title="compose.yaml"
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: app
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 2s
+      retries: 15
+volumes:
+  pgdata:
+```
+
+<Note kind="warning">From the 18 image on, data lives in `/var/lib/postgresql/18/docker`, so mount
+the volume at `/var/lib/postgresql`. Tags 17 and older use `/var/lib/postgresql/data`. Scripts in
+`/docker-entrypoint-initdb.d/` (`.sql`, `.sql.gz`, `.sh`) run only when the data dir is empty.</Note>
+
+Image and CLI details: [Docker](/infrastructure/containers/docker/).
+
+### Connection strings
+
+```text
+postgres://user:p%40ss@db.example.com:5432/app?sslmode=verify-full&application_name=api
+postgresql:///app?host=/var/run/postgresql      # Unix socket
+host=localhost port=5432 dbname=app user=app    # keyword form
+```
+
+Percent-encode reserved characters in the password (`@` is `%40`). libpq reads `PGHOST`,
+`PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE` and `PGAPPNAME` when a part is
+missing; Bun's `sql` also reads `DATABASE_URL` and `POSTGRES_URL`.
+
+```text title="~/.pgpass  (chmod 600)"
+# host:port:database:user:password   (* = any)
+localhost:5432:app:app:secret
+*.example.com:5432:*:readonly:another-secret
+```
+
+| `sslmode` | Encrypts | Verifies server | Use |
+| :-------- | :------- | :-------------- | :-- |
+| `disable` | no | no | local sockets only |
+| `prefer` (libpq default) | if offered | no | nothing important |
+| `require` | yes | no | open to MITM |
+| `verify-ca` | yes | CA chain (`sslrootcert`) | private CA, shared host names |
+| `verify-full` | yes | CA chain + host name | production |
+
+`sslrootcert=system` (16+) trusts the OS CA store, defaults `sslmode` to `verify-full` and rejects
+weaker modes, which suits most managed providers. Each connection is a server process (default
+`max_connections = 100`): put a pooler (PgBouncer, the provider's pooler) in front of serverless
+or many-instance apps.
+
+## Data types
+
+| Need | Use | Instead of | Why |
+| :--- | :-- | :--------- | :-- |
+| text | `text` | `varchar(n)`, `char(n)` | same storage; add `CHECK (length(x) <= n)` only for a real rule; `char` pads |
+| instants | `timestamptz` | `timestamp` | stored as UTC, shown in the session `TimeZone`; `timestamp` has no zone |
+| calendar dates | `date` | `timestamptz` at midnight | no zone to go wrong |
+| durations | `interval` | integer seconds | `now() - interval '7 days'` |
+| money, exact decimals | `numeric(12,2)` or `bigint` cents | `float8`, `money` | floats round; `money` depends on locale |
+| surrogate keys | `bigint GENERATED ALWAYS AS IDENTITY` | `serial`, `bigserial` | SQL standard; blocks accidental manual ids; simpler grants |
+| public / distributed ids | `uuid DEFAULT uuidv7()` (18+) | `gen_random_uuid()` (v4) for keys | v7 is time-ordered, so inserts stay at the right edge of the index |
+| flags | `boolean` | `char(1)`, `int` | three states with NULL: add `NOT NULL` |
+| documents, varying attrs | `jsonb` | `json` | binary, indexable; `json` keeps text verbatim (whitespace, dup keys) |
+| small scalar lists | `text[]`, `int[]` | comma-separated text | if you ever join on it, use a child table |
+| fixed value sets | `CHECK (x IN (...))` or a lookup table | `CREATE TYPE ... AS ENUM` | enum values can be added, never removed |
+| case-insensitive text | `text` + index on `lower(x)` | `citext` | fine too, but it's an extension |
+| binary | `bytea` | base64 in `text` | big files go to object storage |
+| ranges | `tstzrange`, `daterange`, `int8range` | two columns | overlap operators and exclusion constraints |
+| networks | `inet`, `cidr` | `text` | containment operators (`<<`, `>>=`) |
+| embeddings | `vector(n)` (pgvector) | `float8[]` | distance operators and ANN indexes |
+
+```sql
+SELECT '2026-09-25 10:00+02'::timestamptz AS at,
+       now() AS tx_start,        -- fixed per transaction
+       clock_timestamp() AS real_now,
+       now() AT TIME ZONE 'Europe/Berlin' AS local,
+       interval '90 minutes' * 2 AS three_h,
+       '{a,b}'::text[] AS arr,
+       ARRAY[1, 2, 3] AS arr2,
+       '{"a": 1}'::jsonb AS doc,
+       uuid_extract_timestamp(uuidv7()) AS uuid_time,
+       CAST('42' AS int) + '8'::int AS fifty;
+```
+
+## DDL
+
+```sql
+CREATE TABLE users (
+  id         bigint GENERATED ALWAYS AS IDENTITY
+             PRIMARY KEY,
+  public_id  uuid NOT NULL DEFAULT uuidv7() UNIQUE,
+  email      text NOT NULL UNIQUE
+             CHECK (email = lower(email)),
+  name       text NOT NULL CHECK (name <> ''),
+  role       text NOT NULL DEFAULT 'member'
+             CHECK (role IN ('member', 'admin')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE posts (
+  id           bigint GENERATED ALWAYS AS IDENTITY
+               PRIMARY KEY,
+  author_id    bigint NOT NULL
+               REFERENCES users (id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  body         text NOT NULL DEFAULT '',
+  tags         text[] NOT NULL DEFAULT '{}',
+  meta         jsonb NOT NULL DEFAULT '{}',
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  published_at timestamptz,
+  -- virtual (the default in 18): computed on read
+  slug         text GENERATED ALWAYS AS
+               (lower(replace(title, ' ', '-'))),
+  -- stored: computed on write, can be indexed
+  search       tsvector GENERATED ALWAYS AS (
+                 to_tsvector('english', title || ' ' || body)
+               ) STORED
+);
+CREATE INDEX posts_author_id_idx ON posts (author_id);
+```
+
+Virtual generated columns can't be indexed and their expression must be immutable. Foreign keys
+don't index the referencing column: add it yourself.
+
+| Constraint | Notes |
+| :--------- | :---- |
+| `PRIMARY KEY` | unique + not null, backed by a btree index |
+| `UNIQUE (a, b)` | NULLs count as distinct; `UNIQUE NULLS NOT DISTINCT` (15+) treats them as equal |
+| `CHECK (expr)` | per row, no subqueries; `NOT VALID` skips existing rows |
+| `REFERENCES t (id) ON DELETE CASCADE \| SET NULL \| RESTRICT` | default `NO ACTION`; index the column |
+| `EXCLUDE USING gist (room WITH =, during WITH &&)` | no two rows overlap (needs `btree_gist`) |
+| `PRIMARY KEY (room, during WITHOUT OVERLAPS)` | 18+: temporal key; pairs with `FOREIGN KEY (..., PERIOD during)` |
+| `DEFERRABLE INITIALLY DEFERRED` | checked at commit, for circular inserts |
+| `CONSTRAINT name NOT NULL col NOT VALID` | 18+: add NOT NULL, validate later |
+
+```sql
+ALTER TABLE users ADD COLUMN bio text;
+ALTER TABLE users ALTER COLUMN bio SET DEFAULT '';
+ALTER TABLE users RENAME COLUMN bio TO about;
+ALTER TABLE users DROP COLUMN IF EXISTS about;
+
+ALTER TABLE posts ADD CONSTRAINT posts_title_len
+  CHECK (length(title) <= 200) NOT VALID;
+ALTER TABLE posts VALIDATE CONSTRAINT posts_title_len;
+
+COMMENT ON COLUMN users.role IS 'member or admin';
+```
+
+`ADD COLUMN ... DEFAULT <constant>` is instant (11+); a volatile default such as `uuidv7()` or
+`clock_timestamp()` rewrites the table. Changing a column type usually rewrites too.
+
+### Partitioning
+
+```sql
+CREATE TABLE events (
+  id      bigint GENERATED ALWAYS AS IDENTITY,
+  at      timestamptz NOT NULL,
+  payload jsonb NOT NULL,
+  PRIMARY KEY (id, at)       -- must include the key
+) PARTITION BY RANGE (at);
+
+CREATE TABLE events_2026_09 PARTITION OF events
+  FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+CREATE TABLE events_default PARTITION OF events DEFAULT;
+```
+
+Partition when you need to drop old data cheaply (`DETACH PARTITION ... CONCURRENTLY`, then
+`DROP`) or when tables reach hundreds of GB; not for speed on small tables.
+
+## DML
+
+```sql
+INSERT INTO users (email, name)
+VALUES ('ada@example.com', 'Ada'),
+       ('alan@example.com', 'Alan')
+RETURNING id, public_id;
+
+-- upsert: needs a unique index/constraint on (email)
+INSERT INTO users (email, name)
+VALUES ('ada@example.com', 'Ada Lovelace')
+ON CONFLICT (email) DO UPDATE
+  SET name = EXCLUDED.name, updated_at = now()
+  WHERE users.name IS DISTINCT FROM EXCLUDED.name
+RETURNING id;
+
+INSERT INTO users (email, name)
+VALUES ('ada@example.com', 'Ada')
+ON CONFLICT DO NOTHING;           -- returns no row
+
+-- 18+: old/new in RETURNING
+UPDATE users SET role = 'admin'
+WHERE email = 'ada@example.com'
+RETURNING old.role AS was, new.role AS is_now;
+```
+
+```sql
+-- UPDATE with a join
+UPDATE posts p
+SET    meta = p.meta || jsonb_build_object('by', u.name)
+FROM   users u
+WHERE  u.id = p.author_id AND p.published_at IS NULL;
+
+-- DELETE with a join
+DELETE FROM posts p
+USING  users u
+WHERE  u.id = p.author_id
+  AND  u.email LIKE '%@spam.test';
+
+-- bulk insert from two arrays (one round trip)
+INSERT INTO users (email, name)
+SELECT * FROM unnest(
+  ARRAY['b@x.dev', 'c@x.dev'], ARRAY['Bea', 'Cy']
+);
+```
+
+### MERGE
+
+```sql
+CREATE TABLE inventory (sku text PRIMARY KEY, qty int);
+CREATE TABLE staging   (sku text PRIMARY KEY, qty int);
+
+MERGE INTO inventory AS t
+USING staging AS s ON t.sku = s.sku
+WHEN MATCHED AND s.qty = 0 THEN DELETE
+WHEN MATCHED THEN UPDATE SET qty = s.qty
+WHEN NOT MATCHED THEN
+  INSERT (sku, qty) VALUES (s.sku, s.qty)
+WHEN NOT MATCHED BY SOURCE THEN DELETE   -- 17+
+RETURNING merge_action(), t.*;           -- 17+
+```
+
+`MERGE` syncs a table with a source in one statement, but under concurrent inserts it can still
+raise unique violations. For a single-row upsert prefer `ON CONFLICT`.
+
+| Bulk load | Notes |
+| :-------- | :---- |
+| `COPY t FROM '/srv/f.csv' (FORMAT csv, HEADER)` | server-side file; needs `pg_read_server_files` |
+| `\copy t FROM 'f.csv' CSV HEADER` | psql streams a local file |
+| `COPY t FROM STDIN` | streamed by drivers: postgres.js `.writable()`, `pg-copy-streams` for `pg` |
+| `INSERT ... SELECT FROM unnest(...)` | bulk insert from arrays with one parameter per column |
+
+## Querying
+
+| Join | Returns |
+| :--- | :------ |
+| `JOIN` | rows with a match on both sides |
+| `LEFT JOIN` | every left row; right columns NULL when there's no match |
+| `FULL JOIN` | every row from both sides |
+| `CROSS JOIN` | every combination |
+| `JOIN ... USING (id)` | joins on same-named columns, which appear once |
+| `WHERE EXISTS (...)` | semi-join: rows that have at least one match, no duplicates |
+| `WHERE NOT EXISTS (...)` | anti-join; `NOT IN` returns nothing if the subquery yields a NULL |
+| `JOIN LATERAL (...) ON true` | subquery that can see columns of earlier `FROM` items |
+
+```sql
+WITH recent AS (
+  SELECT * FROM posts
+  WHERE created_at > now() - interval '7 days'
+)
+SELECT u.name, count(r.id) AS posts
+FROM users u
+LEFT JOIN recent r ON r.author_id = u.id
+GROUP BY u.id                 -- PK: name is implied
+ORDER BY posts DESC;
+```
+
+CTEs referenced once are inlined (12+); `AS MATERIALIZED` forces a separate evaluation, and
+`AS NOT MATERIALIZED` forces inlining.
+
+```sql
+-- data-modifying CTE: move rows in one statement
+CREATE TABLE posts_archive (LIKE posts);
+WITH moved AS (
+  DELETE FROM posts
+  WHERE created_at < now() - interval '5 years'
+  RETURNING *
+)
+INSERT INTO posts_archive SELECT * FROM moved;
+```
+
+### Recursive CTE
+
+```sql
+CREATE TABLE categories (
+  id        int PRIMARY KEY,
+  parent_id int REFERENCES categories (id),
+  name      text NOT NULL
+);
+
+WITH RECURSIVE tree AS (
+  SELECT id, parent_id, name, 1 AS depth
+  FROM categories WHERE parent_id IS NULL
+  UNION ALL
+  SELECT c.id, c.parent_id, c.name, t.depth + 1
+  FROM categories c
+  JOIN tree t ON c.parent_id = t.id
+)
+SEARCH DEPTH FIRST BY name SET ord
+CYCLE id SET is_cycle USING path
+SELECT * FROM tree ORDER BY ord;
+```
+
+`SEARCH` gives a depth- or breadth-first sort key and `CYCLE` stops loops (both 14+).
+
+### Window functions
+
+```sql
+SELECT author_id, id, created_at,
+  row_number() OVER w AS nth,
+  count(*) OVER (PARTITION BY author_id) AS total,
+  lag(created_at) OVER w AS previous_at,
+  created_at - lag(created_at) OVER w AS gap
+FROM posts
+WINDOW w AS (PARTITION BY author_id ORDER BY created_at);
+```
+
+| Function | Gives |
+| :------- | :---- |
+| `row_number()` | 1, 2, 3 ... within the partition |
+| `rank()` / `dense_rank()` | ties share a rank; `rank` leaves gaps |
+| `lag(x, n)` / `lead(x, n)` | value n rows before / after |
+| `first_value(x)` / `last_value(x)` | `last_value` needs a frame ending at `UNBOUNDED FOLLOWING` |
+| `ntile(4)` | quartile bucket |
+| `sum(x) OVER (ORDER BY d)` | running total (default frame: start to current row) |
+| `avg(x) OVER (ORDER BY d ROWS 6 PRECEDING)` | 7-row moving average |
+
+### Top N per group, conditional aggregates, subtotals
+
+```sql
+-- latest post per author
+SELECT DISTINCT ON (author_id) author_id, id, title
+FROM posts
+ORDER BY author_id, created_at DESC;
+
+-- 3 latest posts per user
+SELECT u.name, p.title
+FROM users u
+CROSS JOIN LATERAL (
+  SELECT title FROM posts
+  WHERE author_id = u.id
+  ORDER BY created_at DESC
+  LIMIT 3
+) p;
+
+SELECT author_id,
+  count(*) AS total,
+  count(*) FILTER (WHERE published_at IS NULL) AS drafts
+FROM posts
+GROUP BY author_id;
+
+SELECT date_trunc('month', created_at) AS month,
+       author_id, count(*), grouping(author_id) AS sub
+FROM posts
+GROUP BY ROLLUP (month, author_id);
+```
+
+`ROLLUP (a, b)` adds subtotals per `a` and a grand total; `CUBE` adds every combination;
+`GROUPING SETS ((a), (b), ())` lists them explicitly. `grouping(col)` is 1 on subtotal rows.
+
+| Handy expression | Does |
+| :--------------- | :--- |
+| `coalesce(a, b, 'x')` | first non-NULL |
+| `nullif(a, '')` | NULL when equal |
+| `a IS DISTINCT FROM b` | NULL-safe `<>` |
+| `x = ANY($1::int[])` | match against an array parameter |
+| `ILIKE '%ada%'` | case-insensitive match (index with `pg_trgm`) |
+| `string_agg(name, ', ' ORDER BY name)` | join strings |
+| `array_agg(x)`, `jsonb_agg(row)` | collect into an array / JSON array |
+| `generate_series(a, b, step)` | numbers or timestamps; fills gaps in reports |
+| `date_trunc('day', ts)`, `extract(dow FROM ts)` | bucket and pick apart times |
+| `array_sort(a)`, `array_reverse(a)` | 18+ |
+
+## JSONB & full-text search
+
+| Operator | Example | Result |
+| :------- | :------ | :----- |
+| `->` | `meta -> 'seo'`, `tags_json -> 0` | jsonb field / element |
+| `->>` | `meta ->> 'status'` | as text |
+| `#>`, `#>>` | `meta #>> '{seo,title}'` | by path |
+| `@>` | `meta @> '{"draft": true}'` | left contains right (GIN) |
+| `<@` | `'{"a":1}' <@ meta` | left contained in right |
+| `?`, `?\|`, `?&` | `meta ? 'status'` | key exists / any / all |
+| `\|\|` | `meta \|\| '{"views": 0}'` | shallow merge |
+| `-`, `#-` | `meta - 'tmp'`, `meta #- '{a,b}'` | delete key / path |
+| `@?`, `@@` | `meta @? '$.tags[*] ? (@ == "pg")'` | SQL/JSON path exists / predicate |
+| subscript | `meta['seo']['title']` | read or assign (14+) |
+
+```sql
+UPDATE posts SET meta['seo']['title'] = '"Hello"'
+WHERE id = 1;                     -- creates missing keys
+UPDATE posts
+SET meta = jsonb_set(meta, '{views}', to_jsonb(10))
+WHERE id = 1;
+
+SELECT p.id, t.tag
+FROM posts p,
+     jsonb_array_elements_text(p.meta -> 'labels') t(tag);
+
+SELECT jsonb_build_object('id', id, 'title', title),
+       to_jsonb(p) - 'search' AS whole_row
+FROM posts p;
+
+SELECT * FROM JSON_TABLE(          -- 17+
+  '[{"sku":"a","qty":2}]'::jsonb, '$[*]'
+  COLUMNS (sku text PATH '$.sku', qty int PATH '$.qty')
+) AS jt;
+
+-- containment: @>, ?, ?|, ?&
+CREATE INDEX posts_meta_gin ON posts USING gin (meta);
+-- smaller and faster, but only @>, @?, @@
+CREATE INDEX posts_meta_path_gin
+  ON posts USING gin (meta jsonb_path_ops);
+-- one hot key: btree on the expression
+CREATE INDEX posts_status_idx ON posts ((meta ->> 'status'));
+```
+
+A GIN index serves `meta @> '{"status":"live"}'`, not `meta ->> 'status' = 'live'`; the latter needs
+the expression index.
+
+### Full-text search
+
+```sql
+CREATE INDEX posts_search_gin ON posts USING gin (search);
+
+SELECT id, title,
+  ts_rank(search, q) AS rank,
+  ts_headline('english', body, q) AS snippet
+FROM posts,
+  websearch_to_tsquery('english', '"row level" -mysql') q
+WHERE search @@ q
+ORDER BY rank DESC
+LIMIT 20;
+```
+
+| Function | Use |
+| :------- | :-- |
+| `to_tsvector('english', text)` | stems and drops stop words |
+| `setweight(to_tsvector(title), 'A')` | weight title over body for ranking |
+| `websearch_to_tsquery` | user input: quotes, `-exclude`, `or` |
+| `plainto_tsquery`, `phraseto_tsquery` | all words / exact phrase |
+| `to_tsquery('pg & (index \| vacuum)')` | full syntax, errors on bad input |
+| `ts_rank`, `ts_rank_cd` | relevance |
+| `ts_headline` | highlighted snippet (slow: run on the final rows only) |
+
+For typos and substring matches use `pg_trgm`. Since 18, text search follows the cluster's default
+collation provider, so reindex FTS indexes after `pg_upgrade` from 17 or older.
+
+## Indexes
+
+| Type | Good for |
+| :--- | :------- |
+| btree (default) | `=`, ranges, `ORDER BY`, `LIKE 'abc%'` (with `text_pattern_ops` or C collation) |
+| hash | `=` only; rarely beats btree |
+| GIN | many keys per row: `jsonb`, arrays, `tsvector`, trigrams |
+| GiST | ranges, geometry, exclusion constraints, nearest neighbour (`ORDER BY a <-> b`) |
+| SP-GiST | unbalanced trees: points, IP ranges, text prefixes |
+| BRIN | huge append-only tables whose order follows a column (time series); tiny |
+| HNSW / IVFFlat | vector similarity (pgvector) |
+
+| Variant | Example | Notes |
+| :------ | :------ | :---- |
+| multicolumn | `(tenant_id, created_at)` | equality columns first, then range/sort; 18 skip scan can use it without the first column when it has few values |
+| partial | `... WHERE deleted_at IS NULL` | indexes only the rows you query; the query must repeat the predicate |
+| expression | `(lower(email))` | the query must use the same expression |
+| covering | `(author_id) INCLUDE (title)` | enables index-only scans |
+| unique | `CREATE UNIQUE INDEX` | also a constraint; works with partial and expression |
+| sort order | `(created_at DESC, id DESC)` | matches `ORDER BY`; mixed directions need it |
+
+```sql
+CREATE INDEX CONCURRENTLY posts_author_pub_idx
+  ON posts (author_id, published_at DESC)
+  INCLUDE (title)
+  WHERE published_at IS NOT NULL;
+
+REINDEX INDEX CONCURRENTLY posts_author_pub_idx;
+DROP INDEX CONCURRENTLY IF EXISTS posts_old_idx;
+```
+
+<Note kind="warning">`CONCURRENTLY` avoids blocking writes but can't run inside a transaction (most
+migration tools wrap one), takes longer, and leaves an `INVALID` index if it fails: drop it and
+retry. Plain `CREATE INDEX` blocks writes for the whole build.</Note>
+
+Every index slows writes and can block HOT updates, so index for real queries; check
+`pg_stat_user_indexes` for ones never used.
+
+## EXPLAIN
+
+```sql
+EXPLAIN SELECT * FROM posts WHERE author_id = 42;
+EXPLAIN (ANALYZE, BUFFERS, SETTINGS)   -- runs the query
+SELECT * FROM posts WHERE author_id = 42;
+
+BEGIN;                                 -- safe for writes
+EXPLAIN ANALYZE DELETE FROM posts WHERE author_id = 42;
+ROLLBACK;
+```
+
+`ANALYZE` includes buffer counts by default since 18. Paste the output into explain.dalibo.com
+or explain.depesz.com for a visual tree.
+
+```text
+Limit  (cost=0.43..8.95 rows=10 width=48) (actual time=0.031..0.052 rows=10.00 loops=1)
+  Buffers: shared hit=13
+  ->  Index Scan using posts_author_pub_idx on posts  (cost=0.43..351.2 rows=412 width=48) (actual time=0.030..0.049 rows=10.00 loops=1)
+        Index Cond: (author_id = 42)
+        Index Searches: 1
+        Buffers: shared hit=13
+Planning Time: 0.210 ms
+Execution Time: 0.081 ms
+```
+
+| Read | Meaning / action |
+| :--- | :--------------- |
+| indentation | children feed parents; read inside out |
+| `cost=a..b` | planner units for first row .. all rows; compare plans, not seconds |
+| `rows=` estimate vs `actual ... rows=` | off by 10x or more: run `ANALYZE`, raise the column's statistics target, or `CREATE STATISTICS` for correlated columns |
+| `loops=N` | actual time and rows are per loop: multiply |
+| `Buffers: shared hit / read` | 8 kB pages from shared buffers / from the OS or disk |
+| `Rows Removed by Filter` | rows read then discarded: an index candidate |
+| Seq Scan | fine for small tables or most of a table; slow with a selective filter |
+| Index Only Scan, `Heap Fetches` | high heap fetches: vacuum to refresh the visibility map |
+| Bitmap Heap Scan, `lossy` | many matching rows; lossy blocks: raise `work_mem` |
+| Nested Loop | good when the outer side is small and the inner is indexed |
+| Hash Join, `Batches: 4` | more than one batch spilled to disk: raise `work_mem` |
+| Sort, `external merge Disk` | spilled sort: raise `work_mem` or index the order |
+
+## Transactions & locking
+
+```sql
+BEGIN;
+UPDATE users SET name = 'A' WHERE id = 1;
+SAVEPOINT before_risky;
+UPDATE users SET name = '' WHERE id = 2;  -- CHECK fails
+ROLLBACK TO SAVEPOINT before_risky;
+COMMIT;
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+SELECT count(*) FROM posts WHERE author_id = 1;
+COMMIT;
+```
+
+| Level | Sees | Watch out for |
+| :---- | :--- | :------------ |
+| Read committed (default) | each statement sees rows committed before it began | lost updates in read-modify-write: use `UPDATE ... SET x = x + 1` or `FOR UPDATE` |
+| Repeatable read | one snapshot for the whole transaction | error `40001` if a row you update changed; write skew |
+| Serializable | same result as running transactions one at a time | more `40001` errors: retry the whole transaction |
+
+Read uncommitted behaves as read committed. Retry on SQLSTATE `40001` (serialization) and
+`40P01` (deadlock).
+
+| Row lock | Blocks | Use |
+| :------- | :----- | :-- |
+| `FOR UPDATE` | other writers and lockers of the row | read-then-write the row |
+| `FOR NO KEY UPDATE` | same, but lets FK checks through | updates that keep the key |
+| `FOR SHARE` | writers | row must not change until commit |
+| `FOR KEY SHARE` | deletes and key changes | what FK checks take |
+| `... NOWAIT` | nothing: errors at once if locked | fail fast |
+| `... SKIP LOCKED` | nothing: skips locked rows | work queues |
+
+Most `ALTER TABLE` forms take `ACCESS EXCLUSIVE`, which blocks reads too. While it waits behind a
+long transaction, every new query queues behind it, so migrations should set a `lock_timeout`
+and retry.
+
+```sql
+SET lock_timeout = '3s';            -- per session
+SET statement_timeout = '30s';
+SET idle_in_transaction_session_timeout = '60s';
+SET LOCAL statement_timeout = '5s'; -- rest of this tx
+
+-- app-level mutex, released at commit
+SELECT pg_advisory_xact_lock(hashtext('nightly-report'));
+SELECT pg_try_advisory_lock(42);    -- true or false
+```
+
+Lock rows in a consistent order (e.g. `ORDER BY id ... FOR UPDATE`) to avoid deadlocks. For
+optimistic locking add a `version int` column and `UPDATE ... WHERE id = $1 AND version = $2`.
+
+## Roles, grants & RLS
+
+```sql
+CREATE ROLE migrator LOGIN PASSWORD 'change-me';
+CREATE ROLE app_rw LOGIN PASSWORD 'change-me';
+CREATE ROLE readonly NOLOGIN;
+
+GRANT USAGE ON SCHEMA public TO readonly, app_rw;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA public TO app_rw;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_rw;
+
+-- tables the migrator creates later
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator
+  IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
+
+CREATE ROLE alice LOGIN IN ROLE readonly;  -- membership
+ALTER ROLE app_rw SET statement_timeout = '15s';
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| roles | users and groups are both roles; `LOGIN` makes a user |
+| owner | creator owns an object and can do anything to it; `ALTER TABLE t OWNER TO migrator` |
+| `public` schema | since 15 only the database owner can create in it |
+| passwords | SCRAM by default; `md5` passwords warn since 18 and will be removed |
+| predefined roles | `pg_read_all_data`, `pg_write_all_data`, `pg_monitor`, `pg_signal_backend`, `pg_maintain` (17+) |
+| `ALTER DEFAULT PRIVILEGES` | applies only to objects later created by that role |
+
+### Row-level security
+
+```sql
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE posts FORCE ROW LEVEL SECURITY; -- owner too
+
+CREATE POLICY posts_owner ON posts
+  FOR ALL TO app_rw
+  USING (author_id =
+    (SELECT current_setting('app.user_id', true)::bigint))
+  WITH CHECK (author_id =
+    (SELECT current_setting('app.user_id', true)::bigint));
+
+-- per request, in the app's transaction
+BEGIN;
+SELECT set_config('app.user_id', '42', true); -- tx-local
+SELECT * FROM posts;                  -- only user 42's
+COMMIT;
+```
+
+`USING` filters rows for reads, updates and deletes; `WITH CHECK` validates new or changed
+rows. Permissive policies are OR'd; `AS RESTRICTIVE` policies are AND'd. Superusers and
+`BYPASSRLS` roles skip RLS, and so does the table owner unless `FORCE` is set. With no policy, RLS
+denies every row. The `(SELECT ...)` wrapper lets the planner evaluate the setting once. Tenant
+patterns: [DB design & schemas](/databases/db-design/).
+
+## Maintenance & backups
+
+Updates and deletes leave dead row versions (MVCC). `VACUUM` marks their space reusable, freezes
+old transaction ids and updates the visibility map; autovacuum does this in the background.
+
+| Command | Does | Lock |
+| :------ | :--- | :--- |
+| `VACUUM t` | reclaims dead rows for reuse (the file doesn't shrink) | none that blocks reads/writes |
+| `VACUUM (ANALYZE, VERBOSE) t` | plus fresh statistics, with a report | same |
+| `ANALYZE t` | planner statistics; run after bulk loads | light |
+| `VACUUM FULL t` | rewrites the table, returns space to the OS | `ACCESS EXCLUSIVE`: use `pg_repack` online |
+| `REINDEX INDEX CONCURRENTLY i` | rebuilds a bloated index | online |
+| `CLUSTER t USING i` | rewrites in index order | `ACCESS EXCLUSIVE` |
+
+```sql
+-- tables with the most dead rows
+SELECT relname, n_live_tup, n_dead_tup,
+       last_autovacuum, last_autoanalyze
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC
+LIMIT 10;
+
+-- biggest tables
+SELECT relname,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total,
+  pg_size_pretty(pg_indexes_size(relid)) AS indexes
+FROM pg_stat_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 10;
+
+-- vacuum a hot table sooner (defaults: 0.2 / 0.1)
+ALTER TABLE posts SET (
+  autovacuum_vacuum_scale_factor = 0.02,
+  autovacuum_analyze_scale_factor = 0.01
+);
+
+-- wraparound: alarm well before 2 billion
+SELECT datname, age(datfrozenxid) FROM pg_database;
+```
+
+Long-running or idle-in-transaction sessions hold back vacuum everywhere: they're the usual cause
+of bloat. Measure bloat exactly with the `pgstattuple` extension.
+
+### Backups
+
+```sh
+# logical, custom format: compressed, selective restore
+pg_dump -Fc -d "$DATABASE_URL" -f app.dump
+pg_dump -Fc --schema-only -d app -f schema.dump
+pg_dump -d app -t 'public.users' > users.sql   # plain SQL
+pg_dumpall --globals-only > globals.sql  # roles etc.
+
+pg_restore -l app.dump                 # list contents
+pg_restore -d app_copy -j 4 --no-owner --clean \
+  --if-exists app.dump
+psql -d app -f users.sql
+
+docker exec pg pg_dump -U postgres -Fc app > app.dump
+```
+
+| Method | Gives | Tools |
+| :----- | :---- | :---- |
+| `pg_dump` / `pg_restore` | one database at a point in time; portable across major versions | use a `pg_dump` at least as new as the server |
+| physical base backup | whole cluster, byte for byte | `pg_basebackup`; `--incremental` + `pg_combinebackup` (17+) |
+| PITR | base backup + archived WAL replayed to `recovery_target_time` | pgBackRest, Barman, WAL-G, or your provider |
+
+A backup you have never restored is a hope, not a backup: schedule restore tests.
+
+## Monitoring & extensions
+
+| View / function | Shows |
+| :-------------- | :---- |
+| `pg_stat_activity` | one row per session: state, query, `wait_event`, `xact_start` |
+| `pg_stat_statements` | cumulative stats per normalised query (extension) |
+| `pg_locks`, `pg_blocking_pids(pid)` | held and awaited locks, who blocks whom |
+| `pg_stat_user_tables` | seq vs index scans, live/dead rows, vacuum times |
+| `pg_stat_user_indexes` | `idx_scan = 0`: unused index |
+| `pg_stat_io` (16+) | reads, writes, hits by backend type |
+| `pg_aios` (18) | in-flight asynchronous I/O |
+| `pg_stat_progress_vacuum`, `_create_index` | progress of long operations |
+| `pg_settings` | every setting, its value and where it came from |
+
+```sql
+SELECT pid, usename, state, wait_event_type,
+       now() - query_start AS runtime,
+       left(query, 60) AS query
+FROM pg_stat_activity
+WHERE state <> 'idle' AND pid <> pg_backend_pid()
+ORDER BY runtime DESC;
+
+SELECT pg_cancel_backend(12345);    -- cancel its query
+SELECT pg_terminate_backend(12345); -- close the session
+
+-- unused indexes (unique ones may still enforce rules)
+SELECT indexrelid::regclass AS index, idx_scan,
+  pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+| Setting | Starting point |
+| :------ | :------------- |
+| `shared_buffers` | ~25% of RAM |
+| `effective_cache_size` | ~50–75% of RAM (a planner hint, allocates nothing) |
+| `work_mem` | per sort/hash node per query: 16–64 MB, raise per session for reports |
+| `maintenance_work_mem` | 512 MB–2 GB for vacuum and index builds |
+| `random_page_cost` | 1.1 on SSDs (default 4) |
+| `io_method` | 18+: `worker` (default), `io_uring` (Linux builds with liburing), `sync` |
+
+```sql
+SHOW work_mem;
+ALTER SYSTEM SET work_mem = '32MB';  -- postgresql.auto.conf
+SELECT pg_reload_conf();
+SELECT name, setting, source FROM pg_settings
+WHERE source <> 'default';
+```
+
+### Extensions
+
+| Extension | For |
+| :-------- | :-- |
+| `pg_stat_statements` | query statistics; needs `shared_preload_libraries` |
+| `pgcrypto` | `crypt()` + `gen_salt('bf')` password hashes, `pgp_sym_encrypt`; UUIDs no longer need it |
+| `pg_trgm` | similarity, fuzzy search, indexed `ILIKE '%x%'` |
+| `postgis` | geometry/geography types, spatial indexes and functions |
+| `vector` (pgvector) | `vector(n)`, distance operators `<->` `<=>` `<#>`, HNSW/IVFFlat |
+| `btree_gist` | scalar columns in GiST: exclusion and `WITHOUT OVERLAPS` keys |
+| `citext`, `unaccent` | case-insensitive text; accent stripping for search |
+| `ltree` | label paths for trees |
+| `pg_cron`, `pg_partman` | scheduled jobs; partition management (third party) |
+
+```sql
+SELECT name, default_version, installed_version
+FROM pg_available_extensions ORDER BY name;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX users_name_trgm ON users
+  USING gin (name gin_trgm_ops);
+SELECT name, similarity(name, 'ada lovlace') AS sim
+FROM users
+WHERE name % 'ada lovlace'        -- similarity > 0.3
+ORDER BY sim DESC
+LIMIT 5;
+
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE docs (
+  id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  body      text NOT NULL,
+  embedding vector(3) NOT NULL    -- e.g. 1536 in practice
+);
+CREATE INDEX docs_embedding_hnsw ON docs
+  USING hnsw (embedding vector_cosine_ops);
+SELECT id, body FROM docs
+ORDER BY embedding <=> '[0.1, 0.2, 0.3]'
+LIMIT 5;
+```
+
+## From TypeScript
+
+| Client | Notes |
+| :----- | :---- |
+| `Bun.sql` (`import { SQL } from "bun"`) | built in; tagged templates, pooling, reads `DATABASE_URL` |
+| `postgres` (postgres.js) | tagged templates, fast; Node, Bun, Deno |
+| `pg` (node-postgres) | `$1` placeholders, `Pool`; the most widely supported |
+| Drizzle ORM | TS schema + SQL-shaped builder over any of the above (0.45 stable, 1.0 in RC) |
+| Kysely / Prisma | typed query builder / schema-first ORM |
+
+```ts title="db.ts"
+import { SQL } from "bun";
+
+const url = process.env.DATABASE_URL;
+if (!url) throw new Error("DATABASE_URL is not set");
+
+export const sql = new SQL({
+  url,
+  max: 10,          // pool size
+  idleTimeout: 30,  // seconds
+});
+
+type User = { id: string; email: string; name: string };
+
+export async function findUser(email: string) {
+  const [user] = await sql<User[]>`
+    SELECT id, email, name FROM users
+    WHERE email = ${email}
+  `;
+  return user;                  // User | undefined
+}
+
+export async function demo(ids: number[]) {
+  await sql`INSERT INTO users ${sql({
+    email: "ada@example.com",
+    name: "Ada",
+  })}`;
+  const rows = await sql<User[]>`
+    SELECT * FROM users WHERE id IN ${sql(ids)}`;
+  await sql.begin(async (tx) => {
+    await tx`UPDATE users SET role = 'admin'
+             WHERE id = ${ids[0] ?? 0}`;
+    await tx`DELETE FROM posts WHERE author_id = ${1}`;
+  });                           // throws: rolled back
+  return rows;
+}
+```
+
+```ts title="node-postgres.ts"
+import pg from "pg";
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
+});
+
+const { rows } = await pool.query<{ id: string }>(
+  "SELECT id FROM users WHERE email = $1",
+  ["ada@example.com"],
+);
+
+const client = await pool.connect();  // one connection
+try {
+  await client.query("BEGIN");
+  await client.query(
+    "UPDATE users SET role = $1 WHERE id = $2",
+    ["admin", rows[0]?.id],
+  );
+  await client.query("COMMIT");
+} catch (err) {
+  await client.query("ROLLBACK");
+  throw err;
+} finally {
+  client.release();
+}
+```
+
+```ts title="postgres-js.ts"
+import postgres from "postgres";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  max: 10,
+  prepare: false,       // behind PgBouncer transaction mode
+});
+const users = await sql<{ id: string; name: string }[]>`
+  select id, name from users where role = ${"admin"}
+`;
+await sql.end();
+```
+
+| Type | Arrives in JS as |
+| :--- | :--------------- |
+| `bigint` (int8), `numeric` | `string` by default (no precision loss); opt in to `BigInt` (`bigint: true` in Bun) |
+| `int`, `float8` | `number` |
+| `timestamptz`, `date` | `Date` (a `date` becomes midnight in some zone: many prefer strings) |
+| `jsonb` | parsed value |
+| arrays | JS arrays |
+
+Never build SQL with string concatenation: tagged templates and `$1` send values as parameters.
+Identifiers can't be parameters, so use `sql(name)` (Bun, postgres.js) or `pg.escapeIdentifier`.
+Drizzle schema example: [DB design & schemas](/databases/db-design/). Runtime details:
+[Bun](/typescript/runtime-tooling/bun/).
+
+## Recipes
+
+### Batch upsert that reports inserts vs updates
+Sync rows from an API in one round trip and learn which were new (18+ for `old`).
+
+```sql
+INSERT INTO users (email, name)
+SELECT * FROM unnest(
+  $1::text[],           -- emails
+  $2::text[]            -- names
+)
+ON CONFLICT (email) DO UPDATE
+  SET name = EXCLUDED.name, updated_at = now()
+RETURNING id, (old.id IS NULL) AS inserted;
+```
+
+### Keyset pagination
+Stable, index-backed paging for feeds; `OFFSET` gets slower with every page.
+
+```sql
+CREATE INDEX posts_feed_idx
+  ON posts (created_at DESC, id DESC);
+
+-- first page
+SELECT id, created_at, title FROM posts
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- next page: pass the last row's created_at and id
+SELECT id, created_at, title FROM posts
+WHERE (created_at, id) < ($1::timestamptz, $2::bigint)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+```
+
+### Job queue with SKIP LOCKED
+Many workers claim jobs concurrently without double-processing or blocking each other.
+
+```sql
+CREATE TABLE jobs (
+  id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  queue     text NOT NULL DEFAULT 'default',
+  payload   jsonb NOT NULL,
+  run_at    timestamptz NOT NULL DEFAULT now(),
+  attempts  int NOT NULL DEFAULT 0,
+  locked_at timestamptz
+);
+CREATE INDEX jobs_ready_idx ON jobs (queue, run_at)
+  WHERE locked_at IS NULL;
+
+-- claim one (autocommit); stale locks can be reset later
+UPDATE jobs SET locked_at = now(), attempts = attempts + 1
+WHERE id = (
+  SELECT id FROM jobs
+  WHERE queue = 'default' AND locked_at IS NULL
+    AND run_at <= now()
+  ORDER BY run_at
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED
+)
+RETURNING id, payload, attempts;
+-- done: DELETE FROM jobs WHERE id = $1
+-- failed: set locked_at = NULL, run_at = now() + backoff
+```
+
+### Find slow queries
+Rank normalised queries by total time spent, the best first place to optimise.
+
+```sql
+-- needs shared_preload_libraries = 'pg_stat_statements'
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+SELECT calls,
+  round(total_exec_time::numeric) AS total_ms,
+  round(mean_exec_time::numeric, 2) AS mean_ms,
+  round(100 * total_exec_time
+    / sum(total_exec_time) OVER ())::int AS pct,
+  rows,
+  left(query, 60) AS query
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 10;
+
+SELECT pg_stat_statements_reset();  -- start a new window
+```
+
+### Find blocking locks
+A migration or request hangs: see who waits on whom, then cancel or terminate the blocker.
+
+```sql
+SELECT blocked.pid AS blocked_pid,
+       left(blocked.query, 40) AS blocked_query,
+       blocker.pid AS blocker_pid,
+       blocker.state AS blocker_state,
+       now() - blocker.xact_start AS blocker_tx_age,
+       left(blocker.query, 40) AS blocker_query
+FROM pg_stat_activity blocked
+JOIN pg_stat_activity blocker
+  ON blocker.pid = ANY (pg_blocking_pids(blocked.pid))
+ORDER BY blocker_tx_age DESC;
+```
+
+### `updated_at` trigger
+Keep `updated_at` correct no matter which code path writes the row.
+
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER users_set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)  -- skip no-op updates
+EXECUTE FUNCTION set_updated_at();
+```
+
+The `WHEN` clause can't reference generated columns; drop it on tables that have them.
+
+### Soft delete with a partial unique index
+Hide deleted rows but let a new account reuse a deleted account's email.
+
+```sql
+ALTER TABLE users ADD COLUMN deleted_at timestamptz;
+ALTER TABLE users DROP CONSTRAINT users_email_key;
+CREATE UNIQUE INDEX users_email_live_key
+  ON users (email) WHERE deleted_at IS NULL;
+
+CREATE VIEW live_users AS
+  SELECT * FROM users WHERE deleted_at IS NULL;
+
+UPDATE users SET deleted_at = now()
+WHERE email = 'alan@example.com';
+
+-- upserts must name the index predicate
+INSERT INTO users (email, name)
+VALUES ('alan@example.com', 'Alan')
+ON CONFLICT (email) WHERE deleted_at IS NULL
+DO NOTHING;
+```
+
+### Add a NOT NULL column to a big table safely
+Backfill a computed value without long locks (a constant default alone is already instant).
+
+```sql
+SET lock_timeout = '3s';     -- fail fast, retry later
+ALTER TABLE users ADD COLUMN handle text;
+
+-- backfill in batches; repeat until 0 rows updated
+UPDATE users SET handle = split_part(email, '@', 1)
+WHERE id IN (
+  SELECT id FROM users WHERE handle IS NULL LIMIT 5000
+);
+
+-- 18+: add unvalidated, then validate without blocking
+ALTER TABLE users ADD CONSTRAINT users_handle_nn
+  NOT NULL handle NOT VALID;
+ALTER TABLE users VALIDATE CONSTRAINT users_handle_nn;
+-- 17 and older: CHECK (handle IS NOT NULL) NOT VALID,
+-- VALIDATE, then SET NOT NULL (skips the scan)
+```
+
+New writes must fill `handle` before the constraint goes on: deploy the app change first.
+
+## References
+
+- [PostgreSQL 18 documentation](https://www.postgresql.org/docs/18/index.html): the manual
+- [PostgreSQL 18 release notes](https://www.postgresql.org/docs/18/release-18.html): uuidv7, virtual columns, async I/O, old/new in RETURNING
+- [psql](https://www.postgresql.org/docs/18/app-psql.html): every meta-command
+- [Data types](https://www.postgresql.org/docs/18/datatype.html)
+- [Indexes](https://www.postgresql.org/docs/18/indexes.html) and [Using EXPLAIN](https://www.postgresql.org/docs/18/using-explain.html)
+- [Explicit locking](https://www.postgresql.org/docs/18/explicit-locking.html) and [transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html)
+- [Row security policies](https://www.postgresql.org/docs/18/ddl-rowsecurity.html)
+- [Routine vacuuming](https://www.postgresql.org/docs/18/routine-vacuuming.html) and [backup and restore](https://www.postgresql.org/docs/18/backup.html)
+- [libpq connection strings](https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNSTRING): URL format, `sslmode`
+- [Versioning policy](https://www.postgresql.org/support/versioning/): supported majors and EOL dates
+- [Bun SQL](https://bun.com/docs/runtime/sql): Bun's built-in client
+- [postgres.js](https://github.com/porsager/postgres) and [node-postgres](https://node-postgres.com/)
+- [Docker Hub: postgres](https://hub.docker.com/_/postgres): image variables and the 18+ data path
+- [PostgreSQL wiki: Don't Do This](https://wiki.postgresql.org/wiki/Don%27t_Do_This): common mistakes
+- [pgvector](https://github.com/pgvector/pgvector): vector types and indexes
+- [explain.dalibo.com](https://explain.dalibo.com/): plan visualiser

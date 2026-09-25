@@ -1,0 +1,954 @@
+---
+title: Kubernetes
+date: 2026-09-25
+order: 1
+---
+
+Objects, `kubectl` and the manifests you write every day, for Kubernetes v1.37 (supported
+minors: 1.35 to 1.37). You build images with [Docker](/infrastructure/containers/docker/) and
+[Dockerfile](/infrastructure/containers/dockerfile/), and package releases with
+[Helm](/infrastructure/kubernetes/helm/).
+
+## Architecture & objects
+
+```text
+            kubectl · CI · GitOps · controllers
+                        │ HTTPS: REST + watch
+┌──────────────────── control plane ────────────────────┐
+│ kube-apiserver ─── etcd (every object, the only state) │
+│ kube-scheduler     kube-controller-manager             │
+│ cloud-controller-manager (managed clusters)            │
+└────────────────────────────────────────────────────────┘
+            │ each kubelet watches Pods bound to its node
+┌────── node ──────┐   ┌────── node ──────┐
+│ kubelet          │   │ kubelet          │
+│ containerd (CRI) │   │ containerd (CRI) │
+│ kube-proxy / CNI │   │ kube-proxy / CNI │
+│ Pods …           │   │ Pods …           │
+└──────────────────┘   └──────────────────┘
+```
+
+| Component | Job |
+| :-------- | :-- |
+| kube-apiserver | front door: authn, authz, admission, validation, watch streams; the only client of etcd |
+| etcd | consistent key-value store for all objects; back it up |
+| kube-scheduler | binds each unscheduled Pod to a node (resources, affinity, taints, spread) |
+| kube-controller-manager | reconcile loops: Deployment to ReplicaSet to Pods, Jobs, nodes, EndpointSlices |
+| kubelet | node agent: pulls images, starts containers through CRI, runs probes, reports status |
+| kube-proxy | programs Service virtual IPs (nftables, iptables, IPVS); Cilium can replace it |
+| CNI plugin | Pod IPs, routing and NetworkPolicy enforcement (Cilium, Calico, Flannel) |
+| CoreDNS | cluster DNS for Services and Pods |
+
+Everything is declarative: you write `spec` (desired), controllers write `status` (observed)
+and loop until the two match.
+
+| Kind | `apiVersion` | Use it for |
+| :--- | :----------- | :--------- |
+| `Pod` | `v1` | containers sharing a network namespace and volumes; rarely created by hand |
+| `ReplicaSet` | `apps/v1` | keeps N identical Pods; owned by a Deployment |
+| `Deployment` | `apps/v1` | stateless apps; rolling updates and rollbacks through ReplicaSets |
+| `StatefulSet` | `apps/v1` | stable names (`db-0`), one PVC per Pod, ordered rollout |
+| `DaemonSet` | `apps/v1` | one Pod per matching node: log shippers, CNI, node exporters |
+| `Job` | `batch/v1` | run to completion, with retries and parallelism |
+| `CronJob` | `batch/v1` | Jobs on a cron schedule |
+| `Service` | `v1` | stable virtual IP and DNS name in front of Pods picked by label |
+| `Ingress` | `networking.k8s.io/v1` | HTTP(S) host and path routing; frozen API, needs a controller |
+| `Gateway`, `HTTPRoute` | `gateway.networking.k8s.io/v1` | Gateway API, the successor to Ingress |
+| `ConfigMap` | `v1` | non-secret config as env vars or files |
+| `Secret` | `v1` | credentials; base64, encrypted only if etcd encryption is on |
+| `PersistentVolumeClaim` | `v1` | a request for storage that binds to a PV |
+| `PersistentVolume` | `v1` | a piece of storage, usually provisioned on demand |
+| `StorageClass` | `storage.k8s.io/v1` | provisioner and parameters for dynamic PVs |
+| `Namespace` | `v1` | scope for names, RBAC, quotas and Pod Security labels |
+| `ServiceAccount` | `v1` | identity a Pod uses against the API (and clouds, via workload identity) |
+| `Role`, `ClusterRole` | `rbac.authorization.k8s.io/v1` | allowed verbs on resources, per namespace or cluster-wide |
+| `RoleBinding`, `ClusterRoleBinding` | `rbac.authorization.k8s.io/v1` | grants a role to users, groups or ServiceAccounts |
+| `NetworkPolicy` | `networking.k8s.io/v1` | L3/L4 allow-lists for Pod traffic |
+| `HorizontalPodAutoscaler` | `autoscaling/v2` | scales replicas on CPU, memory or custom metrics |
+| `PodDisruptionBudget` | `policy/v1` | limits voluntary evictions during drains and upgrades |
+
+`kubectl api-resources` lists every kind with its short name (`po`, `deploy`, `svc`, `cm`,
+`pvc`, `hpa`, `pdb`). `kubectl explain deploy.spec.strategy --recursive` prints the schema.
+
+## kubectl
+
+| Command | Does |
+| :------ | :--- |
+| `kubectl get pods -o wide` | list, with node and Pod IP |
+| `kubectl get deploy,svc,httproute -n web` | several kinds at once |
+| `kubectl get pods -A -l app=api -w` | all namespaces, by label, then watch |
+| `kubectl describe pod api-7d9f` | spec, conditions and recent events |
+| `kubectl logs deploy/api -f --since=10m` | follow one Pod of a Deployment |
+| `kubectl logs api-7d9f -c app --previous` | logs of the last crashed container |
+| `kubectl logs -l app=api --all-containers --prefix` | many Pods at once |
+| `kubectl exec -it deploy/api -- sh` | shell into a container |
+| `kubectl port-forward svc/api 8080:80` | `localhost:8080` to the Service |
+| `kubectl apply -f k8s/` | create or update from files, a directory, a URL or `-` |
+| `kubectl apply --server-side -f x.yaml` | server-side apply: the API server tracks field owners |
+| `kubectl diff -f k8s/` | what `apply` would change; exit code 1 when it differs |
+| `kubectl delete -f x.yaml` | delete what the files describe |
+| `kubectl rollout status deploy/api` | wait for a rollout to finish |
+| `kubectl rollout restart deploy/api` | replace every Pod, e.g. to pick up new Secret values |
+| `kubectl rollout undo deploy/api` | back to the previous revision |
+| `kubectl scale deploy/api --replicas=5` | set the replica count |
+| `kubectl top pods --sort-by=memory` | live usage; needs metrics-server |
+| `kubectl debug -it api-7d9f --image=busybox --target=app` | ephemeral debug container in a running Pod |
+| `kubectl events --for pod/api-7d9f --watch` | events for one object |
+| `kubectl get events --sort-by=.lastTimestamp` | namespace events, newest last |
+| `kubectl wait --for=condition=Available deploy/api` | block until a condition holds |
+| `kubectl cp api-7d9f:/tmp/dump ./dump` | copy files; needs `tar` in the image |
+| `kubectl auth can-i list secrets --as=system:serviceaccount:web:api` | RBAC check |
+| `kubectl create deploy api --image=x --dry-run=client -o yaml` | scaffold YAML |
+
+### Output and filtering
+
+| Flag | Output |
+| :--- | :----- |
+| `-o yaml`, `-o json` | full objects |
+| `-o name` | `pod/api-7d9f`, for piping into other commands |
+| `-o jsonpath='{.items[*].metadata.name}'` | selected fields |
+| `-o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName` | your own table |
+| `--show-labels`, `-L app,version` | labels as columns |
+| `--sort-by=.status.startTime` | sort by any field |
+| `-l 'env in (prod,staging),tier!=db'` | set-based label selector |
+| `--field-selector status.phase!=Running` | server-side filter on a few fields |
+
+```sh
+# every Pod with its images, tab-separated
+t='{range .items[*]}{.metadata.name}{"\t"}'
+t+='{.spec.containers[*].image}{"\n"}{end}'
+kubectl get pods -o jsonpath="$t"
+
+# decode one Secret key
+kubectl get secret db -o jsonpath='{.data.password}' \
+  | base64 -d
+```
+
+### Contexts & kubeconfig
+
+| Command | Does |
+| :------ | :--- |
+| `kubectl config get-contexts` | list contexts (cluster + user + namespace) |
+| `kubectl config use-context prod` | switch the current context |
+| `kubectl config set-context --current --namespace=web` | change the default namespace |
+| `kubectl --context prod -n web get pods` | one-off, without switching |
+| `KUBECONFIG=~/.kube/a:~/.kube/b kubectl config view --flatten` | merge files into one |
+| `kubectx prod`, `kubens web` | fast switching (`brew install kubectx`); `kubectx -` goes back |
+| `kubectl kuberc set --section aliases …` | user preferences in `~/.kube/kuberc`: aliases, default flags |
+
+## Manifests & labels
+
+```yaml title="anatomy.yaml"
+apiVersion: apps/v1            # group/version
+kind: Deployment
+metadata:
+  name: api
+  namespace: web
+  labels:                      # queryable, used by selectors
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: shop
+  annotations:                 # free-form, for tools
+    team: payments
+spec:                          # desired state: yours
+  selector:
+    matchLabels:               # immutable after create
+      app.kubernetes.io/name: api
+  template:                    # the Pod template
+    metadata:
+      labels:                  # must satisfy the selector
+        app.kubernetes.io/name: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/acme/api:1.4.2
+# status: observed state, written by controllers
+```
+
+Separate objects in one file with `---`. Pin images to a version or digest, never `:latest`
+(which also defaults `imagePullPolicy` to `Always`).
+
+| Selector | Used by | Rule |
+| :------- | :------ | :--- |
+| `spec.selector.matchLabels` | Deployment, ReplicaSet, StatefulSet, DaemonSet, Job | immutable; must match the template labels |
+| `spec.selector` (plain map) | Service | any Pod with these labels, whoever owns it |
+| `matchExpressions` | workloads, affinity, NetworkPolicy, PDB | `In`, `NotIn`, `Exists`, `DoesNotExist` |
+| `namespaceSelector` | NetworkPolicy, affinity, webhooks | picks namespaces by label |
+
+| Recommended label | Example |
+| :---------------- | :------ |
+| `app.kubernetes.io/name` | `api` |
+| `app.kubernetes.io/instance` | `api-prod` (unique per install) |
+| `app.kubernetes.io/version` | `1.4.2` (never in a selector) |
+| `app.kubernetes.io/component` | `backend` |
+| `app.kubernetes.io/part-of` | `shop` |
+| `app.kubernetes.io/managed-by` | `Helm`, `kustomize` |
+
+Labels identify and select; annotations hold everything else (change causes, checksums,
+controller settings).
+
+## Probes & resources
+
+| Probe | Failing means | Effect |
+| :---- | :------------ | :----- |
+| `startupProbe` | still booting | the others wait; restart after `failureThreshold × periodSeconds` |
+| `readinessProbe` | can't serve right now | removed from Service endpoints; not restarted |
+| `livenessProbe` | wedged | container killed and restarted |
+
+Handlers: `httpGet` (2xx or 3xx passes), `tcpSocket`, `grpc`, `exec`. Defaults:
+`periodSeconds: 10`, `timeoutSeconds: 1`, `failureThreshold: 3`, `successThreshold: 1`.
+
+```yaml
+ports: [{ name: http, containerPort: 3000 }]
+startupProbe:                  # up to 30 × 2s to boot
+  httpGet: { path: /healthz, port: http }
+  periodSeconds: 2
+  failureThreshold: 30
+readinessProbe:
+  httpGet: { path: /readyz, port: http }
+  periodSeconds: 5
+livenessProbe:                 # cheap, no dependency checks
+  httpGet: { path: /livez, port: http }
+  failureThreshold: 6
+```
+
+<Note kind="warning">A liveness probe that checks the database restarts every replica when the
+database blips. Check dependencies in readiness, keep liveness about the process itself.</Note>
+
+| Field | Scheduling | At runtime |
+| :---- | :--------- | :--------- |
+| `requests.cpu` | reserved on the node for placement | CPU share under contention |
+| `limits.cpu` | ignored | throttled above it |
+| `requests.memory` | reserved for placement | eviction order under node pressure |
+| `limits.memory` | ignored | OOMKilled (exit 137) above it |
+
+Units: `cpu: 250m` is a quarter core. Memory uses `Mi`/`Gi` (binary) or `M`/`G` (decimal);
+a lowercase `m` means milli-bytes, a classic typo.
+
+| QoS class | When | Evicted |
+| :-------- | :--- | :------ |
+| `Guaranteed` | every container sets requests equal to limits for CPU and memory | last |
+| `Burstable` | some request or limit set | middle |
+| `BestEffort` | nothing set | first |
+
+Common practice: memory limit equal to its request; a CPU request with no CPU limit to avoid
+throttling. `LimitRange` sets per-namespace defaults, `ResourceQuota` caps namespace totals.
+
+```sh
+# in-place resize without a restart (GA since 1.35)
+kubectl patch pod api-0 --subresource resize -p \
+  '{"spec":{"containers":[{"name":"api",
+  "resources":{"requests":{"cpu":"500m"}}}]}}'
+```
+
+## Config & secrets
+
+```yaml title="config.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: api-config }
+data:
+  LOG_LEVEL: info
+  app.toml: |
+    [server]
+    port = 3000
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: api-secrets }
+type: Opaque
+stringData:                   # plain in, stored as base64
+  DATABASE_URL: postgres://app:pw@db:5432/app
+```
+
+```yaml title="pod spec excerpt"
+containers:
+  - name: api
+    envFrom:
+      - configMapRef: { name: api-config }
+    env:
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: api-secrets
+            key: DATABASE_URL
+      - name: POD_IP
+        valueFrom:
+          fieldRef: { fieldPath: status.podIP }
+    volumeMounts:
+      - name: cfg
+        mountPath: /etc/api
+        readOnly: true
+volumes:
+  - name: cfg
+    configMap:
+      name: api-config
+      items: [{ key: app.toml, path: app.toml }]
+```
+
+| Consumed as | Sees updates to the object |
+| :---------- | :------------------------- |
+| env var (`env`, `envFrom`) | never; restart the Pods |
+| volume | eventually (kubelet sync, about a minute) |
+| volume with `subPath` | never |
+| `immutable: true` object | can't change; create a new name instead |
+
+```sh
+kubectl create configmap api-config \
+  --from-file=app.toml --from-literal=LOG_LEVEL=info
+kubectl create secret generic api-secrets \
+  --from-env-file=.env.production
+kubectl create secret tls api-tls \
+  --cert=tls.crt --key=tls.key
+kubectl create secret docker-registry ghcr \
+  --docker-server=ghcr.io --docker-username=acme \
+  --docker-password="$GHCR_TOKEN"
+```
+
+Secret types: `Opaque`, `kubernetes.io/tls`, `kubernetes.io/dockerconfigjson` (reference it
+in `imagePullSecrets`), `kubernetes.io/basic-auth`. Secrets are base64, not encrypted: turn on
+encryption at rest, restrict `get`/`list` on secrets, and keep them out of Git with External
+Secrets Operator, Sealed Secrets or SOPS (see [Helm](/infrastructure/kubernetes/helm/)).
+
+## Rollouts
+
+| Strategy | Kind | Behaviour |
+| :------- | :--- | :-------- |
+| `RollingUpdate` (default) | Deployment | replace gradually; `maxSurge: 25%`, `maxUnavailable: 25%` |
+| `Recreate` | Deployment | stop all, then start new; for RWO volumes or incompatible versions |
+| `RollingUpdate` + `partition: N` | StatefulSet | only ordinals at or above N update: a canary |
+| `OnDelete` | StatefulSet, DaemonSet | a Pod updates only when you delete it |
+| blue/green, canary | any | two Deployments behind a Service or `HTTPRoute` weights; Argo Rollouts, Flagger |
+
+Any change under `spec.template` starts a rollout; editing a ConfigMap does not (use a
+checksum annotation or Kustomize's hashed generators). Tuning: `minReadySeconds`,
+`progressDeadlineSeconds` (600), `revisionHistoryLimit` (10).
+
+```yaml title="zero-downtime excerpt"
+spec:
+  strategy:
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          lifecycle:
+            preStop:                 # let endpoints drain
+              sleep: { seconds: 5 }
+```
+
+The app must also handle `SIGTERM`: stop accepting, finish in-flight requests, exit.
+
+```sh
+kubectl set image deploy/api api=ghcr.io/acme/api:1.4.3
+kubectl rollout status deploy/api --timeout=5m
+kubectl rollout history deploy/api
+kubectl rollout pause deploy/api     # batch several edits
+kubectl rollout resume deploy/api
+```
+
+## Scheduling
+
+| Tool | Field | Use |
+| :--- | :---- | :-- |
+| `nodeSelector` | `spec.nodeSelector` | exact node label match |
+| node affinity | `affinity.nodeAffinity` | required or preferred label expressions |
+| pod affinity | `affinity.podAffinity` | place near other Pods (same node or zone) |
+| pod anti-affinity | `affinity.podAntiAffinity` | keep replicas apart |
+| topology spread | `topologySpreadConstraints` | even spread across zones or nodes |
+| taint | `kubectl taint nodes n1 gpu=true:NoSchedule` | node repels Pods |
+| toleration | `spec.tolerations` | allows (doesn't attract) a Pod onto tainted nodes |
+| priority | `priorityClassName` | higher priority preempts lower when full |
+
+Taint effects: `NoSchedule`, `PreferNoSchedule`, `NoExecute` (also evicts running Pods).
+Well-known node labels: `kubernetes.io/hostname`, `topology.kubernetes.io/zone`,
+`kubernetes.io/arch`, `node.kubernetes.io/instance-type`.
+
+```yaml title="pod spec excerpt"
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values: [arm64]
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: web
+    effect: NoSchedule
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels: { app.kubernetes.io/name: api }
+```
+
+A taint plus a matching toleration **and** node affinity gives dedicated nodes: the taint keeps
+others off, the affinity keeps your Pods on.
+
+## Storage
+
+| Volume | Lifetime | Use |
+| :----- | :------- | :-- |
+| `emptyDir` | the Pod | scratch space, caches; `medium: Memory` for tmpfs |
+| `configMap`, `secret`, `projected` | the Pod | config files, SA tokens |
+| `persistentVolumeClaim` | independent | databases, uploads |
+| `ephemeral` | the Pod | a per-Pod PVC from a StorageClass |
+| `image` | the Pod | mount an OCI image's files read-only |
+| `hostPath` | the node | node agents only; blocked by Pod Security `baseline` |
+
+| Access mode | Means |
+| :---------- | :---- |
+| `ReadWriteOnce` (RWO) | one node mounts read-write (most block storage) |
+| `ReadWriteOncePod` (RWOP) | exactly one Pod |
+| `ReadOnlyMany` (ROX) | many nodes, read-only |
+| `ReadWriteMany` (RWX) | many nodes read-write (NFS, EFS, CephFS) |
+
+```yaml title="statefulset excerpt"
+spec:
+  serviceName: db               # headless Service
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Delete
+  volumeClaimTemplates:
+    - metadata: { name: data }  # PVC data-db-0, data-db-1…
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: gp3
+        resources:
+          requests: { storage: 20Gi }
+```
+
+StorageClass knobs: `reclaimPolicy` (`Delete` or `Retain`), `volumeBindingMode:
+WaitForFirstConsumer` (provision in the Pod's zone), `allowVolumeExpansion: true`. Grow a PVC
+by raising `spec.resources.requests.storage`; shrinking isn't supported.
+
+## Networking & DNS
+
+| Service type | Reachable from | Notes |
+| :----------- | :------------- | :---- |
+| `ClusterIP` (default) | inside the cluster | virtual IP, load-balanced by kube-proxy |
+| headless (`clusterIP: None`) | inside | DNS returns Pod IPs; StatefulSets, client-side balancing |
+| `NodePort` | every node's IP on 30000–32767 | rarely used directly |
+| `LoadBalancer` | outside, via cloud or MetalLB LB | one external IP per Service |
+| `ExternalName` | inside | DNS CNAME to an outside name, no proxying |
+
+`port` is the Service port, `targetPort` the container port (a number or a named port),
+`nodePort` the node port.
+
+| DNS name | Resolves to |
+| :------- | :---------- |
+| `api` | Service `api` in the caller's namespace |
+| `api.web` | Service `api` in namespace `web` |
+| `api.web.svc.cluster.local` | fully qualified |
+| `db-0.db.data.svc.cluster.local` | one StatefulSet Pod through headless Service `db` |
+| `_http._tcp.api.web.svc.cluster.local` | SRV record for the named port `http` |
+
+|  | Ingress | Gateway API |
+| :- | :------ | :---------- |
+| API | `networking.k8s.io/v1`, frozen | `gateway.networking.k8s.io/v1` CRDs (v1.6) |
+| Roles | one object | GatewayClass (infra), Gateway (platform), Routes (app teams) |
+| Protocols | HTTP(S) | HTTP, gRPC, TLS, TCP, UDP routes |
+| Splits, header matches, rewrites | controller-specific annotations | in the spec: `weight`, `matches`, `filters` |
+| Cross-namespace | no | Routes attach to shared Gateways; `ReferenceGrant` |
+| Implementations | Traefik, HAProxy, cloud LBs | Envoy Gateway, Istio, Cilium, NGINX Gateway Fabric, Traefik, kgateway |
+
+<Note kind="info">The community ingress-nginx controller was retired in March 2026 (no more
+releases or security fixes). Use Gateway API for new work; `ingress2gateway` converts existing
+Ingress objects.</Note>
+
+```yaml title="gateway.yaml"
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: { name: public, namespace: gateway }
+spec:
+  gatewayClassName: eg          # from your controller
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.example.com"
+      tls:
+        certificateRefs: [{ name: wildcard-tls }]
+      allowedRoutes:
+        namespaces: { from: All }
+```
+
+```yaml title="ingress.yaml (older clusters)"
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: web }
+spec:
+  ingressClassName: traefik
+  tls: [{ hosts: [shop.example.com], secretName: web-tls }]
+  rules:
+    - host: shop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: web, port: { number: 80 } }
+```
+
+```yaml title="netpol.yaml"
+# deny all ingress in the namespace…
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny, namespace: web }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# …then allow the gateway namespace to reach api on 3000
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: api-from-gateway, namespace: web }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: api }
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports: [{ port: 3000 }]
+```
+
+NetworkPolicy needs a CNI that enforces it (Cilium, Calico); Flannel silently ignores it. A
+default-deny `Egress` policy also blocks DNS unless you allow UDP/TCP 53 to `kube-system`.
+
+## Security
+
+```yaml title="restricted pod spec"
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: api
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true # emptyDir for /tmp
+        capabilities: { drop: [ALL] }
+```
+
+| Pod Security Standard | Blocks |
+| :-------------------- | :----- |
+| `privileged` | nothing |
+| `baseline` | host namespaces, `hostPath`, privileged containers, added capabilities beyond a safe set |
+| `restricted` | all of baseline, plus root users, privilege escalation, missing `seccompProfile`, any capability except `NET_BIND_SERVICE` |
+
+```sh
+# enforce per namespace; warn/audit let you trial a level
+kubectl label ns web \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/warn=restricted
+# which Pods would fail? (server-side dry run)
+kubectl label --dry-run=server --overwrite ns --all \
+  pod-security.kubernetes.io/enforce=baseline
+```
+
+```yaml title="rbac.yaml"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: config-reader, namespace: web }
+rules:
+  - apiGroups: [""]              # "" = core group
+    resources: [configmaps]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: api-config-reader, namespace: web }
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: web
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: config-reader
+```
+
+| RBAC | Notes |
+| :--- | :---- |
+| verbs | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete`, `deletecollection` |
+| `list` on secrets | returns their values too; treat it like `get` |
+| `ClusterRole` + `RoleBinding` | reuse one cluster-wide role inside a single namespace |
+| built-in roles | `view`, `edit`, `admin`, `cluster-admin` |
+| `kubectl auth can-i --list --as=system:serviceaccount:web:api` | everything a subject may do |
+| `kubectl create token api --duration=1h` | short-lived token for a ServiceAccount |
+
+## Autoscaling & disruptions
+
+```yaml title="hpa.yaml"
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: api }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu               # % of the CPU *request*
+        target: { type: Utilization, averageUtilization: 70 }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+```
+
+Same thing imperatively: `kubectl autoscale deploy/api --cpu=70% --min=2 --max=20`. The HPA
+needs metrics-server and CPU requests; drop `spec.replicas` from the Deployment once an HPA owns
+it, or every apply resets the count.
+
+| Scaler | Scales | On |
+| :----- | :----- | :- |
+| HPA | replicas | CPU, memory, custom and external metrics |
+| VPA (add-on) | requests and limits | observed usage; `InPlaceOrRecreate` mode resizes live |
+| KEDA (add-on) | replicas, including to zero | queue length, cron, Prometheus, 60+ sources |
+| Cluster Autoscaler, Karpenter | nodes | unschedulable Pods, bin-packing |
+
+```yaml title="pdb.yaml"
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: api }
+spec:
+  maxUnavailable: 1             # or minAvailable: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: api }
+  unhealthyPodEvictionPolicy: AlwaysAllow
+```
+
+A PDB guards voluntary evictions (drains, autoscaler, upgrades), not crashes or node loss. With
+one replica and `minAvailable: 1` a drain can never finish.
+
+## Local clusters
+
+| Tool | Create | Use a local image | Notes |
+| :--- | :----- | :---------------- | :---- |
+| kind | `kind create cluster --name dev` | `kind load docker-image api:dev --name dev` | nodes are Docker containers; multi-node by config; the CI default |
+| k3d | `k3d cluster create dev -p "8080:80@loadbalancer"` | `k3d image import api:dev -c dev` | k3s in Docker; bundles Traefik and a service load balancer |
+| minikube | `minikube start --driver=docker` | `minikube image load api:dev` | add-ons (`minikube addons enable metrics-server`); `minikube tunnel` for LoadBalancers |
+| OrbStack | `orb start k8s` | nothing to do: shares OrbStack's image store | macOS; LoadBalancers at `*.k8s.orb.local`; `cluster.local` names resolve from the Mac |
+| Docker Desktop | Settings, Kubernetes | shares Docker's images | single or multi-node (kind-based) |
+
+Tag local images with something other than `latest` (for example `api:dev`) and set
+`imagePullPolicy: IfNotPresent`, or the kubelet tries to pull from a registry.
+
+```yaml title="kind.yaml"
+# kind create cluster --name dev --config kind.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:        # NodePort 30080 on :8080
+      - { containerPort: 30080, hostPort: 8080 }
+  - role: worker
+  - role: worker
+```
+
+## Kustomize
+
+Built into kubectl (Kustomize v5): patch plain YAML per environment without templates.
+
+```tree title="kustomize layout"
+k8s/
+  base/
+    kustomization.yaml
+    deployment.yaml
+    service.yaml
+  overlays/
+    staging/
+      kustomization.yaml  # namespace, image tag
+    prod/
+      kustomization.yaml
+      resources-patch.yaml
+      app.env             # feeds configMapGenerator
+```
+
+```yaml title="base/kustomization.yaml"
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [deployment.yaml, service.yaml]
+labels:
+  - pairs: { app.kubernetes.io/part-of: shop }
+    includeSelectors: false
+```
+
+```yaml title="overlays/prod/kustomization.yaml"
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: prod
+resources: [../../base]
+images:
+  - name: ghcr.io/acme/api
+    newTag: 1.4.2
+replicas:
+  - { name: api, count: 4 }
+patches:
+  - path: resources-patch.yaml
+  - target: { kind: Deployment, name: api }
+    patch: |
+      - op: add
+        path: /spec/template/spec/priorityClassName
+        value: high
+configMapGenerator:
+  - name: api-config          # name gets a content hash
+    envs: [app.env]
+```
+
+| Field | Does |
+| :---- | :--- |
+| `resources` | files, directories, other kustomizations, remote URLs |
+| `namespace`, `namePrefix`, `nameSuffix` | rewrite names and the references to them |
+| `labels` | add labels; `includeSelectors: false` keeps selectors untouched (replaces `commonLabels`) |
+| `images` | swap image name, tag or digest |
+| `replicas` | override replica counts |
+| `patches` | strategic-merge files or JSON 6902 ops, optionally with a `target` |
+| `configMapGenerator`, `secretGenerator` | generate with a hash suffix, so a change rolls the Pods |
+| `components` | optional, reusable bundles of patches |
+
+```sh
+kubectl kustomize k8s/overlays/prod      # render
+kubectl diff -k k8s/overlays/prod
+kubectl apply -k k8s/overlays/prod
+```
+
+## Debugging
+
+```text
+kubectl get pods  →  what is STATUS?
+│
+├─ Pending ───────────► kubectl describe pod P  (Events)
+│   ├─ Insufficient cpu/memory ──► lower requests, add nodes
+│   ├─ didn't match node affinity/selector ──► fix labels
+│   ├─ untolerated taint ──► add a toleration
+│   └─ unbound PersistentVolumeClaim ──► check PVC, StorageClass, zone
+│
+├─ ImagePullBackOff / ErrImagePull ──► describe (Events)
+│   ├─ not found / manifest unknown ──► name, tag, or no arm64/amd64 build
+│   ├─ unauthorized / 401 ──► imagePullSecrets, registry token
+│   └─ timeout ──► node egress, registry outage, rate limits
+│
+├─ CrashLoopBackOff ──► kubectl logs P --previous
+│   ├─ stack trace / missing env ──► fix config, Secret keys
+│   ├─ exit 137 + OOMKilled (describe) ──► raise memory limit, find leak
+│   ├─ Liveness probe failed (Events) ──► add startupProbe, relax probe
+│   └─ exit 0 at once ──► command finishes; needs a foreground process
+│
+├─ CreateContainerConfigError ──► ConfigMap/Secret or key missing
+│
+├─ Running, not Ready ──► readiness failing: describe, port-forward, curl
+│
+└─ Ready, but no traffic
+      kubectl get endpointslices -l kubernetes.io/service-name=S
+    ├─ no endpoints ──► Service selector doesn't match Pod labels
+    └─ endpoints OK ──► wrong targetPort, app bound to 127.0.0.1
+```
+
+| Exit code | Meaning |
+| :-------- | :------ |
+| `0` | process ended normally (bad for a server) |
+| `1` | application error |
+| `126`, `127` | command not executable, not found |
+| `137` | `SIGKILL`: OOMKilled or killed after the grace period |
+| `139` | segfault |
+| `143` | `SIGTERM`: normal shutdown |
+
+| Symptom | Look at |
+| :------ | :------ |
+| stuck `Terminating` | `metadata.finalizers`; a node that went away |
+| stuck `ContainerCreating` | `describe` events: volume attach, CNI, Secret mount |
+| `Evicted` | node pressure (disk, memory); `kubectl describe node` |
+| last crash reason | `kubectl get pod P -o jsonpath='{.status.containerStatuses[*].lastState}'` |
+| node problems | `kubectl debug node/N -it --image=busybox` (host at `/host`) |
+
+## Recipes
+
+### Deploy a web app
+A Deployment with probes, resources and non-root settings, ready to put behind a Service.
+
+```yaml title="deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web, labels: { app: web } }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/acme/web:1.4.2
+          ports: [{ name: http, containerPort: 3000 }]
+          envFrom: [{ secretRef: { name: web-env } }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          livenessProbe:
+            httpGet: { path: /livez, port: http }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+```
+
+### Expose it with a Service and HTTPRoute
+Attach the app to a shared Gateway (see Networking for the Gateway and the Ingress version).
+
+```yaml title="expose.yaml"
+apiVersion: v1
+kind: Service
+metadata: { name: web }
+spec:
+  selector: { app: web }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: { name: web }
+spec:
+  parentRefs: [{ name: public, namespace: gateway }]
+  hostnames: [shop.example.com]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: / } }]
+      backendRefs: [{ name: web, port: 80 }]
+```
+
+### Nightly CronJob
+Scheduled batch work that must not overlap and cleans up after itself.
+
+```yaml title="cronjob.yaml"
+# run now: kubectl create job --from=cronjob/report r1
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: report }
+spec:
+  schedule: "30 2 * * *"
+  timeZone: Europe/London
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: ghcr.io/acme/jobs:1.4.2
+              command: [bun, run, scripts/report.ts]
+              envFrom: [{ secretRef: { name: jobs-env } }]
+```
+
+### One-off debug pod
+Poke at DNS, Services and the network from inside the cluster.
+
+```sh
+# throwaway shell with network tools, deleted on exit
+kubectl run tmp --rm -it --restart=Never \
+  --image=nicolaka/netshoot -- bash
+#   curl -sv http://api.web/healthz
+#   dig +search api.web
+
+# as the app's ServiceAccount, in its namespace
+kubectl run tmp -n web --rm -it --restart=Never \
+  --image=alpine --overrides='{"apiVersion":"v1",
+  "spec":{"serviceAccountName":"api"}}' -- sh
+
+# join a running (distroless) Pod's process namespace
+kubectl debug -it api-7d9f --image=busybox --target=api
+
+# copy of a crashing Pod with a shell instead of the app
+kubectl debug api-7d9f -it --copy-to=api-dbg \
+  --container=api -- sh
+```
+
+### Roll back a Deployment
+The new version is failing and you need the last good one back now.
+
+```sh
+kubectl rollout history deploy/api
+kubectl rollout history deploy/api --revision=7
+kubectl rollout undo deploy/api          # previous
+kubectl rollout undo deploy/api --to-revision=7
+kubectl rollout status deploy/api --timeout=3m
+
+# shows up in the CHANGE-CAUSE column
+kubectl annotate deploy/api --overwrite \
+  kubernetes.io/change-cause="rollback to 1.4.1"
+```
+
+With Helm use `helm rollback`; with GitOps revert the commit, or the controller re-applies the
+bad version.
+
+### Copy a Secret to another namespace
+Secrets can't be referenced across namespaces, so reuse a pull secret or certificate.
+
+```sh
+# keep only the name; drop uid, resourceVersion, owners…
+kubectl get secret ghcr -n build -o json \
+  | jq '.metadata |= {name}' \
+  | kubectl apply -n web -f -
+
+# a single key, without jq
+kubectl create secret generic db -n web \
+  --from-literal=password="$(kubectl get secret db \
+    -n data -o jsonpath='{.data.password}' | base64 -d)"
+```
+
+For ongoing sync use External Secrets Operator (`ClusterSecretStore`) or a reflector.
+
+### Drain a node for maintenance
+Move workloads off a node before patching, rebooting or replacing it.
+
+```sh
+kubectl cordon worker-2           # no new Pods
+kubectl drain worker-2 --ignore-daemonsets \
+  --delete-emptydir-data --timeout=10m
+# stuck? a PDB is blocking eviction:
+kubectl get pdb -A
+# …patch, reboot or upgrade the node…
+kubectl uncordon worker-2
+kubectl get pods -A -o wide \
+  --field-selector spec.nodeName=worker-2
+```
+
+## References
+
+- [Kubernetes docs: Concepts](https://kubernetes.io/docs/concepts/): the object model, workloads, networking and storage
+- [kubectl Quick Reference](https://kubernetes.io/docs/reference/kubectl/quick-reference/): the official cheat sheet
+- [kubectl JSONPath support](https://kubernetes.io/docs/reference/kubectl/jsonpath/): template syntax for `-o jsonpath`
+- [Configure liveness, readiness and startup probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+- [Resource management for Pods](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/): requests, limits, units
+- [Pod Quality of Service classes](https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/)
+- [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/): what each level blocks
+- [Using RBAC authorization](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
+- [Resize CPU and memory in place](https://kubernetes.io/docs/tasks/configure-pod-container/resize-pod-resources/)
+- [Debug running Pods](https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/): `kubectl debug` and ephemeral containers
+- [Kubernetes releases](https://kubernetes.io/releases/): supported versions and end-of-life dates
+- [Gateway API](https://gateway-api.sigs.k8s.io/): concepts, routes and implementations
+- [Ingress NGINX retirement](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/): timeline and migration advice
+- [Kustomize reference](https://kubectl.docs.kubernetes.io/references/kustomize/kustomization/): every `kustomization.yaml` field
+- [kind](https://kind.sigs.k8s.io/), [k3d](https://k3d.io/), [minikube](https://minikube.sigs.k8s.io/docs/), [OrbStack Kubernetes](https://docs.orbstack.dev/kubernetes/): local clusters
+- [kubectx and kubens](https://github.com/ahmetb/kubectx): context and namespace switching
+- [Learnk8s: Troubleshooting Deployments](https://learnk8s.io/troubleshooting-deployments): a visual debugging flowchart

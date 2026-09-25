@@ -1,0 +1,1150 @@
+---
+title: Grafana
+date: 2026-09-25
+order: 4
+---
+
+Setting up Grafana and the LGTM stack for a project: running it locally, configuring it,
+provisioning it as code, instrumenting web and non-web code, then querying, graphing and
+alerting. Targets Grafana 13.2, Prometheus 3.15, Loki 3.7, Tempo 3.0 and Alloy 1.20. The
+compose basics live in [Docker](/infrastructure/containers/docker/).
+
+## Observability model
+
+| Signal | Question it answers | Store | Query language |
+| :----- | :------------------ | :---- | :------------- |
+| Metrics | how much, how often, how slow (aggregates) | Prometheus / Mimir | PromQL |
+| Logs | what happened, with detail | Loki | LogQL |
+| Traces | where the time went in one request | Tempo | TraceQL |
+| Profiles | which code burned CPU/memory | Pyroscope | profile selectors |
+
+| Component | Role | Default port |
+| :-------- | :--- | :----------- |
+| Grafana | UI: dashboards, Explore, alerting, Drilldown apps | 3000 |
+| Prometheus | pull-based TSDB; also accepts OTLP and remote write | 9090 |
+| Mimir | horizontally scalable, multi-tenant Prometheus backend | 8080 |
+| Loki | logs indexed by labels only; content scanned at query time | 3100 |
+| Tempo | trace store on object storage; OTLP in | 3200 (API), 4317/4318 |
+| Pyroscope | continuous profiling | 4040 |
+| Alloy | collector (OTel Collector distro): receive, scrape, tail, process, forward | 12345 (UI), 4317/4318 |
+| Faro | browser SDK for errors, Web Vitals, frontend traces | Alloy `faro.receiver` 12347 |
+| node_exporter / cAdvisor | host / container metrics | 9100 / 8080 |
+
+Data flow for a typical project:
+
+```text
+app (OTel SDK) --OTLP--> Alloy --traces--> Tempo ---+
+app /metrics  <--scrape-- Alloy --metrics-> Prometheus +--> Grafana
+container stdout <-tail-- Alloy --logs----> Loki ---+
+Tempo metrics-generator --span metrics--> Prometheus
+```
+
+- Send OpenTelemetry (OTLP) from your code; let Alloy route it. Swapping backends (e.g.
+  to Grafana Cloud) then means editing one Alloy file, not the app.
+- Labels in Prometheus and Loki must be **low cardinality** (service, route template,
+  status class, level). Never user IDs, raw URLs or trace IDs; those go in log lines,
+  structured metadata or span attributes.
+- Correlate by sharing `service.name` everywhere and putting `trace_id` in logs.
+
+## Local stack with Docker Compose
+
+Keep everything in an `observability/` folder and pull it into the app's compose file.
+
+```tree title="project with observability"
+my-app/
+  compose.yaml              # app + include observability
+  src/
+    otel.ts                 # OpenTelemetry SDK setup
+    index.ts
+  observability/
+    compose.yaml            # the LGTM stack + Alloy
+    config.alloy            # collector pipeline
+    prometheus.yml
+    tempo.yaml
+    grafana/
+      admin-password.txt    # gitignored
+      provisioning/
+        datasources/
+          datasources.yaml
+        dashboards/
+          provider.yaml
+        alerting/
+          rules.yaml
+          contact-points.yaml
+          policies.yaml
+      dashboards/
+        api-red.json
+```
+
+```yaml title="compose.yaml"
+include:
+  - observability/compose.yaml   # paths resolve from there
+
+services:
+  api:
+    build: .
+    ports: ["3001:3000"]
+    environment:
+      OTEL_SERVICE_NAME: api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+```
+
+```yaml title="observability/compose.yaml"
+services:
+  grafana:
+    image: grafana/grafana:13.2.2
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/gf_admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    secrets: [gf_admin]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus, loki, tempo]
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-otlp-receiver         # /api/v1/otlp
+      - --web.enable-remote-write-receiver # /api/v1/write
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+
+  loki:
+    image: grafana/loki:3.7.8   # built-in local config
+    ports: ["3100:3100"]
+    volumes: ["loki-data:/tmp/loki"]
+
+  tempo:
+    image: grafana/tempo:3.0.3
+    command: [-target=all, -config.file=/etc/tempo.yaml]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports: ["4317:4317", "4318:4318", "12345:12345"]
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+secrets:
+  gf_admin:
+    file: ./grafana/admin-password.txt
+
+volumes:
+  grafana-data:
+  prom-data:
+  loki-data:
+  tempo-data:
+```
+
+```yaml title="observability/prometheus.yml"
+global:
+  scrape_interval: 15s
+storage:
+  tsdb:
+    out_of_order_time_window: 30m  # pushed OTLP arrives late
+otlp:
+  promote_resource_attributes:     # become labels
+    - service.name
+    - service.namespace
+    - service.instance.id
+    - deployment.environment.name
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+```
+
+```yaml title="observability/tempo.yaml"
+stream_over_http_enabled: true
+server:
+  http_listen_port: 3200
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: "0.0.0.0:4317" }
+        http: { endpoint: "0.0.0.0:4318" }
+metrics_generator:          # RED metrics + service graph
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+storage:
+  trace:
+    backend: local          # s3 / gcs / azure in prod
+    wal: { path: /var/tempo/wal }
+    local: { path: /var/tempo/blocks }
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [span-metrics, service-graphs]
+```
+
+### Alloy pipeline
+
+```hcl title="observability/config.alloy"
+// OTLP from apps (gRPC 4317, HTTP 4318)
+otelcol.receiver.otlp "apps" {
+  grpc {}
+  http {}
+  output {
+    traces  = [otelcol.processor.batch.main.input]
+    metrics = [otelcol.processor.batch.main.input]
+    logs    = [otelcol.processor.batch.main.input]
+  }
+}
+
+otelcol.processor.batch "main" {
+  output {
+    traces  = [otelcol.exporter.otlphttp.tempo.input]
+    metrics = [otelcol.exporter.otlphttp.prom.input]
+    logs    = [otelcol.exporter.otlphttp.loki.input]
+  }
+}
+
+otelcol.exporter.otlphttp "tempo" {
+  client {
+    endpoint = "http://tempo:4318"
+  }
+}
+
+otelcol.exporter.otlphttp "prom" {
+  client {
+    endpoint = "http://prometheus:9090/api/v1/otlp"
+  }
+}
+
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+}
+
+// Scrape Prometheus-format /metrics endpoints
+prometheus.scrape "apps" {
+  targets = [
+    {"__address__" = "api:3000", "job" = "api"},
+  ]
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// Tail container stdout, parse JSON lines, push to Loki
+discovery.docker "local" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "logs" {
+  targets = []
+  rule {
+    source_labels = [
+  "__meta_docker_container_label_com_docker_compose_service",
+    ]
+    target_label = "service_name"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.local.targets
+  relabel_rules = discovery.relabel.logs.rules
+  forward_to    = [loki.process.json.receiver]
+}
+
+loki.process "json" {
+  stage.json {
+    expressions = { level = "", trace_id = "" }
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  stage.structured_metadata {
+    values = { trace_id = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+```
+
+Pick one path per signal: OTLP metrics **or** a scraped `/metrics`, OTLP logs **or** stdout
+tailing, or you get duplicates. Alloy's UI at `:12345` shows the live component graph.
+
+```sh
+echo "change-me" > observability/grafana/admin-password.txt
+docker compose up -d
+docker compose logs -f alloy
+open http://localhost:3000          # admin / change-me
+```
+
+### All-in-one: `grafana/otel-lgtm`
+
+One container with an OTel Collector, Prometheus, Loki, Tempo, Pyroscope and a
+pre-provisioned Grafana. Dev and CI only: no auth, no config files, one process.
+
+```sh
+docker run --rm -p 3000:3000 -p 4317:4317 -p 4318:4318 \
+  -v lgtm-data:/data grafana/otel-lgtm:latest
+```
+
+| Setting | Effect |
+| :------ | :----- |
+| `-v name:/data` | keep data across restarts |
+| `ENABLE_LOGS_ALL=true` | print every component's own logs |
+| `ENABLE_OBI=true` | eBPF zero-code HTTP/gRPC instrumentation (Linux, `--privileged --pid=host`) |
+| `GF_*` | normal Grafana settings |
+
+## Configuring Grafana
+
+Settings come from `/etc/grafana/grafana.ini` (Docker) or `conf/custom.ini`, overridden by
+env vars named `GF_<SECTION>_<KEY>`, upper-case, with `.` and `-` turned into `_`.
+Append `__FILE` to read the value from a file (Docker secrets).
+
+```ini title="grafana.ini"
+[server]
+root_url = https://grafana.example.com/
+[security]
+admin_user = admin
+cookie_secure = true
+[users]
+allow_sign_up = false
+[auth.anonymous]
+enabled = false
+[database]
+; default is sqlite3 in the data dir
+type = postgres
+host = db:5432
+```
+
+| Env var | `ini` equivalent | Use |
+| :------ | :--------------- | :-- |
+| `GF_SERVER_ROOT_URL` | `[server] root_url` | public URL; needed for OAuth, links, alert images |
+| `GF_SERVER_SERVE_FROM_SUB_PATH` | `[server] serve_from_sub_path` | host under `/grafana/` |
+| `GF_SECURITY_ADMIN_PASSWORD__FILE` | `[security] admin_password` | first-boot admin password from a secret |
+| `GF_SECURITY_SECRET_KEY` | `[security] secret_key` | encrypts stored datasource secrets; set once, keep |
+| `GF_USERS_ALLOW_SIGN_UP` | `[users] allow_sign_up` | `false` in anything shared |
+| `GF_AUTH_ANONYMOUS_ENABLED` | `[auth.anonymous] enabled` | read-only public dashboards (keep `false`) |
+| `GF_AUTH_GENERIC_OAUTH_ENABLED` | `[auth.generic_oauth] enabled` | SSO via any OIDC provider |
+| `GF_DATABASE_TYPE` / `_HOST` / `_PASSWORD` | `[database]` | Postgres/MySQL instead of SQLite for HA |
+| `GF_PLUGINS_PREINSTALL` | `[plugins] preinstall` | comma list of plugin IDs to install on start |
+| `GF_FEATURE_TOGGLES_ENABLE` | `[feature_toggles] enable` | opt into preview features |
+| `GF_SMTP_ENABLED` / `_HOST` / `_USER` | `[smtp]` | email for alerts and invites |
+| `GF_LOG_LEVEL` | `[log] level` | `debug` when provisioning misbehaves |
+| `GF_ANALYTICS_REPORTING_ENABLED` | `[analytics] reporting_enabled` | usage stats off |
+| `GF_PATHS_PROVISIONING` | (env only in Docker) | default `/etc/grafana/provisioning` |
+
+The Docker image runs as UID 472; bind-mounted data dirs must be writable by it.
+
+## Provisioning as code
+
+Grafana reads YAML from `provisioning/{datasources,dashboards,alerting,plugins}` at start.
+Provisioned objects are read-only in the UI. Files support `$VAR` / `${VAR}` interpolation;
+write a literal `$` as `$$`.
+
+```yaml title="provisioning/datasources/datasources.yaml"
+apiVersion: 1
+prune: true            # delete datasources removed from file
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus    # stable uid: dashboards reference it
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://loki:3100
+    jsonData:
+      derivedFields:           # trace_id -> Tempo link
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://tempo:3200
+    jsonData:
+      serviceMap:
+        datasourceUid: prometheus
+      tracesToLogsV2:          # span -> its logs
+        datasourceUid: loki
+        filterByTraceID: true
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+      tracesToMetrics:
+        datasourceUid: prometheus
+```
+
+```yaml title="provisioning/dashboards/provider.yaml"
+apiVersion: 1
+providers:
+  - name: project
+    folder: My App
+    type: file
+    allowUiUpdates: false    # edit JSON in git, not the UI
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true  # subdirs -> folders
+```
+
+```json title="dashboards/api-red.json (skeleton)"
+{
+  "uid": "api-red",
+  "title": "API · RED",
+  "schemaVersion": 41,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": []
+}
+```
+
+| Approach | Best for |
+| :------- | :------- |
+| Build in UI, then Export → JSON (classic), commit it | small projects, fastest start |
+| Git Sync (GA in 13) | dashboards live in a GitHub/GitLab/Bitbucket repo, edits become PRs |
+| Terraform `grafana/grafana` provider | datasources, folders, alerts, teams alongside infra |
+| `grafanactl` CLI / Foundation SDK (TS, Go) | dashboards generated from code |
+
+<Note kind="warning">Grafana 13 stores dashboards in schema v2 ("dynamic dashboards") and
+migrates v1 JSON on load. File provisioning of v2 dashboards needs the Kubernetes-style
+resource format (`apiVersion: dashboard.grafana.app/…`, `kind: Dashboard`); classic v1
+JSON as above still provisions.</Note>
+
+Alerting files (`provisioning/alerting/*.yaml`) hold `groups` (rules), `contactPoints`,
+`policies`, `muteTimes` and `templates`. Export existing ones from the UI via
+**Alerting → … → Export** to get exact YAML. See [Alerting](#alerting) and the
+[error-rate recipe](#alert-on-a-high-5xx-ratio).
+
+## Instrumenting a Bun or Node service
+
+Load the SDK before the app so spans and metrics exist from the first request. The SDK
+file is in the [recipe](#opentelemetry-in-bun-or-node).
+
+```sh
+bun add @opentelemetry/api @opentelemetry/sdk-node \
+  @opentelemetry/sdk-metrics @opentelemetry/resources \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http @hono/otel
+bun --preload ./src/otel.ts src/index.ts   # Bun
+node --import ./dist/otel.js dist/index.js # Node
+```
+
+| Env var | Effect |
+| :------ | :----- |
+| `OTEL_SERVICE_NAME` | `service.name`; becomes `job` in Prometheus, `service_name` in Loki |
+| `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment.name=prod,service.version=1.4.0` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | base URL, e.g. `http://alloy:4318` (paths `/v1/traces` etc. added) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Basic …` for Grafana Cloud |
+| `OTEL_TRACES_SAMPLER` / `_ARG` | `parentbased_traceidratio` / `0.1` to keep 10 % |
+| `OTEL_SDK_DISABLED` | `true` turns everything into no-ops (tests) |
+
+### Hono: traces and RED metrics
+
+`@hono/otel` creates a server span per request and records
+`http.server.request.duration` (seconds) with method, route template and status, which
+Prometheus stores as `http_server_request_duration_seconds_*`.
+
+```ts title="src/index.ts"
+import { Hono } from "hono";
+import { httpInstrumentationMiddleware } from "@hono/otel";
+import { trace, metrics, SpanStatusCode } from
+  "@opentelemetry/api";
+
+const tracer = trace.getTracer("api");
+const meter = metrics.getMeter("api");
+const orders = meter.createCounter("orders_created", {
+  description: "Orders created",
+});
+
+const app = new Hono();
+app.use(httpInstrumentationMiddleware());
+
+app.post("/orders", (c) =>
+  tracer.startActiveSpan("createOrder", async (span) => {
+    try {
+      const body = await c.req.json<{ plan: string }>();
+      span.setAttribute("order.plan", body.plan);
+      orders.add(1, { plan: body.plan }); // low-cardinality
+      return c.json({ ok: true }, 201);
+    } catch (err) {
+      span.recordException(err as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw err;
+    } finally {
+      span.end();
+    }
+  }),
+);
+
+export default app; // Bun serves app.fetch
+```
+
+On Node, add `@opentelemetry/auto-instrumentations-node` to the SDK for `http`, `pg`,
+`undici`, `ioredis` and friends. Under Bun, Node monkey-patching is partial: rely on
+framework middleware and manual spans.
+
+### `/metrics` with prom-client (pull model)
+
+```ts title="src/metrics.ts"
+import { Hono } from "hono";
+import { routePath } from "hono/route";
+import client from "prom-client";
+
+const register = new client.Registry();
+client.collectDefaultMetrics({ register }); // CPU, heap, GC
+
+const httpDuration = new client.Histogram({
+  name: "http_request_duration_seconds",
+  help: "HTTP request duration",
+  labelNames: ["method", "route", "status"] as const,
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+  registers: [register],
+});
+
+const app = new Hono();
+
+app.use(async (c, next) => {
+  const end = httpDuration.startTimer();
+  await next();
+  end({
+    method: c.req.method,
+    route: routePath(c, -1), // "/users/:id", not raw
+    status: String(c.res.status),
+  });
+});
+
+app.get("/metrics", async (c) =>
+  c.text(await register.metrics(), 200, {
+    "Content-Type": register.contentType,
+  }),
+);
+```
+
+Keep `/metrics` off the public internet (separate port, or block it at the proxy).
+
+### Structured logs with trace IDs
+
+```ts title="src/log.ts"
+import pino from "pino";
+import { trace } from "@opentelemetry/api";
+
+// One JSON object per line on stdout; Alloy tails it
+export const log = pino({
+  base: { service: "api" },
+  formatters: { level: (label) => ({ level: label }) },
+  mixin() {
+    const ctx = trace.getActiveSpan()?.spanContext();
+    return ctx ? { trace_id: ctx.traceId } : {};
+  },
+});
+
+log.info({ route: "/orders", status: 201, ms: 42 }, "ok");
+```
+
+The Alloy pipeline above promotes `level` to a label and stores `trace_id` as structured
+metadata, so Grafana links each line to its trace.
+
+## Next.js and the browser
+
+Next.js already emits spans for routing, rendering and `fetch`. Put `instrumentation.ts`
+in the project root (or `src/`), next to `app/`.
+
+```sh
+bun add @vercel/otel @opentelemetry/api \
+  @opentelemetry/sdk-logs @opentelemetry/api-logs \
+  @opentelemetry/instrumentation
+```
+
+```ts title="instrumentation.ts"
+import { registerOTel } from "@vercel/otel";
+
+export function register() {
+  // reads OTEL_EXPORTER_OTLP_ENDPOINT; works on edge too
+  registerOTel({ serviceName: "web" });
+}
+```
+
+For full control, use the Node SDK, loaded only in the Node.js runtime:
+
+```ts title="instrumentation.ts"
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation.node.ts");
+  }
+}
+```
+
+```ts title="instrumentation.node.ts"
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { resourceFromAttributes } from
+  "@opentelemetry/resources";
+import { ATTR_SERVICE_NAME } from
+  "@opentelemetry/semantic-conventions";
+import { OTLPTraceExporter } from
+  "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from
+  "@opentelemetry/sdk-trace-base";
+
+new NodeSDK({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: "web",
+  }),
+  spanProcessors: [
+    new BatchSpanProcessor(new OTLPTraceExporter()),
+  ],
+}).start();
+```
+
+`NEXT_OTEL_VERBOSE=1` emits extra spans. More in [Next.js](/typescript/react/next-js/).
+
+### Frontend: Grafana Faro
+
+Faro captures JS errors, console, Web Vitals, sessions and `fetch` spans, and adds a
+`traceparent` header so browser spans join backend traces.
+
+```ts title="app/faro.ts (client only)"
+import {
+  initializeFaro,
+  getWebInstrumentations,
+} from "@grafana/faro-web-sdk";
+import { TracingInstrumentation } from
+  "@grafana/faro-web-tracing";
+
+initializeFaro({
+  // Alloy faro.receiver, or the Grafana Cloud URL
+  url: "https://faro.example.com/collect",
+  app: { name: "web", version: "1.4.0" },
+  instrumentations: [
+    ...getWebInstrumentations(), // errors, vitals, console
+    new TracingInstrumentation(), // fetch/XHR spans
+  ],
+});
+```
+
+Self-hosted, add a `faro.receiver` block to Alloy (listens on `:12347`, set
+`cors_allowed_origins`) with `output { logs = […] traces = […] }` pointing at Loki and Tempo.
+
+## Non-web workloads
+
+| Workload | Approach | Metrics to expose |
+| :------- | :------- | :---------------- |
+| Cron job / CLI | push OTLP, flush on exit; or Pushgateway | runs by result, duration, last success timestamp |
+| Queue worker | long-lived: OTLP or `/metrics` like a web app | jobs processed/failed, queue lag, job duration |
+| Linux host / VM | node_exporter or Alloy `prometheus.exporter.unix` | CPU, memory, disk, network, filesystem fill |
+| Containers | cAdvisor or Alloy `prometheus.exporter.cadvisor` | per-container CPU, memory, restarts |
+| Postgres | postgres_exporter or Alloy `prometheus.exporter.postgres` | connections, TPS, locks, replication lag, cache hit |
+| Redis / Nginx / MySQL | matching exporter (`redis_exporter`, …) | per the exporter |
+| External URLs | blackbox_exporter, Grafana Synthetic Monitoring | probe success, TLS expiry, latency |
+
+### Cron job pushing metrics
+
+```ts title="jobs/backup.ts"
+import {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
+import { resourceFromAttributes } from
+  "@opentelemetry/resources";
+import { OTLPMetricExporter } from
+  "@opentelemetry/exporter-metrics-otlp-http";
+
+declare function runBackup(): Promise<number>; // bytes
+
+const provider = new MeterProvider({
+  resource: resourceFromAttributes({
+    "service.name": "nightly-backup",
+  }),
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter(),
+    }),
+  ],
+});
+const meter = provider.getMeter("backup");
+const runs = meter.createCounter("backup_runs");
+const size = meter.createGauge("backup_size", {
+  unit: "By",
+});
+const lastOk = meter.createGauge("backup_last_success", {
+  unit: "s",
+});
+
+try {
+  size.record(await runBackup());
+  lastOk.record(Date.now() / 1000);
+  runs.add(1, { result: "ok" });
+} catch {
+  runs.add(1, { result: "error" });
+  process.exitCode = 1;
+} finally {
+  await provider.shutdown(); // flushes before exit
+}
+```
+
+Alert on staleness, not on the job: `time() - max(backup_last_success_seconds) > 26*3600`.
+The Pushgateway alternative from a shell script:
+
+```sh
+PGW=http://pushgateway:9091/metrics/job/backup
+echo "backup_last_success $(date +%s)" \
+  | curl --data-binary @- "$PGW"
+```
+
+### Hosts, containers and Postgres via Alloy
+
+```hcl title="config.alloy (additions)"
+prometheus.exporter.unix "host" { }       // node_exporter
+
+prometheus.exporter.cadvisor "docker" {
+  docker_host = "unix:///var/run/docker.sock"
+}
+
+prometheus.exporter.postgres "db" {
+  data_source_names = [sys.env("PG_MONITOR_DSN")]
+}
+
+prometheus.scrape "infra" {
+  targets = array.concat(
+    prometheus.exporter.unix.host.targets,
+    prometheus.exporter.cadvisor.docker.targets,
+    prometheus.exporter.postgres.db.targets,
+  )
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+```
+
+Run Alloy on the host (package or `--pid=host` with `/proc`, `/sys`, `/` mounted) for
+real host metrics. Give Postgres a `pg_monitor` role, not a superuser. Import community
+dashboards by ID (Node Exporter Full 1860, cAdvisor 19792, PostgreSQL 9628).
+
+## PromQL
+
+Counters only go up (`_total`), gauges go up and down, histograms have `_bucket`, `_sum`,
+`_count`. Use `rate` on counters, never on gauges.
+
+| Query | Meaning |
+| :---- | :------ |
+| `http_requests_total{job="api", code=~"5.."}` | selector: `=`, `!=`, `=~` regex, `!~` |
+| `rate(x_total[5m])` | per-second average increase; handles counter resets |
+| `irate(x_total[1m])` | from the last two samples; spiky, for fast graphs only |
+| `increase(x_total[1h])` | total increase over the window (`rate` × seconds) |
+| `sum by (route) (rate(x_total[5m]))` | aggregate, keep only `route` |
+| `sum without (instance, pod) (…)` | aggregate, drop the listed labels |
+| `histogram_quantile(0.95, sum by (le, route) (rate(x_bucket[5m])))` | p95 per route (classic histogram) |
+| `histogram_quantile(0.95, sum by (route) (rate(x[5m])))` | p95 from a native histogram (no `le`) |
+| `topk(5, sum by (route) (rate(x_total[5m])))` | top 5 series (per step) |
+| `x offset 1d` / `x @ end()` | shift back a day / pin to range end |
+| `absent(up{job="api"})` | 1 when no series exists: alert on missing targets |
+| `absent_over_time(x[10m])` | no samples for 10 minutes |
+| `up == 0` | scrape target down |
+| `avg_over_time(g[10m])`, `max_over_time`, `quantile_over_time` | gauge stats over a window |
+| `delta(g[1h])`, `deriv(g[15m])` | change / slope of a gauge |
+| `predict_linear(node_filesystem_avail_bytes[6h], 86400) < 0` | disk full within a day |
+| `changes(x[1h])`, `resets(x_total[1h])` | value changes / counter restarts |
+| `a / on(job) group_left(version) b` | many-to-one join, copy `version` from `b` |
+| `x > 0.05`, `x > bool 0.05` | filter series / return 0 or 1 |
+| `clamp_min(x, 0)`, `label_replace(x, "dst", "$1", "src", "(.*)")` | clamp / rewrite labels |
+
+In Grafana, use `$__rate_interval` as the range in `rate()`: it is at least four scrape
+intervals, so zoomed-out panels never go blank.
+
+## LogQL
+
+A query is a **stream selector** (labels only, required) plus a pipeline. Metric queries
+wrap a log query in a range function.
+
+| Query | Meaning |
+| :---- | :------ |
+| `{service_name="api", level="error"}` | streams by label; `=`, `!=`, `=~`, `!~` |
+| `{service_name="api"} \|= "timeout"` | line contains; `!=` excludes |
+| `\|~ "refused\|reset"`, `!~ "health"` | line matches / not regex (RE2) |
+| `\| json` | parse JSON fields into labels (`\| json route, ms`) |
+| `\| logfmt`, `\| pattern "<ip> - <_> <status>"`, `\| regexp` | other parsers |
+| `\| status >= 500`, `\| ms > 250`, `\| route="/orders"` | label filters after parsing |
+| `\| trace_id="4bf9…"` | filter on structured metadata |
+| `\| line_format "{{.route}} {{.msg}}"` | rewrite the displayed line |
+| `\| label_format svc=service_name`, `\| drop`, `\| keep` | rename, remove, keep labels |
+| `count_over_time({…}[5m])` | lines per stream per window |
+| `rate({…} \|= "error" [1m])` | lines per second |
+| `sum by (route) (count_over_time({…} \| json [5m]))` | aggregate by a parsed field |
+| `bytes_over_time({…}[1h])` | log volume |
+| `quantile_over_time(0.95, {…} \| json \| unwrap ms [5m]) by (route)` | p95 of a numeric field |
+| `topk(10, sum by (route) (…))` | noisiest routes |
+| `absent_over_time({service_name="api"}[15m])` | service went silent |
+
+Put the most selective line filter (`|=`) before the parser; it is much cheaper. Loki 3
+also adds a `detected_level` field, and **Logs Drilldown** browses streams without writing
+queries.
+
+## TraceQL
+
+Select spans with `{ … }`, then aggregate or pipe. Attribute scopes: `resource.`, `span.`,
+or `.` for either.
+
+| Query | Meaning |
+| :---- | :------ |
+| `{ resource.service.name = "api" }` | spans from a service |
+| `{ span.http.route = "/orders" && span.http.response.status_code >= 500 }` | failing route |
+| `{ status = error }` | spans marked as errors |
+| `{ duration > 500ms }` | slow spans; `kind = server`, `name = "createOrder"` |
+| `{ trace:rootService = "web" && trace:duration > 2s }` | slow traces started by `web` |
+| `{ .db.system = "postgresql" }` | unscoped attribute |
+| `{ kind = server } >> { .db.system = "postgresql" }` | server spans with a DB descendant (`>` child, `~` sibling) |
+| `{ status = error } \| count() > 3` | traces with more than 3 error spans |
+| `{ … } \| select(span.http.route, span.user_id)` | show extra columns |
+| `{ kind = server } \| rate() by (resource.service.name)` | TraceQL metrics: span rate |
+| `{ kind = server } \| quantile_over_time(duration, .95)` | p95 latency over time |
+
+**Traces Drilldown** gives RED views per service with no query at all.
+
+## Dashboards
+
+### Variables
+
+| Type | Example | Use as |
+| :--- | :------ | :----- |
+| Query | `label_values(http_server_request_duration_seconds_count, job)` | `job="$job"` |
+| Multi-value / include All | same, with multi on | `route=~"$route"` |
+| Custom | `prod,staging` | environment switch |
+| Interval | `1m,5m,1h` | `[$window]` |
+| Data source | type `prometheus` | switch clusters/stacks |
+| Ad hoc filters | any label | adds filters to every query |
+
+| Built-in | Value |
+| :------- | :---- |
+| `$__rate_interval` | safe range for `rate()` |
+| `$__interval` | step per data point for the panel width |
+| `$__range` | the whole dashboard range, e.g. for `increase(x[$__range])` |
+| `${var:csv}`, `${var:pipe}`, `${var:regex}` | format a multi-value variable |
+| `$__from`, `$__to` | epoch ms of the range |
+
+### Panels, units, thresholds
+
+| Panel | Good for |
+| :---- | :------- |
+| Time series | rates, latencies, anything over time |
+| Stat / Gauge / Bar gauge | current value against a target |
+| Table | per-route breakdowns (instant queries, format: table) |
+| Heatmap | latency histograms (`_bucket` with format: heatmap) |
+| State timeline | up/down, deploys, feature flags |
+| Logs / Traces / Node graph | Loki lines, Tempo trace, service map |
+
+| Unit ID | Shows |
+| :------ | :---- |
+| `reqps`, `ops` | requests/s, ops/s |
+| `s`, `ms` | durations (auto-scales) |
+| `percentunit` | 0–1 as % (error ratios) |
+| `bytes`, `decbytes`, `Bps` | IEC / SI bytes, throughput |
+| `short` | plain number with k/M |
+
+- **Thresholds**: base colour plus steps (e.g. green, amber at 0.01, red at 0.05); show as
+  lines or regions in time series.
+- **Overrides**: per-series unit, colour or axis (e.g. errors in red on a right axis).
+- **Data links**: `/d/api-route?var-route=${__field.labels.route}` to drill down.
+- **Exemplars**: tick in the Prometheus query options; dots link to the trace.
+
+### Transformations
+
+| Transformation | Use |
+| :------------- | :-- |
+| Join by field / Merge | combine queries into one table |
+| Organize fields | rename, reorder, hide columns |
+| Reduce | series to one row each (last, max, mean) |
+| Group by | SQL-like aggregation of table rows |
+| Add field from calculation | ratio of two columns, binary ops |
+| Filter by value / Filter data by query | drop rows or series |
+| Partition by values | split one result into many series |
+
+### RED and USE
+
+| Method | For | Signals |
+| :----- | :-- | :------ |
+| RED | request-driven services | Rate, Errors, Duration (p50/p95/p99) |
+| USE | resources (CPU, disk, pools, queues) | Utilisation, Saturation, Errors |
+| Golden signals | whole services | latency, traffic, errors, saturation |
+
+Layout: one row per service, rate | error ratio | p95 left to right, a repeated row per
+`$route`. Grafana 13 ships RED/USE/DORA layout templates and suggested dashboards when
+adding a new panel. Queries are in the [RED recipe](#red-dashboard-queries).
+
+## Alerting
+
+Grafana-managed rules evaluate any datasource; Mimir/Loki rulers also run
+Prometheus-style rules and Grafana can edit them.
+
+| Piece | What it does |
+| :---- | :----------- |
+| Alert rule | query → expressions (reduce, math, threshold) → condition, every group `interval` |
+| Pending period (`for`) | condition must hold this long before firing |
+| Keep firing for | stay firing briefly after recovery (flap guard) |
+| Labels | route and group alerts (`severity`, `team`, `service`) |
+| Annotations | `summary`, `description`, `runbook_url`; templated with `{{ $labels.route }}` and `{{ $values.A }}` |
+| No data / error state | what to do when the query returns nothing or fails |
+| Contact point | where to send: email, Slack, PagerDuty, Opsgenie, webhook, Teams, Discord… |
+| Notification policy | tree matching labels to contact points; `group_by`, `group_wait` (30s), `group_interval` (5m), `repeat_interval` (4h) |
+| Silence | mute matching alerts for a window (maintenance) |
+| Mute timing | recurring mute (nights, weekends) attached to a policy |
+| Notification template | Go template for message titles and bodies |
+
+```yaml title="provisioning/alerting/contact-points.yaml"
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: oncall-slack
+    receivers:
+      - uid: oncall-slack
+        type: slack
+        settings:
+          url: $SLACK_WEBHOOK_URL
+```
+
+```yaml title="provisioning/alerting/policies.yaml"
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: oncall-slack
+    group_by: [grafana_folder, alertname, service]
+    routes:
+      - receiver: oncall-slack
+        object_matchers:
+          - [severity, "=", critical]
+        repeat_interval: 1h
+```
+
+Alert on symptoms users feel (error ratio, latency, saturation), not on every cause; add
+`absent()` rules for "the metrics stopped".
+
+## Grafana Cloud vs self-hosted
+
+| | Grafana Cloud | Self-hosted OSS |
+| :- | :------------ | :-------------- |
+| Setup | sign up, point Alloy/OTLP at the stack | run Grafana + each backend, storage, upgrades |
+| Free tier | 10k metric series, 50 GB each of logs, traces, profiles; 14-day retention; 3 users | free software, you pay for compute and storage |
+| Paid | Pro from `$19`/month plus usage | your infra and time |
+| Extras | Assistant (AI), Synthetic Monitoring, k6, IRM/OnCall, Frontend Observability, Adaptive Metrics/Logs | plugins; Enterprise licence for RBAC extras, reporting |
+| Ingest | OTLP gateway `https://otlp-gateway-<region>.grafana.net/otlp` with basic auth | your Alloy → your backends |
+| Good when | small team, no ops time, spiky scale | data must stay in-house, steady volume, cost control |
+
+Moving between them is an Alloy change: replace the three local exporters with one
+`otelcol.exporter.otlphttp` to the Cloud gateway using `otelcol.auth.basic`.
+
+## Security
+
+| Setting | Why |
+| :------ | :-- |
+| Change the admin password on first boot (`__FILE` secret) | default is `admin`/`admin` |
+| `[auth.anonymous] enabled = false` | anonymous users see every dashboard in the org |
+| `[users] allow_sign_up = false` | no self-registration |
+| SSO: `[auth.generic_oauth]`, Google, GitHub, Entra ID, Okta; `role_attribute_path` | central offboarding; map groups to Viewer/Editor/Admin |
+| `[server] root_url` + TLS at the proxy, `cookie_secure = true` | cookies only over HTTPS |
+| `[security] content_security_policy = true`, `strict_transport_security = true` | CSP and HSTS headers |
+| `[security] disable_gravatar = true`, `[analytics] reporting_enabled = false` | no third-party calls |
+| Service accounts with scoped tokens for CI/Terraform | never share a user's API key |
+| Least-privilege datasource users (`pg_monitor`, read-only DB role) | a dashboard query runs with that role |
+| Keep Prometheus, Loki, Tempo, Alloy on a private network | they have no auth by default |
+| Use public dashboards (shared links) rather than anonymous access | scoped to one dashboard |
+
+```nginx title="nginx.conf"
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ""      close;
+}
+server {
+  listen 443 ssl;
+  server_name grafana.example.com;
+  location / {
+    proxy_set_header Host $host;
+    proxy_pass http://grafana:3000;
+  }
+  location /api/live/ {            # Grafana Live websockets
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_pass http://grafana:3000;
+  }
+}
+```
+
+## Recipes
+
+### One-container stack for a project
+When you want traces, metrics and logs for local dev or CI in one line of compose.
+
+```yaml title="compose.yaml"
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    volumes: ["lgtm-data:/data"]
+  api:
+    build: .
+    ports: ["3001:3000"]
+    environment:
+      OTEL_SERVICE_NAME: api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+    depends_on: [lgtm]
+volumes:
+  lgtm-data:
+```
+
+### OpenTelemetry in Bun or Node
+When a service should send traces and metrics over OTLP; preload it before the app.
+
+```ts title="src/otel.ts"
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { resourceFromAttributes } from
+  "@opentelemetry/resources";
+import { OTLPTraceExporter } from
+  "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from
+  "@opentelemetry/exporter-metrics-otlp-http";
+import { PeriodicExportingMetricReader } from
+  "@opentelemetry/sdk-metrics";
+
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    "service.version": process.env.GIT_SHA ?? "dev",
+  }), // service.name from OTEL_SERVICE_NAME
+  traceExporter: new OTLPTraceExporter(),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter(),
+      exportIntervalMillis: 15_000,
+    }),
+  ],
+});
+sdk.start();
+process.once("SIGTERM", () =>
+  void sdk.shutdown().finally(() => process.exit(0)));
+```
+
+### RED dashboard queries
+When building the standard per-service panel row from `@hono/otel` / OTel HTTP metrics.
+
+```text
+# Rate (req/s) per route            unit: reqps
+sum by (http_route) (
+  rate(http_server_request_duration_seconds_count{job="$job"}[$__rate_interval]))
+
+# Errors: 5xx ratio                 unit: percentunit
+sum(rate(http_server_request_duration_seconds_count{job="$job",
+  http_response_status_code=~"5.."}[$__rate_interval]))
+/ sum(rate(http_server_request_duration_seconds_count{job="$job"}[$__rate_interval]))
+
+# Duration: p95 per route           unit: s
+histogram_quantile(0.95, sum by (le, http_route) (
+  rate(http_server_request_duration_seconds_bucket{job="$job"}[$__rate_interval])))
+```
+
+### Alert on a high 5xx ratio
+When you want a paging alert that is provisioned from git.
+
+```yaml title="provisioning/alerting/rules.yaml"
+apiVersion: 1
+groups:
+- name: api           # orgId defaults to 1
+  folder: My App
+  interval: 1m
+  rules:
+  - uid: api-5xx-ratio
+    title: API 5xx ratio above 5%
+    condition: B
+    for: 5m
+    labels: { severity: critical, service: api }
+    data:
+    - refId: A
+      datasourceUid: prometheus
+      relativeTimeRange: { from: 600, to: 0 }
+      model:
+        instant: true   # alert on a single value per series
+        expr: >-
+          sum(rate(http_server_request_duration_seconds_count
+          {job="api",http_response_status_code=~"5.."}[5m]))
+          /
+          sum(rate(http_server_request_duration_seconds_count
+          {job="api"}[5m]))
+    - { refId: B, datasourceUid: __expr__,
+        model: { type: math, expression: "$A > 0.05" } }
+```
+
+### Provision a SQL datasource with a secret
+When dashboards should read app tables directly (use a read-only role).
+
+```yaml title="provisioning/datasources/postgres.yaml"
+apiVersion: 1
+datasources:
+  - name: App DB
+    type: grafana-postgresql-datasource
+    uid: appdb
+    url: db:5432
+    user: grafana_ro
+    secureJsonData:
+      password: $APPDB_RO_PASSWORD   # from the container env
+    jsonData:
+      database: app
+      sslmode: require
+      postgresVersion: 1700
+      maxOpenConns: 5
+```
+
+### Errors by route from logs
+When metrics say "errors are up" and you want the routes and messages behind it.
+
+```text
+# error lines per route, 5-minute buckets (time series / table)
+sum by (route) (
+  count_over_time({service_name="api", level="error"} | json [5m]))
+
+# the actual lines for one route, newest first (logs panel)
+{service_name="api"} |= "error" | json | route="$route"
+  | line_format "{{.status}} {{.msg}} trace={{.trace_id}}"
+```
+
+## References
+
+- Grafana: [Documentation](https://grafana.com/docs/grafana/latest/), [Configure Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/), [Configure Docker image](https://grafana.com/docs/grafana/latest/setup-grafana/configure-docker/), [Provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/), [Alerting file provisioning](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/), [Variables](https://grafana.com/docs/grafana/latest/dashboards/variables/), [Transformations](https://grafana.com/docs/grafana/latest/panels-visualizations/query-transform-data/transform-data/)
+- [Grafana 13 release notes](https://grafana.com/blog/grafana-13-release-all-the-latest-features/): dynamic dashboards, Git Sync
+- Grafana Alloy: [Docs](https://grafana.com/docs/alloy/latest/), [Components reference](https://grafana.com/docs/alloy/latest/reference/components/)
+- [Prometheus: Querying basics](https://prometheus.io/docs/prometheus/latest/querying/basics/), [Functions](https://prometheus.io/docs/prometheus/latest/querying/functions/), [Using Prometheus as an OTLP backend](https://prometheus.io/docs/guides/opentelemetry/)
+- [Loki: LogQL](https://grafana.com/docs/loki/latest/query/), [OTLP ingestion](https://grafana.com/docs/loki/latest/send-data/otel/)
+- [Tempo: TraceQL](https://grafana.com/docs/tempo/latest/traceql/), [Tempo 3.0 release](https://github.com/grafana/tempo/releases/tag/v3.0.0)
+- [OpenTelemetry JS: Getting started](https://opentelemetry.io/docs/languages/js/getting-started/nodejs/), [SDK env vars](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/), [HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/)
+- [Next.js: OpenTelemetry guide](https://nextjs.org/docs/app/guides/open-telemetry), [`@hono/otel`](https://github.com/honojs/middleware/tree/main/packages/otel), [prom-client](https://github.com/siimon/prom-client)
+- [Grafana Faro Web SDK](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/), [`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm)
+- Tom Wilkie, [The RED method](https://grafana.com/blog/the-red-method-how-to-instrument-your-services/); Brendan Gregg, [The USE method](https://www.brendangregg.com/usemethod.html)

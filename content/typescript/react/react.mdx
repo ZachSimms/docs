@@ -1,0 +1,934 @@
+---
+title: React
+date: 2026-09-25
+order: 1
+---
+
+React 19.2 in one page: the render model, JSX, composition, state, effects, actions, Suspense,
+Server Components, the React Compiler and the React DOM APIs. Hook-by-hook detail is in
+[React hooks](/typescript/react/react-hooks/); typing is in
+[TypeScript & React](/typescript/react/typescript-react/).
+
+## Mental model
+
+| Concept | Rule |
+| :------ | :--- |
+| Component | a function from props to JSX; PascalCase; declared at module top level, never inside another component |
+| Props | read-only input from the parent; never mutate them |
+| State | per-instance memory, tied to the component's **position** in the tree |
+| Render | React calls your function; the result is a description, not DOM |
+| Commit | React diffs the new tree against the old one and patches the DOM |
+| Effects | run after commit and paint; they sync with things outside React |
+| Re-render triggers | own state change, parent re-render, consumed context change |
+| Purity | same props, state and context give the same JSX; no side effects while rendering |
+| Snapshot | state read during a render is fixed for that render, even inside later callbacks |
+| Identity | same type at the same position keeps state; a new `key` or type resets it |
+
+```text
+trigger (setState, root.render)
+  -> render   call components, build new tree (pure)
+  -> commit   apply DOM changes, attach refs
+  -> paint    browser draws
+  -> effects  useEffect callbacks (after cleanup of old ones)
+```
+
+```tsx
+import { useState } from "react";
+
+function Counter() {
+  const [n, setN] = useState(0);
+
+  function addThree() {
+    setN(n + 1); // each call reads the same snapshot:
+    setN(n + 1); // n is 0 in all three, result is 1
+    setN(n + 1);
+  }
+  function reallyAddThree() {
+    setN((p) => p + 1); // updaters queue: result is 3
+    setN((p) => p + 1);
+    setN((p) => p + 1);
+  }
+  return (
+    <>
+      <p>{n}</p>
+      <button onClick={addThree}>+1</button>
+      <button onClick={reallyAddThree}>+3</button>
+    </>
+  );
+}
+```
+
+Updates are batched: every `setX` in one event handler (or timeout, promise) causes a single
+re-render. `<StrictMode>` renders twice and runs effects mount, unmount, mount in development to
+surface impure code and missing cleanups.
+
+## JSX rules & gotchas
+
+| Rule | Detail |
+| :--- | :----- |
+| One root | wrap siblings in `<>...</>`, or `<Fragment key={id}>` when keyed |
+| Close every tag | `<img />`, `<br />`, `<input />` |
+| camelCase props | `className`, `htmlFor`, `onClick`, `tabIndex`, `strokeWidth` |
+| Dashed props stay dashed | `aria-label`, `data-id` |
+| `{}` takes expressions only | no `if`, `for`, `switch`; use ternaries, `&&`, `map`, or compute above the return |
+| `style` is an object | `style={{ marginTop: 8 }}`: camelCase keys, numbers mean `px` |
+| Nothing renders | `null`, `undefined`, `true`, `false` |
+| `0` renders | `{count && <Badge />}` shows `0`; write `{count > 0 && ...}` |
+| Text is escaped | raw HTML needs `dangerouslySetInnerHTML={{ __html }}` (sanitize first) |
+| Lowercase vs capitalised | `<div>` is a DOM tag, `<Div>` a component in scope |
+| `key` is not a prop | the child can't read it; pass the id again if needed |
+| Comments | `{/* like this */}` |
+| `value` without `onChange` | read-only input warning; use `defaultValue` for uncontrolled |
+| Custom elements | React 19 sets matching properties, not just attributes |
+| Components as values | `const Icon = icons[name]; return <Icon />;` (capitalised variable) |
+
+```tsx
+import { Fragment } from "react";
+
+interface Term { id: string; word: string; def: string }
+
+export function Glossary({ terms }: { terms: Term[] }) {
+  return (
+    <dl className="glossary" aria-label="Glossary">
+      {terms.map((t) => (
+        <Fragment key={t.id}>
+          <dt>{t.word}</dt>
+          <dd>{t.def}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+```
+
+## Lists, keys & conditional rendering
+
+| Key rule | Why |
+| :------- | :-- |
+| Unique among siblings, not globally | keys only disambiguate one `map` |
+| Stable across renders | from the data (`id`, slug), not `Math.random()` or `crypto.randomUUID()` in render |
+| Index keys only for static lists | reordering or inserting with index keys keeps the wrong state in the wrong row |
+| Put the key on the outermost element in `map` | the `Fragment` or component, not an inner `li` |
+| Changing a key remounts | `<Profile key={userId} />` resets all state inside |
+
+| Pattern | Use when |
+| :------ | :------- |
+| Early `return null` | the whole component renders nothing |
+| `cond ? <A /> : <B />` | two alternatives |
+| `cond && <A />` | one optional part; keep `cond` boolean |
+| Variable before `return` | several branches; `let body = ...; if (...) body = ...` |
+| Lookup object | many variants keyed by a string union |
+| `hidden` attribute or `<Activity>` | hide but keep DOM and state |
+
+```tsx
+type Status = "idle" | "loading" | "error" | "done";
+
+const labels: Record<Status, string> = {
+  idle: "Ready",
+  loading: "Loading...",
+  error: "Something broke",
+  done: "All set",
+};
+
+export function StatusLine({ status }: { status: Status }) {
+  if (status === "idle") return null;
+  return <p role="status">{labels[status]}</p>;
+}
+```
+
+Filter and sort before `map`: `items.filter(visible).toSorted(byName).map(...)`. Never sort the
+props array in place (`sort` mutates).
+
+## Composition
+
+| Technique | Shape | Use for |
+| :-------- | :---- | :------ |
+| `children` | `<Card>...</Card>` | wrappers, layouts, providers |
+| Slots | `header`, `footer` props of type `ReactNode` | several holes in one layout |
+| Render prop | `render={(item) => ...}` | the child needs data the parent owns |
+| Compound components | `<Tabs>`, `<Tabs.List>`, `<Tabs.Panel>` sharing context | flexible APIs without prop explosion |
+| Passing JSX down | `<Layout sidebar={<Nav />} />` | avoid prop drilling through middle layers |
+| Server in client | client component renders `children` from a Server Component | keep server work on the server |
+
+```tsx title="card.tsx"
+import type { ReactNode } from "react";
+
+interface CardProps {
+  header: ReactNode;
+  footer?: ReactNode;
+  children: ReactNode;
+}
+
+export function Card({
+  header,
+  footer,
+  children,
+}: CardProps) {
+  return (
+    <article className="card">
+      <header>{header}</header>
+      <div className="card-body">{children}</div>
+      {footer && <footer>{footer}</footer>}
+    </article>
+  );
+}
+```
+
+### Compound components
+
+```tsx title="tabs.tsx"
+import { createContext, use, useState } from "react";
+import type { ReactNode } from "react";
+
+type TabsCtx = { active: string; set: (id: string) => void };
+type Props = { id: string; children: ReactNode };
+const Ctx = createContext<TabsCtx | null>(null);
+
+function useTabs(): TabsCtx {
+  const ctx = use(Ctx);
+  if (!ctx) throw new Error("Tabs.* outside <Tabs>");
+  return ctx;
+}
+
+export function Tabs(p: {
+  initial: string;
+  children: ReactNode;
+}) {
+  const [active, set] = useState(p.initial);
+  return <Ctx value={{ active, set }}>{p.children}</Ctx>;
+}
+
+Tabs.Tab = function Tab(p: Props) {
+  const { active, set } = useTabs();
+  return (
+    <button
+      role="tab"
+      aria-selected={active === p.id}
+      onClick={() => set(p.id)}
+    >
+      {p.children}
+    </button>
+  );
+};
+
+Tabs.Panel = function Panel(p: Props) {
+  const { active } = useTabs();
+  if (active !== p.id) return null;
+  return <div role="tabpanel">{p.children}</div>;
+};
+```
+
+Render props, providers, HOCs and when to pick each are compared in
+[Design patterns: React component patterns](/typescript/design-architecture/design-patterns/#react-component-patterns).
+
+## State: placement, lifting & derivation
+
+| Question | Answer |
+| :------- | :----- |
+| Where does state live? | in the closest common parent of every component that reads it |
+| Two siblings need it | lift it to the parent; pass value and setter (or an `onX` callback) down |
+| Deeply shared | context, or an external store ([Zustand](/typescript/react/zustand/)) |
+| Server data | a cache ([TanStack Query](/typescript/react/tanstack-query/)) or Server Components, not `useState` |
+| URL-worthy (filters, tab, page) | the URL: search params survive reloads and sharing |
+| Reset when an input changes | give the component `key={input}` |
+| Many related fields | one object or `useReducer`, updated immutably |
+| Mutually exclusive flags | one `status` union instead of `isLoading` plus `isError` |
+
+### Don't store derived state
+
+Anything you can compute from props or state during render is **not** state. Storing it means
+keeping two copies in sync, and one will drift.
+
+```tsx
+import { useState } from "react";
+
+interface Item { id: string; name: string; done: boolean }
+
+export function TodoList({ items }: { items: Item[] }) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string>();
+
+  // derived: recomputed each render, never out of sync
+  const visible = items.filter((i) =>
+    i.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const remaining = items.filter((i) => !i.done).length;
+  // store the id, derive the object
+  const selected = items.find((i) => i.id === selectedId);
+
+  return (
+    <>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <p>{remaining} left, editing {selected?.name}</p>
+      <ul>
+        {visible.map((i) => (
+          <li key={i.id} onClick={() => setSelectedId(i.id)}>
+            {i.name}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+| Anti-pattern | Instead |
+| :----------- | :------ |
+| `useState(props.x)` then expecting it to follow `x` | it only initialises; read `props.x`, or reset with `key` |
+| `useEffect(() => setFull(a + b), [a, b])` | `const full = a + b` |
+| Copying a selected object into state | store its id, look it up |
+| Expensive derivation | the React Compiler memoizes it; without it, `useMemo` |
+| Mutating then `setState(sameRef)` | `Object.is` bails out; always produce a new object or array |
+
+## Effects: when you don't need one
+
+Effects synchronize a component with an **external system** (network, DOM APIs, timers,
+third-party widgets). If no external system is involved, you probably don't need one.
+
+| You want to | Do instead |
+| :---------- | :--------- |
+| Compute a value from props or state | compute it during render |
+| Cache an expensive computation | React Compiler, or `useMemo` |
+| Reset all state when a prop changes | `key` on the component |
+| Adjust part of state when a prop changes | compare with the previous value during render, or restructure |
+| Respond to a click or submit | put the logic in the event handler |
+| Notify the parent of a change | call `onChange` in the same handler that sets state |
+| Share logic between handlers | a plain function |
+| Fetch data | framework loader, Server Component, `use(promise)` or a query library |
+| Subscribe to an external store | `useSyncExternalStore` |
+| Run once per app load | module top level or a guarded `didInit` flag, not an effect |
+
+```tsx
+import { useEffect, useEffectEvent } from "react";
+
+declare function connect(room: string): {
+  on(ev: "message", cb: (text: string) => void): void;
+  close(): void;
+};
+declare function toast(text: string, muted: boolean): void;
+
+export function Room(p: { roomId: string; muted: boolean }) {
+  // reads latest `muted` without being a dependency
+  const onMessage = useEffectEvent((text: string) => {
+    toast(text, p.muted);
+  });
+
+  useEffect(() => {
+    const conn = connect(p.roomId);
+    conn.on("message", (t) => onMessage(t));
+    return () => conn.close(); // cleanup on change/unmount
+  }, [p.roomId]); // reconnects only when the room changes
+
+  return <h1>#{p.roomId}</h1>;
+}
+```
+
+Dependency rules, cleanup and pitfalls are in
+[React hooks: Effect dependencies](/typescript/react/react-hooks/#effect-dependencies--cleanup).
+
+## Context
+
+| Step | Code |
+| :--- | :--- |
+| Create | `const Ctx = createContext<T \| null>(null)` |
+| Provide | `<Ctx value={v}>...</Ctx>` (React 19; `.Provider` still works) |
+| Read | `use(Ctx)` (conditional allowed) or `useContext(Ctx)` |
+| Default | used only when there is no provider above |
+
+| Guideline | Why |
+| :-------- | :-- |
+| Try passing props or JSX first | context hides data flow |
+| Good fits | theme, locale, current user, router, compound components |
+| Keep the value stable | a fresh object each render re-renders every consumer |
+| Split fast- and slow-changing values | consumers of state don't re-render for dispatch-only users |
+| High-frequency shared state | an external store with selectors |
+
+```tsx title="cart-context.tsx"
+import { createContext, use, useReducer } from "react";
+import type { Dispatch, ReactNode } from "react";
+
+type Line = { sku: string; qty: number };
+type Action =
+  | { type: "add"; sku: string }
+  | { type: "clear" };
+
+function cart(lines: Line[], a: Action): Line[] {
+  if (a.type === "clear") return [];
+  const hit = lines.find((l) => l.sku === a.sku);
+  return hit
+    ? lines.map((l) =>
+        l === hit ? { ...l, qty: l.qty + 1 } : l,
+      )
+    : [...lines, { sku: a.sku, qty: 1 }];
+}
+
+const LinesCtx = createContext<Line[]>([]);
+const DispatchCtx = createContext<Dispatch<Action>>(
+  () => {},
+);
+
+export function CartProvider(p: { children: ReactNode }) {
+  const [lines, dispatch] = useReducer(cart, []);
+  return (
+    <LinesCtx value={lines}>
+      <DispatchCtx value={dispatch}>
+        {p.children}
+      </DispatchCtx>
+    </LinesCtx>
+  );
+}
+
+export const useCartLines = () => use(LinesCtx);
+export const useCartDispatch = () => use(DispatchCtx);
+```
+
+`dispatch` never changes identity, so an "Add to cart" button that only uses
+`useCartDispatch()` does not re-render when the lines change.
+
+## Refs & the DOM
+
+| Use a ref for | Not for |
+| :------------ | :------ |
+| DOM nodes: focus, scroll, measure, media playback | anything shown on screen (use state) |
+| Timer and interval ids, `AbortController`s | values read during render |
+| Instances of non-React widgets | data the next render depends on |
+
+| Rule | Detail |
+| :--- | :----- |
+| Don't read or write `ref.current` in render | except lazy init: `if (ref.current === null) ref.current = make()` |
+| Changing a ref never re-renders | it's a mutable box |
+| `ref` is a prop in React 19 | function components take `ref` directly; `forwardRef` is legacy |
+| Callback refs can return cleanup | `ref={(el) => { ...; return () => ... }}` |
+| Refs are `null` until commit | touch them in effects and handlers |
+| Expose a smaller API | `useImperativeHandle(ref, () => ({ focus }))` |
+
+```tsx
+import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
+
+type Msg = { id: string; text: string };
+
+export function Chat() {
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const endRef = useRef<HTMLLIElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function send(text: string) {
+    const msg = { id: crypto.randomUUID(), text };
+    flushSync(() => setMsgs((m) => [...m, msg]));
+    // DOM already updated: the new row exists
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    inputRef.current?.focus();
+  }
+
+  return (
+    <>
+      <ul>
+        {msgs.map((m) => <li key={m.id}>{m.text}</li>)}
+        <li ref={endRef} aria-hidden />
+      </ul>
+      <input
+        ref={inputRef}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") send(e.currentTarget.value);
+        }}
+      />
+    </>
+  );
+}
+```
+
+Ref typing (`RefObject`, `Ref<T>` props, `useImperativeHandle`) is in
+[TypeScript & React: Refs](/typescript/react/typescript-react/#refs-in-react-19).
+
+## Forms & actions
+
+An **action** is a function (sync or async) passed to `action`/`formAction` or run inside
+`startTransition`. React tracks its pending state, batches its updates and surfaces its errors
+to the nearest error boundary.
+
+| API | From | What it gives you |
+| :-- | :--- | :---------------- |
+| `<form action={fn}>` | `react-dom` | calls `fn(formData)` in a transition; resets uncontrolled fields on success |
+| `<button formAction={fn}>` | `react-dom` | a different action per submit button |
+| `useActionState(fn, init)` | `react` | `[state, dispatch, isPending]`; `fn(prev, payload)` returns the next state |
+| `useFormStatus()` | `react-dom` | `{ pending, data, method, action }` of the parent `<form>` |
+| `useOptimistic(value, reducer?)` | `react` | temporary state shown while an action runs, reverts when it settles |
+| `requestFormReset(form)` | `react-dom` | reset a form from inside a transition |
+| `startTransition(async () => ...)` | `react` | run an action outside a form |
+
+| Input style | How | Pick when |
+| :---------- | :-- | :-------- |
+| Uncontrolled | `name` + `defaultValue`, read `FormData` on submit | most forms; works with actions and progressive enhancement |
+| Controlled | `value` + `onChange` with state | live validation, formatting, dependent fields |
+
+```tsx title="todo-row.tsx"
+"use client";
+import { useOptimistic, startTransition } from "react";
+
+declare function saveDone(id: string, done: boolean):
+  Promise<void>;
+declare function remove(id: string): Promise<void>;
+
+interface Todo { id: string; title: string; done: boolean }
+
+export function TodoRow({ todo }: { todo: Todo }) {
+  const [done, setDone] = useOptimistic(todo.done);
+
+  function toggle() {
+    startTransition(async () => {
+      setDone(!done); // shows at once, reverts on failure
+      await saveDone(todo.id, !done);
+    });
+  }
+
+  return (
+    <form action={() => remove(todo.id)}>
+      <label>
+        <input type="checkbox" checked={done}
+          onChange={toggle} />
+        {todo.title}
+      </label>
+      <button>Delete</button>
+    </form>
+  );
+}
+```
+
+The typed `useActionState` + `useFormStatus` + server action example is in
+[TypeScript & React: Forms & actions](/typescript/react/typescript-react/#forms--actions); plain
+DOM validation is in [Forms](/typescript/frontend/forms/).
+
+## Suspense, lazy & error boundaries
+
+| API | Does |
+| :-- | :--- |
+| `<Suspense fallback={...}>` | shows the fallback while anything inside suspends |
+| `lazy(() => import("./X"))` | code-split component; the module must default-export it |
+| `use(promise)` | suspends until the promise resolves; the promise must be cached or come from a Server Component |
+| Suspense-enabled data | framework loaders, TanStack Query `useSuspenseQuery`, RSC `await` |
+| Nested boundaries | reveal outer content first, inner parts stream in later |
+| Transitions | keep already-shown content instead of flashing a fallback |
+| Error boundary | class with `getDerivedStateFromError`; catches render and lifecycle errors below it |
+| Not caught by boundaries | event handlers, async code outside render, the boundary itself |
+
+```tsx
+import { Component, lazy, Suspense } from "react";
+import type { ErrorInfo, ReactNode } from "react";
+
+declare function report(e: unknown, stack?: string): void;
+
+const Chart = lazy(() => import("./chart"));
+
+interface EBProps {
+  fallback: ReactNode;
+  children: ReactNode;
+}
+
+export class ErrorBoundary extends Component<
+  EBProps,
+  { error: Error | null }
+> {
+  override state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  override componentDidCatch(e: Error, info: ErrorInfo) {
+    report(e, info.componentStack ?? undefined);
+  }
+  override render() {
+    return this.state.error
+      ? this.props.fallback
+      : this.props.children;
+  }
+}
+
+export function Dashboard() {
+  return (
+    <ErrorBoundary fallback={<p>Chart failed.</p>}>
+      <Suspense fallback={<p>Loading chart...</p>}>
+        <Chart />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+```
+
+Most apps use the `react-error-boundary` package (`<ErrorBoundary FallbackComponent>`,
+`resetKeys`) instead of hand-rolling the class. Report errors globally with the root options
+`onCaughtError`, `onUncaughtError` and `onRecoverableError` (see
+[React DOM APIs](#react-dom-apis)).
+
+## Transitions, deferred values & `<Activity>`
+
+| API | Marks | Use for |
+| :-- | :---- | :------ |
+| `useTransition()` | `[isPending, startTransition]` | non-urgent updates you trigger: tab switch, filter, navigation |
+| `startTransition(fn)` | same, no pending flag | outside components, or when you don't need `isPending` |
+| `useDeferredValue(v, initial?)` | a lagging copy of `v` | expensive UI driven by a fast-changing value you receive |
+| `<Activity mode="hidden">` | hides children, keeps state and DOM | tabs, back navigation, pre-rendering likely next screens |
+
+- Urgent updates (typing, clicking) interrupt a transition's render, so the UI stays responsive.
+- A transition never shows an already-visible Suspense fallback again; it keeps the old UI.
+- Controlled inputs can't be transitions; keep the input urgent and defer the result.
+- State set after an `await` inside `startTransition` needs another `startTransition` (until
+  `AsyncContext` lands).
+
+```tsx
+import { Activity, useState, useTransition } from "react";
+import type { ReactNode } from "react";
+
+declare function Posts(): ReactNode; // slow
+declare function Settings(): ReactNode;
+
+type Tab = "posts" | "settings";
+const mode = (on: boolean) => (on ? "visible" : "hidden");
+
+export function App() {
+  const [tab, setTab] = useState<Tab>("posts");
+  const [isPending, startTransition] = useTransition();
+  const go = (t: Tab) => startTransition(() => setTab(t));
+
+  return (
+    <>
+      <nav aria-busy={isPending}>
+        <button onClick={() => go("posts")}>Posts</button>
+        <button onClick={() => go("settings")}>
+          Settings
+        </button>
+      </nav>
+      <Activity mode={mode(tab === "posts")}>
+        <Posts />
+      </Activity>
+      <Activity mode={mode(tab === "settings")}>
+        <Settings />
+      </Activity>
+    </>
+  );
+}
+```
+
+| `<Activity>` hidden | Behaviour |
+| :------------------ | :-------- |
+| DOM | kept, hidden with `display: none` |
+| State | kept |
+| Effects | cleaned up; re-created when visible again |
+| Updates | children still re-render for new props, at low priority |
+| Media, iframes | keep playing: pause them in a layout-effect cleanup |
+
+<Note kind="info">React 19.3 (September 2026) adds `<ViewTransition>` and `addTransitionType`
+for animating transitions, `ref` on `<Fragment>`, and `browser()` from `react-dom` for
+client-only rendering. This sheet targets 19.2.</Note>
+
+## Server & Client Components
+
+| Kind | Marked by | Runs | Can |
+| :--- | :-------- | :--- | :-- |
+| Server Component | default in an RSC framework | server (build or request) | be `async`, read DB and secrets, `await` data; no state, effects or handlers |
+| Client Component | module starts with `"use client"` | server (SSR) and browser | state, effects, event handlers, browser APIs |
+| Server Function | `"use server"` in a module or function body | server, called over the network from the client | mutations; used as form actions |
+
+| Rule | Detail |
+| :--- | :----- |
+| `"use client"` marks a boundary | that module and everything it imports ship to the browser |
+| Client can't import server | pass Server Components as `children` or other JSX props |
+| Props across the boundary | serializable only; functions only if they are Server Functions |
+| `"use server"` is not "server component" | it exposes a callable endpoint: validate input, check auth |
+| Keep secrets out | `import "server-only"` makes a client import fail at build |
+| Dedupe per request | wrap data loaders in `cache()` from `react` |
+
+```tsx title="app/notes/page.tsx"
+import { NewNote } from "./new-note";
+
+type Note = { id: string; text: string };
+declare const db: { notes(): Promise<Note[]> };
+
+// Server Component: async, no directive
+export default async function NotesPage() {
+  const notes = await db.notes();
+  return (
+    <main>
+      <NewNote />
+      <ul>
+        {notes.map((n) => <li key={n.id}>{n.text}</li>)}
+      </ul>
+    </main>
+  );
+}
+```
+
+```tsx title="app/notes/new-note.tsx"
+"use client";
+import { useActionState } from "react";
+import { addNote } from "./actions"; // "use server" module
+
+export function NewNote() {
+  const [error, action, pending] = useActionState(
+    addNote,
+    null,
+  );
+  return (
+    <form action={action}>
+      <input name="text" required disabled={pending} />
+      {error && <p role="alert">{error}</p>}
+    </form>
+  );
+}
+```
+
+```ts title="app/notes/actions.ts"
+"use server";
+import { z } from "zod";
+
+declare const db: { insert(text: string): Promise<void> };
+
+const Note = z.string().trim().min(1).max(500);
+
+export async function addNote(
+  _prev: string | null,
+  form: FormData,
+): Promise<string | null> {
+  const text = Note.safeParse(form.get("text"));
+  if (!text.success) return "Note must be 1-500 chars";
+  await db.insert(text.data);
+  return null;
+}
+```
+
+Routing, caching and revalidation are framework concerns: see [Next.js](/typescript/react/next-js/).
+
+## React Compiler & performance
+
+React Compiler 1.0 is a build-time Babel plugin that memoizes components, hooks, JSX and
+derived values automatically, so most `useMemo`, `useCallback` and `memo` calls become
+unnecessary. It relies on your code following the Rules of React (pure render, no mutation of
+props or state).
+
+<Tabs items={["Next.js", "Vite"]} persist="react-compiler">
+  <Tab>
+
+    ```sh
+    bun add -d babel-plugin-react-compiler
+    ```
+
+    ```ts title="next.config.ts"
+    import type { NextConfig } from "next";
+
+    const nextConfig: NextConfig = {
+      reactCompiler: true,
+      // opt-in only: { compilationMode: "annotation" }
+    };
+
+    export default nextConfig;
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```sh
+    bun add -d babel-plugin-react-compiler @babel/core \
+      @rolldown/plugin-babel
+    ```
+
+    ```ts title="vite.config.ts"
+    import { defineConfig } from "vite";
+    import react, {
+      reactCompilerPreset,
+    } from "@vitejs/plugin-react"; // v6
+    import babel from "@rolldown/plugin-babel";
+
+    export default defineConfig({
+      plugins: [
+        react(),
+        babel({ presets: [reactCompilerPreset()] }),
+      ],
+    });
+    ```
+
+    With a plain Babel config, `babel-plugin-react-compiler` must be the **first** plugin.
+
+  </Tab>
+</Tabs>
+
+| Directive / tool | Effect |
+| :--------------- | :----- |
+| `"use no memo"` | first line of a component or hook: skip compiling it (temporary escape hatch) |
+| `compilationMode: "annotation"` | opt-in mode: only functions with `"use memo"` are compiled |
+| `eslint-plugin-react-hooks` `recommended` | compiler-powered lint rules; fix these before enabling |
+| DevTools "Memo ✨" badge | shows which components the compiler optimized |
+
+| Technique | When |
+| :-------- | :--- |
+| Measure first | React DevTools Profiler, Chrome Performance panel (React 19.2 adds Scheduler and Components tracks) |
+| Stable keys | avoids remounting rows and losing their state |
+| Move state down | only the part that changes re-renders |
+| Lift content up | pass expensive subtrees as `children` so they don't re-render with the wrapper's state |
+| `memo(Component)` | without the compiler, when props are usually equal and render is costly |
+| `useMemo` / `useCallback` | without the compiler: costly derivations, props for `memo` children, effect deps |
+| `lazy` + `Suspense` | split rarely used routes, dialogs and heavy widgets |
+| Transitions / `useDeferredValue` | keep typing responsive while heavy UI updates |
+| Virtualize long lists | render only visible rows (TanStack Virtual) |
+| `<Activity>` | pre-render the next likely screen while idle |
+
+```tsx
+import { Profiler, type ReactNode } from "react";
+import type { ProfilerOnRenderCallback } from "react";
+
+declare function Feed(): ReactNode;
+
+const onRender: ProfilerOnRenderCallback = (
+  id,
+  phase, // "mount" | "update" | "nested-update"
+  actualMs, // time spent rendering this commit
+  baseMs, // estimate without memoization
+) => {
+  if (actualMs > 16) {
+    console.warn(`${id} ${phase}: ${actualMs.toFixed(1)}ms`);
+  }
+};
+
+export const App = () => (
+  <Profiler id="feed" onRender={onRender}>
+    <Feed />
+  </Profiler>
+);
+```
+
+`<Profiler>` is disabled in production builds unless you use the profiling build of `react-dom`.
+
+## React DOM APIs
+
+| API | Import | Does |
+| :-- | :----- | :--- |
+| `createRoot(el, opts?)` | `react-dom/client` | client-only root; `root.render(jsx)`, `root.unmount()` |
+| `hydrateRoot(el, jsx, opts?)` | `react-dom/client` | attach to server-rendered HTML |
+| `createPortal(jsx, node, key?)` | `react-dom` | render into another DOM node; events still bubble through the React tree |
+| `flushSync(fn)` | `react-dom` | apply the updates in `fn` to the DOM synchronously (rare; hurts performance) |
+| `requestFormReset(form)` | `react-dom` | reset a form inside a transition |
+| `preconnect(href)` | `react-dom` | open a connection to an origin early |
+| `prefetchDNS(href)` | `react-dom` | DNS lookup only |
+| `preload(href, { as })` | `react-dom` | fetch a font, image, style or script without running it |
+| `preloadModule(href)` | `react-dom` | same for an ES module |
+| `preinit(href, { as })` | `react-dom` | fetch **and** run a script or insert a stylesheet |
+| `preinitModule(href)` | `react-dom` | fetch and evaluate an ES module |
+| `renderToReadableStream` / `renderToPipeableStream` | `react-dom/server` | streaming SSR (Web / Node streams) |
+| `prerender` / `resume` | `react-dom/static`, `react-dom/server` | static prerender with postponed holes (19.2) |
+
+```tsx title="main.tsx"
+import { StrictMode, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
+
+declare function App(): ReactNode;
+declare function report(e: unknown, stack?: string): void;
+
+const el = document.getElementById("root");
+if (!el) throw new Error("#root missing");
+
+type Info = { componentStack?: string };
+const onError = (e: unknown, info: Info) =>
+  report(e, info.componentStack);
+
+createRoot(el, {
+  onCaughtError: onError,
+  onUncaughtError: onError,
+  onRecoverableError: onError,
+}).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+```
+
+```tsx title="modal.tsx"
+import { createPortal } from "react-dom";
+import { preload, preconnect } from "react-dom";
+import type { ReactNode } from "react";
+
+export function Modal(p: {
+  open: boolean;
+  children: ReactNode;
+}) {
+  if (!p.open) return null;
+  return createPortal(
+    <div role="dialog" aria-modal className="modal">
+      {p.children}
+    </div>,
+    document.body,
+  );
+}
+
+export function Hero() {
+  // hints are deduped and hoisted into <head>
+  preconnect("https://cdn.example.com");
+  preload("/fonts/inter.woff2", {
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  });
+  return <img src="https://cdn.example.com/a.avif" alt="" />;
+}
+```
+
+React 19 also hoists `<title>`, `<meta>` and `<link>` rendered anywhere into `<head>`, and orders
+`<link rel="stylesheet" precedence="default">` and `<script async>` with deduplication.
+
+## Project layout
+
+Group by **feature**, not by file type. Each feature exposes a small public surface through its
+`index.ts`; shared primitives live in `components/ui`.
+
+```tree title="Vite + React feature folders"
+src/
+  app/
+    main.tsx    # createRoot, providers, router
+    routes.tsx
+  components/
+    ui/         # Button, Dialog, Input: no app logic
+      button.tsx
+      dialog.tsx
+  features/
+    cart/
+      components/
+        cart-drawer.tsx
+        cart-line.tsx
+      hooks/
+        use-cart.ts
+        use-cart.test.ts
+      api.ts    # fetchers, Zod schemas
+      store.ts  # reducer or Zustand slice
+      types.ts
+      index.ts  # public exports only
+    checkout/
+      ...
+  hooks/        # shared hooks: use-media-query.ts
+  lib/          # framework-free helpers
+  styles/
+    globals.css
+```
+
+| Convention | Why |
+| :--------- | :-- |
+| kebab-case files, PascalCase components | case-insensitive file systems, grep-friendly |
+| One exported component per file, small helpers alongside | easy to find, easy to split |
+| Tests next to the code (`*.test.tsx`) | moved and deleted together |
+| Import features via `@/features/cart` | the `index.ts` is the only contract |
+| No imports between sibling features' internals | keeps features deletable |
+
+## References
+
+- [react.dev: Reference overview](https://react.dev/reference/react)
+- [react.dev: React 19.2 release](https://react.dev/blog/2025/10/01/react-19-2)
+- [react.dev: React 19.3 release](https://react.dev/blog/2026/09/09/react-19-3)
+- [react.dev: Thinking in React](https://react.dev/learn/thinking-in-react)
+- [react.dev: You might not need an effect](https://react.dev/learn/you-might-not-need-an-effect)
+- [react.dev: Choosing the state structure](https://react.dev/learn/choosing-the-state-structure)
+- [react.dev: Rules of React](https://react.dev/reference/rules)
+- [react.dev: `<Activity>`](https://react.dev/reference/react/Activity), [`<Suspense>`](https://react.dev/reference/react/Suspense), [`lazy`](https://react.dev/reference/react/lazy)
+- [react.dev: Server Components](https://react.dev/reference/rsc/server-components), [`"use client"`](https://react.dev/reference/rsc/use-client), [`"use server"`](https://react.dev/reference/rsc/use-server)
+- [react.dev: React Compiler](https://react.dev/learn/react-compiler/introduction)
+- [react.dev: React DOM APIs](https://react.dev/reference/react-dom), [resource preloading](https://react.dev/reference/react-dom#resource-preloading-apis)
+- [MDN: `<form>` element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form)
+- [react-error-boundary](https://github.com/bvaughn/react-error-boundary)

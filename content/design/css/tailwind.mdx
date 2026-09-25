@@ -1,0 +1,617 @@
+---
+title: Tailwind CSS
+date: 2026-09-25
+order: 2
+---
+
+Tailwind CSS v4.3 (4.3.3, July 2026): setup, CSS-first configuration, the utility and variant
+vocabulary, migrating from v3, and component patterns. The CSS behind the utilities is in
+[CSS](/design/css/css/), motion in [Animation](/design/css/animation/).
+
+## Install
+
+v4 targets Safari 16.4+, Chrome 111+ and Firefox 128+ (stay on v3.4 for older browsers). There
+is no `tailwind.config.js` and no `content` array: one CSS import and automatic source
+detection.
+
+| Setup | Packages | Wire-up |
+| :---- | :------- | :------ |
+| Vite | `tailwindcss @tailwindcss/vite` | `plugins: [tailwindcss()]` in `vite.config.ts` |
+| Next.js / PostCSS | `tailwindcss @tailwindcss/postcss postcss` | `postcss.config.mjs` |
+| webpack (v4.2+) | `tailwindcss @tailwindcss/webpack` | loader after `css-loader` |
+| CLI | `tailwindcss @tailwindcss/cli` | `bunx @tailwindcss/cli -i in.css -o out.css --watch` |
+| Bun full-stack | `tailwindcss bun-plugin-tailwind` | `bunfig.toml` `[serve.static]` plugins |
+
+```sh
+bun add tailwindcss @tailwindcss/postcss postcss   # Next.js
+bun add -d tailwindcss @tailwindcss/vite           # Vite
+```
+
+```js title="postcss.config.mjs"
+const config = {
+  plugins: { "@tailwindcss/postcss": {} },
+};
+export default config;
+```
+
+```ts title="vite.config.ts"
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+});
+```
+
+```toml title="bunfig.toml (Bun.serve with HTML imports)"
+[serve.static]
+plugins = ["bun-plugin-tailwind"]
+```
+
+```css title="app/globals.css"
+@import "tailwindcss";
+```
+
+For `Bun.build`, pass the same plugin: `plugins: [tailwind]` with
+`import tailwind from "bun-plugin-tailwind"`. The Vite plugin is faster than PostCSS, and
+Tailwind measured the webpack loader at about twice the speed of PostCSS in a large Next.js app.
+
+## CSS-first config
+
+| Directive | Does |
+| :-------- | :--- |
+| `@import "tailwindcss";` | theme, preflight and utilities, each in its own cascade layer |
+| `@import "tailwindcss" prefix(tw);` | classes become `tw:flex`, variables `--tw-*` |
+| `@import "tailwindcss" important;` | every utility gets `!important` |
+| `@theme { --color-brand: ...; }` | design tokens: create utilities and CSS variables |
+| `@theme inline { ... }` | utilities inline the value, so `var()` references resolve where used |
+| `@theme static { ... }` | emit every variable, even the unused ones |
+| `@source "../packages/ui";` | scan an extra path (git-ignored files and `node_modules` are skipped) |
+| `@source not "./legacy";` | exclude a path |
+| `@source inline("underline bg-red-{50,{100..900..100}}")` | safelist classes (space-separated, brace expansion) |
+| `@import "tailwindcss" source(none);` | turn off auto-detection and list sources yourself |
+| `@utility name { ... }` | a custom utility that works with every variant |
+| `@variant dark { ... }` | apply a variant inside your own CSS; `@variant hover, focus` and `@variant hover:focus` since v4.3 |
+| `@custom-variant name (selector);` | a new variant; the block form uses `@slot` |
+| `@apply flex gap-2;` | inline utilities into a rule |
+| `@reference "../app.css";` | import theme and utilities for `@apply` without emitting CSS (CSS modules, Vue, Svelte) |
+| `@plugin "@tailwindcss/typography";` | load a JS plugin |
+| `@config "./tailwind.config.js";` | load a legacy v3 config (no `corePlugins`, `safelist` or `separator`) |
+| `--spacing(4)` | theme spacing in CSS: `calc(var(--spacing) * 4)` |
+| `--alpha(var(--color-x) / 50%)` | colour with opacity via `color-mix` |
+
+```css
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@source "../../packages/ui/src";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Satoshi", sans-serif;
+  --color-brand-500: oklch(0.62 0.19 255);
+  --breakpoint-3xl: 120rem;
+}
+
+@layer components {
+  .prose-tight { @apply prose prose-sm max-w-none; }
+}
+```
+
+Plain CSS still works: put element defaults in `@layer base` and class-based components in
+`@layer components`, so utilities can override them.
+
+## Theme variables
+
+Each `@theme` variable creates utilities from its namespace **and** a `:root` CSS variable
+you can use anywhere with `var()`.
+
+| Namespace | Generates | Example |
+| :-------- | :-------- | :------ |
+| `--color-*` | `bg-*`, `text-*`, `border-*`, `fill-*`, `ring-*`, … | `--color-brand-500` gives `bg-brand-500` |
+| `--font-*` | `font-*` family | `--font-display` |
+| `--text-*` | `text-*` size (plus `--text-*--line-height`) | `--text-huge: 5rem` |
+| `--font-weight-*` | `font-*` weight | `--font-weight-heavy: 850` |
+| `--tracking-*` / `--leading-*` | letter spacing / line height | `--leading-snug: 1.3` |
+| `--spacing` | the base unit; every `p-*`, `m-*`, `w-*`, `gap-*` value is a multiple | `--spacing: 0.25rem` |
+| `--spacing-*` | named spacing values | `--spacing-gutter: 1.5rem` gives `p-gutter` |
+| `--breakpoint-*` | responsive variants | `--breakpoint-xs: 30rem` gives `xs:` |
+| `--container-*` | `@sm:` container variants and `max-w-*` | `--container-prose: 65ch` |
+| `--radius-*` | `rounded-*` | `--radius-card: 1rem` |
+| `--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`, `--text-shadow-*` | shadows | `--shadow-glow: 0 0 1rem ...` |
+| `--blur-*` | `blur-*`, `backdrop-blur-*` | |
+| `--perspective-*`, `--aspect-*`, `--zoom-*`, `--tab-size-*` | 3D, aspect, zoom, tab size | `--aspect-cinema: 21 / 9` |
+| `--ease-*` | `ease-*` | `--ease-snappy: cubic-bezier(.2,0,0,1)` |
+| `--animate-*` | `animate-*` (put `@keyframes` inside `@theme`) | `--animate-fade: fade 0.2s` |
+
+```css
+@theme {
+  --color-*: initial;          /* drop the default palette */
+  --color-ink: oklch(0.2 0.02 260);
+  --color-paper: oklch(0.99 0 0);
+}
+
+@theme {
+  --*: initial;          /* start from an empty theme */
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);  /* from next/font */
+}
+```
+
+```ts
+// read a token at runtime
+const brand = getComputedStyle(document.documentElement)
+  .getPropertyValue("--color-brand-500");
+```
+
+Default colours are `oklch()` values in 26 palettes (v4.2 added `mauve`, `olive`, `mist`
+and `taupe`), each with shades from 50 to 950.
+
+## Layout utilities
+
+| Area | Utilities |
+| :--- | :-------- |
+| Display | `block`, `inline-block`, `flex`, `inline-flex`, `grid`, `contents`, `hidden`, `sr-only`, `flow-root` |
+| Position | `static`, `relative`, `absolute`, `fixed`, `sticky`, `inset-0`, `top-4`, `inset-s-0`, `inset-e-4` (v4.2 logical), `z-10`, `isolate` |
+| Overflow | `overflow-hidden`, `overflow-x-auto`, `overflow-clip`, `overscroll-contain` |
+| Container | `container` (`width: 100%` plus a `max-width` per breakpoint; centre with `mx-auto`) |
+| Box | `box-border`, `aspect-video`, `aspect-square`, `aspect-3/2`, `object-cover`, `columns-3` |
+| Flex | `flex-row`, `flex-col`, `flex-wrap`, `flex-1`, `flex-auto`, `flex-none`, `grow`, `shrink-0`, `basis-1/3`, `order-first` |
+| Grid | `grid-cols-3`, `grid-cols-subgrid`, `col-span-2`, `col-span-full`, `col-start-2`, `grid-rows-[auto_1fr_auto]`, `grid-flow-dense`, `auto-rows-fr` |
+| Gap | `gap-4`, `gap-x-2`, `space-y-4` (prefer `gap`), `divide-y` |
+| Align | `justify-between`, `justify-center-safe`, `items-center`, `items-baseline-last`, `content-start`, `self-end`, `place-items-center`, `place-content-center` |
+| Scroll | `snap-x`, `snap-mandatory`, `snap-center`, `scroll-mt-16`, `scroll-smooth`, `scrollbar-thin`, `scrollbar-gutter-stable` (v4.3) |
+
+| Spacing & sizing | Note |
+| :--------------- | :--- |
+| `p-4`, `px-2`, `py-1`, `ps-3`, `pe-3` | any integer works: `p-13` is `calc(var(--spacing) * 13)` |
+| `pbs-4`, `pbe-4`, `mbs-2`, `mbe-2` | logical block start and end (v4.2) |
+| `m-auto`, `mx-auto`, `-mt-2` | a leading `-` negates |
+| `w-64`, `w-1/2`, `w-full`, `w-screen`, `w-fit` | fractions are percentages |
+| `size-10` | width and height together |
+| `h-dvh`, `min-h-svh`, `h-lvh` | dynamic viewport units |
+| `max-w-prose`, `max-w-md`, `max-w-screen-lg` | `max-w-md` comes from `--container-md` |
+| `inline-full`, `block-64`, `max-inline-lg` | logical sizing (v4.2) |
+
+## Style utilities
+
+| Typography | Note |
+| :--------- | :--- |
+| `text-sm`, `text-base`, `text-xl/7` | size, with an optional `/` line height |
+| `font-sans`, `font-mono`, `font-medium`, `font-bold` | family and weight |
+| `leading-tight`, `tracking-wide` | line height, letter spacing |
+| `text-balance`, `text-pretty`, `text-wrap`, `text-nowrap` | `text-wrap` values |
+| `truncate`, `line-clamp-3`, `text-ellipsis` | overflow |
+| `wrap-break-word`, `wrap-anywhere`, `break-all` | long words and URLs |
+| `tabular-nums`, `font-features-["ss01"]` | numerals; `font-features-*` since v4.2 |
+| `underline`, `decoration-wavy`, `underline-offset-4` | decoration |
+| `text-shadow-sm`, `text-shadow-lg`, `text-shadow-black/50` | text shadows (v4.1) |
+| `uppercase`, `italic`, `antialiased`, `whitespace-pre-wrap`, `tab-4` | misc; `tab-*` since v4.3 |
+
+| Colour | Note |
+| :----- | :--- |
+| `bg-sky-500`, `text-gray-950`, `border-red-200` | palette colours |
+| `bg-sky-500/50`, `text-black/[.35]`, `bg-brand/(--alpha)` | opacity modifier (via `color-mix`) |
+| `bg-(--brand)`, `text-[#bada55]` | a CSS variable / an arbitrary colour |
+| `bg-linear-to-r from-red-500 via-50% to-blue-500` | gradients: `bg-linear-*`, `bg-radial`, `bg-conic` |
+| `bg-linear-45`, `bg-linear-to-r/oklch` | gradient angle and interpolation space |
+| `fill-current`, `stroke-2`, `caret-pink-500`, `accent-brand-500` | SVG and form parts |
+| `scheme-dark`, `scheme-light-dark` | `color-scheme` |
+| `scrollbar-thumb-sky-700`, `scrollbar-track-sky-100` | scrollbar colours (v4.3) |
+
+| Borders & effects | Note |
+| :---------------- | :--- |
+| `border`, `border-2`, `border-t`, `border-bs` | width (default colour is `currentColor`) |
+| `rounded-xs` … `rounded-4xl`, `rounded-full`, `rounded-s-lg` | radius |
+| `ring-2 ring-brand-500 ring-offset-2`, `inset-ring` | box-shadow rings (default width is 1px) |
+| `outline-2 outline-offset-2`, `outline-hidden` | outlines; `outline-hidden` keeps one in forced-colours mode |
+| `shadow-xs` … `shadow-2xl`, `inset-shadow-sm`, `shadow-brand-500/20` | shadows, coloured shadows |
+| `opacity-50`, `mix-blend-multiply`, `blur-sm`, `backdrop-blur-md` | filters |
+| `drop-shadow-lg`, `drop-shadow-red-500/50` | drop shadow, now with colour (v4.1) |
+| `mask-b-from-50%`, `mask-radial-from-40%` | masks (v4.1) |
+| `rotate-45`, `scale-95`, `translate-x-2`, `-translate-y-1/2` | individual transform properties |
+| `rotate-x-12`, `perspective-near`, `transform-3d`, `backface-hidden` | 3D transforms |
+
+| Transitions & animation | Note |
+| :---------------------- | :--- |
+| `transition`, `transition-colors`, `transition-opacity`, `transition-transform` | property sets |
+| `transition-[height,opacity]` | arbitrary list |
+| `transition-discrete` | `transition-behavior: allow-discrete`, for `display` and `hidden` |
+| `duration-200`, `delay-100`, `ease-out`, `ease-in-out`, `ease-(--my-ease)` | timing |
+| `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` | built-in keyframes |
+| `motion-safe:animate-bounce`, `motion-reduce:transition-none` | reduced-motion gates |
+| `will-change-transform` | layer promotion |
+
+## Variants
+
+Variants stack **left to right**, like selectors read: `dark:md:hover:bg-x`.
+
+| Variant | Applies when |
+| :------ | :----------- |
+| `hover:` | hovered, only on devices that can hover (`@media (hover: hover)`) |
+| `focus:`, `focus-visible:`, `focus-within:` | focus states |
+| `active:`, `visited:`, `target:` | |
+| `disabled:`, `checked:`, `indeterminate:`, `required:`, `read-only:` | form states |
+| `invalid:`, `user-invalid:`, `user-valid:` | validation; `user-*` waits for interaction (v4.1) |
+| `placeholder-shown:`, `autofill:`, `open:` | `open:` covers `details`, `dialog` and popovers |
+| `first:`, `last:`, `odd:`, `even:`, `only:`, `nth-3:`, `nth-[2n+1]:` | structural |
+| `*:`, `**:` | direct children / all descendants |
+| `before:`, `after:`, `placeholder:`, `file:`, `marker:`, `selection:`, `backdrop:`, `details-content:` | pseudo-elements |
+| `group-hover:`, `group-focus/name:` | an ancestor marked `group` or `group/name` |
+| `peer-checked:`, `peer-invalid/email:` | a previous sibling marked `peer` |
+| `in-focus:` | any ancestor matches, without needing `group` |
+| `has-checked:`, `has-[img]:`, `group-has-checked:` | `:has()` |
+| `not-hover:`, `not-first:`, `not-supports-[display:grid]:` | negate any variant |
+| `data-open:`, `data-[state=open]:`, `data-[size=lg]:` | data attributes |
+| `aria-expanded:`, `aria-[sort=ascending]:` | ARIA state |
+| `supports-[display:grid]:`, `supports-backdrop-filter:` | `@supports` |
+| `starting:` | `@starting-style` (entry transitions) |
+| `inert:`, `noscript:`, `print:`, `portrait:`, `rtl:`, `ltr:` | misc |
+| `pointer-fine:`, `pointer-coarse:`, `any-pointer-coarse:` | input type (v4.1) |
+| `motion-safe:`, `motion-reduce:`, `contrast-more:`, `forced-colors:`, `inverted-colors:` | user preferences |
+| `dark:` | `prefers-color-scheme: dark` unless you override it |
+| `[&.is-active]:`, `[&>svg]:size-4` | arbitrary selector variant |
+
+### Responsive and container queries
+
+| Variant | Means |
+| :------ | :---- |
+| `sm:` `md:` `lg:` `xl:` `2xl:` | `width >= 40rem`, `48rem`, `64rem`, `80rem`, `96rem` (mobile first) |
+| `max-md:` | `width < 48rem` |
+| `md:max-xl:` | a range |
+| `min-[900px]:`, `max-[600px]:` | one-off breakpoints |
+| `@container`, `@container/card` | make a container (`inline-size`); named |
+| `@container-size` | a `size` container, for `cqb`/`cqh` (v4.3) |
+| `@3xs:` … `@7xl:` | container width `>= --container-*` (`@sm` is 24rem, `@7xl` 80rem) |
+| `@max-md:`, `@min-[30rem]:` | max-width / arbitrary container queries |
+| `@lg/card:` | query the named container |
+
+### Dark mode strategies
+
+| Strategy | Setup |
+| :------- | :---- |
+| OS preference (default) | nothing: `dark:` uses `prefers-color-scheme` |
+| Class | `@custom-variant dark (&:where(.dark, .dark *));` |
+| Data attribute | `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));` |
+| Tokens instead of `dark:` | swap `--color-*` variables under `.dark` and use `bg-surface` everywhere |
+
+## Arbitrary values & properties
+
+| Syntax | Example |
+| :----- | :------ |
+| `utility-[value]` | `top-[117px]`, `grid-cols-[1fr_2fr]` (`_` is a space) |
+| `utility-(--var)` | `bg-(--brand)` is `var(--brand)` (v3's `bg-[--brand]`) |
+| type hint | `text-(length:--size)` vs `text-(color:--ink)` |
+| `[property:value]` | `[mask-type:luminance]`, `[--gutter:2rem]` |
+| `\_` | a literal underscore: `content-['a\_b']` |
+| arbitrary variant | `[&:nth-child(3)]:underline`, `[@media(hover:none)]:p-4` |
+| `!` suffix | `flex!` for `!important` (v3 used a `!` prefix) |
+| `-` prefix | `-mt-4`, `-translate-x-1/2` negatives |
+| `calc` | `w-[calc(100%-2rem)]` (no spaces inside, or use `_`) |
+
+Classes must be complete strings in source. `bg-${color}-500` is never generated; map to
+full class names instead:
+
+```ts
+const tone = {
+  info: "bg-sky-100 text-sky-900",
+  danger: "bg-red-100 text-red-900",
+} as const satisfies Record<string, string>;
+```
+
+## Migrating v3 to v4
+
+```sh
+bunx @tailwindcss/upgrade   # run on a clean git branch
+```
+
+The tool (it needs Node 20+ installed) moves the JS config into CSS, renames classes in
+templates and swaps the PostCSS plugin.
+
+| v3 | v4 |
+| :- | :- |
+| `@tailwind base; @tailwind components; @tailwind utilities;` | `@import "tailwindcss";` |
+| `tailwind.config.js` `theme.extend` | `@theme { ... }` in CSS |
+| `content: [...]` | automatic detection, plus `@source` |
+| `safelist` | `@source inline(...)` |
+| `plugins: [require(...)]` | `@plugin "..."` |
+| `@layer utilities { .x {} }` | `@utility x { }` |
+| `darkMode: "class"` | `@custom-variant dark (...)` |
+| `tailwindcss` PostCSS plugin | `@tailwindcss/postcss` |
+| `npx tailwindcss` | `npx @tailwindcss/cli` |
+| `shadow-sm` / `shadow` | `shadow-xs` / `shadow-sm` |
+| `rounded-sm` / `rounded` | `rounded-xs` / `rounded-sm` |
+| `blur-sm` / `blur`, `drop-shadow-sm` / `drop-shadow` | `blur-xs` / `blur-sm`, `drop-shadow-xs` / `drop-shadow-sm` |
+| `outline-none` | `outline-hidden` (`outline-none` now sets `outline-style: none`) |
+| `ring` (3px, blue) | `ring-3` (bare `ring` is 1px, `currentColor`) |
+| `bg-opacity-50`, `text-opacity-*` | `bg-black/50` |
+| `flex-shrink-0`, `flex-grow` | `shrink-0`, `grow` |
+| `overflow-ellipsis` | `text-ellipsis` |
+| `bg-gradient-to-r` | `bg-linear-to-r` |
+| `!flex` | `flex!` |
+| `bg-[--brand]` | `bg-(--brand)` |
+| `first:*:pt-0` (right to left) | `*:first:pt-0` (left to right) |
+| `grid-cols-[1fr,2fr]` | `grid-cols-[1fr_2fr]` |
+| `theme(colors.red.500)` | `var(--color-red-500)` |
+| `resolveConfig()` in JS | `getComputedStyle(...).getPropertyValue("--color-x")` |
+| `transform-none` | `scale-none`, `rotate-none`, `translate-none` |
+| `start-0` / `end-0` | `inset-s-0` / `inset-e-0` (deprecated in v4.2) |
+
+| Behaviour change | Fix |
+| :--------------- | :-- |
+| Default border colour is `currentColor` (was `gray-200`) | always add a colour: `border border-gray-200` |
+| `space-*` and `divide-*` target `:not(:last-child)` | prefer `flex`/`grid` with `gap` |
+| `hover:` needs `(hover: hover)` | touch devices no longer get sticky hover |
+| Buttons use `cursor: default` | add `cursor-pointer` or a base rule |
+| Placeholder is the text colour at 50% | set `placeholder:text-gray-400` |
+| The `hidden` attribute beats display utilities | remove `hidden` to show the element |
+| No Sass, Less or Stylus | Tailwind handles imports, nesting and vendor prefixes |
+| `@apply` in CSS modules or Vue/Svelte styles | add `@reference "../app.css";` |
+
+## Component patterns
+
+### `cn()`: merge classes safely
+
+`clsx` builds conditional strings and `tailwind-merge` resolves conflicts, so the last
+`p-*` wins.
+
+```sh
+bun add clsx tailwind-merge
+```
+
+```ts title="lib/cn.ts"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
+}
+
+cn("px-2 py-1", { "opacity-50": false }, "px-4");
+// "py-1 px-4"
+```
+
+tailwind-merge v3 supports v4 classes. Custom theme keys that don't follow the default
+naming need `extendTailwindMerge`.
+
+### tailwind-variants
+
+`tv()` is like `cva` with slots, and it merges conflicts itself.
+
+```ts
+import { tv, type VariantProps } from "tailwind-variants";
+
+export const card = tv({
+  slots: {
+    base: "rounded-xl border p-4",
+    title: "font-semibold",
+  },
+  variants: {
+    tone: {
+      plain: { base: "bg-white" },
+      brand: { base: "bg-brand-500", title: "text-white" },
+    },
+  },
+  defaultVariants: { tone: "plain" },
+});
+
+type CardVariants = VariantProps<typeof card>;
+const { base, title } = card({ tone: "brand" });
+```
+
+| Library | Pick it for |
+| :------ | :---------- |
+| `class-variance-authority` (`cva`) | small, framework-agnostic variants (shadcn/ui uses it) |
+| `tailwind-variants` (`tv`) | slots, `extend`, responsive variants, built-in merge |
+| `clsx` + `tailwind-merge` | ad-hoc conditional classes and `className` overrides |
+
+## Tooling & performance
+
+```sh
+bun add -d prettier prettier-plugin-tailwindcss
+```
+
+```json title=".prettierrc"
+{
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindStylesheet": "./app/globals.css",
+  "tailwindFunctions": ["cn", "cva", "tv", "clsx"]
+}
+```
+
+The plugin sorts classes into Tailwind's order. It has to be the **last** plugin in the list;
+`tailwindStylesheet` points it at your v4 entry CSS so custom utilities sort correctly.
+
+| Topic | Note |
+| :---- | :--- |
+| Engine | Rust (Oxide) plus Lightning CSS: full builds take milliseconds, incremental ones microseconds |
+| Output | only the classes found in sources; most projects ship under 10 kB gzipped |
+| Cascade layers | `theme`, `base`, `components`, `utilities`: unlayered CSS beats all of them |
+| Variables | theme tokens are real CSS variables, so you can read them in JS or theme at runtime |
+| Detection | scans text files, not an AST: keep class names whole and literal |
+| Monorepos | add `@source "../../packages/ui"` for components that live outside the app |
+| Editor | the Tailwind CSS IntelliSense extension reads your CSS entry file |
+
+```tree title="Next.js styles setup"
+app/
+  globals.css       # @import "tailwindcss", @theme, variants
+  layout.tsx        # imports globals.css + next/font vars
+styles/
+  tokens.css        # @theme { --color-*, --font-* }
+  utilities.css     # @utility ...
+components/
+  ui/
+    button.tsx      # cva variants
+lib/
+  cn.ts             # clsx + tailwind-merge
+postcss.config.mjs  # @tailwindcss/postcss
+.prettierrc         # prettier-plugin-tailwindcss
+```
+
+## Recipes
+
+### Design tokens in `@theme`
+Semantic tokens that switch with the theme; utilities stay the same in both modes.
+
+```css title="app/globals.css"
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --surface: oklch(0.99 0 0);
+  --ink: oklch(0.21 0.02 260);
+  --accent: oklch(0.62 0.19 255);
+}
+.dark {
+  --surface: oklch(0.18 0.01 260);
+  --ink: oklch(0.94 0 0);
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --radius-card: 0.75rem;
+}
+/* bg-surface text-ink rounded-card border-accent/30 */
+```
+
+### Class-based dark mode toggle
+Three states (light, dark, system); run the same logic inline in `head` to avoid a flash.
+
+```ts title="lib/theme.ts"
+export type Theme = "light" | "dark" | "system";
+
+const media = "(prefers-color-scheme: dark)";
+
+export function applyTheme(theme: Theme): void {
+  const dark =
+    theme === "dark" ||
+    (theme === "system" && matchMedia(media).matches);
+  document.documentElement.classList.toggle("dark", dark);
+  if (theme === "system") localStorage.removeItem("theme");
+  else localStorage.setItem("theme", theme);
+}
+
+export function storedTheme(): Theme {
+  const t = localStorage.getItem("theme");
+  return t === "light" || t === "dark" ? t : "system";
+}
+```
+
+### Custom utility
+Static and functional utilities; both work with every variant. `--default()` needs v4.3.
+
+```css
+@utility content-auto {
+  content-visibility: auto;
+}
+
+/* stack (gap 4), stack-2, stack-[3px] */
+@utility stack-* {
+  display: flex;
+  flex-direction: column;
+  gap: --spacing(--value(integer, --default(4)));
+  gap: --value([length]);
+}
+```
+
+### Button variants with `cva`
+Typed variants plus `className` overrides merged through `cn()`.
+
+```tsx title="components/ui/button.tsx"
+import { cva, type VariantProps } from
+  "class-variance-authority";
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/cn";
+
+const button = cva(
+  "inline-flex items-center gap-2 rounded-lg font-medium " +
+    "transition-colors focus-visible:outline-2 " +
+    "disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      intent: {
+        primary:
+          "bg-brand-500 text-white hover:bg-brand-600",
+        ghost: "hover:bg-black/5 dark:hover:bg-white/10",
+      },
+      size: { sm: "h-8 px-3 text-sm", md: "h-10 px-4" },
+    },
+    defaultVariants: { intent: "primary", size: "md" },
+  },
+);
+
+type Props = ComponentProps<"button"> &
+  VariantProps<typeof button>;
+
+export function Button(props: Props) {
+  const { className, intent, size, ...rest } = props;
+  const cls = cn(button({ intent, size }), className);
+  return <button className={cls} {...rest} />;
+}
+```
+
+### Container-query card
+The card switches to a horizontal layout when its own slot is wide enough, wherever it's used.
+
+```tsx
+export function ProductCard(props: {
+  title: string;
+  image: string;
+}) {
+  return (
+    <div className="@container">
+      <article className="grid gap-4 rounded-xl border p-4
+        @md:grid-cols-[10rem_1fr] @md:items-center">
+        <img src={props.image} alt=""
+          className="aspect-square w-full rounded-lg
+            object-cover" />
+        <h3 className="text-base font-semibold text-balance
+          @md:text-lg">{props.title}</h3>
+      </article>
+    </div>
+  );
+}
+```
+
+### Animations with `@keyframes` in `@theme`
+Custom `animate-*` utilities; `@starting-style` via `starting:` covers simple entry fades.
+
+```css
+@theme {
+  --animate-fade-up: fade-up 0.3s var(--ease-out) both;
+  --animate-wiggle: wiggle 1s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from { opacity: 0; translate: 0 0.5rem; }
+  }
+  @keyframes wiggle {
+    0%, 100% { rotate: -3deg; }
+    50% { rotate: 3deg; }
+  }
+}
+```
+
+```html
+<li class="motion-safe:animate-fade-up">...</li>
+<div popover class="transition-discrete opacity-100
+  starting:open:opacity-0 duration-200">...</div>
+```
+
+## References
+
+- [MDN: CSS cascade layers](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Cascade_layers): how Tailwind's layers interact with your CSS
+- [MDN: @starting-style](https://developer.mozilla.org/en-US/docs/Web/CSS/@starting-style): what `starting:` compiles to
+- [Tailwind CSS docs](https://tailwindcss.com/docs): utilities and variants
+- [Tailwind: Theme variables](https://tailwindcss.com/docs/theme): namespaces, `inline`, `static`
+- [Tailwind: Functions and directives](https://tailwindcss.com/docs/functions-and-directives): `@source`, `@utility`, `@variant`
+- [Tailwind: Upgrade guide](https://tailwindcss.com/docs/upgrade-guide): every v3 to v4 change
+- [Tailwind blog: v4.3](https://tailwindcss.com/blog/tailwindcss-v4-3): scrollbars, logical utilities, `@variant` lists
+- [prettier-plugin-tailwindcss](https://github.com/tailwindlabs/prettier-plugin-tailwindcss): class sorting
+- [tailwind-merge](https://github.com/dcastil/tailwind-merge): conflict resolution
+- [cva](https://cva.style/docs) and [tailwind-variants](https://www.tailwind-variants.org/): variant APIs
+- [Bun: Full-stack dev server](https://bun.com/docs/bundler/fullstack): `bun-plugin-tailwind`

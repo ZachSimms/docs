@@ -1,0 +1,798 @@
+---
+title: DB design & schemas
+date: 2026-09-25
+order: 2
+---
+
+Designing relational schemas for PostgreSQL 18 apps: keys, normal forms, relationship and hierarchy
+patterns, history, multi-tenancy, migrations and Drizzle. SQL syntax, indexes and locking details
+live in [PostgreSQL](/databases/postgres/).
+
+## Modelling process
+
+| Step | Output |
+| :--- | :----- |
+| 1. List the nouns the business uses | entities: user, org, project, invoice |
+| 2. Attributes per entity | required? unique? derived? who may change it? |
+| 3. Relationships and cardinality | 1:1, 1:N, M:N; optional or mandatory on each side |
+| 4. Invariants | rules that must always hold: they become constraints |
+| 5. Access patterns | top reads and writes with their filters and sort orders: they become indexes |
+| 6. Lifecycle | create, edit, archive, delete, and whether history matters |
+| 7. Normalise to 3NF | then denormalise only where a measured access pattern needs it |
+
+Say each relationship as two sentences, one per direction, and map the words to columns.
+
+| Sentence | Cardinality | Implementation |
+| :------- | :---------- | :------------- |
+| "each order has exactly one customer" | mandatory one | `orders.customer_id NOT NULL REFERENCES customers` |
+| "a task may have one assignee" | optional one | nullable FK |
+| "a customer has zero or more orders" | optional many | FK lives on the many side |
+| "a user has at most one profile" | 1:1 | FK that is also the PK (or `UNIQUE`) on the dependent table |
+| "students take many courses, courses have many students" | M:N | junction table with a composite PK |
+
+## Keys
+
+| Kind | Example | Pros | Cons |
+| :--- | :------ | :--- | :--- |
+| natural | `email`, ISO `country_code`, ISBN | meaningful, no extra column | changes (emails do), may be personal data, wide composite FKs |
+| surrogate | `id bigint` identity, `id uuid` | stable, compact, never needs updating | needs a separate `UNIQUE` on the natural key |
+
+Default: surrogate primary key plus a `UNIQUE` constraint on the natural key. Natural keys are fine
+for stable codes (`currency char(3)`) and for junction tables (`PRIMARY KEY (post_id, tag_id)`).
+
+| Id type | Size | Pros | Cons |
+| :------ | :--- | :--- | :--- |
+| `bigint GENERATED ALWAYS AS IDENTITY` | 8 B | smallest indexes and FKs, sequential inserts | guessable, leaks row counts, only the DB can mint ids |
+| `uuid DEFAULT uuidv7()` (18+) | 16 B | time-ordered, so inserts stay at the index's right edge; mint anywhere (`Bun.randomUUIDv7()`) | bigger indexes; the id reveals its creation time |
+| `uuid` v4 (`gen_random_uuid()`) | 16 B | fully random, reveals nothing | random inserts scatter across the index: poor locality on big tables |
+| prefixed text (`usr_01J...`) | 20–30 B | readable in logs and URLs | text comparisons, larger |
+
+Two common setups: uuid v7 keys everywhere (simple, client-generated ids, easy merges between
+databases), or `bigint` keys internally plus a `public_id uuid` exposed in URLs and APIs.
+
+## Normalization
+
+"Every non-key column depends on the key, the whole key, and nothing but the key."
+
+| Form | Rule | Violation | Fix |
+| :--- | :--- | :-------- | :-- |
+| 1NF | atomic values, no repeating groups | `tags = 'a,b,c'`; `phone1, phone2, phone3` | child table (or a typed array you never join on) |
+| 2NF | 1NF, and non-key columns depend on the **whole** composite key | `order_items(order_id, product_id, product_name)`: name depends only on `product_id` | keep `name` in `products` |
+| 3NF | 2NF, and no non-key column depends on another non-key column | `orders(customer_id, customer_email)` | read the email from `customers` |
+| BCNF | every determinant is a candidate key | `lessons(student, subject, teacher)` where each teacher teaches one subject | split into `teachers(teacher, subject)` and `lessons(student, teacher)` |
+| 4NF | no independent multi-valued facts in one table | `person_skills_langs(person, skill, language)` | `person_skills` and `person_languages` |
+
+| Denormalise when | How | Keep honest by |
+| :--------------- | :-- | :------------- |
+| a count or total is read far more than written | `posts.comment_count` | updating it in the same transaction or a trigger; a job that recomputes it |
+| the value is a snapshot, not a reference | `order_items.unit_price_cents` at purchase time | nothing: it's a different fact, not a duplicate |
+| RLS or partitioning needs a column without a join | copy `org_id` onto child tables | composite FKs that include `org_id` |
+| reports scan millions of rows | materialized view or a warehouse | `REFRESH MATERIALIZED VIEW CONCURRENTLY` on a schedule |
+| a derived value is filtered on | generated column | `GENERATED ALWAYS AS (...) STORED` |
+
+## Relationships
+
+### One-to-one and one-to-many
+
+```sql
+-- 1:1: split rarely read or sensitive columns out
+CREATE TABLE user_profiles (
+  user_id    bigint PRIMARY KEY
+             REFERENCES users (id) ON DELETE CASCADE,
+  bio        text,
+  avatar_url text
+);
+
+-- 1:N: FK on the many side, indexed
+CREATE TABLE orders (
+  id          bigint GENERATED ALWAYS AS IDENTITY
+              PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers (id),
+  total_cents bigint NOT NULL CHECK (total_cents >= 0),
+  placed_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX orders_customer_idx
+  ON orders (customer_id, placed_at DESC);
+```
+
+### Many-to-many
+
+```sql
+CREATE TABLE enrollments (
+  student_id  bigint NOT NULL
+              REFERENCES students (id) ON DELETE CASCADE,
+  course_id   bigint NOT NULL
+              REFERENCES courses (id) ON DELETE CASCADE,
+  enrolled_at timestamptz NOT NULL DEFAULT now(),
+  grade       text,
+  PRIMARY KEY (student_id, course_id)
+);
+-- the PK serves student lookups; add the reverse
+CREATE INDEX enrollments_course_idx
+  ON enrollments (course_id);
+```
+
+A junction table that collects attributes (role, dates, status) is an entity in its own right:
+give it a name like `enrollments` or `memberships`, not `students_courses`.
+
+### Self-referencing
+
+```sql
+CREATE TABLE employees (
+  id         bigint GENERATED ALWAYS AS IDENTITY
+             PRIMARY KEY,
+  name       text NOT NULL,
+  manager_id bigint
+             REFERENCES employees (id) ON DELETE SET NULL,
+  CHECK (manager_id <> id)
+);
+CREATE INDEX employees_manager_idx ON employees (manager_id);
+```
+
+### Polymorphic associations
+
+`comments(commentable_type text, commentable_id bigint)` can point at posts or photos, but no
+foreign key can enforce it: orphans and typos go unnoticed.
+
+| Alternative | Shape | When |
+| :---------- | :---- | :--- |
+| exclusive arcs | one nullable FK per parent + `CHECK (num_nonnulls(...) = 1)` | a few parent types |
+| one table per parent | `post_comments`, `photo_comments` | parents rarely queried together |
+| shared supertype | `commentables(id)`; posts, photos and comments reference it | many parent types |
+
+```sql
+CREATE TABLE comments (
+  id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  post_id  bigint REFERENCES posts (id) ON DELETE CASCADE,
+  photo_id bigint REFERENCES photos (id) ON DELETE CASCADE,
+  body     text NOT NULL,
+  CHECK (num_nonnulls(post_id, photo_id) = 1)
+);
+CREATE INDEX comments_post_idx ON comments (post_id)
+  WHERE post_id IS NOT NULL;
+CREATE INDEX comments_photo_idx ON comments (photo_id)
+  WHERE photo_id IS NOT NULL;
+```
+
+## Hierarchies
+
+| Pattern | Stores | Read a subtree | Move a subtree | Integrity |
+| :------ | :----- | :------------- | :------------- | :-------- |
+| adjacency list | `parent_id` | recursive CTE | update one row | FK |
+| closure table | every ancestor/descendant pair + depth | one join, indexed | delete and reinsert the subtree's pairs | FKs; maintained by app or trigger |
+| materialized path | `path text` like `'/1/4/9/'` | `LIKE '/1/4/%'` | rewrite the subtree's paths | none built in |
+| `ltree` | `path ltree` like `1.4.9` | `path <@ '1.4'` with a GiST index | `UPDATE ... SET path = new \|\| subpath(path, n)` | none built in |
+| nested sets | `lft`, `rgt` | range query | renumber half the table | fragile: avoid for data that changes |
+
+Start with an adjacency list and a recursive CTE (see [PostgreSQL](/databases/postgres/)). Add a
+closure table when deep subtree reads dominate, or `ltree` for category-style trees queried by path.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS ltree;
+CREATE TABLE categories (
+  id   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL,
+  path ltree NOT NULL UNIQUE   -- 'electronics.phones'
+);
+CREATE INDEX categories_path_gist
+  ON categories USING gist (path);
+
+-- subtree, ancestors, depth
+SELECT * FROM categories WHERE path <@ 'electronics';
+SELECT * FROM categories
+WHERE path @> 'electronics.phones.android';
+SELECT name, nlevel(path) AS depth FROM categories;
+```
+
+`ltree` labels allow letters, digits, `_` and `-`: use slugs or ids, not display names.
+
+## Naming & constraints
+
+| Thing | Convention |
+| :---- | :--------- |
+| tables | plural `snake_case`: `users`, `order_items` (singular is fine too; pick one) |
+| columns | `snake_case`, no table prefix: `users.name`, not `users.user_name` |
+| primary key | `id` |
+| foreign key | `<singular>_id`, or a role name: `author_id`, `manager_id` |
+| booleans | `is_active`, `has_mfa` |
+| times, dates | `created_at` for `timestamptz`, `due_on` for `date` |
+| junction tables | a noun (`memberships`) or `post_tags` |
+| constraints, indexes | Postgres defaults: `_pkey`, `_key` (unique), `_fkey`, `_check`, `_idx` |
+| avoid | quoted `"CamelCase"`, reserved words (`user`, `order`, `group`), abbreviations |
+
+Unquoted identifiers fold to lower case, so `createdAt` becomes `createdat`. Map to camelCase in
+the ORM instead.
+
+| Constraint | Documents |
+| :--------- | :-------- |
+| `NOT NULL` | the default for every column; NULL should mean "unknown" or "not applicable", and you should know which |
+| `CHECK` | domain rules: `price_cents >= 0`, `ends_at > starts_at`, `status IN (...)` |
+| `UNIQUE` | business uniqueness, usually scoped: `UNIQUE (org_id, slug)` |
+| `REFERENCES ... ON DELETE` | ownership and lifecycle |
+| `EXCLUDE` / `WITHOUT OVERLAPS` | no double bookings |
+| `DEFAULT` | the normal case |
+| `CREATE DOMAIN` | a reusable type with rules, e.g. `positive_cents` |
+
+| `ON DELETE` | Effect | Use for |
+| :---------- | :----- | :------ |
+| `NO ACTION` (default), `RESTRICT` | refuse to delete a referenced parent | things history points at: products, customers |
+| `CASCADE` | delete the children too | owned rows: org to memberships, post to comments |
+| `SET NULL` | keep the child, clear the link | optional links: task to assignee |
+| `SET NULL (col)` (15+) | clear only some FK columns | composite FKs that include `org_id` |
+| `SET DEFAULT` | reset to the column default | "unassigned" placeholder rows |
+
+### Fixed value sets
+
+| Option | Change it by | Good for |
+| :----- | :----------- | :------- |
+| `CHECK (status IN ('draft', 'live'))` | drop and re-add the constraint | short, code-owned lists |
+| `CREATE TYPE status AS ENUM (...)` | `ALTER TYPE ... ADD VALUE`; values can be renamed but never removed | stable, ordered states |
+| lookup table + FK on its `code` | `INSERT` a row | data-owned lists with labels, sort order, `is_active` |
+
+```sql
+CREATE DOMAIN positive_cents AS bigint CHECK (VALUE >= 0);
+
+CREATE TABLE order_statuses (
+  code  text PRIMARY KEY,         -- 'pending', 'paid'
+  label text NOT NULL,
+  sort  int NOT NULL DEFAULT 0
+);
+INSERT INTO order_statuses (code, label)
+VALUES ('pending', 'Pending'), ('paid', 'Paid');
+
+ALTER TABLE orders
+  ADD COLUMN status text NOT NULL DEFAULT 'pending'
+    REFERENCES order_statuses (code),
+  ADD COLUMN tax_cents positive_cents NOT NULL DEFAULT 0;
+```
+
+A text code as the lookup key means most queries need no join.
+
+## Time & history
+
+| Situation | Store |
+| :-------- | :---- |
+| moments (created, paid, sent) | `timestamptz` |
+| every row | `created_at timestamptz NOT NULL DEFAULT now()`, plus `updated_at` kept by a trigger |
+| a user's zone for display | IANA name in `text` (`'Europe/Berlin'`), not an offset |
+| future local events ("9:00 Berlin next March") | local `timestamp` + zone name: zone rules can change before then |
+| birthdays, due dates | `date` |
+| validity periods | `tstzrange` / `daterange` + an exclusion or `WITHOUT OVERLAPS` key |
+
+| History pattern | Answers | Cost |
+| :-------------- | :------ | :--- |
+| audit log (trigger writes old/new `jsonb`) | who changed what, when | generic; one table for everything |
+| history table per entity | "what was the price on 3 March?" | a copy of each version |
+| temporal table (`valid tstzrange`) | the current and past values in one table | queries filter on `valid @> now()` |
+| event sourcing | full replay; state is derived | big design commitment |
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE TABLE product_prices (
+  product_id  bigint NOT NULL REFERENCES products (id),
+  valid       tstzrange NOT NULL,
+  price_cents bigint NOT NULL CHECK (price_cents >= 0),
+  PRIMARY KEY (product_id, valid WITHOUT OVERLAPS) -- 18+
+);
+
+INSERT INTO product_prices VALUES
+  (1, tstzrange('2026-01-01', '2026-07-01'), 1000),
+  (1, tstzrange('2026-07-01', NULL), 1200);
+
+SELECT price_cents FROM product_prices
+WHERE product_id = 1 AND valid @> now();
+```
+
+### Soft delete
+
+| For | Against |
+| :-- | :------ |
+| undo and "trash" features | every query needs `WHERE deleted_at IS NULL` (views or RLS help) |
+| references to the row stay valid | unique constraints must become partial indexes |
+| a record of what existed | `ON DELETE CASCADE` never fires; children linger |
+| | GDPR erasure still needs a hard delete |
+
+Alternatives: move deleted rows to an archive table in the same transaction, keep an audit log and
+hard delete, or use a real `status` when "archived" is a business state. The partial-index version
+is a recipe in [PostgreSQL](/databases/postgres/).
+
+## Multi-tenancy
+
+| Pattern | Isolation | Operations | Fits |
+| :------ | :-------- | :--------- | :--- |
+| shared tables + `org_id` (+ RLS) | logical: a missing filter leaks data, RLS is the net | one schema, one migration run, cross-tenant analytics easy | most SaaS: many small tenants |
+| schema per tenant | namespace via `search_path` | migrations run N times; catalog bloat past a few thousand schemas | tens to hundreds of tenants, per-tenant tweaks |
+| database per tenant | strong; per-tenant backup, restore, region | connections and migrations times N | few large or regulated tenants |
+| hybrid | shared by default, dedicated DB for big customers | two code paths for routing | enterprise tiers |
+
+Rules for shared tables:
+
+- Put `org_id NOT NULL` on **every** tenant-owned table, children included, so RLS, indexes and
+  partitions never need a join.
+- Scope uniqueness: `UNIQUE (org_id, slug)`.
+- Lead composite indexes with `org_id`.
+- Use composite FKs so a child can't point at another tenant's parent.
+- Connect as a role that is neither the table owner nor `BYPASSRLS`.
+
+```sql
+CREATE TABLE projects (
+  id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  org_id uuid NOT NULL REFERENCES orgs (id),
+  slug   text NOT NULL,
+  UNIQUE (org_id, id),      -- target for composite FKs
+  UNIQUE (org_id, slug)
+);
+
+CREATE TABLE tasks (
+  id         bigint GENERATED ALWAYS AS IDENTITY
+             PRIMARY KEY,
+  org_id     uuid NOT NULL,
+  project_id bigint NOT NULL,
+  title      text NOT NULL,
+  FOREIGN KEY (org_id, project_id)
+    REFERENCES projects (org_id, id) ON DELETE CASCADE
+);
+CREATE INDEX tasks_org_project_idx
+  ON tasks (org_id, project_id);
+```
+
+## JSONB vs columns
+
+| Use columns when the data is | Use `jsonb` when the data is |
+| :--------------------------- | :--------------------------- |
+| filtered, joined, sorted or aggregated | stored and returned whole |
+| subject to constraints or FKs | shaped differently per row (per-integration settings) |
+| a known, stable shape | sparse optional attributes |
+| updated field by field, often | owned by someone else (webhook payloads, API snapshots) |
+
+| `jsonb` catch | Detail |
+| :------------ | :----- |
+| no FKs into JSON | ids inside a document can dangle |
+| weak statistics | the planner guesses selectivity of `meta ->> 'x'` |
+| whole-document writes | changing one key rewrites the value (large docs are TOASTed) |
+| validation | CHECK only the basics; validate the shape with Zod in the app |
+
+```sql
+CREATE TABLE integrations (
+  id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  org_id   uuid NOT NULL REFERENCES orgs (id),
+  kind     text NOT NULL CHECK (kind IN ('slack', 'github')),
+  settings jsonb NOT NULL DEFAULT '{}'
+           CHECK (jsonb_typeof(settings) = 'object'),
+  -- promote a hot key to a real, indexable column
+  channel  text GENERATED ALWAYS AS
+           (settings ->> 'channel') STORED
+);
+CREATE INDEX integrations_channel_idx
+  ON integrations (channel);
+```
+
+## Indexing for access patterns
+
+| Query shape | Index |
+| :---------- | :---- |
+| `WHERE org_id = $1 ORDER BY created_at DESC LIMIT 20` | `(org_id, created_at DESC)` |
+| `WHERE a = $1 AND b > $2` | `(a, b)`: equality columns first, then the range |
+| `WHERE lower(email) = $1` | `UNIQUE (lower(email))` expression index |
+| `WHERE status = 'pending'` (rare value) | partial: `(created_at) WHERE status = 'pending'` |
+| join or cascade through a FK | index the FK column |
+| `WHERE tags @> ARRAY['x']` | GIN on the array |
+| `WHERE meta @> '{"k": 1}'` | GIN `jsonb_path_ops` |
+| `WHERE name ILIKE '%ada%'` | GIN `gin_trgm_ops` (`pg_trgm`) |
+| keyset pagination | `(created_at, id)` matching the `ORDER BY` |
+| time range on a huge append-only table | BRIN on the timestamp |
+| read two columns by key, no heap visit | `(key) INCLUDE (a, b)` |
+
+Workflow: list the top queries, `EXPLAIN (ANALYZE)` them, add the narrowest index that removes the
+waste, and delete indexes that `pg_stat_user_indexes` shows are never used. Details:
+[PostgreSQL indexes](/databases/postgres/).
+
+## Migrations
+
+| Rule | Why |
+| :--- | :-- |
+| versioned, append-only files in git | reproducible schema; never edit one that has run anywhere |
+| one concern per migration | easy to review and retry |
+| DDL inside a transaction | Postgres rolls back most DDL; `CONCURRENTLY` can't be in one |
+| `SET lock_timeout` in each migration | a waiting `ALTER` blocks every query behind it |
+| schema changes separate from big backfills | backfills run in batches, outside the deploy |
+| forward-only in production | "down" migrations rarely undo data changes safely |
+| test against a production-sized copy | locks and rewrites only hurt at scale |
+
+### Expand / contract
+
+Example: rename `users.name` to `full_name` with old and new app versions running side by side.
+
+| Phase | Database | App |
+| :---- | :------- | :-- |
+| 1. expand | add nullable `full_name`; trigger copies `name` to `full_name` | still reads and writes `name` |
+| 2. backfill | copy existing rows in batches | writes both |
+| 3. switch | `NOT NULL` via `NOT VALID` + `VALIDATE` | reads `full_name`, writes both |
+| 4. contract | drop the trigger and `name` | stops writing `name` |
+
+Each phase ships as its own deploy.
+
+| Change | Safe way |
+| :----- | :------- |
+| add column | nullable, or with a constant default: instant |
+| add `NOT NULL` | `NOT VALID` constraint, then `VALIDATE` (recipe in [PostgreSQL](/databases/postgres/)) |
+| add index | `CREATE INDEX CONCURRENTLY`, outside a transaction |
+| add FK or CHECK | `ADD CONSTRAINT ... NOT VALID`, then `VALIDATE CONSTRAINT` |
+| add unique | `CREATE UNIQUE INDEX CONCURRENTLY`, then `ADD CONSTRAINT ... UNIQUE USING INDEX` |
+| change type, rename | expand/contract |
+| drop column | deploy code that no longer reads it, then drop |
+| add enum value | `ALTER TYPE ... ADD VALUE` (not usable until committed) |
+
+```tree title="Drizzle project layout"
+db/
+  schema/
+    index.ts          # re-exports every table
+    users.ts
+    orgs.ts
+    memberships.ts
+  migrations/         # drizzle-kit output, committed
+    0000_init.sql
+    0001_projects.sql
+    0002_backfill_handles.sql
+    meta/
+      _journal.json   # applied order
+      0000_snapshot.json
+  index.ts            # db client
+  seed.ts
+drizzle.config.ts
+package.json
+```
+
+```ts title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./db/schema/index.ts",
+  out: "./db/migrations",
+  casing: "snake_case",        // createdAt -> created_at
+  dbCredentials: { url: process.env.DATABASE_URL ?? "" },
+});
+```
+
+```sh
+bunx drizzle-kit generate --name add_projects  # diff -> SQL
+bunx drizzle-kit migrate      # apply pending migrations
+bunx drizzle-kit push         # dev only: sync, no files
+bunx drizzle-kit check        # detect conflicting files
+bunx drizzle-kit studio       # browse data
+```
+
+Review every generated SQL file: generators emit plain `CREATE INDEX` and blocking `ALTER`s. Edit
+or hand-write the migration when a table is big.
+
+## ORMs & query builders
+
+| Tool | Schema lives in | Style | Migrations |
+| :--- | :-------------- | :---- | :--------- |
+| Drizzle (0.45 stable, 1.0 in RC) | TS files | SQL-shaped builder + relational queries | `drizzle-kit` |
+| Prisma (7) | `schema.prisma` | generated client, high-level API | Prisma Migrate |
+| Kysely | the database (types from `kysely-codegen`) | typed query builder | its own migrator or any tool |
+| raw SQL (`Bun.sql`, postgres.js) | the database | tagged templates, types by hand | any tool (dbmate, Atlas, sqitch) |
+
+```ts title="db/index.ts"
+import { drizzle } from "drizzle-orm/bun-sql";
+import { and, eq } from "drizzle-orm";
+import * as schema from "./schema";
+import { memberships, orgs, users } from "./schema";
+
+export const db = drizzle({
+  connection: process.env.DATABASE_URL ?? "",
+  schema,
+  casing: "snake_case",
+});
+
+export function orgsFor(userId: string) {
+  return db
+    .select({ org: orgs.name, role: memberships.role })
+    .from(memberships)
+    .innerJoin(orgs, eq(orgs.id, memberships.orgId))
+    .where(eq(memberships.userId, userId));
+}
+
+export async function join(orgId: string, email: string) {
+  return db.transaction(async (tx) => {
+    const [user] = await tx
+      .select().from(users).where(eq(users.email, email));
+    if (!user) throw new Error(`no user ${email}`);
+    await tx.insert(memberships)
+      .values({ orgId, userId: user.id })
+      .onConflictDoNothing();
+    return tx.select().from(memberships).where(and(
+      eq(memberships.orgId, orgId),
+      eq(memberships.userId, user.id),
+    ));
+  });
+}
+```
+
+```text title="prisma/schema.prisma (Prisma 7)"
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+datasource db {
+  provider = "postgresql"
+}
+model Membership {
+  orgId  String @map("org_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  role   String @default("member")
+  org    Org    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([orgId, userId])
+  @@map("memberships")
+}
+```
+
+Prisma 7's client has no Rust engine and needs a driver adapter (`@prisma/adapter-pg`); the
+connection URL moves to `prisma.config.ts`. Whatever the tool, the database still enforces
+constraints: declare them in the schema, and read the SQL it emits for N+1 queries.
+
+## ER diagrams
+
+Crow's foot marks sit at the far end of a line and read "from here, how many over there". The inner
+mark is the minimum, the outer mark the maximum.
+
+```text
+ ──||──  exactly one        ──o|──  zero or one
+ ──|<──  one or many        ──o<──  zero or many
+
+┌─────────────┐          ┌───────────────┐          ┌─────────────┐
+│ users       │          │ memberships   │          │ orgs        │
+├─────────────┤          ├───────────────┤          ├─────────────┤
+│ id       PK │──||───o<─│ user_id PK,FK │─>o───||──│ id       PK │
+│ email    UQ │          │ org_id  PK,FK │          │ slug     UQ │
+│ name        │          │ role          │          │ name        │
+└─────────────┘          └───────────────┘          └─────────────┘
+
+A user has zero or many memberships; each membership has exactly one user.
+An org has zero or many memberships; each membership has exactly one org.
+```
+
+| Mermaid `erDiagram` | Meaning |
+| :------------------ | :------ |
+| `\|\|--\|\|` | exactly one to exactly one |
+| `\|\|--o{` | exactly one to zero or many |
+| `\|\|--\|{` | exactly one to one or many |
+| `\|o--o{` | zero or one to zero or many |
+| `--` vs `..` | identifying vs non-identifying relationship |
+
+```text
+erDiagram
+  USERS ||--o{ MEMBERSHIPS : "belongs via"
+  ORGS  ||--o{ MEMBERSHIPS : has
+  ORGS  ||--o{ PROJECTS : owns
+```
+
+Mermaid renders in GitHub and GitLab Markdown. dbdiagram.io (DBML), DataGrip and DBeaver draw
+diagrams from a live database.
+
+## Anti-patterns
+
+| Anti-pattern | Symptom | Instead |
+| :----------- | :------ | :------ |
+| EAV (`entity_id, attribute, value text`) | every read pivots; no types, constraints or FKs | real columns; `jsonb` for truly open-ended attributes |
+| comma-separated ids | `LIKE '%,42,%'`, no FK, no index | junction table |
+| god table | 80 mostly-NULL columns; a `type` column changes what the others mean | one table per entity, 1:1 extension tables |
+| polymorphic FK | `item_type` + `item_id`, orphans | exclusive arcs or a supertype |
+| repeated columns | `phone1`, `phone2`, `phone3` | child table |
+| floats for money | `0.1 + 0.2` cents off | `numeric` or integer cents |
+| `timestamp` for instants | off by hours after DST or a server move | `timestamptz` |
+| mutable natural key as PK | cascading key updates | surrogate PK + `UNIQUE` |
+| no FKs "for speed" | orphans, cleanup scripts | FKs with indexed columns |
+| magic values (`-1`, `'N/A'`, `1970-01-01`) | special cases in every query | NULL or an explicit status |
+| stored derived data with no source of truth | drift | generated columns, views, recomputable counters |
+| hand-made `sales_2025`, `sales_2026` tables | union queries, missed years | declarative partitioning |
+| schema or DB per tenant by default | slow migrations, connection sprawl | `org_id` + RLS until a tenant needs more |
+
+## Recipes
+
+### Users, orgs and memberships
+The core of most B2B SaaS schemas: people belong to many organisations with a role in each.
+
+```sql
+CREATE TABLE users (
+  id         uuid PRIMARY KEY DEFAULT uuidv7(),
+  email      text NOT NULL,
+  name       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX users_email_key ON users (lower(email));
+
+CREATE TABLE orgs (
+  id         uuid PRIMARY KEY DEFAULT uuidv7(),
+  slug       text NOT NULL UNIQUE
+             CHECK (slug ~ '^[a-z0-9-]{2,40}$'),
+  name       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE memberships (
+  org_id  uuid NOT NULL REFERENCES orgs ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users ON DELETE CASCADE,
+  role    text NOT NULL DEFAULT 'member'
+          CHECK (role IN ('owner', 'admin', 'member')),
+  PRIMARY KEY (org_id, user_id)
+);
+CREATE INDEX memberships_user_idx ON memberships (user_id);
+```
+
+### Tags (many-to-many)
+Label rows freely and query "has any" or "has all" of a set of tags.
+
+```sql
+CREATE TABLE tags (
+  id   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL
+);
+CREATE UNIQUE INDEX tags_name_key ON tags (lower(name));
+
+CREATE TABLE post_tags (
+  post_id bigint NOT NULL REFERENCES posts ON DELETE CASCADE,
+  tag_id  bigint NOT NULL REFERENCES tags ON DELETE CASCADE,
+  PRIMARY KEY (post_id, tag_id)
+);
+CREATE INDEX post_tags_tag_idx ON post_tags (tag_id);
+
+-- posts carrying ALL of the given tags
+SELECT pt.post_id
+FROM post_tags pt
+JOIN tags t ON t.id = pt.tag_id
+WHERE lower(t.name) = ANY ($1::text[])
+GROUP BY pt.post_id
+HAVING count(*) = cardinality($1::text[]);
+```
+
+For "any of", drop the `HAVING` and select `DISTINCT pt.post_id`.
+
+### Audit log table and trigger
+Record who changed which row and how, for every table you attach the trigger to.
+
+```sql
+CREATE TABLE audit_log (
+  id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  tbl      text NOT NULL,
+  row_id   text,
+  op       text NOT NULL,   -- INSERT, UPDATE, DELETE
+  actor    text DEFAULT current_setting('app.user_id', true),
+  at       timestamptz NOT NULL DEFAULT now(),
+  old_row  jsonb,
+  new_row  jsonb
+);
+
+CREATE OR REPLACE FUNCTION audit() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO audit_log (tbl, row_id, op, old_row, new_row)
+  VALUES (TG_TABLE_NAME,
+    coalesce(to_jsonb(NEW), to_jsonb(OLD)) ->> 'id',
+    TG_OP, to_jsonb(OLD), to_jsonb(NEW));
+  RETURN NULL;             -- AFTER trigger: ignored
+END
+$$;
+
+CREATE TRIGGER orgs_audit
+AFTER INSERT OR UPDATE OR DELETE ON orgs
+FOR EACH ROW EXECUTE FUNCTION audit();
+```
+
+Set `app.user_id` per transaction with `set_config('app.user_id', $1, true)`. Partition or prune
+the log by `at` once it grows.
+
+### Comment threads with a closure table
+Load a whole reply tree, or one branch, with a single indexed join.
+
+```sql
+CREATE TABLE comments (
+  id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  parent_id bigint REFERENCES comments ON DELETE CASCADE,
+  body      text NOT NULL
+);
+CREATE TABLE comment_paths (
+  ancestor   bigint REFERENCES comments ON DELETE CASCADE,
+  descendant bigint REFERENCES comments ON DELETE CASCADE,
+  depth      int NOT NULL CHECK (depth >= 0),
+  PRIMARY KEY (ancestor, descendant)
+);
+CREATE INDEX comment_paths_desc_idx
+  ON comment_paths (descendant);
+
+-- after inserting comment $1 under parent $2 (or NULL)
+INSERT INTO comment_paths (ancestor, descendant, depth)
+SELECT $1::bigint, $1::bigint, 0
+UNION ALL
+SELECT ancestor, $1::bigint, depth + 1
+FROM comment_paths WHERE descendant = $2::bigint;
+
+-- the subtree under comment $1, shallowest first
+SELECT c.*, p.depth FROM comment_paths p
+JOIN comments c ON c.id = p.descendant
+WHERE p.ancestor = $1 ORDER BY p.depth, c.id;
+```
+
+### Multi-tenant RLS policy
+Make the database refuse cross-tenant reads and writes even when a query forgets `org_id`.
+
+```sql
+CREATE FUNCTION app_org_id() RETURNS uuid
+LANGUAGE sql STABLE AS $$
+  SELECT nullif(current_setting('app.org_id', true), '')
+         ::uuid
+$$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['projects', 'tasks'] LOOP
+    EXECUTE format(
+      'ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format(
+      'ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format(
+      'CREATE POLICY tenant_isolation ON %I
+         USING (org_id = (SELECT app_org_id()))
+         WITH CHECK (org_id = (SELECT app_org_id()))', t);
+  END LOOP;
+END
+$$;
+-- per request, in a transaction (Bun.sql):
+--   await tx`SELECT set_config('app.org_id', ${id}, true)`
+```
+
+With no setting, `app_org_id()` is NULL and every row is hidden. Transaction-local settings stay
+correct behind PgBouncer's transaction pooling.
+
+### Drizzle schema definition
+The users/orgs/memberships schema in TypeScript, with inferred row types for the app.
+
+```ts title="db/schema.ts"
+import { sql } from "drizzle-orm";
+import * as p from "drizzle-orm/pg-core";
+const id = () =>
+  p.uuid().primaryKey().default(sql`uuidv7()`);
+const createdAt = () =>
+  p.timestamp({ withTimezone: true }).notNull().defaultNow();
+
+export const users = p.pgTable("users", {
+  id: id(), email: p.text().notNull().unique(),
+  name: p.text().notNull(), createdAt: createdAt(),
+});
+export const orgs = p.pgTable("orgs", {
+  id: id(), slug: p.text().notNull().unique(),
+  name: p.text().notNull(), createdAt: createdAt(),
+});
+export const memberships = p.pgTable("memberships", {
+  orgId: p.uuid().notNull()
+    .references(() => orgs.id, { onDelete: "cascade" }),
+  userId: p.uuid().notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  role: p.text({ enum: ["owner", "admin", "member"] })
+    .notNull().default("member"),
+}, (t) => [p.primaryKey({ columns: [t.orgId, t.userId] }),
+  p.index("memberships_user_idx").on(t.userId)]);
+export type User = typeof users.$inferSelect;
+```
+
+`text({ enum })` narrows the TS type only; add a `p.check()` or a `pgEnum` to enforce it in the
+database. `$inferInsert` gives the insert type.
+
+## References
+
+- [PostgreSQL: Data definition](https://www.postgresql.org/docs/18/ddl.html): tables, constraints, schemas, RLS, partitioning
+- [PostgreSQL: Constraints](https://www.postgresql.org/docs/18/ddl-constraints.html): CHECK, UNIQUE, FK actions, exclusion
+- [PostgreSQL: ltree](https://www.postgresql.org/docs/18/ltree.html) and [range types](https://www.postgresql.org/docs/18/rangetypes.html)
+- [PostgreSQL: ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html): lock levels and `NOT VALID`
+- [PostgreSQL wiki: Don't Do This](https://wiki.postgresql.org/wiki/Don%27t_Do_This)
+- [Drizzle ORM: PostgreSQL schema](https://orm.drizzle.team/docs/sql-schema-declaration) and [drizzle-kit](https://orm.drizzle.team/docs/kit-overview)
+- [Prisma ORM 7 upgrade guide](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7)
+- [Kysely](https://kysely.dev/)
+- [Mermaid: entity relationship diagrams](https://mermaid.js.org/syntax/entityRelationshipDiagram.html)
+- [Bill Karwin, _SQL Antipatterns_](https://pragprog.com/titles/bksap1/sql-antipatterns-volume-1/): EAV, polymorphic associations, closure tables
+- [Martin Fowler: Parallel change](https://martinfowler.com/bliki/ParallelChange.html): expand/contract
+- [Crunchy Data: Row level security for tenants](https://www.crunchydata.com/blog/row-level-security-for-tenants-in-postgres)

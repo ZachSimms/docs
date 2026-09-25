@@ -1,0 +1,498 @@
+---
+title: Communication networks
+date: 2026-09-25
+order: 5
+---
+
+How bytes get from a server to a browser and where the time goes: latency, IP, DNS, TCP,
+UDP, TLS, radio networks, HTTP/1.1 to HTTP/3, and the browser transports built on them.
+Follows _High Performance Browser Networking_, updated for QUIC, TLS 1.3 and 2026 browsers.
+Fetch-level caching and headers live in [Fetch API](/typescript/web-apis/fetch-api/).
+
+## Latency and bandwidth
+
+**Latency** is the time for one bit to reach the other side; **RTT** is there and back.
+**Bandwidth** is the maximum throughput of a path. Most web pages are latency-bound: past
+~5 Mbit/s, more bandwidth barely changes page load time, while every RTT cut does.
+
+| Component | Cause | Lever |
+| :-------- | :---- | :---- |
+| Propagation | distance ÷ signal speed | move servers closer (CDN, edge) |
+| Transmission | bytes ÷ link rate | send fewer bytes (compression, smaller images) |
+| Processing | routers, firewalls, TLS, app servers | fewer hops, faster backends |
+| Queuing | packets waiting in buffers (bufferbloat) | AQM (`fq_codel`, CAKE), BBR |
+
+Light in fibre travels at about 200,000 km/s (refractive index ~1.5), or 5 µs per km.
+
+| Route | Distance | Vacuum one-way | Fibre one-way | Fibre RTT (best case) |
+| :---- | :------- | :------------- | :------------ | :-------------------- |
+| New York → San Francisco | 4,130 km | 14 ms | 21 ms | 41 ms |
+| New York → London | 5,570 km | 19 ms | 28 ms | 56 ms |
+| San Francisco → Tokyo | 8,280 km | 28 ms | 41 ms | 83 ms |
+| London → Sydney | 16,990 km | 57 ms | 85 ms | 170 ms |
+| Half the equator | 20,040 km | 67 ms | 100 ms | 200 ms |
+
+Real RTTs run 1.5 to 3 times higher because of indirect routing, queuing and the last mile.
+
+| Delay | Feels |
+| :---- | :---- |
+| 0–100 ms | instant |
+| 100–300 ms | slight lag |
+| 300–1000 ms | "the machine is working" |
+| over 1 s | attention drifts |
+| over 10 s | task abandoned |
+
+- **Last mile**: the access link (DSL, cable, fibre, Wi-Fi, cellular) often adds more
+  latency than the backbone. Fibre-to-the-home is ~1–5 ms, cable 10–20 ms, mobile far more.
+- **Bandwidth-delay product** (BDP) = bandwidth × RTT = bytes in flight needed to fill the
+  pipe. 100 Mbit/s × 80 ms = 1 MB, so TCP windows must reach 1 MB.
+
+## Network layers
+
+| OSI | Layer | Protocols | Unit | Address |
+| :-- | :---- | :-------- | :--- | :------ |
+| 7 | Application | HTTP, DNS, WebSocket, SMTP, SSH | message | URL, hostname |
+| 6 | Presentation | encoding, compression, TLS (arguably) | | |
+| 5 | Session | TLS sessions, RPC | | |
+| 4 | Transport | TCP, UDP, QUIC (on UDP) | segment / datagram | port |
+| 3 | Network | IPv4, IPv6, ICMP | packet | IP address |
+| 2 | Data link | Ethernet, Wi-Fi (802.11), ARP / NDP | frame | MAC |
+| 1 | Physical | copper, fibre, radio | bit | |
+
+The TCP/IP model folds 5–7 into Application and 1–2 into Link. HTTP/3 blurs the lines:
+QUIC does transport, TLS and multiplexing in user space on top of UDP.
+
+```text
+HTTP/1.1, HTTP/2           HTTP/3
++----------------+         +----------------+
+| HTTP           |         | HTTP/3 (QPACK) |
++----------------+         +----------------+
+| TLS 1.2 / 1.3  |         | QUIC + TLS 1.3 |
++----------------+         +----------------+
+| TCP            |         | UDP            |
++----------------+---------+----------------+
+|                IP (v4 / v6)               |
++-------------------------------------------+
+```
+
+| Size | Value |
+| :--- | :---- |
+| Ethernet MTU | 1500 bytes |
+| TCP MSS | 1460 (IPv4) / 1440 (IPv6) payload bytes |
+| Minimum IPv6 MTU | 1280 bytes |
+| QUIC minimum datagram | 1200 bytes |
+| Initial TCP cwnd (RFC 6928) | 10 segments ≈ 14.6 KB |
+
+## IP addressing
+
+| IPv4 | Meaning |
+| :--- | :------ |
+| `192.0.2.10/24` | address with a 24-bit prefix: network `192.0.2.0`, 256 addresses (254 hosts) |
+| `/32`, `/31`, `/30`, `/24`, `/16`, `/8` | 1, 2 (point-to-point), 4, 256, 65,536, 16.7 M addresses |
+| `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` | private (RFC 1918), need NAT to reach the internet |
+| `100.64.0.0/10` | carrier-grade NAT (shared ISP space) |
+| `127.0.0.0/8` | loopback |
+| `169.254.0.0/16` | link-local (no DHCP); cloud metadata at `169.254.169.254` |
+| `0.0.0.0` | "any address" when binding a server |
+| `224.0.0.0/4` | multicast |
+
+| IPv6 | Meaning |
+| :--- | :------ |
+| `2001:db8::1` | `::` replaces one run of zero groups; leading zeros dropped |
+| `::1` | loopback |
+| `fe80::/10` | link-local, always present on every interface |
+| `fc00::/7` (`fd00::/8` in practice) | unique local addresses, the private range |
+| `2000::/3` | global unicast |
+| `/64` | one subnet (SLAAC needs it); sites usually get a `/48` or `/56` |
+| `::ffff:192.0.2.10` | IPv4-mapped address |
+| `[2001:db8::1]:443` | brackets in URLs and host:port |
+
+- Addresses per prefix: `2^(32 - n)` for IPv4, `2^(128 - n)` for IPv6.
+- **Happy Eyeballs** (RFC 8305): clients race IPv6 and IPv4 connects and keep the winner,
+  so a broken AAAA record costs ~250 ms rather than a timeout.
+- Subnet and firewall basics for servers are in [Sysadmin](/infrastructure/linux/sysadmin/).
+
+## DNS
+
+```text
+browser/OS stub --> recursive resolver (ISP, 1.1.1.1, 8.8.8.8)
+                     |  cache hit? answer now
+                     +--> root (.)       "ask .com"
+                     +--> TLD (.com)     "ask ns1.example.com"
+                     +--> authoritative  "A 192.0.2.10, TTL 300"
+```
+
+A cold lookup costs several RTTs; a cached one costs nothing. Browsers, the OS and the
+resolver all cache until the TTL expires.
+
+| Record | Holds | Notes |
+| :----- | :---- | :---- |
+| `A` / `AAAA` | IPv4 / IPv6 address | several records = simple load spreading |
+| `CNAME` | alias to another name | not allowed at the zone apex |
+| `ALIAS` / `ANAME` / flattening | apex alias (provider feature) | resolved server-side to A/AAAA |
+| `HTTPS` / `SVCB` | endpoint hints: `alpn="h3,h2"`, `ipv4hint`, ECH config | lets clients use HTTP/3 and ECH on the first connection |
+| `MX` | mail servers with priority | |
+| `TXT` | free text: SPF, DKIM, DMARC, domain verification | |
+| `NS` | authoritative servers for the zone | set at the registrar too |
+| `SOA` | zone serial, refresh, negative-cache TTL | |
+| `CAA` | which CAs may issue certificates | `0 issue "letsencrypt.org"` |
+| `SRV` | host and port for a service | `_sip._tcp` style |
+| `PTR` | reverse lookup (IP → name) | mail servers care |
+| `DS` / `DNSKEY` / `RRSIG` | DNSSEC chain of trust | |
+
+| TTL | When |
+| :-- | :--- |
+| 60–300 s | records you may fail over or migrate soon |
+| 3600 s | normal |
+| 86400 s | stable (NS, MX) |
+| lower it a day before a change | old TTLs keep caches pinned until they expire |
+
+| Transport | Port | Notes |
+| :-------- | :--- | :---- |
+| Classic DNS | 53 UDP/TCP | plaintext, spoofable without DNSSEC |
+| DNS over TLS (DoT) | 853 TCP | RFC 7858, Android "Private DNS" |
+| DNS over HTTPS (DoH) | 443 | RFC 8484, browsers' secure DNS |
+| DNS over QUIC (DoQ) | 853 UDP | RFC 9250 |
+
+In pages: `<link rel="dns-prefetch" href="https://cdn.example.com">` for origins you might
+use, `preconnect` for origins you will use.
+
+## TCP
+
+Reliable, ordered byte stream with flow and congestion control.
+
+```text
+client                              server
+  | SYN seq=x                          |
+  |----------------------------------->|
+  |                  SYN-ACK seq=y ack=x+1
+  |<-----------------------------------|
+  | ACK ack=y+1  (+ first data)        |   1 RTT before data
+  |----------------------------------->|
+```
+
+| Mechanism | What it does | Impact |
+| :-------- | :----------- | :----- |
+| Three-way handshake | agree on sequence numbers | 1 RTT per new connection |
+| Flow control (`rwnd`) | receiver advertises free buffer | slow readers throttle senders |
+| Window scaling | windows beyond 64 KB (RFC 7323) | needed for BDP over 64 KB |
+| Slow start | `cwnd` starts at 10 segments, doubles each RTT | new connections can't use full bandwidth |
+| Congestion avoidance | additive increase after `ssthresh`, cut on loss | throughput sawtooth |
+| Fast retransmit / recovery | resend after 3 duplicate ACKs | avoids a full timeout |
+| Slow-start restart | `cwnd` reset after idle | hurts long-lived idle connections; disable on servers |
+| CUBIC | Linux default; loss-based | fills buffers, bufferbloat |
+| BBR | models bandwidth and RTT, not loss | better on lossy/long links; pair with `fq` qdisc |
+| Head-of-line blocking | one lost segment stalls all later bytes | why HTTP/2 over lossy links suffers |
+| Nagle's algorithm | batches small writes | disable (`TCP_NODELAY`) for interactive traffic |
+| `TIME_WAIT` | closer keeps the 4-tuple ~60 s (2 × MSL) | ephemeral port exhaustion under many short outbound connections |
+| TCP Fast Open | data in the SYN on repeat visits | rarely deployed; middleboxes break it |
+
+Round trips to fetch `N` bytes on a fresh connection, ignoring loss:
+`ceil(log2(N / 14.6 KB + 1))`. A 64 KB response needs 3 RTTs of slow start, so keep the
+critical HTML and CSS within the first ~14 KB.
+
+```sh title="Linux server tuning"
+sysctl net.ipv4.tcp_available_congestion_control
+sysctl -w net.core.default_qdisc=fq
+sysctl -w net.ipv4.tcp_congestion_control=bbr
+sysctl -w net.ipv4.tcp_slow_start_after_idle=0
+sysctl -w net.ipv4.tcp_tw_reuse=1        # outbound only
+sysctl -w net.core.somaxconn=4096        # accept backlog
+ss -ti state established '( dport = :443 )'  # cwnd, rtt
+```
+
+Persist settings in `/etc/sysctl.d/*.conf`. Best wins come from the app: reuse connections
+(keep-alive, pools), send fewer bytes, and cut round trips.
+
+## UDP and NAT traversal
+
+UDP adds ports and a checksum to IP, nothing else: no handshake, ordering, retransmission,
+or congestion control. QUIC, DNS, WebRTC media and games build what they need on top.
+
+| NAT fact | Consequence |
+| :------- | :---------- |
+| Many private hosts share one public IP | inbound connections have nowhere to go |
+| UDP mappings expire fast (often 30 s) | send keepalives every 15–25 s |
+| Symmetric NAT maps per destination | STUN addresses don't work; need a relay |
+| CGNAT stacks two NATs | port forwarding impossible for the user |
+
+| Piece | Role |
+| :---- | :--- |
+| STUN (RFC 8489) | "what is my public IP:port?" via a server |
+| TURN (RFC 8656) | relay traffic through a server when direct fails |
+| ICE (RFC 8445) | gather candidates (host, server-reflexive, relay), test pairs, pick the best |
+
+Most peer-to-peer sessions connect directly; a minority (corporate networks, symmetric
+NAT) need TURN, so production WebRTC always ships one. See [WebRTC](/typescript/web-apis/webrtc/).
+
+## TLS
+
+```text
+TLS 1.2 (2 RTT)                    TLS 1.3 (1 RTT)
+C: ClientHello           -->       C: ClientHello + key_share  -->
+S: ServerHello, Cert,    <--       S: ServerHello + key_share,
+   ServerKeyExchange, Done            {Cert, Verify, Finished} <--
+C: ClientKeyExchange,              C: {Finished} + HTTP request -->
+   ChangeCipherSpec, Fin -->
+S: ChangeCipherSpec, Fin <--
+C: HTTP request          -->
+
+TLS 1.3 resumption with 0-RTT
+C: ClientHello + PSK + early data (HTTP request) -->
+S: ServerHello ... + HTTP response               <--
+```
+
+| Feature | What it is | Notes |
+| :------ | :--------- | :---- |
+| TLS 1.3 (RFC 8446, revised as RFC 9846 in 2026) | 1-RTT handshake, forward secrecy always, AEAD only | disable 1.0/1.1; keep 1.2 for old clients |
+| Key exchange | X25519; hybrid `X25519MLKEM768` (post-quantum) | default in current Chrome, Firefox, Safari, Cloudflare |
+| Cipher suites (1.3) | `TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256` | ChaCha wins on phones without AES hardware |
+| Session resumption | 1.2: session IDs/tickets; 1.3: PSK tickets | skips certificate work; still 1 RTT |
+| 0-RTT early data | request sent with the ClientHello on resumption | **replayable**: only for idempotent `GET`; servers answer `425 Too Early` otherwise |
+| SNI | hostname in the ClientHello | lets one IP serve many certs; visible to the network |
+| ECH (RFC 9849) | encrypts the inner ClientHello, including SNI | key published in the `HTTPS` DNS record; needs DoH to be meaningful |
+| ALPN | negotiates `h2` / `http/1.1` inside the handshake | no extra RTT; `h3` is discovered separately |
+| Certificate chain | leaf + intermediates (server sends), root (client has) | missing intermediate = errors on some clients |
+| Revocation | OCSP stapling is fading; CRLs, CRLite, CRLSets | Let's Encrypt ended OCSP in 2025 |
+| Certificate lifetime | CA/B Forum max: 200 days (from Mar 2026), 100 (2027), 47 (2029) | automate with ACME |
+| HSTS | `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` | no plain-HTTP first hop after the first visit (or ever, when preloaded) |
+
+TLS costs one extra RTT per new connection (two on 1.2) plus a few KB for certificates:
+prefer ECDSA certificates (smaller, faster) and keep the chain short.
+
+## Wireless and mobile
+
+| Network | Typical RTT to the internet | Notes |
+| :------ | :-------------------------- | :---- |
+| Wired / fibre | 1–10 ms access | stable |
+| Wi-Fi 5/6/7 | +2–20 ms, spiky | shared half-duplex medium; interference, retries |
+| 3G | 100–500 ms | largely switched off |
+| 4G LTE | 30–100 ms | control-plane promotion 50–100 ms when idle |
+| 5G (NSA) | 20–40 ms | LTE core, 5G radio |
+| 5G (SA) | 10–20 ms | lower with edge compute; mmWave rarely available |
+
+- **Radio power states** (RRC): the modem sleeps (`RRC_IDLE`, 5G adds `RRC_INACTIVE`), and
+  the first packet after idle pays a promotion delay before any data moves.
+- After traffic stops the radio stays high-power for seconds (tail time). Periodic polls
+  and beacons keep it awake and drain the battery.
+- Batch requests, defer analytics (`navigator.sendBeacon` on page hide), prefer push over
+  polling, and treat every mobile request as "may take a second or fail".
+- Mobile links change IPs (Wi-Fi ↔ cellular): TCP connections die, QUIC migrates.
+
+## HTTP/1.1
+
+| Feature | Status |
+| :------ | :----- |
+| Persistent connections (keep-alive) | default; reuse saves the TCP + TLS handshakes |
+| Pipelining | specified, never enabled by browsers (HOL, broken proxies) |
+| 6 connections per origin | browser limit; requests queue behind it ("Stalled" in DevTools) |
+| Chunked transfer encoding | stream a body of unknown length |
+| Text headers, repeated per request | cookies and user agents resent every time |
+
+| HTTP/1.1-era hack | Today (HTTP/2+) |
+| :---------------- | :-------------- |
+| Domain sharding (`static1.`, `static2.`) | harmful: extra DNS, TCP and TLS, breaks prioritisation |
+| Concatenating all JS/CSS into one bundle | split by route; fine-grained files cache better |
+| Image sprites | use SVG or separate images |
+| Inlining assets as `data:` URIs | only for tiny critical assets; kills caching |
+| Cookie-less domains | still reduces request size, but costs a connection |
+
+## HTTP/2
+
+One TCP connection per origin, carrying many interleaved **streams** of binary **frames**.
+
+| Feature | What it does |
+| :------ | :----------- |
+| Binary framing | `HEADERS`, `DATA`, `SETTINGS`, `WINDOW_UPDATE`, `RST_STREAM`, `GOAWAY` frames |
+| Multiplexing | many concurrent requests on one connection; no app-level HOL |
+| HPACK (RFC 7541) | static + dynamic table header compression; repeated headers cost bytes, not KB |
+| Per-stream flow control | a slow stream can't starve the others |
+| Priorities | RFC 9218 `Priority: u=0..7, i` header plus `fetchpriority` in HTML |
+| Connection coalescing | reuse one connection for hosts sharing an IP and certificate |
+| Server push | **removed** from Chrome (106) and Firefox (132); use `103 Early Hints` and `preload` |
+
+Remaining weakness: all streams share one TCP byte stream, so one lost packet stalls
+every stream (TCP head-of-line blocking). On lossy mobile links HTTP/2 can lose to
+several HTTP/1.1 connections.
+
+## HTTP/3 and QUIC
+
+QUIC (RFC 9000) is a transport over UDP with TLS 1.3 built in; HTTP/3 (RFC 9114) maps HTTP
+onto it with QPACK (RFC 9204) header compression.
+
+```text
+TCP + TLS 1.3 + HTTP/2           QUIC + HTTP/3
+C: SYN              -->          C: Initial (ClientHello)      -->
+S: SYN-ACK          <--          S: Initial + Handshake        <--
+C: ACK, ClientHello -->          C: Handshake Fin + request    -->
+S: ServerHello...   <--          S: response                   <--
+C: Fin + request    -->
+S: response         <--          1 RTT to first byte (0 on resume)
+2 RTT to first byte
+```
+
+| Feature | Benefit |
+| :------ | :------ |
+| Independent streams | a lost packet stalls only its own stream |
+| Combined transport + crypto handshake | 1 RTT new, 0-RTT on resumption |
+| Connection IDs | connection survives IP/port changes (Wi-Fi → 5G) |
+| Encrypted headers and ACKs | middleboxes can't ossify the protocol |
+| User-space implementation | congestion control ships with the browser/server |
+
+| Topic | Detail |
+| :---- | :----- |
+| Discovery | `Alt-Svc: h3=":443"; ma=86400` on an HTTP/2 response, or `alpn="h3"` in the `HTTPS` DNS record |
+| Fallback | browsers race TCP; UDP/443 blocked by some corporate networks |
+| Cost | more server CPU than kernel TCP; UDP GSO/GRO helps |
+| Servers | Cloudflare, Fastly, Akamai, Caddy (default), nginx (`listen 443 quic`), HAProxy, Envoy |
+| Load balancers | must route by connection ID, not 4-tuple, or migration breaks |
+
+## Browser transports
+
+| API | Direction | Transport | Use for | Watch out |
+| :-- | :-------- | :-------- | :------ | :-------- |
+| `fetch` | request → response; streamed bodies | HTTP/1.1, 2, 3 | APIs, uploads, streaming responses | request streaming needs HTTP/2+ and `duplex: "half"` |
+| Server-Sent Events (`EventSource`) | server → client, text | HTTP | notifications, LLM tokens, live feeds | auto-reconnect with `Last-Event-ID`; 6-connection cap on HTTP/1.1 |
+| WebSocket | full duplex, messages | TCP (upgrade from HTTP/1.1; RFC 8441 on h2) | chat, collaboration, games | no built-in backpressure (`WebSocketStream` fixes it in Chromium); proxies time out idle sockets |
+| WebRTC data channel | peer to peer, reliable or not | SCTP over DTLS over UDP | P2P files, low-latency game state | needs signalling plus STUN/TURN |
+| WebRTC media | peer to peer audio/video | SRTP over UDP | calls, conferencing | SFU for more than a few peers |
+| WebTransport | client ↔ server streams + datagrams | HTTP/3 (QUIC) | low-latency media, games, unreliable updates | Baseline since 2026 (Safari 26.4); needs an HTTP/3 server |
+
+Server side: [WebSockets](/typescript/backend/websockets/),
+[Streaming](/typescript/backend/streaming/).
+
+## Performance checklist
+
+| Goal | Technique |
+| :--- | :-------- |
+| Fewer round trips | HTTP/2 or 3, TLS 1.3, keep-alive, avoid redirects (each costs DNS + TCP + TLS + RTT) |
+| Shorter round trips | CDN / edge for static and cacheable HTML; regional APIs near users |
+| Warm connections early | `<link rel="preconnect" href="https://api.example.com" crossorigin>` for 2–4 critical origins |
+| Start work during server think time | `103 Early Hints` with `Link: </app.css>; rel=preload; as=style` (HTTP/2+) |
+| Fetch critical assets first | `preload`, `fetchpriority="high"` on the LCP image, `async`/`defer` scripts |
+| Avoid transfers | `Cache-Control: max-age=31536000, immutable` on hashed assets; `ETag` + `no-cache` on HTML |
+| Smaller transfers | Brotli (`br`) or `zstd` for text (Chrome 123+, Firefox 126+, Safari 26+ partial); AVIF/WebP images |
+| Delta updates | Compression Dictionary Transport (RFC 9842): `Use-As-Dictionary`, `dcb` / `dcz` encodings |
+| Fewer bytes on the wire per request | trim cookies; HPACK/QPACK handle the rest |
+| Fewer origins | self-host fonts and critical third-party scripts |
+| Mobile | batch, prefetch on Wi-Fi, back off retries with jitter, handle offline |
+| Measure | RUM (Resource Timing, Web Vitals), not only lab tests |
+
+## Diagnostic tools
+
+| Tool | Shows | Example |
+| :--- | :---- | :------ |
+| `ping` | reachability, RTT, loss (ICMP) | `ping -c 10 example.com` |
+| `traceroute` / `tracepath` | hops and per-hop latency | `traceroute -T -p 443 example.com` |
+| `mtr` | traceroute + continuous loss per hop | `mtr -rwzbc 100 example.com` |
+| `dig` / `drill` / `kdig` | DNS answers, TTLs, delegation | `dig +trace example.com` |
+| `curl -w` | DNS, connect, TLS, TTFB, total timings | see recipe |
+| `curl --http3-only` | whether a host speaks HTTP/3 | see recipe |
+| `openssl s_client` | certificate chain, TLS version, ALPN | `openssl s_client -connect host:443 -servername host` |
+| `ss` | sockets, states, `cwnd`, RTT per connection | `ss -tanp`, `ss -ti` |
+| `tcpdump` | raw packets | `tcpdump -i any -nn 'port 443' -w cap.pcap` |
+| Wireshark | decoded packets; decrypt TLS with `SSLKEYLOGFILE` | `SSLKEYLOGFILE=keys.log curl …` |
+| `iperf3` | raw throughput between two hosts | `iperf3 -c host -R` |
+| Chrome DevTools → Network | per-request timing, protocol column (`h2`, `h3`), throttling | right-click headers → Protocol |
+| `chrome://net-export` | full network log for NetLog Viewer | capture a bug report |
+| WebPageTest / Lighthouse | waterfalls, connection view, filmstrips | test from real locations and devices |
+
+DevTools timing phases: Queueing → Stalled → DNS Lookup → Initial connection (TCP) → SSL →
+Request sent → Waiting for server response (TTFB) → Content Download.
+
+## Recipes
+
+### curl timing breakdown
+When you want to know whether DNS, connect, TLS or the server is slow.
+
+```sh
+cat > curl-timing.txt <<'EOF'
+     dns  %{time_namelookup}s\n
+ connect  %{time_connect}s\n
+     tls  %{time_appconnect}s\n
+    ttfb  %{time_starttransfer}s\n
+   total  %{time_total}s\n
+protocol  HTTP/%{http_version} %{remote_ip}\n
+EOF
+curl -so /dev/null -w @curl-timing.txt https://example.com
+# times are cumulative from the start: tls - connect = TLS
+```
+
+### Trace a DNS lookup
+When a record looks wrong, stale, or differs between resolvers.
+
+```sh
+dig +trace example.com                 # root -> TLD -> auth
+dig +short example.com A @1.1.1.1      # one resolver
+dig example.com AAAA +noall +answer    # with TTL left
+dig example.com HTTPS +short           # alpn, ech hints
+dig NS example.com +short              # who is authoritative
+dig -x 192.0.2.10 +short               # reverse (PTR)
+```
+
+### Check HTTP/3 support
+When you want to confirm a site advertises and actually serves HTTP/3.
+
+```sh
+curl -V | grep -o HTTP3                 # curl built with h3?
+curl -sI https://cloudflare.com | grep -i alt-svc
+curl -sI --http3-only https://cloudflare.com | head -1
+dig cloudflare.com HTTPS +short         # alpn="h3,h2"
+```
+
+In Chrome, enable the **Protocol** column in the Network panel; `h3` means QUIC was used.
+
+### Inspect a certificate chain
+When a client complains about an untrusted or expired certificate.
+
+```sh
+openssl s_client -connect example.com:443 \
+  -servername example.com -alpn h2,http/1.1 \
+  -showcerts </dev/null 2>/dev/null \
+  | grep -E 's:|i:|Protocol|ALPN'
+echo | openssl s_client -connect example.com:443 \
+  -servername example.com 2>/dev/null \
+  | openssl x509 -noout -dates -subject -ext subjectAltName
+```
+
+### Measure connection phases in the browser
+When you want real-user DNS, TCP, TLS and TTFB numbers instead of lab ones.
+
+```ts title="resource-timing.ts"
+type Phases = Record<
+  "dns" | "tcp" | "tls" | "ttfb" | "download",
+  number
+>;
+
+function phases(e: PerformanceResourceTiming): Phases {
+  const tlsStart = e.secureConnectionStart;
+  return {
+    dns: e.domainLookupEnd - e.domainLookupStart,
+    tcp: (tlsStart || e.connectEnd) - e.connectStart,
+    tls: tlsStart ? e.connectEnd - tlsStart : 0,
+    ttfb: e.responseStart - e.requestStart,
+    download: e.responseEnd - e.responseStart,
+  };
+}
+
+new PerformanceObserver((list) => {
+  for (const e of list.getEntriesByType("resource")) {
+    const r = e as PerformanceResourceTiming;
+    console.table({ url: r.name, protocol: r.nextHopProtocol,
+      ...phases(r) });
+  }
+}).observe({ type: "resource", buffered: true });
+```
+
+Cross-origin entries report zeros unless the server sends `Timing-Allow-Origin`. Reused
+connections show `0` for DNS, TCP and TLS.
+
+## References
+
+- Ilya Grigorik, [High Performance Browser Networking](https://hpbn.co/): latency, TCP, UDP, TLS, wireless, HTTP/1.1, HTTP/2, browser APIs
+- MDN: [Evolution of HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Evolution_of_HTTP), [HTTP/3 glossary](https://developer.mozilla.org/en-US/docs/Glossary/HTTP_3), [QUIC](https://developer.mozilla.org/en-US/docs/Glossary/QUIC), [103 Early Hints](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/103), [`Alt-Svc`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Alt-Svc), [`Content-Encoding`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Encoding), [`Strict-Transport-Security`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security), [Compression Dictionary Transport](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Compression_dictionary_transport)
+- MDN: [Resource Timing](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/Resource_timing), [`rel=preconnect`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/preconnect), [Server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events), [WebSockets API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API), [WebTransport API](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport_API), [WebRTC API](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API)
+- RFCs: [9110 HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110), [9113 HTTP/2](https://www.rfc-editor.org/rfc/rfc9113), [9000 QUIC](https://www.rfc-editor.org/rfc/rfc9000), [9114 HTTP/3](https://www.rfc-editor.org/rfc/rfc9114), [9204 QPACK](https://www.rfc-editor.org/rfc/rfc9204), [9846 TLS 1.3](https://www.rfc-editor.org/rfc/rfc9846), [9849 ECH](https://www.rfc-editor.org/rfc/rfc9849), [9460 SVCB/HTTPS records](https://www.rfc-editor.org/rfc/rfc9460), [8484 DoH](https://www.rfc-editor.org/rfc/rfc8484), [9218 HTTP priorities](https://www.rfc-editor.org/rfc/rfc9218), [8297 Early Hints](https://www.rfc-editor.org/rfc/rfc8297), [9842 Compression Dictionary Transport](https://www.rfc-editor.org/rfc/rfc9842), [6928 initial window](https://www.rfc-editor.org/rfc/rfc6928), [8445 ICE](https://www.rfc-editor.org/rfc/rfc8445)
+- Cloudflare Learning Center: [What is DNS?](https://www.cloudflare.com/learning/dns/what-is-dns/), [HTTP/3 and QUIC](https://www.cloudflare.com/learning/performance/what-is-http3/), [TLS handshake](https://www.cloudflare.com/learning/ssl/what-happens-in-a-tls-handshake/), [Encrypted Client Hello](https://blog.cloudflare.com/encrypted-client-hello/)
+- web.dev and Chrome for Developers: [Early Hints](https://developer.chrome.com/docs/web-platform/early-hints), [Fetch Priority](https://web.dev/articles/fetch-priority), [Establish network connections early](https://web.dev/articles/preconnect-and-dns-prefetch)
+- [Let's Encrypt: Ending OCSP support](https://letsencrypt.org/2024/12/05/ending-ocsp), [curl `--write-out` variables](https://everything.curl.dev/usingcurl/verbose/writeout.html)

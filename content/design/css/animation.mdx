@@ -1,0 +1,728 @@
+---
+title: Animation
+date: 2026-09-25
+order: 3
+---
+
+UI motion on the web as of September 2026: timing and easing guidelines, CSS transitions and
+keyframes, entry and exit animations, scroll-driven animations, view transitions, and when to
+use Motion or GSAP. The JS API is covered in [Web Animations](/typescript/web-apis/web-animations/),
+the CSS basics in [CSS](/design/css/css/).
+
+## Motion principles
+
+Motion should explain something: where an element came from, what changed, what it's
+connected to, or that an action worked. If it only decorates, cut it or keep it short.
+
+| Purpose | Example |
+| :------ | :------ |
+| Feedback | a button press, a toggle, a validation shake |
+| Orientation | a panel slides in from the edge it lives on |
+| Continuity | a thumbnail morphs into the detail view |
+| Hierarchy | stagger list items in reading order |
+| Status | spinner, progress bar, skeleton shimmer |
+| Delight | rare, and never in the way of a repeated task |
+
+| Use | Duration | Note |
+| :-- | :------- | :--- |
+| Hover, press, colour change | 100–150ms | anything slower feels laggy |
+| Toggle, checkbox, small icon | 150–200ms | |
+| Tooltip, dropdown, popover | 150–250ms | exit about 30% faster than entry |
+| Modal, drawer, sheet | 250–400ms | scale with the distance travelled |
+| Page or route transition | 300–500ms | overlap old and new content |
+| Large or expressive motion | 500–1000ms | onboarding, empty states, rarely |
+| Stagger step | 20–50ms per item | cap the total at about 300ms |
+
+On mobile, shorten by roughly 20–30%. Anything the user triggers many times a day should be
+near-instant.
+
+| Easing | Curve | Use for |
+| :----- | :---- | :------ |
+| Ease-out (decelerate) | `cubic-bezier(0.2, 0, 0, 1)` | elements entering; most UI motion |
+| Ease-in (accelerate) | `cubic-bezier(0.3, 0, 1, 1)` | elements leaving the screen for good |
+| Ease-in-out | `cubic-bezier(0.4, 0, 0.2, 1)` | on-screen moves from A to B |
+| Linear | `linear` | progress, spinners, colour and opacity loops, scroll-linked motion |
+| Spring | `linear(...)` or a JS spring | drags, gestures, anything interruptible |
+| Steps | `steps(4)` | sprite sheets, typewriter, ticking clocks |
+
+| Classic principle | In UI |
+| :---------------- | :---- |
+| Timing | durations match the size and weight of the change |
+| Slow in and slow out | never use `linear` for things that move |
+| Anticipation | a slight dip before a sheet rises; a hover state before a click |
+| Follow-through and overlap | children settle a beat after the parent; springs overshoot a little |
+| Staging | animate one thing at a time and dim the rest (modal backdrop) |
+| Arcs | moving along a curve reads as natural (FAB to sheet) |
+| Squash and stretch | a subtle `scale` on press (0.97), not rubbery |
+| Secondary action | an icon rotates as its menu opens |
+| Exaggeration | keep it small in product UI; error shakes are the exception |
+| Appeal | consistent tokens make motion feel like one system |
+
+## Transitions
+
+A transition animates between two computed values when a property changes (a hover, a
+class toggle, `[open]`).
+
+| Property | Value |
+| :------- | :---- |
+| `transition-property` | `opacity, translate`, or `all` (avoid: animates things you didn't intend) |
+| `transition-duration` | `200ms` |
+| `transition-timing-function` | `ease-out`, `cubic-bezier(...)`, `linear(...)`, `steps(n)` |
+| `transition-delay` | `50ms`; negative values start partway through |
+| `transition-behavior` | `allow-discrete`: also transition discrete properties such as `display` (Baseline 2024) |
+| `transition` | shorthand: `opacity 200ms ease-out, translate 200ms ease-out` |
+
+```css
+.btn {
+  transition:
+    background-color 150ms ease-out,
+    scale 100ms ease-out;
+}
+.btn:hover { background-color: var(--brand-hover); }
+.btn:active { scale: 0.97; }
+```
+
+| Discrete property | With `allow-discrete` |
+| :---------------- | :-------------------- |
+| `display: none` | the element stays visible until the exit transition ends, then flips |
+| `overlay` | keeps a closing dialog or popover in the top layer while it animates (Chromium only) |
+| `content-visibility` | lets `details` content animate closed |
+
+Transitioning `display` works in Chromium and Safari 18+. Firefox supports `allow-discrete`
+but not animating `display` yet, so exits there snap closed, which is an acceptable fallback.
+
+### `@starting-style`
+
+An element that first renders, or goes from `display: none` to shown, has no "before" style,
+so it wouldn't normally transition. `@starting-style` provides one (Baseline 2024).
+
+```css
+.toast {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity 200ms ease-out,
+    translate 200ms ease-out;
+
+  @starting-style {
+    opacity: 0;
+    translate: 0 1rem;
+  }
+}
+```
+
+The same pattern animates popovers, dialogs, and anything that gets `hidden` removed.
+Tailwind writes it as `starting:opacity-0` ([Tailwind CSS](/design/css/tailwind/)).
+
+### Animating to `height: auto`
+
+```css
+:root { interpolate-size: allow-keywords; }  /* Chromium */
+
+details::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition:
+    block-size 250ms ease-out,
+    content-visibility 250ms allow-discrete;
+}
+details[open]::details-content { block-size: auto; }
+```
+
+Without `interpolate-size` the panel just snaps open and closed. The portable alternative is
+a grid row going from `0fr` to `1fr`:
+
+```css
+.collapse { display: grid; grid-template-rows: 0fr; }
+.collapse.open { grid-template-rows: 1fr; }
+.collapse > .inner { overflow: hidden; }
+.collapse { transition: grid-template-rows 250ms ease-out; }
+```
+
+## Keyframe animations
+
+```css
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes slide-in {
+  from { translate: -100% 0; }   /* "to" = current style */
+}
+
+.skeleton { animation: pulse 1.5s ease-in-out infinite; }
+.drawer { animation: slide-in 300ms cubic-bezier(.2,0,0,1); }
+```
+
+| Property | Values |
+| :------- | :----- |
+| `animation-name` | the `@keyframes` name, or `none` |
+| `animation-duration` | `300ms`; `auto` (0, or the timeline length when scroll-driven) |
+| `animation-timing-function` | per keyframe interval, not across the whole animation |
+| `animation-delay` | negative values start partway through |
+| `animation-iteration-count` | `1`, `3`, `infinite` |
+| `animation-direction` | `normal`, `reverse`, `alternate`, `alternate-reverse` |
+| `animation-fill-mode` | `forwards` keeps the end state, `backwards` applies the first frame during the delay, `both` |
+| `animation-play-state` | `running`, `paused` |
+| `animation-composition` | `replace`, `add`, `accumulate`: combine with the underlying value |
+| `animation-timeline` | `auto`, `scroll()`, `view()`, `--named` |
+| `animation-range` | start and end on a scroll or view timeline |
+| `animation` | shorthand: `name duration easing delay count direction fill state` |
+
+| Tip | Why |
+| :-- | :-- |
+| Omit `from` or `to` | it uses the element's current style, so one keyframe is enough |
+| Use `translate`, `scale`, `rotate` | individual properties compose, so hover `scale` doesn't wipe out `translate` |
+| Set the timing function inside a keyframe | eases that segment only |
+| `animation: none` then reflow | the classic restart hack; the Web Animations API is cleaner |
+| Animate a registered custom property | `@property --angle` makes gradients and angles animatable |
+| Listen for `animationend` / `transitionend` | or `el.getAnimations()` and await `.finished` |
+
+## Easing functions
+
+| Function | Shape |
+| :------- | :---- |
+| `ease` | `cubic-bezier(0.25, 0.1, 0.25, 1)`, the default |
+| `ease-in` / `ease-out` / `ease-in-out` | `(0.42,0,1,1)` / `(0,0,0.58,1)` / `(0.42,0,0.58,1)`: mild |
+| `cubic-bezier(x1, y1, x2, y2)` | x values in 0–1; y outside that range overshoots |
+| `cubic-bezier(0.34, 1.56, 0.64, 1)` | "back out": a small overshoot |
+| `steps(5, jump-end)` | discrete jumps; `jump-none`, `jump-both`, `start`, `end` |
+| `linear(0, 0.25 40%, 1)` | a piecewise-linear curve through the given points (Baseline 2023) |
+
+`linear()` can approximate any curve, including springs and bounces, with enough points.
+Each stop is `output [input%]`; the input percentages are optional and interpolate evenly
+when left out. Generate them with a tool (see References) rather than by hand.
+
+```css
+:root {
+  /* spring: damping ratio 0.6, settles in about 700ms */
+  --ease-spring: linear(
+    0, 0.145, 0.436, 0.721, 0.93, 1.048, 1.092, 1.089,
+    1.065, 1.036, 1.013, 0.999, 0.992, 0.991, 0.993,
+    0.996, 1
+  );
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.3, 0, 1, 1);
+}
+.sheet { transition: translate 700ms var(--ease-spring); }
+```
+
+A CSS spring has a fixed duration and can't carry velocity over when it's interrupted. For
+drags and gestures use a JS spring (Motion).
+
+## Performance
+
+The browser renders in stages: style, layout, paint, composite. The cheapest animations
+skip straight to composite.
+
+| Animating | Triggers | Cost |
+| :-------- | :------- | :--- |
+| `transform`, `translate`, `scale`, `rotate`, `opacity` | composite only (usually on the GPU) | cheap; stays smooth while the main thread is busy |
+| `filter`, `backdrop-filter` | composite, but expensive per pixel | fine for small areas |
+| `color`, `background-color`, `box-shadow`, `clip-path` | paint | acceptable when small |
+| `width`, `height`, `top`, `left`, `margin`, `padding`, `grid-template-*` | layout, then paint | expensive; use FLIP or a transform |
+
+| Tool | Guidance |
+| :--- | :------- |
+| `will-change: transform` | promotes to its own layer; add it just before animating and remove it after; each layer costs memory |
+| `contain: layout paint` | limits the work a change can cause |
+| `requestAnimationFrame` | batch DOM reads, then writes, once per frame |
+| Avoid layout thrash | reading `offsetHeight` after a write forces a synchronous layout |
+| DevTools | Performance panel, Rendering then "Paint flashing" and "Layer borders", Animations panel |
+
+### FLIP
+
+Animate a layout change with transforms: record the **F**irst box, make the change and
+measure the **L**ast box, **I**nvert with a transform, then **P**lay back to zero. See the
+FLIP recipe below. Motion's `layout` prop and GSAP's Flip plugin do this for you, and view
+transitions do it at the browser level.
+
+## Scroll-driven animations
+
+A keyframe animation whose progress follows scrolling instead of time. With compositor-only
+properties it runs off the main thread. Supported in Chromium 115+ and Safari 26; Firefox has it behind a flag, so treat it
+as an enhancement.
+
+| Timeline | Progress follows |
+| :------- | :--------------- |
+| `animation-timeline: scroll()` | the nearest scroller's scroll position (block axis) |
+| `scroll(root inline)` | the root scroller on the inline axis; also `nearest`, `self` |
+| `animation-timeline: view()` | the element's own visibility within its scroller |
+| `view(block 20% 10%)` | the same, with the viewport inset at the start and end |
+| `scroll-timeline: --gallery x` | a named scroll timeline on a scroller |
+| `view-timeline: --card` | a named view timeline on the subject |
+| `timeline-scope: --card` | lets an ancestor expose a named timeline to other elements |
+
+| `animation-range` | Covers |
+| :---------------- | :----- |
+| `cover` | from the first pixel entering to the last pixel leaving (the default) |
+| `contain` | while fully inside (or fully covering) the scrollport |
+| `entry` / `exit` | while crossing the start / end edge |
+| `entry 0% entry 100%` | fade in as it enters |
+| `entry 25% cover 50%` | mix range names |
+
+```css
+@keyframes grow { from { scale: 0 1; } }
+
+.progress {
+  position: fixed;
+  inset: 0 0 auto;
+  block-size: 4px;
+  transform-origin: left;
+  background: var(--brand);
+  animation: grow linear both;   /* shorthand first */
+  animation-timeline: scroll(root);
+}
+```
+
+Declare `animation-timeline` **after** the `animation` shorthand, because the shorthand
+resets it. Use `linear` easing and `both` fill, and give the animation a duration only as a
+fallback. The JS equivalents are `new ScrollTimeline()` and `new ViewTimeline()`.
+
+## View transitions
+
+The browser snapshots the old state, you update the DOM, and it animates between the
+snapshots with pseudo-elements you can style.
+
+| Kind | Trigger | Support (MDN) |
+| :--- | :------ | :------------ |
+| Same-document (SPA) | `document.startViewTransition(update)` | Baseline 2025 |
+| Transition types | `startViewTransition({ update, types })` | Chrome 125, Safari 18.2, Firefox 147 |
+| `view-transition-class` | share one animation between many names | Baseline 2025 |
+| Cross-document (MPA) | `@view-transition { navigation: auto; }` on both pages, same origin | Chromium 126+, Safari 18.2+ |
+| Element-scoped | `el.startViewTransition()` | Chromium only |
+
+```text
+::view-transition
+└─ ::view-transition-group(name)       size and position morph
+   └─ ::view-transition-image-pair(name)
+      ├─ ::view-transition-old(name)   snapshot, fades out
+      └─ ::view-transition-new(name)   live, fades in
+```
+
+| CSS | Does |
+| :-- | :--- |
+| `view-transition-name: hero` | this element gets its own group; names must be unique per page |
+| `view-transition-name: none` | stays part of the root snapshot |
+| `view-transition-class: card` | target many named groups with `::view-transition-group(.card)` |
+| `::view-transition-group(*)` | every group |
+| `::view-transition-old(root)` | the whole-page crossfade |
+| `:active-view-transition-type(forward)` | style by transition type |
+
+```css
+.card { view-transition-name: var(--vt, none); }
+::view-transition-group(*) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+::view-transition { pointer-events: none; }
+
+/* cross-document */
+@view-transition { navigation: auto; types: slide; }
+```
+
+| `ViewTransition` member | Use |
+| :---------------------- | :-- |
+| `updateCallbackDone` | resolves when your DOM update has finished |
+| `ready` | pseudo-elements exist: run custom WAAPI animations on them now |
+| `finished` | the animation is over and the new state is live |
+| `skipTransition()` | jump to the end |
+| `types` | a live `Set` of the active types |
+
+In React 19 and the Next.js App Router, use `import { ViewTransition } from "react"`: it
+sets the names and runs transitions for you (see the recipe).
+
+## Web Animations API
+
+The JS engine behind CSS animations: `el.animate(keyframes, options)` returns an `Animation`
+you can pause, reverse, seek and await. Use it for values computed at runtime (FLIP deltas,
+pointer positions) and for sequencing. Details and more patterns are in
+[Web Animations](/typescript/web-apis/web-animations/).
+
+```ts
+declare const el: HTMLElement;
+
+const anim = el.animate(
+  [{ opacity: 0, translate: "0 8px" }, { opacity: 1 }],
+  { duration: 200, easing: "ease-out", fill: "backwards" },
+);
+await anim.finished;
+anim.reverse();                     // play it backwards
+el.getAnimations().forEach((a) => a.cancel());
+```
+
+## JS animation libraries
+
+| Library | Pick it for |
+| :------ | :---------- |
+| CSS | hover, entry and exit, loaders, scroll effects: no JS |
+| Web Animations API | imperative control without a dependency |
+| Motion (`motion`, v13) | React: exit animations, layout and shared-element animations, gestures, real springs |
+| GSAP (v3.15) | long timelines, scroll storytelling, SVG morphing, text splitting; any framework |
+
+### Motion for React
+
+The library formerly called Framer Motion. Install `motion` and import from `motion/react`.
+
+```tsx
+"use client";
+import { AnimatePresence, motion } from "motion/react";
+
+type ToastProps = { open: boolean; text: string };
+
+export function Toast(props: ToastProps) {
+  return (
+    <AnimatePresence>
+      {props.open && (
+        <motion.div
+          key="toast"
+          role="status"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8 }}
+          transition={{ type: "spring", bounce: 0.2,
+            visualDuration: 0.3 }}
+        >
+          {props.text}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+```
+
+| Motion API | Does |
+| :--------- | :--- |
+| `initial`, `animate`, `exit` | the states; `exit` needs an `AnimatePresence` parent |
+| `layout` | animates any layout change with FLIP |
+| `layoutId` | shared element: the same id morphs between components |
+| `whileHover`, `whileTap`, `whileInView`, `drag` | gestures |
+| `variants` + `staggerChildren` | orchestrated lists |
+| `useScroll`, `useTransform`, `useSpring` | scroll-linked values |
+| `<MotionConfig reducedMotion="user">` | follows the OS setting app-wide |
+| `motion/react-m` + `LazyMotion` | a smaller bundle |
+
+Motion 13 dropped the optional `@emotion/is-prop-valid` dependency; that only matters if you
+wrap `motion` components with styled-components or Emotion.
+
+### GSAP
+
+GSAP has been free for all uses, including every former "Club" plugin (SplitText,
+MorphSVG, ScrollTrigger and so on), since version 3.13.
+
+```ts
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+gsap.registerPlugin(ScrollTrigger);
+
+const mm = gsap.matchMedia();
+mm.add("(prefers-reduced-motion: no-preference)", () => {
+  gsap.from(".feature", {
+    y: 40,
+    opacity: 0,
+    stagger: 0.08,
+    ease: "power2.out",
+    scrollTrigger: {
+      trigger: ".features",
+      start: "top 75%",
+    },
+  });
+});
+```
+
+In React, use `useGSAP(() => { ... }, { scope: ref })` from `@gsap/react`; it reverts the
+animations on unmount.
+
+## SVG animation
+
+| Technique | Use |
+| :-------- | :-- |
+| CSS `transform` on SVG elements | set `transform-box: fill-box` and `transform-origin: center` to rotate around the shape |
+| `stroke-dasharray` + `stroke-dashoffset` | line drawing; `pathLength="1"` makes the maths easy |
+| CSS `d: path("...")` | morph between paths with matching commands (Chromium, Firefox) |
+| SMIL `<animate>` | works inside `<img>`-loaded SVGs, where CSS can't reach |
+| GSAP MorphSVG | morph between paths that don't match |
+| Motion `pathLength` | `<motion.path animate={{ pathLength: 1 }} />` |
+
+```html
+<svg viewBox="0 0 24 24" class="check">
+  <path pathLength="1" d="M4 12l5 5L20 6" />
+</svg>
+```
+
+```css
+.check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 300ms ease-out;
+}
+.done .check path { stroke-dashoffset: 0; }
+```
+
+## Accessibility
+
+| Rule | Detail |
+| :--- | :----- |
+| Respect `prefers-reduced-motion: reduce` | remove parallax, large slides, zooms, autoplay and scroll-jacking |
+| Reduce, don't necessarily remove | keep short opacity fades and colour changes: they carry meaning without movement |
+| No flashing | nothing that flashes more than 3 times per second (WCAG 2.3.1) |
+| Pause controls | anything that moves for more than 5 seconds needs pause, stop or hide (WCAG 2.2.2) |
+| Interaction-triggered motion | should be possible to disable (WCAG 2.3.3, AAA) |
+| Don't hide content behind animation | content must be readable without JS or with animations off |
+| Focus | animated dialogs still move focus at once; don't wait for the animation |
+| Live regions | a toast that animates still needs `role="status"` |
+
+```css
+/* opt in: motion only when reduce isn't requested */
+@media (prefers-reduced-motion: no-preference) {
+  .hero { animation: float 6s ease-in-out infinite; }
+  html { scroll-behavior: smooth; }
+}
+```
+
+```ts
+const query = "(prefers-reduced-motion: reduce)";
+const reduce = matchMedia(query);
+export const prefersReduced = (): boolean => reduce.matches;
+reduce.addEventListener("change", (e) => {
+  document.documentElement.dataset.motion = e.matches
+    ? "reduce"
+    : "full";
+});
+```
+
+## Recipes
+
+### Fade and slide in on mount
+Entry animation for any element when it's inserted or unhidden, with no JS.
+
+```css
+.enter {
+  transition:
+    opacity 250ms cubic-bezier(0.2, 0, 0, 1),
+    translate 250ms cubic-bezier(0.2, 0, 0, 1);
+
+  @starting-style {
+    opacity: 0;
+    translate: 0 0.75rem;
+  }
+}
+/* stagger: set --i inline, or use sibling-index() */
+.list > .enter {
+  transition-delay: calc(var(--i, 0) * 40ms);
+}
+```
+
+### Animate dialog open and close
+A modal that fades and scales in and out, backdrop included.
+
+```css
+dialog {
+  opacity: 0;
+  scale: 0.96;
+  transition:
+    opacity 200ms ease-out,
+    scale 200ms ease-out,
+    overlay 200ms allow-discrete,
+    display 200ms allow-discrete;
+}
+dialog[open] { opacity: 1; scale: 1; }
+@starting-style {
+  dialog[open] { opacity: 0; scale: 0.96; }
+}
+
+dialog::backdrop {
+  background: oklch(0% 0 0 / 0);
+  transition:
+    background 200ms,
+    overlay 200ms allow-discrete,
+    display 200ms allow-discrete;
+}
+dialog[open]::backdrop { background: oklch(0% 0 0 / 40%); }
+@starting-style {
+  dialog[open]::backdrop { background: oklch(0% 0 0 / 0); }
+}
+```
+
+### Scroll progress bar
+A reading-progress bar tied to page scroll, off the main thread.
+
+```css
+@keyframes progress {
+  from { scale: 0 1; }
+  to { scale: 1 1; }
+}
+
+.read-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10;
+  block-size: 3px;
+  background: var(--brand);
+  transform-origin: 0 50%;
+  animation: progress linear both;
+  animation-timeline: scroll(root block);
+}
+@supports not (animation-timeline: scroll()) {
+  .read-progress { display: none; }
+}
+```
+
+### Reveal on scroll with `view()`
+Elements fade up as they enter the viewport; browsers without support show them as normal.
+
+```css
+@keyframes reveal {
+  from { opacity: 0; translate: 0 2rem; }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+    }
+  }
+}
+```
+
+### Page transitions (Next.js and SPA)
+Next.js App Router: wrap each page's content (not the layout) and trigger with `Link`
+`transitionTypes`.
+
+```tsx title="app/posts/page.tsx"
+import { ViewTransition } from "react";
+import Link from "next/link";
+
+const slide = {
+  "nav-forward": "slide-left",
+  "nav-back": "slide-right",
+  default: "none",
+};
+
+export default function Page() {
+  return (
+    <ViewTransition
+      enter={slide}
+      exit={slide}
+      default="none"
+    >
+      <Link
+        href="/posts/1"
+        transitionTypes={["nav-forward"]}
+      >
+        First post
+      </Link>
+    </ViewTransition>
+  );
+}
+```
+
+Anywhere else, call the browser API directly (it falls back when unsupported):
+
+```ts
+export async function withTransition(
+  update: () => void | Promise<void>,
+  types: string[] = [],
+): Promise<void> {
+  const q = "(prefers-reduced-motion: reduce)";
+  const unsupported = !("startViewTransition" in document);
+  if (unsupported || matchMedia(q).matches) {
+    await update();
+    return;
+  }
+  const vt = document.startViewTransition({ update, types });
+  await vt.finished;
+}
+```
+
+### Spring-like easing with `linear()`
+A bouncy settle for sheets and toggles; keep a plain fallback for old browsers.
+
+```css
+:root {
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring: linear(0, 0.145, 0.436, 0.721, 0.93, 1.048,
+      1.092, 1.089, 1.065, 1.036, 1.013, 0.999, 0.992,
+      0.991, 0.993, 0.996, 1);
+  }
+}
+.switch-thumb { transition: translate 700ms var(--spring); }
+```
+
+### Respect reduced motion globally
+A safety net that neutralises all CSS motion, view transitions included.
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+```
+
+`0.01ms` rather than `none` keeps `animationend` and `transitionend` firing for code that
+waits on them.
+
+### FLIP list reorder
+Animate items to their new positions after a sort or filter, using WAAPI.
+
+```ts
+export function flip(
+  items: HTMLElement[],
+  mutate: () => void,
+): void {
+  const first = new Map(
+    items.map((el) => [el, el.getBoundingClientRect()]),
+  );
+  mutate();                                     // Last
+  for (const el of items) {
+    const a = first.get(el);
+    if (!a || !el.isConnected) continue;
+    const b = el.getBoundingClientRect();
+    const dx = a.left - b.left;                 // Invert
+    const dy = a.top - b.top;
+    if (dx === 0 && dy === 0) continue;
+    el.animate(                                 // Play
+      [
+        { translate: `${dx}px ${dy}px` },
+        { translate: "0 0" },
+      ],
+      { duration: 300, easing: "cubic-bezier(.2,0,0,1)" },
+    );
+  }
+}
+```
+
+## References
+
+- [MDN: Using CSS transitions](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_transitions/Using_CSS_transitions): properties and events
+- [MDN: @starting-style](https://developer.mozilla.org/en-US/docs/Web/CSS/@starting-style): entry transitions and `allow-discrete`
+- [MDN: Using CSS animations](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_animations/Using_CSS_animations): `@keyframes` and the animation properties
+- [MDN: easing-function](https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function): `cubic-bezier()`, `steps()`, `linear()`
+- [MDN: Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_scroll-driven_animations): `scroll()`, `view()`, ranges
+- [MDN: View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API): same- and cross-document transitions
+- [MDN: prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion): the media feature
+- [Next.js: View transitions guide](https://nextjs.org/docs/app/guides/view-transitions): `ViewTransition` patterns in the App Router
+- [React: ViewTransition](https://react.dev/reference/react/ViewTransition): props and activation rules
+- [Motion docs](https://motion.dev/docs/react): Motion for React
+- [GSAP docs](https://gsap.com/docs/v3/): tweens, timelines, ScrollTrigger
+- [web.dev: High-performance CSS animations](https://web.dev/articles/animations-guide): which properties are cheap
+- [Linear easing generator](https://linear-easing-generator.netlify.app/): springs and bounces as `linear()`
+- [WCAG 2.2: Animation from interactions](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html): motion requirements

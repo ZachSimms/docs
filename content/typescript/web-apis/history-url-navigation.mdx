@@ -1,0 +1,536 @@
+---
+title: History, URL & Navigation
+date: 2026-09-25
+order: 9
+---
+
+Parsing and building URLs, matching them with `URLPattern`, and moving between them without a reload
+through the History API or the newer Navigation API. The types target TypeScript 6.0 `lib.dom`. For
+routing inside a framework, see [Next.js](/typescript/react/next-js/).
+
+## URL
+
+```ts
+const u = new URL("/docs/a?q=ts#top", "https://ex.com");
+u.href;       // "https://ex.com/docs/a?q=ts#top"
+u.pathname = "/docs/b c"; // setters percent-encode: b%20c
+u.hash = "";  // drops the fragment
+
+new URL("nope");        // throws TypeError
+URL.canParse("nope");   // false
+URL.parse("nope");      // null (no throw)
+URL.parse("x", "https://ex.com/")?.href;
+```
+
+| Property       | Example value for `https://me:pw@ex.com:8080/a/b?x=1#h` |
+| :------------- | :------------------------------------------------------ |
+| `href`         | the whole string (serialised, normalised)               |
+| `origin`       | `https://ex.com:8080` (read-only)                       |
+| `protocol`     | `https:` (with the colon)                               |
+| `username`     | `me`                                                    |
+| `password`     | `pw`                                                    |
+| `host`         | `ex.com:8080`                                           |
+| `hostname`     | `ex.com`                                                |
+| `port`         | `8080`; `""` when it is the scheme default               |
+| `pathname`     | `/a/b`                                                  |
+| `search`       | `?x=1` (`""` when empty)                                |
+| `searchParams` | live `URLSearchParams` bound to `search`                |
+| `hash`         | `#h` (`""` when empty)                                  |
+
+### Resolving relative URLs
+
+| Input      | Base                    | Result                  |
+| :--------- | :---------------------- | :---------------------- |
+| `c`        | `https://ex.com/a/b`    | `https://ex.com/a/c`    |
+| `c`        | `https://ex.com/a/b/`   | `https://ex.com/a/b/c`  |
+| `/c`       | `https://ex.com/a/b/`   | `https://ex.com/c`      |
+| `../c`     | `https://ex.com/a/b/`   | `https://ex.com/a/c`    |
+| `?q=1`     | `https://ex.com/a/b`    | `https://ex.com/a/b?q=1`|
+| `//cdn.io` | `https://ex.com/`       | `https://cdn.io/`       |
+
+The trailing slash on the base decides whether its last segment counts as a directory.
+
+## URLSearchParams
+
+```ts
+const p = new URLSearchParams("?tag=a&tag=b&q=hi+there");
+p.get("q");          // "hi there" (+ decodes to space)
+p.getAll("tag");     // ["a", "b"]
+p.has("tag", "b");   // true (value overload)
+p.size;              // 3
+p.set("page", "2");  // replaces every "page"
+p.append("tag", "c");
+p.delete("tag", "a"); // only that pair
+p.sort();
+p.toString();        // "page=2&q=hi+there&tag=b&tag=c"
+
+// Constructors: string, record, or pairs (for repeats)
+new URLSearchParams({ q: "ts", page: String(2) });
+new URLSearchParams([["tag", "a"], ["tag", "b"]]);
+```
+
+| Method                 | Returns                 | Notes                                    |
+| :--------------------- | :---------------------- | :--------------------------------------- |
+| `get(k)`               | `string \| null`        | first value only                         |
+| `getAll(k)`            | `string[]`              | every value, in order                    |
+| `has(k, v?)`           | `boolean`               | `v` overload is newer (Baseline 2023)    |
+| `set(k, v)`            | `void`                  | removes other `k` pairs                  |
+| `append(k, v)`         | `void`                  | keeps existing `k` pairs                 |
+| `delete(k, v?)`        | `void`                  | `v` overload is newer (Baseline 2023)    |
+| `size`                 | `number`                | pairs, not unique keys                   |
+| `entries()` / `keys()` | iterator                | also iterable in `for...of`              |
+| `sort()`               | `void`                  | stable, by key                           |
+
+`Object.fromEntries(p)` keeps the **last** value of a repeated key. Record-constructor values must be
+strings: `String(n)` numbers yourself.
+
+## Encoding
+
+| Character | `encodeURIComponent` | `encodeURI` | `URLSearchParams` |
+| :-------- | :------------------- | :---------- | :---------------- |
+| space     | `%20`                | `%20`       | `+`               |
+| `/`       | `%2F`                | `/`         | `%2F`             |
+| `?`       | `%3F`                | `?`         | `%3F`             |
+| `#`       | `%23`                | `#`         | `%23`             |
+| `&`       | `%26`                | `&`         | `%26`             |
+| `=`       | `%3D`                | `=`         | `%3D`             |
+| `+`       | `%2B`                | `+`         | `%2B`             |
+| `:`       | `%3A`                | `:`         | `%3A`             |
+| `~`       | `~`                  | `~`         | `%7E`             |
+| `'` `(` `)` `!` `*` | kept       | kept        | `%27` etc. (`*` kept) |
+| `é`       | `%C3%A9`             | `%C3%A9`    | `%C3%A9`          |
+
+- `encodeURIComponent` for one path segment or one value. `encodeURI` only for a whole URL that is
+  already structured, which is rare. Prefer `URL`/`URLSearchParams` and never encode by hand.
+- `decodeURIComponent` does **not** turn `+` into a space; `URLSearchParams` does.
+- A lone surrogate (`"\uD800"`) makes `encodeURIComponent` throw `URIError`; bad `%` sequences make
+  `decodeURIComponent` throw too.
+- `url.search` serialises spaces as `%20`, `url.searchParams` as `+`; touching `searchParams`
+  rewrites `search` in its own style.
+
+## URLPattern
+
+Match URLs with path-to-regexp style syntax and pull out named groups. Baseline 2025.
+
+```ts
+const post = new URLPattern({
+  pathname: "/blog/:year(\\d{4})/:slug",
+});
+post.test("https://ex.com/blog/2026/hello"); // true
+const m = post.exec("https://ex.com/blog/2026/hello");
+m?.pathname.groups; // { year: "2026", slug: "hello" }
+
+// String form needs a base for relative patterns
+const files = new URLPattern("/files/*", location.origin);
+files.exec(location.href)?.pathname.groups[0]; // rest
+
+// Case-insensitive
+new URLPattern({ pathname: "/Help" }, { ignoreCase: true });
+```
+
+| Syntax        | Meaning                                      |
+| :------------ | :------------------------------------------- |
+| `:id`         | named group, one segment (no `/`)            |
+| `:id(\\d+)`   | named group with a regex                     |
+| `*`           | greedy wildcard, captured as group `"0"`     |
+| `:id?`        | optional                                     |
+| `:path+`      | one or more segments                         |
+| `:path*`      | zero or more segments                        |
+| `{/}?`        | non-capturing group with a modifier          |
+| `\\:`         | literal special character                    |
+
+- In the object form, components you omit default to `*`, so `{ pathname }` matches any host.
+- `/books` does **not** match `/books/`; write `/books{/}?` to accept both.
+- Groups are `Record<string, string \| undefined>`; validate before use.
+- `pattern.hasRegExpGroups` flags patterns that can't be converted to other routers.
+
+## location
+
+| Member               | Does                                                   |
+| :------------------- | :----------------------------------------------------- |
+| `location.href`      | read the URL; assigning navigates (new entry)          |
+| `location.assign(u)` | navigate, new history entry                            |
+| `location.replace(u)`| navigate, replaces current entry (no back)             |
+| `location.reload()`  | reload the document                                    |
+| `location.hash = "x"`| same-document, new entry, fires `hashchange`           |
+| `location.search = ` | full navigation (reload) to the new query              |
+| `location.origin`    | `scheme://host:port`, read-only                        |
+
+Every `location` write except `hash` loads a new document. For same-document URL changes use the
+History or Navigation API.
+
+## History API
+
+```ts
+type PageState = { scrollY: number; tab: string };
+
+history.pushState(
+  { scrollY: 0, tab: "a" } satisfies PageState,
+  "", // title: unused, pass ""
+  "/settings?tab=a",
+);
+history.replaceState({ ...history.state, tab: "b" }, "");
+
+addEventListener("popstate", (e: PopStateEvent) => {
+  const s = e.state as PageState | null; // any in lib.dom
+  render(location.pathname, s);
+});
+declare function render(p: string, s: unknown): void;
+```
+
+| Member                          | Notes                                                    |
+| :------------------------------ | :------------------------------------------------------- |
+| `pushState(state, "", url?)`    | new entry, URL changes, **no** navigation, no event      |
+| `replaceState(state, "", url?)` | rewrites current entry                                   |
+| `back()` / `forward()` / `go(n)`| async; result arrives as `popstate`                      |
+| `history.state`                 | current entry's state (a structured clone), `any`        |
+| `history.length`                | entries in the session (you can't read them)             |
+| `history.scrollRestoration`     | `"auto"` (default) or `"manual"`                         |
+| `popstate` event                | fires on back/forward/`go` only, never on push/replace   |
+
+- **State** is structured-cloned: no functions, DOM nodes or class instances (`DataCloneError`).
+  Browsers cap its serialised size; keep ids in state and data in `sessionStorage`.
+- **URL** must be same-origin or it throws `SecurityError`. So does calling it too often
+  (browsers rate-limit pushes).
+- `pushState` never fires `hashchange`, even for a hash-only change.
+- Set `history.scrollRestoration = "manual"` when you restore scroll yourself (e.g. after
+  async data renders), otherwise the browser jumps early.
+
+## Navigation API
+
+One `navigate` event for every same-document navigation: link clicks, form submits, back/forward,
+`location` writes and `navigation.navigate()`. **Baseline 2026** (newly available since January 2026).
+
+```ts
+navigation.addEventListener("navigate", (e) => {
+  if (!e.canIntercept || e.hashChange) return;
+  if (e.downloadRequest !== null) return;
+  const url = new URL(e.destination.url);
+  if (!url.pathname.startsWith("/app/")) return;
+
+  e.intercept({
+    async handler() {
+      const html = await loadView(url, e.signal);
+      document.querySelector("main")!.innerHTML = html;
+    },
+  });
+});
+declare function loadView(
+  u: URL, s: AbortSignal,
+): Promise<string>;
+```
+
+```ts
+const { committed, finished } = navigation.navigate(
+  "/app/inbox",
+  { state: { from: "home" }, history: "push" },
+);
+await finished; // handler promise settled
+
+navigation.currentEntry?.getState();
+navigation.updateCurrentEntry({ state: { tab: 2 } });
+navigation.entries().map((en) => en.url);
+navigation.canGoBack && (await navigation.back().finished);
+```
+
+| API                                   | Purpose                                              |
+| :------------------------------------ | :--------------------------------------------------- |
+| `navigate(url, {state, history, info})` | `history`: `"auto"`, `"push"`, `"replace"`         |
+| `reload({state, info})`               | re-run the current entry (interceptable)             |
+| `back()` / `forward()` / `traverseTo(key)` | traverse; `key` from an entry               |
+| `updateCurrentEntry({state})`         | change state, no navigation                          |
+| `entries()`                           | same-origin entries of this frame, in order          |
+| `currentEntry`                        | `url`, `key`, `id`, `index`, `getState()`            |
+| `transition`                          | in-flight: `navigationType`, `from`, `finished`      |
+| `activation`                          | how this document was reached (cross-document)       |
+| `navigatesuccess` / `navigateerror`   | handler promise fulfilled / rejected                 |
+| `currententrychange`                  | the current entry changed                            |
+
+| `NavigateEvent` field | Meaning                                                   |
+| :-------------------- | :-------------------------------------------------------- |
+| `navigationType`      | `"push"`, `"replace"`, `"reload"`, `"traverse"`           |
+| `destination`         | `url`, `key`, `index`, `sameDocument`, `getState()`       |
+| `canIntercept`        | false for cross-origin and some traversals                |
+| `userInitiated`       | the user clicked/submitted/pressed back                   |
+| `formData`            | set for form `POST` submissions                           |
+| `signal`              | aborts if another navigation starts or the user stops     |
+| `info`                | the `info` you passed to `navigate()` etc.                |
+| `intercept(opts)`     | `handler`, `precommitHandler`, `focusReset`, `scroll`     |
+| `scroll()`            | scroll now instead of after the handler finishes          |
+
+- `state` lives on entries (`getState()`), `info` lives on one navigation only.
+- `intercept()` throws `SecurityError` when `canIntercept` is false; always check it.
+- `precommitHandler` runs before the URL commits and can `controller.redirect()`; it throws for
+  non-cancelable events (most traversals).
+- The event does not fire for the initial page load; render the first view yourself.
+
+## Hash routing
+
+```ts
+function route(): void {
+  const path = location.hash.slice(1) || "/";
+  view(path); // "#/users/7" gives "/users/7"
+}
+addEventListener("hashchange", route);
+route();
+declare function view(p: string): void;
+```
+
+Works on any static host with no server rewrites and on `file:`. Costs: the server never sees
+the path (no SSR, no per-route status codes), URLs look dated, and `#` can't also be used for
+in-page anchors.
+
+## SPA router basics
+
+| Concern          | History API                                    | Navigation API                     |
+| :--------------- | :--------------------------------------------- | :--------------------------------- |
+| Link clicks      | delegate `click`, skip modified/external, `preventDefault`, `pushState` | `navigate` event, `intercept()` |
+| Back/forward     | `popstate`                                     | same `navigate` event              |
+| Form submits     | intercept `submit` yourself                    | `e.formData`                       |
+| Loading state    | your own flag                                  | `navigation.transition`            |
+| Cancel stale load| your own `AbortController`                     | `e.signal`                         |
+| Scroll/focus     | manual                                         | `scroll`/`focusReset` options      |
+
+Skip a click when: `e.defaultPrevented`, `button !== 0`, any of `meta`/`ctrl`/`shift`/`alt`, the
+link has `target`, `download`, or `rel="external"`, or `a.origin !== location.origin`. The server
+must answer every client route with the app shell (history fallback), or a refresh 404s.
+
+## Leaving the page
+
+```ts
+const warn = (e: BeforeUnloadEvent) => {
+  e.preventDefault();
+  e.returnValue = true; // legacy browsers
+};
+function setDirty(dirty: boolean): void {
+  if (dirty) addEventListener("beforeunload", warn);
+  else removeEventListener("beforeunload", warn);
+}
+```
+
+- The dialog text is the browser's; it only appears after the user interacted with the page.
+- Attach it only while there are unsaved changes: a listener can keep the page out of the
+  back/forward cache (Firefox) and is ignored by mobile browsers.
+- For "save on exit", use `pagehide` or `visibilitychange` plus `fetch(..., { keepalive: true })`
+  instead; see [Page Visibility](/typescript/web-apis/page-visibility/).
+
+## Typed search params
+
+```ts
+import { z } from "zod";
+
+const Search = z.object({
+  q: z.string().trim().default(""),
+  page: z.coerce.number().int().min(1).catch(1),
+  sort: z.enum(["new", "top"]).catch("new"),
+  tag: z.array(z.string()).default([]),
+});
+type Search = z.infer<typeof Search>;
+```
+
+`.catch()` turns a bad value in a shared link into a default instead of an error page. Repeated
+keys need `getAll`; see the recipe below. Zod 4.x.
+
+## Support & typing
+
+| Feature                              | Baseline (MDN)                    | TypeScript                           |
+| :----------------------------------- | :-------------------------------- | :----------------------------------- |
+| `URL`, `URLSearchParams`, History    | widely available                  | `lib.dom`                            |
+| `URL.canParse()`                     | 2023                              | `lib.dom`                            |
+| `URL.parse()`                        | 2024                              | `lib.dom`                            |
+| `URLSearchParams` `size`, value args | 2023                              | `lib.dom`                            |
+| `URLPattern`                         | 2025 (Sep)                        | TS 6.0 `lib.dom`; 5.9 needs `urlpattern-polyfill` types |
+| Navigation API                       | 2026 (Jan)                        | TS 6.0 `lib.dom`; 5.9 needs `@types/dom-navigation` |
+| `beforeunload`                       | limited (dialog rules differ)     | `BeforeUnloadEvent`                  |
+
+- `URL`, `URLSearchParams` and `URLPattern` also exist in Bun, Node (URLPattern global since 24)
+  and Deno, so the same parsing code runs server-side.
+- `history.state`, `e.state` and `getState()` are `any`: cast through a schema, not `as`.
+- `NavigationResult.committed`/`finished` are typed optional; `await` handles `undefined` fine.
+- Feature-detect with `"navigation" in window` and `"URLPattern" in globalThis`.
+
+## Pitfalls
+
+| Pitfall                                       | Fix                                                |
+| :-------------------------------------------- | :------------------------------------------------- |
+| String-concatenating query strings            | `url.searchParams.set(k, v)`                       |
+| `new URL(userInput)` crashing the handler      | `URL.parse()` and handle `null`                    |
+| `?next=` param used as a redirect target      | parse against your origin, compare `origin`        |
+| `+` in a base64 value becoming a space        | `append()` it, or use base64url                    |
+| Expecting `popstate` after `pushState`        | render right after pushing                         |
+| Class instances in history state              | store plain data or ids                            |
+| Pushing on every keystroke                    | `replaceState` while typing, push on commit        |
+| Relative base without trailing slash          | `new URL("x", base + "/")` when base is a folder   |
+| `URLPattern` missing `/foo/`                  | `{/}?` suffix                                      |
+| `beforeunload` always attached                | add it only while dirty                            |
+
+## Recipes
+
+### Sync state to the query string
+Filters and pagination that survive reload and sharing, without spamming history.
+
+```ts
+type QueryPatch = Record<string, string | number | null>;
+
+export function setQuery(
+  patch: QueryPatch,
+  mode: "push" | "replace" = "replace",
+): void {
+  const url = new URL(location.href);
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === "") url.searchParams.delete(k);
+    else url.searchParams.set(k, String(v));
+  }
+  if (url.href === location.href) return;
+  const s: unknown = history.state;
+  if (mode === "push") history.pushState(s, "", url);
+  else history.replaceState(s, "", url);
+}
+
+setQuery({ q: "zod", page: null }); // while typing
+setQuery({ page: 2 }, "push");      // on click
+```
+
+### Tiny router: URLPattern + Navigation API, History fallback
+A dozen routes without a framework; uses the Navigation API when present.
+
+```ts
+type Params = Record<string, string | undefined>;
+type View = (p: Params) => Promise<void>;
+const routes: Array<[URLPattern, View]> = [];
+export const on = (path: string, v: View) =>
+  routes.push([new URLPattern({ pathname: path }), v]);
+
+function match(href: string): (() => Promise<void>) | null {
+  for (const [pat, view] of routes) {
+    const m = pat.exec(href);
+    if (m) return () => view(m.pathname.groups);
+  }
+  return null;
+}
+
+export function start(): void {
+  if ("navigation" in window) {
+    navigation.addEventListener("navigate", (e) => {
+      const run = match(e.destination.url);
+      if (!e.canIntercept || e.hashChange || !run) return;
+      e.intercept({ handler: run });
+    });
+  } else {
+    addEventListener("popstate", () => {
+      void match(location.href)?.();
+    });
+    document.addEventListener("click", onClick);
+  }
+  void match(location.href)?.(); // first render
+}
+```
+
+The fallback click handler for the `else` branch:
+
+```ts
+function onClick(e: MouseEvent): void {
+  const a = (e.target as Element | null)?.closest("a");
+  if (!a || a.target || a.hasAttribute("download")) return;
+  if (e.defaultPrevented || e.button !== 0) return;
+  if (e.metaKey || e.ctrlKey) return;
+  if (e.shiftKey || e.altKey) return;
+  if (a.origin !== location.origin) return;
+  const run = match(a.href);
+  if (!run) return;
+  e.preventDefault();
+  history.pushState(null, "", a.href);
+  void run();
+}
+```
+
+### Build a URL safely
+Anything user-supplied goes through `URL` and `searchParams`, never a template string.
+
+```ts
+type QueryValue = string | number | boolean | undefined;
+
+export function buildUrl(
+  base: string,
+  path: readonly string[],
+  query: Record<string, QueryValue | QueryValue[]> = {},
+): URL {
+  const url = new URL(base);
+  const segs = path.map(encodeURIComponent).join("/");
+  url.pathname = url.pathname.replace(/\/?$/, "/") + segs;
+  for (const [k, v] of Object.entries(query)) {
+    for (const item of [v].flat()) {
+      if (item !== undefined) {
+        url.searchParams.append(k, String(item));
+      }
+    }
+  }
+  return url;
+}
+
+buildUrl("https://api.ex.com/v1", ["users", "a/b"], {
+  tag: ["x", "y"], active: true,
+}).href; // .../v1/users/a%2Fb?tag=x&tag=y&active=true
+```
+
+### Parse typed search params
+Turns `URLSearchParams` into a validated object; repeated keys become arrays.
+
+```ts
+import { z } from "zod";
+
+export function parseSearch<S extends z.ZodType>(
+  schema: S,
+  params: URLSearchParams,
+): z.infer<S> {
+  const raw: Record<string, string | string[]> = {};
+  for (const key of new Set(params.keys())) {
+    const all = params.getAll(key);
+    raw[key] = all.length > 1 ? all : all[0]!;
+  }
+  return schema.parse(raw);
+}
+
+const Search = z.object({
+  page: z.coerce.number().int().min(1).catch(1),
+  tag: z.array(z.string())
+    .or(z.string().transform((s) => [s]))
+    .default([]),
+});
+const s = parseSearch(
+  Search,
+  new URL(location.href).searchParams,
+);
+```
+
+### Safe `?next=` redirect
+After login, only follow same-origin targets, which blocks open redirects.
+
+```ts
+export function safeNext(
+  raw: string | null,
+  fallback = "/",
+): string {
+  if (!raw) return fallback;
+  const url = URL.parse(raw, location.origin);
+  if (!url || url.origin !== location.origin) {
+    return fallback;
+  }
+  return url.pathname + url.search + url.hash;
+}
+
+const q = new URLSearchParams(location.search);
+const next = q.get("next");
+location.replace(safeNext(next));
+```
+
+## References
+
+- MDN: [URL](https://developer.mozilla.org/en-US/docs/Web/API/URL), [`URL.parse()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/parse_static), [URLSearchParams](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams), [`encodeURIComponent()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent): parsing, building and encoding
+- MDN: [URL Pattern API](https://developer.mozilla.org/en-US/docs/Web/API/URL_Pattern_API): full pattern syntax and matching rules
+- MDN: [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API), [`pushState()`](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState), [`popstate`](https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event), [Location](https://developer.mozilla.org/en-US/docs/Web/API/Location)
+- MDN: [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API), [`NavigateEvent.intercept()`](https://developer.mozilla.org/en-US/docs/Web/API/NavigateEvent/intercept): events, entries and interception
+- MDN: [`beforeunload`](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event): dialog rules and bfcache impact
+- [WHATWG URL Standard](https://url.spec.whatwg.org/), [URL Pattern Standard](https://urlpattern.spec.whatwg.org/), [HTML: Navigation API](https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigation-api)
+- Chrome for Developers: [Modern client-side routing: the Navigation API](https://developer.chrome.com/docs/web-platform/navigation-api/)
+- [Zod](https://zod.dev/): `coerce`, `catch` and `default`

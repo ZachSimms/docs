@@ -1,0 +1,531 @@
+---
+title: Media devices
+date: 2026-09-25
+order: 13
+---
+
+Camera, microphone and screen capture with `navigator.mediaDevices`, the `MediaStream` and
+`MediaStreamTrack` objects they return, recording with `MediaRecorder`, and still photos. Sending
+streams to peers is in [WebRTC](/typescript/web-apis/webrtc/), frame-level encoding in
+[WebCodecs](/typescript/web-apis/webcodecs/).
+
+## Support & TypeScript
+
+| API | Status (MDN / Baseline) |
+| :-- | :---------------------- |
+| `getUserMedia()`, `MediaStream`, `MediaStreamTrack` | Baseline widely available (since 2017) |
+| `enumerateDevices()`, `devicechange` | widely available; Firefox 116 switched to the spec's privacy rules |
+| `MediaRecorder`, `isTypeSupported()` | Baseline widely available (since 2021) |
+| `track.getCapabilities()` | all engines (Firefox 132+) |
+| `navigator.permissions.query({ name: "camera" })` | all engines (Firefox 132+, Safari 16+) |
+| `getDisplayMedia()` | **not Baseline**: desktop Chrome, Edge, Firefox, Safari; no mobile browser |
+| `ImageCapture` | **not Baseline**: Chromium; Safari 18.4 (`takePhoto`), 26 (`grabFrame`); Firefox behind a flag |
+| `HTMLMediaElement.setSinkId()` (output device) | Chrome, Firefox 116, Safari 18.4; not Chrome Android |
+| `CaptureController`, `preferCurrentTab`, `systemAudio` | Chromium only |
+
+Everything here needs a **secure context**: HTTPS, `localhost` or `file:`. On plain HTTP
+`navigator.mediaDevices` is `undefined`.
+
+- `lib.dom` types the core: `MediaStreamConstraints`, `MediaTrackConstraints`, `MediaDeviceInfo`,
+  `MediaRecorderOptions`, `BlobEvent`, `OverconstrainedError`.
+- `DisplayMediaStreamOptions` only has `audio` and `video`; Chromium extras such as
+  `selfBrowserSurface` need an extended type (see [Screen capture](#screen-capture)).
+- `MediaTrackConstraintSet` lacks Image Capture constraints (`zoom`, `torch`, `focusMode`) even
+  though `MediaTrackSettings` has some; widen the type when you use them.
+- TS 5.9 `ImageCapture` has no `grabFrame()`; add it with an interface merge.
+- Errors come back as `DOMException` (a subclass of `Error`); switch on `err.name`.
+
+## getUserMedia & constraints
+
+```ts
+const stream = await navigator.mediaDevices.getUserMedia({
+  audio: { echoCancellation: true, noiseSuppression: true },
+  video: {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, max: 60 },
+    facingMode: "user", // "environment" = back camera
+  },
+});
+```
+
+| Constraint form | Meaning | If unmet |
+| :-------------- | :------ | :------- |
+| `width: 1280` | bare value = `ideal` | best effort |
+| `{ ideal: 1280 }` | aim for it, closest wins | best effort |
+| `{ min: 640, max: 1920 }` | hard range | `OverconstrainedError` |
+| `{ exact: id }` | this value only | `OverconstrainedError` |
+| `advanced: [{...}, {...}]` | try each set in order, skip the ones that can't be met | skipped |
+
+| Constraint | Kind | Values / notes |
+| :--------- | :--- | :------------- |
+| `deviceId` | both | from `enumerateDevices()`; use `{ exact: id }` to force a device |
+| `groupId` | both | same physical device (webcam + its mic) |
+| `width`, `height` | video | pixels; the camera picks the nearest native mode |
+| `aspectRatio` | video | e.g. `16 / 9` |
+| `frameRate` | video | frames per second |
+| `facingMode` | video | `"user"`, `"environment"`, `"left"`, `"right"` |
+| `resizeMode` | video | `"none"` (native modes only) or `"crop-and-scale"`; not in TS types |
+| `echoCancellation` | audio | default `true` for mics |
+| `noiseSuppression` | audio | default `true` in most browsers |
+| `autoGainControl` | audio | default `true`; turn off for music |
+| `sampleRate`, `sampleSize`, `channelCount` | audio | e.g. `48000`, `16`, `1` or `2` |
+| `displaySurface` | screen | `"browser"`, `"window"`, `"monitor"` (a hint for `getDisplayMedia`) |
+
+```ts
+// which constraints does this browser understand at all?
+const supported =
+  navigator.mediaDevices.getSupportedConstraints();
+if (supported.frameRate) {
+  /* safe to constrain frameRate */
+}
+```
+
+## Permissions & secure context
+
+| Layer | How | Notes |
+| :---- | :-- | :---- |
+| Secure context | HTTPS or `localhost` | otherwise `navigator.mediaDevices` is `undefined` |
+| Permissions Policy | `Permissions-Policy: camera=(self), microphone=(self)` | blocks or allows the whole document |
+| iframes | `<iframe allow="camera; microphone; display-capture">` | cross-origin frames get nothing without it |
+| User prompt | first `getUserMedia()` per origin | grants can be one-time (Chrome "Allow this time"), per session, or remembered |
+| Query state | `navigator.permissions.query({ name: "camera" })` | `"granted"`, `"denied"`, `"prompt"`; has a `change` event |
+| Indicator | browser tab / OS light | shown while any track is live; `track.stop()` clears it |
+
+```ts
+async function cameraPermission(): Promise<PermissionState> {
+  try {
+    const s = await navigator.permissions.query({
+      name: "camera",
+    });
+    return s.state;
+  } catch {
+    return "prompt"; // query not supported: just ask
+  }
+}
+```
+
+There is no API to request a permission without capturing: call `getUserMedia()` from a click
+and explain first, because a dismissed prompt can turn into a sticky block.
+
+## Devices
+
+```ts
+const md = navigator.mediaDevices;
+const devices = await md.enumerateDevices();
+const cams = devices.filter((d) => d.kind === "videoinput");
+// before any grant: labels are "", often one entry per kind
+
+md.addEventListener("devicechange", () => {
+  // plugged / unplugged: re-enumerate and refresh the UI
+});
+```
+
+| `MediaDeviceInfo` | Notes |
+| :---------------- | :---- |
+| `deviceId` | stable per origin until site data is cleared; Chromium adds `"default"`/`"communications"` audio aliases |
+| `groupId` | same value for a camera and its built-in mic |
+| `kind` | `"videoinput"`, `"audioinput"`, `"audiooutput"` |
+| `label` | human name; empty until the user granted access in this origin |
+
+- Enumerate **after** a successful `getUserMedia()` to get real labels and the full list.
+- Switch device by stopping the old track and capturing with `deviceId: { exact: id }`.
+- Pick a speaker with `audioElement.setSinkId(deviceId)` where supported.
+
+## Screen capture
+
+`getDisplayMedia()` must run inside a user gesture (transient activation); the browser shows its
+own picker and never remembers the choice.
+
+```ts
+type DisplayOptions = DisplayMediaStreamOptions & {
+  // Chromium-only hints, not in lib.dom yet
+  selfBrowserSurface?: "include" | "exclude";
+  systemAudio?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+  monitorTypeSurfaces?: "include" | "exclude";
+  preferCurrentTab?: boolean;
+};
+
+const options: DisplayOptions = {
+  video: { displaySurface: "monitor", frameRate: 30 },
+  audio: true, // tab audio in Chromium; ignored elsewhere
+  selfBrowserSurface: "exclude",
+};
+const screen =
+  await navigator.mediaDevices.getDisplayMedia(options);
+
+const [track] = screen.getVideoTracks();
+track!.contentHint = "detail"; // text/slides: keep sharpness
+track!.addEventListener("ended", () => {
+  // user clicked the browser's "Stop sharing"
+});
+```
+
+| `contentHint` | Encoder favours |
+| :------------ | :-------------- |
+| `"motion"` | frame rate (video, games) |
+| `"detail"` / `"text"` | resolution and sharpness (slides, code) |
+| `"speech"` / `"music"` | audio tracks: voice processing vs fidelity |
+
+## Streams & tracks
+
+A `MediaStream` is a bag of `MediaStreamTrack`s; the track is what holds the device.
+
+| `MediaStream` | Does |
+| :------------ | :--- |
+| `getTracks()`, `getVideoTracks()`, `getAudioTracks()` | list tracks |
+| `addTrack(t)`, `removeTrack(t)` | compose streams (e.g. screen video + mic audio) |
+| `clone()` | new stream with cloned tracks |
+| `active` | `true` while any track is live |
+| `new MediaStream(tracks)` | build one from existing tracks |
+
+| `MediaStreamTrack` | Does |
+| :----------------- | :--- |
+| `stop()` | releases the device; `readyState` becomes `"ended"`, for good |
+| `enabled = false` | sends black frames / silence; device stays on (a "mute" button) |
+| `muted` + `mute`/`unmute` events | source paused by the system (OS, another app, backgrounded tab) |
+| `readyState` | `"live"` or `"ended"`; `ended` event when the device vanishes |
+| `getSettings()` | actual values: `width`, `height`, `frameRate`, `deviceId`, … |
+| `getCapabilities()` | ranges the device supports |
+| `getConstraints()` | what you last asked for |
+| `applyConstraints(c)` | change resolution, frame rate, torch… without re-prompting |
+| `clone()` | independent copy; each clone must be stopped |
+| `label`, `kind`, `id` | description |
+
+```ts
+const [cam] = stream.getVideoTracks();
+if (cam) {
+  const caps = cam.getCapabilities();
+  const maxW = caps.width?.max ?? 1280;
+  await cam.applyConstraints({ width: { ideal: maxW } });
+  const { width, height, frameRate } = cam.getSettings();
+  console.log(`${width}x${height}@${frameRate}`);
+}
+
+// always release devices when done
+function stopAll(s: MediaStream) {
+  for (const t of s.getTracks()) t.stop();
+}
+```
+
+## MediaRecorder
+
+Records a stream into a compressed container, delivered as `Blob` chunks.
+
+```ts
+const mimeType = [
+  "video/webm;codecs=vp9,opus",
+  "video/webm;codecs=vp8,opus",
+  "video/mp4;codecs=avc1,mp4a.40.2",
+  "video/webm",
+  "video/mp4",
+].find((t) => MediaRecorder.isTypeSupported(t));
+
+const rec = new MediaRecorder(stream, {
+  mimeType, // undefined = browser default
+  videoBitsPerSecond: 2_500_000,
+});
+const chunks: Blob[] = [];
+rec.addEventListener("dataavailable", (e) => {
+  if (e.data.size > 0) chunks.push(e.data);
+});
+rec.addEventListener("stop", () => {
+  const blob = new Blob(chunks, { type: rec.mimeType });
+});
+rec.start(1000); // emit a chunk every second
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `start(timeslice?)` | without `timeslice` you get one blob at `stop()` |
+| `stop()` | fires a last `dataavailable`, then `stop` |
+| `pause()`, `resume()`, `requestData()` | `requestData` flushes a chunk now |
+| `state` | `"inactive"`, `"recording"`, `"paused"` |
+| `mimeType` | what is actually being produced |
+| `isTypeSupported(t)` | static; always probe, never assume |
+| `error` event | e.g. a track was added or removed mid-recording |
+
+| Browser | Records |
+| :------ | :------ |
+| Chrome, Edge | WebM (VP8, VP9, AV1, H.264; Opus), MP4 in recent versions |
+| Firefox | WebM (VP8, Opus), Ogg (Opus) |
+| Safari 14.1–18.3 | MP4 only (H.264, AAC) |
+| Safari 18.4+ | MP4 and WebM (VP8/VP9, Opus) |
+
+<Note kind="warning">WebM from `MediaRecorder` has no duration and no cues, so players can't seek it
+until it is remuxed. Fix the header (e.g. `fix-webm-duration`) or remux with
+[Mediabunny](https://mediabunny.dev/) before offering it for playback.</Note>
+
+## Photos
+
+Draw the current video frame to a canvas; it works everywhere and gives you the preview's size.
+
+```ts
+async function snapshot(
+  video: HTMLVideoElement,
+): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  ctx.drawImage(video, 0, 0);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("toBlob"))),
+      "image/jpeg",
+      0.9,
+    ),
+  );
+}
+```
+
+### ImageCapture
+
+`takePhoto()` asks the camera for a full-resolution still (flash, red-eye); `grabFrame()` returns
+the live frame as an `ImageBitmap`. Feature-detect and fall back to the canvas path.
+
+```ts
+declare global {
+  interface ImageCapture {
+    grabFrame(): Promise<ImageBitmap>; // missing in TS 5.9
+  }
+}
+
+async function takePhoto(track: MediaStreamTrack) {
+  if (!("ImageCapture" in window)) return null;
+  const capture = new ImageCapture(track);
+  const caps = await capture.getPhotoCapabilities();
+  return capture.takePhoto({
+    imageWidth: caps.imageWidth?.max,
+  }); // Blob, often JPEG
+}
+
+export {};
+```
+
+## Audio levels
+
+Route the mic into Web Audio and read an `AnalyserNode`; details in
+[Web Audio](/typescript/web-apis/web-audio/).
+
+```ts
+const ctx = new AudioContext(); // resume() it on a click
+const source = ctx.createMediaStreamSource(stream);
+const analyser = ctx.createAnalyser();
+analyser.fftSize = 1024;
+source.connect(analyser); // not to ctx.destination: no echo
+
+const buf = new Float32Array(analyser.fftSize);
+function rmsDb(): number {
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (const v of buf) sum += v * v;
+  const rms = Math.sqrt(sum / buf.length);
+  return 20 * Math.log10(rms || 1e-8); // dBFS, 0 = max
+}
+```
+
+## Errors
+
+| `err.name` | From | Cause | What to show |
+| :--------- | :--- | :---- | :----------- |
+| `NotAllowedError` | both | user or policy denied; also insecure context in some browsers | how to re-enable in site settings |
+| `NotFoundError` | both | no device of that kind (or none match) | "No camera found" |
+| `NotReadableError` | both | hardware/OS error, device busy in another app (Windows) | "Close other apps using the camera" |
+| `OverconstrainedError` | both | `exact`/`min`/`max` can't be met; see `err.constraint` | retry with `ideal` |
+| `AbortError` | both | something else stopped the device from being used | retry |
+| `SecurityError` | `getUserMedia` | media disabled on the document | |
+| `InvalidStateError` | both | document not fully active; `getDisplayMedia` without a user gesture | call from a click |
+| `TypeError` | both | empty constraints, `video: false` on screen capture, `min`/`exact` there | fix the call |
+
+```ts
+function mediaErrorMessage(err: unknown): string {
+  const name = err instanceof Error ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+      return "Permission denied. Allow it in site settings.";
+    case "NotFoundError":
+      return "No matching device found.";
+    case "NotReadableError":
+      return "The device is in use by another app.";
+    case "OverconstrainedError":
+      return "The device can't meet those settings.";
+    default:
+      return "Could not start capture.";
+  }
+}
+```
+
+## Pitfalls & iOS Safari
+
+- **Always stop tracks.** Unmount, route change, hang-up: `stream.getTracks().forEach(t => t.stop())`.
+  Dropping the reference or clearing `srcObject` leaves the camera light on.
+- **React:** capture in `useEffect` and stop in its cleanup; Strict Mode runs it twice in dev,
+  so every capture must be undone ([React hooks](/typescript/react/react-hooks/)).
+- **Autoplay:** preview `<video>` elements need `autoplay`, `playsinline` and `muted`.
+- **Clones** keep the device alive; stop each clone as well.
+- **`enabled = false` is not privacy:** the device stays on; use `stop()` to release it.
+- **Labels are empty** until the user grants access; enumerate after `getUserMedia()`.
+- **Exact device IDs:** a stored `deviceId` can vanish; catch `OverconstrainedError` and fall back.
+
+| iOS / iPadOS Safari quirk | Workaround |
+| :------------------------ | :--------- |
+| `<video>` goes fullscreen or stays black | `playsinline` + `muted` + `autoplay` |
+| A second camera capture mutes or ends the first track | stop the old track before switching cameras |
+| Tracks get `muted` when the app is backgrounded or a call starts | listen for `mute`/`unmute`, show state |
+| Grants may not persist across reloads | expect the prompt again; don't loop on it |
+| No `getDisplayMedia()` | hide screen share on mobile |
+| `MediaRecorder` makes MP4 before 18.4 | pick the type with `isTypeSupported()` |
+| `AudioContext` starts suspended | create or `resume()` it in a tap handler |
+| In-app browsers (WKWebView) | capture only works if the host app allows it |
+
+## Recipes
+
+### Camera preview in a video element
+
+Start the front camera in a `<video>` and get back a function that releases it.
+
+```ts title="preview.ts"
+export async function startPreview(
+  video: HTMLVideoElement,
+  deviceId?: string,
+): Promise<() => void> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: deviceId
+      ? { deviceId: { exact: deviceId } }
+      : { facingMode: "user", width: { ideal: 1280 } },
+  });
+  Object.assign(video, { muted: true, playsInline: true });
+  video.srcObject = stream;
+  await video.play();
+  return () => {
+    for (const t of stream.getTracks()) t.stop();
+    video.srcObject = null;
+  };
+}
+```
+
+### Device picker
+
+Fill a `<select>` with cameras, keep it fresh on hot-plug, and switch on change.
+
+```ts
+import { startPreview } from "./preview";
+
+export async function cameraPicker(
+  select: HTMLSelectElement,
+  video: HTMLVideoElement,
+) {
+  const md = navigator.mediaDevices;
+  let stop = await startPreview(video); // grant => labels
+  const fill = async () => {
+    const cams = (await md.enumerateDevices())
+      .filter((d) => d.kind === "videoinput");
+    select.replaceChildren(...cams.map((d, i) =>
+      new Option(d.label || `Camera ${i + 1}`, d.deviceId)));
+  };
+  await fill();
+  md.addEventListener("devicechange", fill);
+  select.addEventListener("change", async () => {
+    stop();
+    stop = await startPreview(video, select.value);
+  });
+}
+```
+
+### Record the screen to a WebM download
+
+Screen plus tab/system audio where available, saved when the user stops sharing.
+
+```ts
+export async function recordScreen() {
+  const md = navigator.mediaDevices;
+  const stream = await md.getDisplayMedia({ audio: true });
+  const type = MediaRecorder.isTypeSupported("video/webm")
+    ? "video/webm" : "video/mp4"; // older Safari
+  const rec = new MediaRecorder(stream, { mimeType: type });
+  const chunks: Blob[] = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.onstop = () => {
+    const blob = new Blob(chunks, { type });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `screen-${Date.now()}.${type.slice(6)}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  };
+  const [video] = stream.getVideoTracks(); // "Stop sharing"
+  video?.addEventListener("ended", () => {
+    if (rec.state !== "inactive") rec.stop();
+    for (const t of stream.getTracks()) t.stop();
+  });
+  rec.start(1000);
+}
+```
+
+### Snapshot photo
+
+Grab a still from a live preview as a PNG or JPEG `File`, ready for upload or `FormData`.
+
+```ts
+export async function capturePhoto(
+  video: HTMLVideoElement,
+  type: "image/jpeg" | "image/png" = "image/jpeg",
+): Promise<File> {
+  const bitmap = await createImageBitmap(video);
+  const { width, height } = bitmap;
+  const canvas = new OffscreenCanvas(width, height);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const blob = await canvas.convertToBlob({
+    type,
+    quality: 0.9,
+  });
+  const ext = type === "image/png" ? "png" : "jpg";
+  const name = `photo-${Date.now()}.${ext}`;
+  return new File([blob], name, { type });
+}
+```
+
+### Mic level meter
+
+A 0–1 level for a VU bar, updated every animation frame; call the returned function to stop.
+
+```ts
+export async function micMeter(cb: (v: number) => void) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { autoGainControl: false },
+  });
+  const ctx = new AudioContext();
+  await ctx.resume(); // call micMeter from a click
+  const analyser = ctx.createAnalyser();
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  let raf = 0;
+  const tick = () => {
+    analyser.getFloatTimeDomainData(buf);
+    const rms = Math.hypot(...buf) / Math.sqrt(buf.length);
+    const db = 20 * Math.log10(rms || 1e-8);
+    cb(Math.min(1, Math.max(0, (db + 60) / 60))); // -60..0
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+  return () => {
+    cancelAnimationFrame(raf);
+    for (const t of stream.getTracks()) t.stop();
+    void ctx.close();
+  };
+}
+```
+
+## References
+
+- MDN: [Media Capture and Streams API](https://developer.mozilla.org/en-US/docs/Web/API/Media_Capture_and_Streams_API), [`getUserMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia), [`enumerateDevices()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/enumerateDevices), [`MediaStreamTrack`](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack), [Capabilities, constraints and settings](https://developer.mozilla.org/en-US/docs/Web/API/Media_Capture_and_Streams_API/Constraints): API shape, errors and support
+- MDN: [Screen Capture API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API), [`getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia), [MediaStream Recording API](https://developer.mozilla.org/en-US/docs/Web/API/MediaStream_Recording_API), [`ImageCapture`](https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture)
+- W3C: [Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/), [Screen Capture](https://www.w3.org/TR/screen-capture/), [MediaStream Recording](https://www.w3.org/TR/mediastream-recording/), [MediaStream Image Capture](https://www.w3.org/TR/image-capture/)
+- WebKit: [MediaRecorder API](https://webkit.org/blog/11353/mediarecorder-api/) and the Safari release notes for iOS capture changes
+- Chrome for Developers: [Privacy-preserving screen sharing controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls): `selfBrowserSurface`, `systemAudio`, `surfaceSwitching`
+- [webrtc.github.io samples](https://webrtc.github.io/samples/): getUserMedia, device selection and recording demos

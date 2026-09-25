@@ -1,0 +1,878 @@
+---
+title: CSS
+date: 2026-09-25
+order: 1
+---
+
+Modern CSS as of September 2026: the cascade, layers, selectors, layout, colour, queries and the
+newer platform features, with their Baseline status taken from MDN. Utility-first styling is in
+[Tailwind CSS](/design/css/tailwind/), motion in [Animation](/design/css/animation/) and palettes
+in [Colour theory](/design/principles/color-theory/).
+
+## Cascade & specificity
+
+When two declarations set the same property on an element, the one that comes first in this
+list wins.
+
+| Step | Winner |
+| :--- | :----- |
+| 1. Origin & importance | transitions, then `!important` (UA, then user, then author), then animations, then normal author, user and UA styles |
+| 2. Context | for normal rules the outer (light DOM) wins over shadow DOM; for `!important` the shadow DOM wins |
+| 3. Element-attached | a `style=""` attribute beats any selector |
+| 4. Cascade layers | unlayered beats the last layer, which beats earlier layers (this flips for `!important`) |
+| 5. Specificity | the higher `(id, class, type)` tuple |
+| 6. Scope proximity | the `@scope` root closer to the element |
+| 7. Order of appearance | the rule that comes later |
+
+| Selector | Specificity |
+| :------- | :---------- |
+| `*`, `:where(...)`, combinators | `0-0-0` |
+| `p`, `::before` | `0-0-1` |
+| `.btn`, `[type="text"]`, `:hover` | `0-1-0` |
+| `#nav` | `1-0-0` |
+| `:is(#a, .b)`, `:not(...)`, `:has(...)` | the most specific argument (`1-0-0` here) |
+| `:nth-child(2n of .x)` | `0-1-0` plus the most specific argument |
+| `nav a.active:hover` | `0-2-2` |
+| nested `&` | behaves like `:is(parent)`, so `#a, p { & span {} }` scores `1-0-1` |
+
+```css
+/* keep defaults easy to override: 0-0-0 */
+:where(ul[role="list"]) { list-style: none; }
+
+/* bump without adding an id: 0-2-0 */
+.btn.btn { color: red; }
+
+/* reset a property to the previous layer's value */
+.card { color: revert-layer; }
+```
+
+| Keyword | Resets to |
+| :------ | :-------- |
+| `inherit` | the parent's computed value |
+| `initial` | the spec's initial value (for `display` that is `inline`) |
+| `unset` | `inherit` for inherited properties, otherwise `initial` |
+| `revert` | the user-agent or user stylesheet value |
+| `revert-layer` | the value from the previous cascade layer |
+
+## Cascade layers
+
+`@layer` fixes the precedence between groups of rules, so specificity only competes
+**inside** a layer. Declare the order once, up front.
+
+```css title="styles/main.css"
+@layer reset, tokens, base, components, utilities;
+
+@import url("reset.css") layer(reset);
+@import url("tokens.css") layer(tokens);
+@import url("base.css") layer(base);
+
+@layer components {
+  .btn { padding: 0.5rem 1rem; }
+  @layer forms {            /* components.forms */
+    input { font: inherit; }
+  }
+}
+
+@layer utilities {
+  /* 0-1-0, yet beats any components rule */
+  .hidden { display: none; }
+}
+
+/* unlayered: beats every layer (normal declarations) */
+.legacy-widget #thing { color: red; }
+```
+
+```tree title="layered styles folder"
+styles/
+  main.css          # only linked file: @layer, @imports
+  reset.css         # layer(reset)
+  tokens.css        # custom properties, @property
+  base.css          # element defaults, typography
+  components/
+    button.css      # @layer components { ... }
+    card.css
+  utilities.css     # @layer utilities
+  vendor/
+    datepicker.css  # @import ... layer(vendor)
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| First mention sets order | `@layer a, b;` must come before any rule that creates `a` or `b` |
+| Later layer wins | for normal declarations, whatever the specificity |
+| `!important` flips it | an important declaration in an earlier layer beats one in a later layer, and both beat unlayered important |
+| Unlayered styles | act as an implicit last layer: third-party CSS can override yours, so wrap vendors in a layer |
+| Nested | `@layer a.b` or `@layer a { @layer b {} }` |
+| Anonymous | `@layer { ... }` can't be reopened or reordered later |
+
+## Selectors, nesting & `@scope`
+
+| Selector | Matches |
+| :------- | :------ |
+| `a b` / `a > b` | descendant / direct child |
+| `a + b` / `a ~ b` | next sibling / any later sibling |
+| `[attr]`, `[attr="v"]` | attribute present / equals |
+| `[attr^="v"]`, `[attr$="v"]`, `[attr*="v"]` | starts with / ends with / contains |
+| `[attr="v" i]` | case-insensitive match |
+| `:is(h1, h2) a` | any argument matches; takes the highest argument's specificity; ignores invalid arguments |
+| `:where(h1, h2) a` | like `:is` with zero specificity, good for resets and libraries |
+| `:not(.a, .b)` | matches neither argument |
+| `:has(> img)` | the parent that has a direct `img` child |
+| `label:has(+ input:invalid)` | the previous sibling (a label before an invalid input) |
+| `:has(:focus-visible)` | any ancestor of the focused element |
+| `:nth-child(2n+1 of .item)` | odd items among `.item` only |
+| `:first-child`, `:last-child`, `:only-child` | position among siblings |
+| `:nth-of-type(3)`, `:last-of-type` | position among same-tag siblings |
+| `:empty` | no children and no text (whitespace counts as text) |
+| `:focus-visible` | keyboard-style focus; use it for focus rings |
+| `:focus-within` | the element or a descendant has focus |
+| `:target` | the element whose id matches the URL fragment |
+| `:root` | `html`; where global tokens go |
+| `::before`, `::after` | generated content; needs `content` |
+| `::marker`, `::placeholder`, `::selection`, `::backdrop` | list bullet, input hint, selected text, top-layer backdrop |
+
+```css
+/* card grid: style the card when its checkbox is ticked */
+.card:has(input[type="checkbox"]:checked) {
+  outline: 2px solid var(--accent);
+}
+
+/* no scroll behind an open modal */
+html:has(dialog[open]:modal) { overflow: hidden; }
+
+/* form rows with an error */
+.field:has(:user-invalid) .hint { color: var(--danger); }
+```
+
+### Nesting (Baseline 2023)
+
+```css
+.card {
+  padding: 1rem;
+
+  & h2 { margin-block: 0; }    /* .card h2 */
+  h2 { margin-block: 0; }      /* same thing: & optional */
+  &:hover { background: var(--hover); }
+  &.is-active { border-color: var(--accent); }
+  .theme-dark & { color: white; }   /* .theme-dark .card */
+
+  @media (width >= 40rem) { padding: 2rem; }
+  @container (width >= 30rem) { display: grid; }
+}
+```
+
+Unlike Sass, `&` can't build class names by concatenation: `&__title` doesn't mean `.card__title`. Use a real class.
+
+### `@scope` (Baseline 2026)
+
+Styles that apply between a scope root and an optional lower limit. When two scopes match,
+the closer root wins (scope proximity) before source order is considered.
+
+```css
+@scope (.card) to (.card__slot) {
+  :scope { border: 1px solid var(--line); }
+  img { border-radius: 0.5rem; } /* not in .card__slot */
+}
+
+/* inline: scoped to the parent of the style element */
+/* <div><style>@scope { p { color: red } }</style></div> */
+```
+
+## Custom properties
+
+| Syntax | Use |
+| :----- | :-- |
+| `--gap: 1rem;` | declare; it inherits by default and cascades like any property |
+| `var(--gap)` | read it |
+| `var(--gap, 1rem)` | fallback when it isn't set |
+| `var(--a, var(--b, 0))` | fallback chain |
+| `--x: ;` | a valid empty value (the "space toggle" trick) |
+| `el.style.setProperty("--x", "4px")` | set it from JS |
+| `getComputedStyle(el).getPropertyValue("--x")` | read it from JS |
+
+An unregistered property is just a token stream: it can't be animated and it isn't
+type-checked. `@property` (Baseline 2024) registers a type, which makes it animatable and
+lets you opt out of inheritance.
+
+```css
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.spinner {
+  background: conic-gradient(
+    from var(--angle), var(--accent), transparent
+  );
+  animation: spin 2s linear infinite;
+}
+@keyframes spin { to { --angle: 360deg; } }
+```
+
+| `syntax` | Accepts |
+| :------- | :------ |
+| `"<length>"`, `"<percentage>"`, `"<length-percentage>"` | `10px`, `50%` |
+| `"<number>"`, `"<integer>"` | `1.5`, `3` |
+| `"<color>"` | any colour; animates smoothly |
+| `"<angle>"`, `"<time>"` | `45deg`, `200ms` |
+| `"<length>+"` / `"<length>#"` | space- / comma-separated list |
+| `"auto \| <length>"` | either one |
+| `"*"` | anything (the same as unregistered) |
+
+## Box model & units
+
+| Property | Note |
+| :------- | :--- |
+| `box-sizing: border-box` | `width` includes padding and border; set it globally |
+| `margin` | collapses vertically between blocks (never in flex or grid) |
+| `outline` | takes no layout space; use `outline-offset` for focus rings |
+| `aspect-ratio: 16 / 9` | height follows width |
+| `min-width: 0` | lets flex and grid children shrink below their content size |
+| `overflow: clip` | like `hidden` but creates no scroll container, so `sticky` still works |
+| `display: flow-root` | new block formatting context: contains floats and stops margin collapse |
+| `display: contents` | the box disappears and its children join the parent's layout |
+
+```css
+*, *::before, *::after { box-sizing: border-box; }
+img, svg, video { display: block; max-width: 100%; }
+```
+
+| Unit | Relative to | Use for |
+| :--- | :---------- | :------ |
+| `px` | CSS pixel | hairlines, shadows |
+| `rem` | root font size | type, spacing (follows the user's zoom and font settings) |
+| `em` | the element's font size | padding that scales with text, icons |
+| `ch` | width of `0` | line length: `max-inline-size: 65ch` |
+| `ex`, `cap` | x-height, cap height | icon alignment |
+| `lh`, `rlh` | the element's / root line height | vertical rhythm: `margin-block: 1lh` |
+| `%` | the parent (the property decides which size) | fluid widths |
+| `vw`, `vh` | 1% of the viewport | full-bleed; `vw` ignores the scrollbar |
+| `svh`, `lvh`, `dvh` | smallest / largest / current viewport (mobile toolbars) | `min-block-size: 100dvh` |
+| `vi`, `vb` | viewport inline / block axis | writing-mode aware |
+| `cqi`, `cqb` | 1% of the container's inline / block size | type inside components |
+| `cqw`, `cqh`, `cqmin`, `cqmax` | container width / height / smaller / larger | |
+| `fr` | a share of free grid space | grid tracks |
+
+| Function | Example |
+| :------- | :------ |
+| `calc()` | `calc(100% - 2rem)` |
+| `min()` / `max()` | `width: min(100%, 60rem)` |
+| `clamp(min, ideal, max)` | `clamp(1rem, 2.5vw, 2rem)` |
+| `round()`, `mod()`, `rem()` | `round(up, 13px, 4px)` gives `16px` |
+| `sin()`, `cos()`, `atan2()` | circular layouts |
+
+## Colour
+
+| Syntax | Note |
+| :----- | :--- |
+| `oklch(70% 0.15 250)` | lightness, chroma, hue: perceptually even; the best choice for palettes |
+| `oklch(70% 0.15 250 / 50%)` | with alpha |
+| `color(display-p3 1 0 0)` | wide-gamut colour |
+| `color-mix(in oklch, var(--c) 70%, white)` | tints, shades and hover states |
+| `color-mix(in srgb, var(--c), transparent 50%)` | alpha from a token |
+| `oklch(from var(--c) calc(l + 0.1) c h)` | relative colour: lighten |
+| `oklch(from var(--c) l c calc(h + 180))` | relative colour: complement |
+| `rgb(from var(--c) r g b / 40%)` | relative colour: swap the alpha |
+| `light-dark(#fff, #111)` | picks by `color-scheme`; colours only |
+| `contrast-color(var(--bg))` | black or white, whichever contrasts more (Baseline 2026) |
+| `currentColor` | the element's `color` |
+| `accent-color` | tints checkboxes, radios, range and progress |
+
+```css
+:root {
+  color-scheme: light dark;   /* needed by light-dark() */
+  --brand: oklch(62% 0.19 255);
+  --brand-hover: oklch(from var(--brand) calc(l - 0.08) c h);
+  --brand-soft: color-mix(in oklch, var(--brand) 15%, white);
+  --bg: light-dark(oklch(99% 0 0), oklch(18% 0.01 255));
+  --fg: light-dark(oklch(20% 0.02 255), oklch(94% 0 0));
+}
+```
+
+`oklch` chroma above about 0.37 falls outside sRGB and gets gamut-mapped; keep chroma around
+0.1–0.2 for UI colours. Contrast rules are covered in
+[Colour theory](/design/principles/color-theory/).
+
+## Flexbox
+
+A one-dimensional layout: items flow along the main axis and align on the cross axis.
+
+| Property | Values / effect |
+| :------- | :-------------- |
+| `display: flex` / `inline-flex` | makes a flex container |
+| `flex-direction` | `row` (default), `column`, `row-reverse`, `column-reverse` |
+| `flex-wrap` | `nowrap` (default), `wrap` |
+| `flex-flow` | shorthand: `row wrap` |
+| `gap` | space between items: `gap: 1rem 2rem` (row, column) |
+| `justify-content` | main axis: `flex-start`, `center`, `space-between`, `space-around`, `space-evenly` |
+| `align-items` | cross axis: `stretch` (default), `center`, `flex-start`, `baseline`, `last baseline` |
+| `align-content` | spacing between wrapped lines |
+| `align-self` | one item's cross-axis alignment |
+| `flex: 1` | `1 1 0%`: share space equally, ignoring content size |
+| `flex: auto` | `1 1 auto`: grow from content size |
+| `flex: none` | `0 0 auto`: rigid |
+| `flex: 0 0 16rem` | fixed basis, never grows or shrinks |
+| `order` | visual order only; screen readers and tabbing keep DOM order |
+| `margin-inline-start: auto` | pushes the item and everything after it to the end |
+| `min-width: 0` on an item | lets text truncate instead of overflowing |
+
+```css
+.toolbar { display: flex; align-items: center; gap: 0.5rem; }
+.toolbar .spacer { margin-inline-start: auto; }
+
+.media { display: flex; gap: 1rem; }
+.media > img { flex: none; inline-size: 4rem; }
+.media > .body { flex: 1; min-width: 0; }
+```
+
+## Grid
+
+A two-dimensional layout: define tracks on the container and place items into them.
+
+| Property | Example / effect |
+| :------- | :--------------- |
+| `grid-template-columns` | `repeat(3, 1fr)`, `16rem 1fr`, `[full-start] 1fr [full-end]` |
+| `repeat(auto-fit, minmax(16rem, 1fr))` | as many columns as fit; empty tracks collapse so items stretch |
+| `repeat(auto-fill, ...)` | the same, but keeps empty tracks |
+| `minmax(0, 1fr)` | a `1fr` that can shrink below its content's min size |
+| `grid-template-rows` | `auto 1fr auto` for header, body, footer |
+| `grid-template-areas` | ASCII map of named areas; `.` is an empty cell |
+| `grid-area: main` | place an item into a named area |
+| `grid-column: 1 / -1` | span the full explicit grid |
+| `grid-column: span 2` | span two tracks from the auto-placed start |
+| `grid-auto-rows: minmax(8rem, auto)` | size of implicit rows |
+| `grid-auto-flow: dense` | backfill holes (visual order no longer matches the DOM) |
+| `grid-template-columns: subgrid` | a child reuses the parent's tracks (Baseline 2023) |
+| `place-items: center` | `align-items` plus `justify-items` |
+| `place-content: center` | aligns the whole grid inside the container |
+| `justify-self`, `align-self` | one item's alignment |
+
+```css
+.layout {
+  display: grid;
+  grid-template:
+    "header header" auto
+    "nav    main"   1fr
+    "footer footer" auto
+    / 14rem 1fr;
+  min-block-size: 100dvh;
+}
+.layout > header { grid-area: header; }
+.layout > nav    { grid-area: nav; }
+.layout > main   { grid-area: main; }
+.layout > footer { grid-area: footer; }
+```
+
+```css title="subgrid: card parts line up across a row"
+.cards {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+.card {
+  display: grid;
+  grid-row: span 3;               /* title, body, footer */
+  grid-template-rows: subgrid;
+}
+```
+
+## Positioning, stacking & anchors
+
+| `position` | Offsets from | In flow? |
+| :--------- | :----------- | :------- |
+| `static` | (ignores `inset`) | yes |
+| `relative` | its own normal position | yes (its space is kept) |
+| `absolute` | the nearest positioned ancestor | no |
+| `fixed` | the viewport, or an ancestor with `transform`, `filter` or `contain` | no |
+| `sticky` | the nearest scrolling ancestor, once past its threshold | yes |
+
+`inset: 0` is short for `top/right/bottom/left: 0`. Sticky fails if an ancestor between the
+element and the scroller has `overflow: hidden` (use `clip`) or if the element has no room to
+move inside its parent.
+
+### Stacking contexts
+
+`z-index` only competes among siblings in the same stacking context. These create a new one:
+
+| Trigger | Example |
+| :------ | :------ |
+| positioned with a `z-index` other than `auto` | `position: relative; z-index: 1` |
+| flex or grid child with a `z-index` | `z-index: 0` |
+| `position: fixed` or `sticky` | always |
+| `opacity` less than 1 | `opacity: 0.99` |
+| `transform`, `scale`, `rotate`, `translate`, `filter`, `backdrop-filter`, `perspective`, `clip-path`, `mask` | any value other than `none` |
+| `mix-blend-mode` other than `normal` | |
+| `isolation: isolate` | the explicit, side-effect-free way |
+| `contain: layout` or `paint`; `container-type: size` or `inline-size` | |
+| `will-change` naming any of the above | |
+| `view-transition-name` | |
+| the top layer (`dialog.showModal()`, popovers, fullscreen) | above everything, no `z-index` needed |
+
+```css
+/* keep a component's z-indexes local */
+.card { isolation: isolate; }
+.card .badge { position: absolute; z-index: 1; }
+```
+
+### Anchor positioning
+
+Tether an absolutely positioned element to another element without JS. The core properties
+work in Chrome 125+, Firefox 147+ and Safari 26+. MDN still labels the whole feature
+"limited" because some `position-visibility` values are Safari 27 only.
+
+| Property / function | Does |
+| :------------------ | :--- |
+| `anchor-name: --menu` | names the anchor |
+| `position-anchor: --menu` | which anchor to use (a popover opened by `popovertarget` gets its invoker implicitly) |
+| `position-area: block-end span-inline-end` | place it in a 3×3 grid around the anchor |
+| `top: anchor(bottom)` | position against one of the anchor's edges |
+| `justify-self: anchor-center` | centre on the anchor |
+| `width: anchor-size(width)` | size from the anchor |
+| `position-try-fallbacks: flip-block, flip-inline` | alternatives when it would overflow |
+| `@position-try --name { ... }` | a named custom fallback |
+| `position-visibility: anchors-visible` | hide it when the anchor scrolls out of view |
+
+```css
+.trigger { anchor-name: --user-menu; }
+
+.menu {
+  position: absolute;
+  position-anchor: --user-menu;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin-block-start: 0.25rem;
+  min-inline-size: anchor-size(inline);
+}
+```
+
+## Container & media queries
+
+### Container queries
+
+Components respond to their container's size, not the viewport's.
+
+```css
+.card-wrap { container: card / inline-size; }
+
+@container card (width >= 30rem) {
+  .card { grid-template-columns: 10rem 1fr; }
+}
+
+.card h2 { font-size: clamp(1rem, 4cqi, 1.5rem); }
+```
+
+| Syntax | Note |
+| :----- | :--- |
+| `container-type: inline-size` | query width; the common case |
+| `container-type: size` | query both axes; the element needs an explicit height |
+| `container: name / type` | shorthand |
+| `@container (width > 40rem)` | nearest ancestor container of any name |
+| `@container sidebar (orientation: portrait)` | a named container |
+| `@container style(--tone: inverted)` | style query on a custom property (Baseline 2026) |
+| `@container scroll-state(stuck: top)` | sticky or snapped state (Chromium only) |
+| `cqi`, `cqb` units | 1% of the container, without a query |
+
+A container can't query itself; style its children. Size containment means the container
+no longer takes its size from its children on the queried axis.
+
+### Media queries
+
+| Query | Use |
+| :---- | :-- |
+| `(width >= 48rem)` | range syntax (Baseline 2023); rather than `min-width` |
+| `(40rem <= width < 64rem)` | a band |
+| `(prefers-color-scheme: dark)` | OS theme |
+| `(prefers-reduced-motion: reduce)` | tone down motion |
+| `(prefers-contrast: more)` | stronger borders and text |
+| `(forced-colors: active)` | Windows high contrast; use system colours |
+| `(prefers-reduced-transparency: reduce)` | Chromium only |
+| `(hover: hover) and (pointer: fine)` | mouse-like input |
+| `(pointer: coarse)` | touch: bigger hit targets |
+| `(orientation: landscape)` | |
+| `(resolution >= 2x)` | high-DPI assets |
+| `(display-mode: standalone)` | installed PWA |
+| `print` | print styles |
+
+Media queries can't use custom properties: `(width >= var(--md))` is invalid. Breakpoints in
+`rem` follow the user's font size.
+
+## Typography
+
+```css
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter.woff2") format("woff2");
+  font-weight: 100 900;       /* variable font range */
+  font-style: normal;
+  font-display: swap;
+}
+
+/* metric-matched fallback cuts layout shift */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  size-adjust: 107%;
+  ascent-override: 90%;
+}
+
+body { font-family: "Inter", "Inter Fallback", sans-serif; }
+```
+
+```html
+<link rel="preload" href="/fonts/inter.woff2"
+  as="font" type="font/woff2" crossorigin>
+```
+
+| `font-display` | Behaviour |
+| :------------- | :-------- |
+| `swap` | fallback shows at once and swaps in when the font loads (body text) |
+| `optional` | uses the font only if it's already fast or cached; no layout shift |
+| `fallback` | short invisible period, short swap window |
+| `block` | invisible text for up to about 3s (icon fonts) |
+
+| Property | Use |
+| :------- | :-- |
+| `font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem)` | fluid type; keep a `rem` term so zoom still works |
+| `line-height: 1.5` | unitless, so it scales with the font size |
+| `max-inline-size: 65ch` | readable line length |
+| `text-wrap: balance` | even line lengths for short blocks such as headings (Baseline 2024) |
+| `text-wrap: pretty` | avoids orphans in paragraphs (Chromium, Safari 26; not Firefox) |
+| `hyphens: auto` | needs a `lang` attribute |
+| `font-variant-numeric: tabular-nums` | aligned digits in tables |
+| `font-size-adjust: ex-height 0.53` | keeps the x-height steady across fallbacks (Baseline 2024) |
+| `text-box: trim-both cap alphabetic` | trim leading above caps and below the baseline (Chromium, Safari) |
+| `-webkit-line-clamp: 3` | multi-line ellipsis (the prefixed form works everywhere) |
+| `text-underline-offset`, `text-decoration-thickness` | nicer links |
+| `font-optical-sizing: auto` | variable fonts with an `opsz` axis |
+
+With Next.js, `next/font` self-hosts fonts and generates the fallback metrics for you; see
+[Next.js](/typescript/react/next-js/).
+
+## Logical properties & scrolling
+
+Logical properties follow the writing mode, so RTL and vertical text work without overrides
+(Baseline 2021).
+
+| Physical | Logical |
+| :------- | :------ |
+| `width` / `height` | `inline-size` / `block-size` |
+| `margin-left` + `margin-right` | `margin-inline` |
+| `padding-top` + `padding-bottom` | `padding-block` |
+| `margin-left` (in LTR) | `margin-inline-start` |
+| `top` / `bottom` | `inset-block-start` / `inset-block-end` |
+| `left` + `right` | `inset-inline` |
+| `border-top-left-radius` | `border-start-start-radius` |
+| `text-align: left` | `text-align: start` |
+| `min-height: 100vh` | `min-block-size: 100dvh` |
+
+| Property | Use |
+| :------- | :-- |
+| `scroll-snap-type: x mandatory` | on the scroller: snap along x, always |
+| `scroll-snap-align: start` | on the children: the snap point |
+| `scroll-snap-stop: always` | don't skip items on a fast swipe |
+| `scroll-padding-block-start: 4rem` | on the scroller: offset for a sticky header |
+| `scroll-margin-block-start: 4rem` | on targets: the same offset, per element |
+| `scroll-behavior: smooth` | smooth anchor jumps; wrap it in `prefers-reduced-motion: no-preference` |
+| `overscroll-behavior: contain` | stops scroll chaining and pull-to-refresh (MDN: limited availability) |
+| `scrollbar-gutter: stable` | reserves the scrollbar's space so content doesn't shift (Baseline 2024) |
+| `scrollbar-width: thin` | `auto`, `thin`, `none` (Baseline 2024) |
+| `scrollbar-color: thumb track` | scrollbar colours (Baseline 2025) |
+
+```css
+.carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 80%;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+}
+.carousel > * { scroll-snap-align: center; }
+```
+
+## Forms, popover & dialog
+
+| Selector / property | Use |
+| :------------------ | :-- |
+| `:user-invalid`, `:user-valid` | only after the user has interacted or submitted (Baseline 2023); use instead of `:invalid` |
+| `:invalid`, `:valid` | matches from page load, so empty required fields show red at once |
+| `:required`, `:optional` | |
+| `:placeholder-shown` | the field is empty; floating labels |
+| `:checked`, `:indeterminate` | checkboxes, radios and options |
+| `:disabled`, `:read-only` | |
+| `:autofill` | browser-filled fields (not Baseline) |
+| `:focus-visible` | the focus ring |
+| `accent-color: var(--brand)` | recolours native controls (all desktop engines; MDN flags it limited) |
+| `field-sizing: content` | inputs and textareas grow with their content (Baseline 2026) |
+| `appearance: none` | strip native styling before restyling |
+| `appearance: base-select` | fully stylable `select` (Chromium, Safari 27) |
+| `color-scheme: light dark` | native controls and scrollbars follow the theme |
+
+```css
+input, textarea, select { font: inherit; }
+textarea { field-sizing: content; min-block-size: 3lh; }
+
+.field input:user-invalid {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+```
+
+### Popover & dialog
+
+| Selector | Matches |
+| :------- | :------ |
+| `[popover]:popover-open` | an open popover (popover API is Baseline 2025) |
+| `dialog[open]`, `dialog:modal` | an open dialog / one opened with `showModal()` |
+| `::backdrop` | the layer behind a modal or popover |
+| `@starting-style { ... }` | styles for the first frame, so the entry can transition |
+| `transition-behavior: allow-discrete` | lets `display` (Chromium, Safari) and `overlay` (Chromium) transition; Firefox snaps |
+
+```html
+<button popovertarget="tip">Info</button>
+<div id="tip" popover>Anchored tip</div>
+
+<button commandfor="dlg" command="show-modal">Open</button>
+<dialog id="dlg" closedby="any">...</dialog>
+```
+
+```css
+dialog {
+  border: none;
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+dialog::backdrop { background: oklch(0% 0 0 / 40%); }
+[popover] { margin: 0; inset: auto; }  /* then anchor it */
+```
+
+`commandfor` and `command` are Baseline 2025. `closedby` (light dismiss for dialogs) is
+Chromium and Firefox only. Open and close animations are in
+[Animation](/design/css/animation/).
+
+### View transitions
+
+`view-transition-name: hero` gives an element its own snapshot, so it morphs between states
+or pages. `@view-transition { navigation: auto; }` opts into cross-document transitions.
+Details are in [Animation](/design/css/animation/).
+
+## Performance & browser support
+
+| Tool | Effect |
+| :--- | :----- |
+| `content-visibility: auto` | skips rendering off-screen sections (Baseline 2025) |
+| `contain-intrinsic-size: auto 40rem` | placeholder size for skipped content; `auto` remembers the real size |
+| `contain: layout paint` | isolates a widget's layout and paint work |
+| `contain: strict` | size + layout + paint + style; needs an explicit size |
+| `will-change: transform` | promotes to a layer; add it just before animating, not everywhere |
+| `transform` / `opacity` | the only properties the compositor can animate cheaply |
+| Tight `:has()` anchors | `.card:has(img)` is cheap; `body:has(...)` re-checks the whole tree |
+| `@import` in CSS | blocks: it fetches serially; bundle or `link` instead |
+| `media` on `link` | `media="print"` stylesheets don't block render |
+
+```css
+.feed-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24rem;
+}
+```
+
+| Feature | Status (MDN, Sept 2026) |
+| :------ | :---------------------- |
+| Layers, nesting, `:has()`, container size queries, subgrid, `color-mix()`, `oklch()`, range media queries, `dvh`, `lh` | Baseline widely available |
+| `@property`, `light-dark()`, relative colour, `@starting-style`, `transition-behavior`, `text-wrap: balance` | Baseline 2024 |
+| Popover, `scrollbar-color`, `content-visibility`, same-document view transitions, invoker commands | Baseline 2025 |
+| `@scope`, container style queries, `field-sizing`, `contrast-color()`, `sibling-index()` | Baseline 2026 (newly available) |
+| Anchor positioning | core in all engines; MDN: limited |
+| `text-wrap: pretty`, scroll-driven animations, cross-document view transitions | Chromium + Safari |
+| `if()`, `interpolate-size`, `calc-size()`, scroll-state queries, `corner-shape`, `reading-flow` | Chromium only |
+
+Guard newer features with `@supports`:
+
+```css
+@supports (anchor-name: --a) { /* anchored menu */ }
+@supports not (field-sizing: content) {
+  textarea { min-block-size: 6lh; }
+}
+@supports selector(:has(a)) { /* :has styles */ }
+```
+
+## Recipes
+
+### Centering
+Four ways, depending on the parent's layout.
+
+```css
+/* grid: one child, both axes */
+.center { display: grid; place-items: center; }
+
+/* block container, vertical only (Baseline 2024) */
+.v-center { align-content: center; }
+
+/* flex: both axes, several children in a row */
+.row-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* horizontal block with a max width */
+.wrap {
+  inline-size: min(100% - 2rem, 70rem);
+  margin-inline: auto;
+}
+```
+
+### Sidebar layout with grid
+A header, sidebar, main and footer that collapse to one column on narrow screens.
+
+```css
+.app {
+  display: grid;
+  min-block-size: 100dvh;
+  grid-template:
+    "head" auto "main" 1fr "side" auto "foot" auto / 1fr;
+}
+@media (width >= 56rem) {
+  .app {
+    grid-template:
+      "head head" auto
+      "side main" 1fr
+      "foot foot" auto / 16rem minmax(0, 1fr);
+  }
+}
+.app > header { grid-area: head; }
+.app > aside  { grid-area: side; }
+.app > main   { grid-area: main; }
+.app > footer { grid-area: foot; }
+```
+
+### Responsive card grid
+As many columns as fit, with no media queries and no overflow on tiny screens.
+
+```css
+.grid {
+  --min: 16rem;
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit, minmax(min(100%, var(--min)), 1fr)
+  );
+  gap: clamp(1rem, 2vw, 2rem);
+}
+```
+
+### Fluid type scale
+Sizes that grow smoothly from a 360px to a 1280px viewport.
+
+```css
+:root {
+  --step--1: clamp(0.83rem, 0.79rem + 0.19vw, 0.94rem);
+  --step-0: clamp(1rem, 0.95rem + 0.22vw, 1.13rem);
+  --step-1: clamp(1.2rem, 1.12rem + 0.37vw, 1.41rem);
+  --step-2: clamp(1.44rem, 1.31rem + 0.56vw, 1.76rem);
+  --step-3: clamp(1.73rem, 1.55rem + 0.82vw, 2.2rem);
+  --step-4: clamp(2.07rem, 1.8rem + 1.19vw, 2.75rem);
+}
+body { font-size: var(--step-0); }
+h1 { font-size: var(--step-4); text-wrap: balance; }
+h2 { font-size: var(--step-3); text-wrap: balance; }
+```
+
+### Dark mode with `light-dark()`
+Follows the OS by default; `data-theme` on `html` forces one mode.
+
+```css
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+:root {
+  --bg: light-dark(oklch(99% 0 0), oklch(17% 0.01 260));
+  --fg: light-dark(oklch(22% 0.02 260), oklch(93% 0 0));
+  --line: light-dark(oklch(90% 0 0), oklch(30% 0.01 260));
+}
+body { background: var(--bg); color: var(--fg); }
+```
+
+```ts
+type Theme = "light" | "dark" | "system";
+
+export function setTheme(theme: Theme): void {
+  const root = document.documentElement;
+  if (theme === "system") delete root.dataset.theme;
+  else root.dataset.theme = theme;
+  localStorage.setItem("theme", theme);
+}
+```
+
+### Visually hidden
+Hidden on screen but still read by screen readers; the second rule shows skip links on focus.
+
+```css
+.visually-hidden:not(:focus-within, :active) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+```
+
+### Truncate and line clamp
+Single-line ellipsis, or clamp to N lines.
+
+```css
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;             /* when inside flex or grid */
+}
+
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+```
+
+### Full-bleed layout
+Readable content column, with chosen children breaking out to the viewport edge.
+
+```css
+.content {
+  --gutter: 1rem;
+  display: grid;
+  grid-template-columns:
+    [full-start] minmax(var(--gutter), 1fr)
+    [content-start] min(65ch, 100% - 2 * var(--gutter))
+    [content-end] minmax(var(--gutter), 1fr) [full-end];
+}
+.content > * { grid-column: content; }
+.content > .full-bleed { grid-column: full; }
+```
+
+## References
+
+- [MDN: CSS reference](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference): every property, value and at-rule
+- [MDN: Cascade, specificity and inheritance](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Handling_conflicts): the cascade order
+- [MDN: Cascade layers](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Cascade_layers): `@layer` and `!important`
+- [MDN: CSS nesting](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_nesting): `&` rules and specificity
+- [MDN: @scope](https://developer.mozilla.org/en-US/docs/Web/CSS/@scope): scope roots, limits and proximity
+- [MDN: CSS grid layout](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout): tracks, areas, subgrid
+- [MDN: CSS anchor positioning](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning): anchors and fallbacks
+- [MDN: Container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries): size and style queries
+- [MDN: Stacking context](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_positioned_layout/Stacking_context): everything that creates one
+- [MDN: Relative colors](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_colors/Relative_colors): the `from` syntax
+- [MDN: Baseline compatibility](https://developer.mozilla.org/en-US/docs/Glossary/Baseline/Compatibility): what "newly" and "widely available" mean
+- [web.dev: Baseline features](https://web.dev/baseline): status by year
+- [Web Platform Status](https://webstatus.dev/): live support data behind the Baseline badges
+- [Utopia](https://utopia.fyi/): fluid type and space scale calculator

@@ -1,0 +1,904 @@
+---
+title: Fetch API
+date: 2026-09-25
+order: 1
+---
+
+`fetch()` with `Request`, `Response`, `Headers` and `AbortSignal`, typed for TypeScript, plus the HTTP
+rules (CORS, caching, latency) that decide how safe and how fast a request is. The same API ships in
+browsers, Node 18+, Bun and Deno.
+
+## Basics
+
+```ts
+const res = await fetch("https://api.example.com/users/1");
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const user: unknown = await res.json();
+```
+
+`fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>`. The input may be a string, a
+`URL` or a `Request`; `init` overrides fields of a `Request` input.
+
+| `Response` member | Type                     | Meaning                                              |
+| :---------------- | :----------------------- | :--------------------------------------------------- |
+| `ok`              | `boolean`                | `status` is 200–299                                  |
+| `status`          | `number`                 | HTTP status; `0` for opaque and error responses      |
+| `statusText`      | `string`                 | reason phrase; always `""` over HTTP/2 and HTTP/3    |
+| `headers`         | `Headers`                | response headers (filtered cross-origin)             |
+| `url`             | `string`                 | final URL after redirects                            |
+| `redirected`      | `boolean`                | at least one redirect was followed                   |
+| `type`            | `ResponseType`           | `basic`, `cors`, `opaque`, `opaqueredirect`, `error` |
+| `body`            | `ReadableStream \| null` | raw byte stream                                      |
+| `bodyUsed`        | `boolean`                | body already consumed                                |
+
+<Callout type="warn" title="A 404 is a success to fetch">
+  The promise resolves for every HTTP response, 404 and 500 included. It rejects only when no response
+  arrives: network failure, DNS error, a CORS block, an invalid URL, or an abort. Always check `res.ok`.
+</Callout>
+
+| Static helper                        | Returns                                        |
+| :----------------------------------- | :--------------------------------------------- |
+| `Response.json(data, init?)`         | JSON response with `Content-Type` set          |
+| `Response.error()`                   | network-error response (`type: "error"`)       |
+| `Response.redirect(url, status?)`    | redirect response (301/302/303/307/308)        |
+| `new Request(url, init?)`            | reusable request; `req.clone()` to send twice  |
+
+The static helpers are mostly for servers and tests (`Bun.serve`, route handlers, MSW).
+
+## Request options
+
+Every field of `RequestInit` is optional.
+
+| Option           | Values                                                        | Default         | Notes                                                    |
+| :--------------- | :------------------------------------------------------------ | :-------------- | :------------------------------------------------------- |
+| `method`         | `"GET"`, `"POST"`, `"PUT"`, `"PATCH"`, `"DELETE"`, …          | `"GET"`         | only standard verbs are upper-cased; write `"PATCH"`     |
+| `headers`        | `Headers`, `Record<string, string>`, `[string, string][]`     | none            | see [Headers](#headers)                                  |
+| `body`           | string, `Blob`, `BufferSource`, `FormData`, `URLSearchParams`, `ReadableStream` | none | not allowed with `GET`/`HEAD`                   |
+| `mode`           | `cors`, `same-origin`, `no-cors`, `navigate`                  | `cors`          | `navigate` is for documents only                         |
+| `credentials`    | `omit`, `same-origin`, `include`                              | `same-origin`   | cookies, HTTP auth, client certs                         |
+| `cache`          | `default`, `no-store`, `reload`, `no-cache`, `force-cache`, `only-if-cached` | `default` | browser HTTP cache; see [Caching](#caching) |
+| `redirect`       | `follow`, `error`, `manual`                                   | `follow`        | at most 20 hops; `manual` gives `opaqueredirect`         |
+| `referrer`       | same-origin URL, `""`, `"about:client"`                       | `"about:client"`| `""` sends no `Referer`                                  |
+| `referrerPolicy` | `no-referrer`, `origin`, `strict-origin-when-cross-origin`, … | document policy | browsers default to `strict-origin-when-cross-origin`    |
+| `integrity`      | `"sha384-<base64>"`                                           | `""`            | Subresource Integrity check on the body                  |
+| `keepalive`      | `boolean`                                                     | `false`         | request may outlive the page; 64 KiB body budget         |
+| `signal`         | `AbortSignal`                                                 | none            | cancel or time out; see [Errors & timeouts](#errors--timeouts) |
+| `priority`       | `high`, `low`, `auto`                                         | `auto`          | a hint relative to other fetches; check support          |
+| `duplex`         | `"half"`                                                      | none            | required when `body` is a `ReadableStream`               |
+
+<Note kind="tip">`keepalive: true` is the modern replacement for `navigator.sendBeacon()` when you
+need custom headers or a method other than `POST`, e.g. analytics on `pagehide`.</Note>
+
+## Reading bodies
+
+| Method          | Resolves to          | Notes                                                   |
+| :-------------- | :------------------- | :------------------------------------------------------ |
+| `json()`        | `Promise<any>`       | parses JSON; `SyntaxError` on bad or empty body         |
+| `text()`        | `Promise<string>`    | decodes as UTF-8, whatever the charset                  |
+| `blob()`        | `Promise<Blob>`      | `type` taken from `Content-Type`                        |
+| `arrayBuffer()` | `Promise<ArrayBuffer>` | raw bytes                                             |
+| `bytes()`       | `Promise<Uint8Array>`| newer (Baseline 2025); else `new Uint8Array(await res.arrayBuffer())` |
+| `formData()`    | `Promise<FormData>`  | `multipart/form-data` or urlencoded bodies              |
+| `body`          | `ReadableStream`     | read incrementally; see [Streaming](#streaming)         |
+
+The body is a stream and can be read **once**. A second read rejects with `TypeError` and
+`bodyUsed` is `true`. Call `clone()` before the first read to keep a copy; both branches buffer
+until read, so an unread clone of a large body holds it all in memory.
+
+```ts
+const res = await fetch("/api/report");
+const backup = res.clone();
+try {
+  const data: unknown = await res.json();
+} catch {
+  throw new Error(`Not JSON: ${await backup.text()}`);
+}
+```
+
+| Gotcha                  | Fix                                                             |
+| :---------------------- | :-------------------------------------------------------------- |
+| `204 No Content`        | don't call `json()`; check `res.status === 204` first           |
+| HTML error page on 502  | check `res.headers.get("Content-Type")` before `json()`         |
+| `json()` returns `any`  | annotate as `unknown` and validate; see [Validating responses](#validating-responses) |
+
+## Sending data
+
+| `body` type                  | `Content-Type` set automatically                 |
+| :--------------------------- | :----------------------------------------------- |
+| `string`                     | `text/plain;charset=UTF-8`                       |
+| `URLSearchParams`            | `application/x-www-form-urlencoded;charset=UTF-8`|
+| `FormData`                   | `multipart/form-data; boundary=…`                |
+| `Blob` / `File`              | the blob's `type`, if not empty                  |
+| `ArrayBuffer`, typed array   | none                                             |
+| `ReadableStream`             | none                                             |
+
+### JSON
+
+```ts
+const res = await fetch("/api/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "Ada", role: "admin" }),
+});
+```
+
+Without the header the server sees `text/plain` and many frameworks won't parse the body.
+
+### FormData
+
+```ts
+declare const file: File;
+
+const form = new FormData();
+form.append("title", "Q3 report");
+form.append("file", file, "report.pdf");
+await fetch("/api/upload", { method: "POST", body: form });
+```
+
+Never set `Content-Type` yourself here: the browser must add the `boundary` parameter. Build from a
+form element with `new FormData(formEl)`; see [Forms](/typescript/frontend/forms/).
+
+### URLSearchParams
+
+```ts
+const params = new URLSearchParams({
+  q: "fetch",
+  page: "2",
+});
+
+// as a form body
+await fetch("/login", { method: "POST", body: params });
+
+// as a query string: URL handles the encoding
+const url = new URL("/search", "https://example.com");
+url.searchParams.set("q", "a&b c");
+await fetch(url); // .../search?q=a%26b+c
+```
+
+### Blob / File
+
+```ts
+declare const file: File;
+
+await fetch(`/api/files/${encodeURIComponent(file.name)}`, {
+  method: "PUT",
+  body: file, // Content-Type from file.type
+});
+```
+
+### Streaming request body
+
+```ts
+const enc = new TextEncoder();
+const body = new ReadableStream<Uint8Array>({
+  start(controller) {
+    controller.enqueue(enc.encode("line 1\n"));
+    controller.enqueue(enc.encode("line 2\n"));
+    controller.close();
+  },
+});
+
+// lib.dom's RequestInit doesn't declare duplex yet
+const init: RequestInit & { duplex: "half" } = {
+  method: "POST",
+  body,
+  duplex: "half",
+};
+await fetch("/api/ingest", init);
+```
+
+<Callout type="warn" title="Limited support">
+  Streaming uploads work in Chromium 105+, Node, Bun and Deno, not in Firefox or Safari. Browsers
+  require HTTP/2 or later, force a CORS preflight, reject `no-cors`, and follow only 303 redirects.
+</Callout>
+
+## Headers
+
+```ts
+declare const token: string;
+
+const h = new Headers({
+  "Content-Type": "application/json",
+});
+h.append("Accept", "application/json");
+h.set("Authorization", `Bearer ${token}`);
+
+h.get("content-type");           // "application/json"
+h.has("ACCEPT");                  // true: case-insensitive
+for (const [name, value] of h) {}
+// names come out lower-cased
+```
+
+| Method              | Effect                                                          |
+| :------------------ | :-------------------------------------------------------------- |
+| `get(name)`         | value or `null`; repeated headers joined with `", "`            |
+| `getSetCookie()`    | `string[]` of every `Set-Cookie` (server runtimes only)         |
+| `set(name, value)`  | replaces all values                                             |
+| `append(name, v)`   | adds another value                                              |
+| `has` / `delete`    | test / remove                                                   |
+| `entries()`, `keys()`, `forEach` | iterate, sorted and lower-cased                    |
+
+**Forbidden request headers** are dropped silently by browsers, because the user agent owns them:
+`Host`, `Cookie`, `Content-Length`, `Origin`, `Referer`, `Connection`, `Keep-Alive`,
+`Accept-Encoding`, `Accept-Charset`, `Transfer-Encoding`, `TE`, `Trailer`, `Upgrade`, `Via`,
+`Date`, `DNT`, `Expect`, and anything starting with `Sec-` or `Proxy-`. Server runtimes let you set
+most of them. In the other direction, browsers never expose `Set-Cookie`.
+
+| Header                | Sent by  | Example                            | Purpose                           |
+| :-------------------- | :------- | :--------------------------------- | :-------------------------------- |
+| `Accept`              | client   | `application/json`                 | preferred response type           |
+| `Content-Type`        | both     | `application/json; charset=utf-8`  | type of the body                  |
+| `Authorization`       | client   | `Bearer eyJ…`                      | credentials                       |
+| `Accept-Language`     | client   | `en-GB,en;q=0.8`                   | locale negotiation                |
+| `If-None-Match`       | client   | `"v42"`                            | conditional GET with an ETag      |
+| `Idempotency-Key`     | client   | a UUID                             | safe retries of `POST` (convention) |
+| `Cache-Control`       | both     | `max-age=60`                       | caching rules                     |
+| `ETag`                | server   | `"v42"`                            | version of the resource           |
+| `Location`            | server   | `/users/7`                         | redirect target, created resource |
+| `Retry-After`         | server   | `120`                              | wait before retrying (429, 503)   |
+| `Content-Encoding`    | server   | `br`                               | compression applied               |
+
+## Errors & timeouts
+
+| What went wrong                        | How it surfaces       | Check                              |
+| :------------------------------------- | :-------------------- | :--------------------------------- |
+| offline, DNS, refused, CORS, bad URL   | promise rejects       | `err instanceof TypeError`         |
+| `controller.abort()`                   | rejects               | `err.name === "AbortError"`        |
+| `AbortSignal.timeout(ms)` fired        | rejects               | `err.name === "TimeoutError"`      |
+| HTTP 4xx / 5xx                         | resolves, `ok: false` | `res.ok`, `res.status`             |
+| body isn't JSON                        | `json()` rejects      | `err instanceof SyntaxError`       |
+| JSON has the wrong shape               | nothing, unless you validate | Zod `parse` throws `ZodError` |
+
+A browser never tells you why a network error happened (CORS vs offline look the same); the details
+are only in DevTools.
+
+```ts title="http-error.ts"
+export class HttpError extends Error {
+  override name = "HttpError";
+  readonly status: number;
+  readonly body: string;
+
+  constructor(res: Response, body: string) {
+    super(`HTTP ${res.status} ${res.statusText} ${res.url}`);
+    this.status = res.status;
+    this.body = body;
+  }
+}
+
+export async function ensureOk(res: Response) {
+  if (!res.ok) throw new HttpError(res, await res.text());
+  return res;
+}
+```
+
+### Timeouts and cancellation
+
+```ts
+declare const url: string;
+
+try {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  await ensureOk(res);
+} catch (err) {
+  if (!(err instanceof Error)) throw err;
+  if (err.name === "TimeoutError") {
+    // took longer than 5 s
+  } else if (err.name === "AbortError") {
+    // cancelled by the user or by code
+  } else if (err instanceof TypeError) {
+    // network failure
+  } else throw err;
+}
+```
+
+Combine a caller's signal with a timeout; whichever fires first wins and its reason is used:
+
+```ts
+function withTimeout(ms: number, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(ms);
+  return signal
+    ? AbortSignal.any([signal, timeout])
+    : timeout;
+}
+
+const controller = new AbortController();
+const res = await fetch("/api/search?q=ts", {
+  signal: withTimeout(8_000, controller.signal),
+});
+controller.abort(); // e.g. on unmount or a newer keystroke
+```
+
+| API                         | Support                              | Notes                                   |
+| :-------------------------- | :----------------------------------- | :-------------------------------------- |
+| `AbortController`           | everywhere                           | `abort(reason?)`; default `AbortError`  |
+| `AbortSignal.timeout(ms)`   | Baseline widely available            | rejects with `TimeoutError`             |
+| `AbortSignal.any(signals)`  | Baseline 2024, Node 20.3+            | aborts when any input aborts            |
+
+The signal stays attached after headers arrive: aborting mid-body makes `json()` or a stream read
+reject too, so one timeout covers the whole exchange.
+
+## Validating responses
+
+`res.json()` returns `any`, so `await res.json() as User` compiles whatever the server sends. The
+cast is a promise nobody checks; a renamed field turns into `undefined` far away from the fetch.
+Parse at the boundary instead.
+
+```ts
+import { z } from "zod";
+
+const User = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  email: z.email(),
+  createdAt: z.iso.datetime().transform((s) => new Date(s)),
+});
+type User = z.output<typeof User>; // createdAt: Date
+```
+
+```ts title="fetch-json.ts"
+import { z } from "zod";
+
+export async function fetchJson<S extends z.ZodType>(
+  input: string | URL,
+  schema: S,
+  init?: RequestInit,
+): Promise<z.output<S>> {
+  const res = await fetch(input, init);
+  if (!res.ok) {
+    throw new HttpError(res, await res.text());
+  }
+  return schema.parse(await res.json());
+}
+
+const users = await fetchJson("/api/users", z.array(User));
+//    ^? { id: number; name: string; ... }[]
+```
+
+Use `schema.safeParse(json)` when you want a `{ success, data | error }` value instead of a throw.
+The same idea without Zod: a type guard `(x: unknown): x is User`; see
+[Fundamentals](/typescript/language/fundamentals/).
+
+## Streaming
+
+`response.body` is a `ReadableStream<Uint8Array>`; read it as chunks arrive instead of buffering.
+
+```ts
+const res = await fetch("/logs/today.txt");
+if (!res.body) throw new Error("No body");
+
+const reader = res.body
+  .pipeThrough(new TextDecoderStream())
+  .getReader();
+for (;;) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  console.log(value); // a string chunk, not a line
+}
+```
+
+`for await (const chunk of res.body)` is shorter and works in Node, Bun, Deno, Chrome and Firefox;
+Safari was late to support it, so use `getReader()` in browser code that must run everywhere.
+
+### Download progress
+
+```ts
+async function download(
+  url: string,
+  onProgress: (fraction: number) => void,
+): Promise<Blob> {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const total =
+    Number(res.headers.get("Content-Length")) || 0;
+  const reader = res.body.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    if (total) onProgress(Math.min(loaded / total, 1));
+  }
+  const type = res.headers.get("Content-Type") ?? "";
+  return new Blob(chunks, { type });
+}
+```
+
+`Content-Length` may be missing (chunked encoding), and with `Content-Encoding: gzip` it counts
+compressed bytes while chunks are decompressed, hence the clamp. Fetch has no upload progress
+event; use `XMLHttpRequest.upload.onprogress` for that.
+
+For line-delimited JSON (NDJSON), server-sent events and backpressure, see
+[Streaming](/typescript/backend/streaming/).
+
+## CORS & credentials
+
+A cross-origin request is **simple** (no preflight) when all of these hold:
+
+- method is `GET`, `HEAD` or `POST`
+- only CORS-safelisted headers: `Accept`, `Accept-Language`, `Content-Language`, `Content-Type`, `Range`
+- `Content-Type` is `text/plain`, `multipart/form-data` or `application/x-www-form-urlencoded`
+- the body is not a `ReadableStream`
+
+Anything else (a JSON `Content-Type`, an `Authorization` header, `PUT`) first sends a **preflight**
+`OPTIONS` request with `Access-Control-Request-Method` and `Access-Control-Request-Headers`.
+
+| Server sends                          | Meaning                                                   |
+| :------------------------------------ | :-------------------------------------------------------- |
+| `Access-Control-Allow-Origin`         | `https://app.example.com` or `*` (not `*` with credentials) |
+| `Access-Control-Allow-Credentials`    | `true` to let the page read a credentialed response       |
+| `Access-Control-Allow-Methods`        | preflight: allowed methods                                |
+| `Access-Control-Allow-Headers`        | preflight: allowed request headers                        |
+| `Access-Control-Max-Age`              | preflight cache time in seconds (browsers cap it)         |
+| `Access-Control-Expose-Headers`       | response headers JS may read beyond the safelist          |
+| `Vary: Origin`                        | when the allowed origin is echoed per request             |
+
+| `mode`        | Behaviour                                                             |
+| :------------ | :-------------------------------------------------------------------- |
+| `cors`        | default; cross-origin allowed if the server opts in                   |
+| `same-origin` | cross-origin requests reject with `TypeError`                         |
+| `no-cors`     | simple methods and headers only; returns an **opaque** response       |
+
+An opaque response has `type: "opaque"`, `status: 0`, empty headers and an unreadable body. It is
+only useful for handing to a cache or an `<img>`; it is never the fix for a CORS error.
+
+| `credentials`  | Cookies and HTTP auth sent            | Server must also send                          |
+| :------------- | :------------------------------------ | :--------------------------------------------- |
+| `omit`         | never                                 | nothing                                        |
+| `same-origin`  | same-origin requests only (default)   | nothing                                        |
+| `include`      | always, cross-origin too              | exact `Allow-Origin` + `Allow-Credentials: true` |
+
+Cookies still obey `SameSite` and the browser's third-party cookie blocking, so `include` alone may
+not send them. See [Authentication](/typescript/backend/authentication/).
+
+<Note kind="info">CORS is enforced by browsers to protect users; it is not server security.
+`fetch` in Node or Bun ignores it completely.</Note>
+
+## Caching
+
+| Header                                  | Direction | Meaning                                                    |
+| :-------------------------------------- | :-------- | :--------------------------------------------------------- |
+| `Cache-Control: max-age=N`              | response  | fresh for N seconds                                        |
+| `Cache-Control: s-maxage=N`             | response  | like `max-age`, for shared caches (CDNs) only              |
+| `Cache-Control: no-cache`               | both      | may store, but revalidate before every use                 |
+| `Cache-Control: no-store`               | both      | never store anywhere                                       |
+| `Cache-Control: private` / `public`     | response  | browser only / shared caches allowed                       |
+| `Cache-Control: must-revalidate`        | response  | once stale, don't serve without revalidating               |
+| `Cache-Control: immutable`              | response  | won't change while fresh; for hashed asset URLs            |
+| `Cache-Control: stale-while-revalidate=N` | response | serve stale for N s while refreshing in the background   |
+| `ETag` → `If-None-Match`                | both      | version tag; server answers `304 Not Modified` if equal   |
+| `Last-Modified` → `If-Modified-Since`   | both      | date-based revalidation, 1 s precision                     |
+| `Vary: Accept-Encoding, Origin`         | response  | cache key includes these request headers                   |
+| `Age`                                   | response  | seconds the response spent in a shared cache              |
+
+| `cache` option   | Reads cache                      | Writes cache | Use for                        |
+| :--------------- | :------------------------------- | :----------- | :----------------------------- |
+| `default`        | fresh hit, else conditional      | yes          | normal requests                |
+| `no-store`       | no                               | no           | secrets, one-off data          |
+| `reload`         | no                               | yes          | force a refresh                |
+| `no-cache`       | always conditional if cached     | yes          | "check before use"             |
+| `force-cache`    | any match, even stale            | yes          | offline-ish reads              |
+| `only-if-cached` | any match, else `504`-style error | no          | requires `mode: "same-origin"` |
+
+Browsers revalidate for you. Server runtimes have no HTTP cache in `fetch` by default, so
+conditional requests are manual there:
+
+```ts
+type Entry = { etag: string; data: unknown };
+const cache = new Map<string, Entry>();
+
+async function getCached(url: string): Promise<unknown> {
+  const hit = cache.get(url);
+  const headers: HeadersInit = hit
+    ? { "If-None-Match": hit.etag }
+    : {};
+  const res = await fetch(url, { headers });
+  if (res.status === 304 && hit) return hit.data;
+  const data: unknown = await res.json();
+  const etag = res.headers.get("ETag");
+  if (etag) cache.set(url, { etag, data });
+  return data;
+}
+```
+
+## HTTP performance
+
+Most API calls and page resources are small, so their time is dominated by **latency** (round
+trips), not **bandwidth**. Doubling bandwidth barely changes load time; cutting round trips (RTT)
+helps linearly.
+
+| Cost of a new HTTPS connection       | Round trips | Notes                                      |
+| :----------------------------------- | :---------- | :----------------------------------------- |
+| DNS lookup                           | 0–1+        | cached by OS and browser                   |
+| TCP handshake                        | 1           | SYN, SYN-ACK, ACK                          |
+| TLS 1.2 handshake                    | 2           | on top of TCP                              |
+| TLS 1.3 handshake                    | 1           | 0-RTT on resumption (replayable data)      |
+| QUIC (HTTP/3)                        | 1           | transport and TLS 1.3 combined; 0-RTT resume |
+| the request itself                   | 1           | plus server time                           |
+
+**TCP slow start**: a new connection may send only about 10 segments (~14 KB) before the first ACK,
+and the window roughly doubles each RTT. A fresh connection can't use the full bandwidth, which is
+why reused, warm connections are much faster and why the first ~14 KB of a response matter.
+
+| Version  | Transport   | Requests per connection          | Head-of-line blocking              | Headers   |
+| :------- | :---------- | :------------------------------- | :--------------------------------- | :-------- |
+| HTTP/1.1 | TCP         | one at a time; ~6 conns per host | per connection, at HTTP and TCP    | plain text |
+| HTTP/2   | TCP + TLS   | many multiplexed streams         | a lost TCP packet stalls every stream | HPACK  |
+| HTTP/3   | QUIC on UDP | many independent streams         | only the affected stream waits     | QPACK     |
+
+HTTP/3 also survives network changes (connection migration, e.g. Wi-Fi to mobile). HTTP/2 server
+push is gone from browsers; use `103 Early Hints` or preload instead.
+
+| Technique                    | Why it helps                                                   |
+| :--------------------------- | :------------------------------------------------------------- |
+| reuse connections            | skip handshakes and slow start; keep-alive is on by default    |
+| parallel, not waterfall      | `Promise.all` turns N round trips into ~1                      |
+| fewer requests               | batch endpoints, bundle, inline tiny critical data             |
+| compress                     | `br` / `gzip` (`zstd` in newer browsers) for text              |
+| CDN / edge                   | shorter physical distance, lower RTT                           |
+| cache                        | the fastest request is the one not sent                        |
+| `preconnect`                 | handshake early for an origin you'll hit soon                  |
+
+```ts
+// ❌ waterfall: two sequential round trips
+const a = await fetch("/api/profile");
+const b = await fetch("/api/settings");
+
+// ✅ in parallel
+const [profile, settings] = await Promise.all([
+  fetch("/api/profile"),
+  fetch("/api/settings"),
+]);
+```
+
+```html
+<link rel="preconnect" href="https://api.example.com"
+      crossorigin>
+<link rel="dns-prefetch" href="https://cdn.example.com">
+```
+
+`crossorigin` matters: CORS fetches use a separate connection pool from `no-cors` loads.
+More on `Promise.all` in [Async & promises](/typescript/language/async-promises/).
+
+## A typed API client
+
+A small wrapper: base URL, JSON in and out, a timeout, retries for idempotent requests, and errors
+returned as a discriminated union instead of thrown.
+
+```ts title="api.ts"
+import { z } from "zod";
+
+export type ApiError =
+  | { kind: "network"; cause: unknown }
+  | { kind: "timeout" }
+  | { kind: "http"; status: number; body: string }
+  | { kind: "parse"; error: z.ZodError };
+
+export type Result<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ApiError };
+
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+type ClientOptions = {
+  baseUrl: string;
+  headers?: HeadersInit;
+  timeoutMs?: number;
+  retries?: number;
+};
+
+const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const IDEMPOTENT = new Set<Method>(["GET", "PUT", "DELETE"]);
+const sleep = (ms: number) =>
+  new Promise<void>((r) => setTimeout(r, ms));
+const fail = (error: ApiError) =>
+  ({ ok: false, error }) as const;
+
+export function createClient(opts: ClientOptions) {
+  const { timeoutMs = 10_000, retries = 2 } = opts;
+
+  async function attempt<S extends z.ZodType>(
+    method: Method,
+    url: URL,
+    schema: S,
+    body: unknown,
+  ): Promise<Result<z.output<S>>> {
+    const headers = new Headers(opts.headers);
+    headers.set("Accept", "application/json");
+    if (body !== undefined) {
+      headers.set("Content-Type", "application/json");
+    }
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers,
+        body:
+          body === undefined ? null : JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (cause) {
+      const timedOut =
+        cause instanceof Error &&
+        cause.name === "TimeoutError";
+      const error: ApiError = timedOut
+        ? { kind: "timeout" }
+        : { kind: "network", cause };
+      return fail(error);
+    }
+    if (!res.ok) {
+      const { status } = res;
+      const text = await res.text();
+      return fail({ kind: "http", status, body: text });
+    }
+    const json: unknown =
+      res.status === 204 ? null : await res.json();
+    const parsed = schema.safeParse(json);
+    return parsed.success
+      ? { ok: true, data: parsed.data }
+      : fail({ kind: "parse", error: parsed.error });
+  }
+
+  async function request<S extends z.ZodType>(
+    method: Method,
+    path: string,
+    schema: S,
+    body?: unknown,
+  ): Promise<Result<z.output<S>>> {
+    const url = new URL(path, opts.baseUrl);
+    const tries = IDEMPOTENT.has(method) ? retries + 1 : 1;
+    let result = await attempt(method, url, schema, body);
+    for (let i = 1; i < tries && shouldRetry(result); i++) {
+      // exponential backoff with jitter
+      await sleep(2 ** i * 200 + Math.random() * 100);
+      result = await attempt(method, url, schema, body);
+    }
+    return result;
+  }
+
+  return {
+    get: <S extends z.ZodType>(path: string, schema: S) =>
+      request("GET", path, schema),
+    post: <S extends z.ZodType>(
+      p: string,
+      s: S,
+      b: unknown,
+    ) =>
+      request("POST", p, s, b),
+    request,
+  };
+}
+
+function shouldRetry(r: Result<unknown>): boolean {
+  if (r.ok) return false;
+  const e = r.error;
+  return (
+    e.kind === "network" ||
+    e.kind === "timeout" ||
+    (e.kind === "http" && RETRY_STATUS.has(e.status))
+  );
+}
+```
+
+```ts title="usage.ts"
+const api = createClient({
+  baseUrl: "https://api.example.com",
+});
+
+const r = await api.get("/users/1", User);
+if (r.ok) {
+  console.log(r.data.name); // typed from the schema
+} else {
+  switch (r.error.kind) {
+    case "http":    console.error(r.error.status); break;
+    case "parse":
+      console.error(r.error.error.issues);
+      break;
+    case "timeout":
+    case "network": console.error("try again later"); break;
+  }
+}
+```
+
+Extensions worth adding: honour `Retry-After` on 429/503, pass an `Idempotency-Key` to make `POST`
+retryable, accept a caller `signal` via `AbortSignal.any`, and inject `fetch` itself so tests can
+swap it; see [Testing](/typescript/testing/#mocking-the-network).
+
+## Recipes
+
+JSON with Zod is in [Validating responses](#validating-responses), download progress in [Download progress](#download-progress), and a full wrapper in [A typed API client](#a-typed-api-client). For many requests at once, use the pool in [Async & Promises](/typescript/language/async-promises/#limited-concurrency-pool).
+
+### Download a response as a file
+
+When the file needs an auth header, so a plain `<a href download>` link won't work.
+
+```ts
+async function downloadFile(
+  url: string,
+  init?: RequestInit, // e.g. an Authorization header
+): Promise<void> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const name =
+    /filename="?([^";]+)"?/i.exec(cd)?.[1] ?? "download";
+  const href = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), {
+    href,
+    download: name,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
+await downloadFile("/api/reports/42.csv", {
+  headers: { Authorization: "Bearer <token>" },
+});
+```
+
+Files generated in the browser are in [File I/O](/typescript/backend/file-io/#download-a-generated-file).
+
+### Upload with progress
+
+When users need a progress bar for an upload: `fetch` has no upload progress event, so fall back to `XMLHttpRequest`.
+
+```ts
+function upload(
+  url: string,
+  body: FormData | Blob,
+  onProgress: (done: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status < 300
+        ? resolve(xhr.responseText)
+        : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.onerror = () => reject(new TypeError("Network"));
+    xhr.onabort = () => reject(signal?.reason);
+    signal?.addEventListener("abort", () => xhr.abort());
+    xhr.send(body);
+  });
+}
+```
+
+### Honour `Retry-After` on 429 and 503
+
+When an API rate-limits you and says how long to wait.
+
+```ts
+function retryAfterMs(res: Response): number | undefined {
+  const h = res.headers.get("Retry-After");
+  if (!h) return undefined;
+  const secs = Number(h); // "120" or an HTTP date
+  if (Number.isFinite(secs)) return secs * 1_000;
+  const at = Date.parse(h);
+  return Number.isNaN(at) ? undefined : at - Date.now();
+}
+
+async function fetchPolitely(
+  input: string | URL,
+  init?: RequestInit,
+  maxTries = 4,
+): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(input, init);
+    const busy = res.status === 429 || res.status === 503;
+    if (!busy || attempt >= maxTries) return res;
+    const wait = retryAfterMs(res) ?? 500 * 2 ** attempt;
+    await res.body?.cancel(); // release the connection
+    const ms = Math.min(Math.max(wait, 0), 60_000);
+    await new Promise((r) => setTimeout(r, ms));
+  }
+}
+```
+
+Cross-origin, the browser only exposes the header if the server lists `Retry-After` in `Access-Control-Expose-Headers`.
+
+### Query string from an object
+
+When building URLs from optional filters: skip empty values, repeat array keys, and let `URL` do the encoding.
+
+```ts
+type QueryValue =
+  | string | number | boolean | null | undefined
+  | readonly (string | number)[];
+
+function withQuery(
+  base: string | URL,
+  query: Record<string, QueryValue>,
+): URL {
+  const url = new URL(base);
+  for (const [key, value] of Object.entries(query)) {
+    if (value == null) continue; // drop null/undefined
+    const items = Array.isArray(value) ? value : [value];
+    for (const item of items) {
+      url.searchParams.append(key, String(item));
+    }
+  }
+  return url;
+}
+
+withQuery("https://api.example.com/items", {
+  q: "a&b",
+  tag: ["ts", "bun"],
+  page: 2,
+  cursor: undefined,
+}).href; // ...items?q=a%26b&tag=ts&tag=bun&page=2
+```
+
+### Refresh the token on 401
+
+When access tokens are short-lived: retry once after a refresh, and let concurrent 401s share one refresh call.
+
+```ts
+declare function getToken(): string | undefined;
+declare function refreshToken(): Promise<string>;
+
+let refreshing: Promise<string> | undefined;
+
+export async function authFetch(
+  input: string | URL,
+  init: RequestInit = {}, // body must be re-sendable
+): Promise<Response> {
+  const send = (tok: string | undefined) => {
+    const headers = new Headers(init.headers);
+    if (tok) headers.set("Authorization", `Bearer ${tok}`);
+    return fetch(input, { ...init, headers });
+  };
+  const res = await send(getToken());
+  if (res.status !== 401) return res;
+  // many parallel 401s share a single refresh call
+  refreshing ??= refreshToken().finally(() => {
+    refreshing = undefined;
+  });
+  return send(await refreshing); // retry once
+}
+```
+
+### Analytics on page hide
+
+When sending a final event as the user leaves; `keepalive` lets the request finish after the page is gone.
+
+```ts
+function track(
+  event: string,
+  data: Record<string, unknown> = {},
+): void {
+  const body = JSON.stringify({ event, ...data });
+  void fetch("/api/events", {
+    method: "POST",
+    keepalive: true, // may outlive the page (64 KiB budget)
+    headers: { "Content-Type": "application/json" },
+    body,
+  }).catch(() => {}); // analytics must never throw
+}
+
+// the last reliable moment on mobile is "hidden"
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    track("page_hidden", { path: location.pathname });
+  }
+});
+```
+
+A JSON `Content-Type` makes a cross-origin request preflighted; send `text/plain` or use `navigator.sendBeacon()` for third-party endpoints.
+
+## References
+
+- MDN: [Using Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch), [`fetch()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch), [`RequestInit`](https://developer.mozilla.org/en-US/docs/Web/API/RequestInit), [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response), [`Headers`](https://developer.mozilla.org/en-US/docs/Web/API/Headers), [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal)
+- MDN: [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS), [HTTP caching](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching), [Forbidden request header](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_request_header)
+- Chrome for Developers: [Streaming requests with fetch](https://developer.chrome.com/docs/capabilities/web-apis/fetch-streaming-requests)
+- Ilya Grigorik, [High Performance Browser Networking](https://hpbn.co/): latency and bandwidth, TCP, TLS, HTTP/2
+- [RFC 9111 HTTP Caching](https://www.rfc-editor.org/rfc/rfc9111), [RFC 9114 HTTP/3](https://www.rfc-editor.org/rfc/rfc9114)
+- [Zod](https://zod.dev/)

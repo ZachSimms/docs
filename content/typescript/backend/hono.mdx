@@ -1,0 +1,660 @@
+---
+title: Hono
+date: 2026-09-25
+order: 1
+---
+
+Hono v4 (4.13): a small, dependency-free web framework built on Web-standard `Request`/`Response`. The
+same app runs on Bun, Deno, Node, Cloudflare Workers, Vercel and AWS Lambda, with typed routing, middleware,
+validation and an end-to-end typed RPC client. Runtime basics are in [Bun](/typescript/runtime-tooling/bun/),
+the HTTP primitives in [Fetch API](/typescript/web-apis/fetch-api/).
+
+## Why Hono
+
+A Hono app is a `fetch(request, env, ctx) => Response` function, so each runtime only needs a thin entry.
+
+| Runtime | Entry | Notes |
+| :------ | :---- | :---- |
+| Bun | `export default app` | serves on `:3000`; WebSockets and static files via `hono/bun` |
+| Deno | `Deno.serve(app.fetch)` | `hono/deno` helpers |
+| Node 20+ | `serve({ fetch: app.fetch })` | adapter `@hono/node-server` |
+| Cloudflare Workers | `export default app` | `c.env` holds KV, D1, R2 and secret bindings |
+| Vercel | `export default app` | zero-config Hono detection |
+| AWS Lambda | `export const handler = handle(app)` | `hono/aws-lambda` |
+| Service Worker, Netlify, Lambda@Edge | adapter in `hono/<runtime>` | same app code |
+
+| Preset | Router | Pick when |
+| :----- | :----- | :-------- |
+| `hono` | `SmartRouter` (`RegExpRouter` + `TrieRouter`) | default; fastest matching |
+| `hono/quick` | `SmartRouter` (`LinearRouter`, `TrieRouter`) | short-lived processes where route registration dominates |
+| `hono/tiny` | `PatternRouter` | smallest bundle |
+
+## Setup on Bun
+
+```sh
+bun create hono@latest my-api   # choose the "bun" template
+cd my-api
+bun run --hot src/index.ts      # hot reload on :3000
+bun add hono                    # add to an existing project
+```
+
+```ts title="src/index.ts"
+import { Hono } from "hono";
+
+const app = new Hono();
+
+app.get("/", (c) => c.text("Hello Hono"));
+
+export default app;              // Bun.serve picks up fetch
+```
+
+| Entry form | Use when |
+| :--------- | :------- |
+| `export default app` | defaults are fine (port from `PORT` or 3000) |
+| `export default { port: 8787, fetch: app.fetch }` | fixed port, plus `websocket` for WebSockets |
+| `Bun.serve({ fetch: app.fetch, port })` | you need the server handle (shutdown, `server.requestIP`) |
+
+For Node, run `npm create hono@latest` and pick the `nodejs` template. For JSX, set
+`"jsx": "react-jsx"` and `"jsxImportSource": "hono/jsx"` in `tsconfig.json`.
+
+## Routing
+
+| Pattern / API | Matches |
+| :------------ | :------ |
+| `app.get("/posts/:id", h)` | `/posts/42`; `c.req.param("id")` |
+| `"/posts/:id?"` | `/posts` and `/posts/42` |
+| `"/posts/:id{[0-9]+}"` | params constrained by a regexp |
+| `"/files/:path{.+}"` | rest of the path, slashes included |
+| `"/assets/*"` | wildcard, any depth |
+| `app.post`, `.put`, `.patch`, `.delete`, `.options` | one method |
+| `app.all(path, h)` | every method |
+| `app.on(["PUT", "DELETE"], path, h)` | several methods (or a custom one like `"PURGE"`) |
+| `app.use(path?, mw)` | middleware for a path prefix (`"/admin/*"`) or everything |
+| `app.route("/users", users)` | mount a sub-app under a prefix |
+| `new Hono().basePath("/api")` | prefix every route of this app |
+| `app.mount("/legacy", fetchFn)` | mount another framework's `fetch` handler |
+| `new Hono({ strict: false })` | treat `/a` and `/a/` the same |
+
+Handlers and middleware run in **registration order**, and the first handler that returns a response wins.
+Register specific routes before catch-alls, and middleware before the routes it guards.
+
+```ts title="src/routes/books.ts"
+import { Hono } from "hono";
+
+// chain the calls: the chained type is what RPC reads
+export const books = new Hono()
+  .get("/", (c) => c.json({ books: [] as string[] }))
+  .get("/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ id });
+  })
+  .post("/", async (c) => c.json(await c.req.json(), 201));
+```
+
+```ts title="src/app.ts"
+import { Hono } from "hono";
+import { books } from "./routes/books";
+
+const app = new Hono()
+  .basePath("/api")
+  .route("/books", books);   // /api/books, /api/books/:id
+
+export type AppType = typeof app;
+export default app;
+```
+
+## Context
+
+Every handler and middleware gets one `Context` (`c`).
+
+| Request (`c.req`) | Returns |
+| :---------------- | :------ |
+| `param("id")` / `param()` | one path param / all as an object |
+| `query("q")` / `queries("tag")` | `string \| undefined` / `string[] \| undefined` |
+| `header("authorization")` | header value (case-insensitive) |
+| `json<T>()`, `text()`, `arrayBuffer()`, `blob()`, `formData()` | body readers (cached, safe to call twice) |
+| `parseBody()` | `multipart/form-data` or urlencoded into an object; `{ all: true }` for repeats |
+| `valid("json")` | data that passed a validator, typed |
+| `url`, `path`, `method`, `routePath` | request URL, path, verb, matched pattern |
+| `raw` | the underlying `Request` |
+
+| Response helper | Does |
+| :-------------- | :--- |
+| `c.json(data, status?, headers?)` | JSON response; the status becomes part of the RPC type |
+| `c.text(s)`, `c.html(s \| jsx)` | text or HTML |
+| `c.body(data, status?)` | raw body (string, bytes, stream) |
+| `c.redirect(url, 301?)` | 302 by default |
+| `c.notFound()` | runs the `notFound` handler |
+| `c.status(201)`, `c.header("k", "v")` | set before returning a body |
+| `c.res` | the response, readable and replaceable after `await next()` |
+
+| Context state | Does |
+| :------------ | :--- |
+| `c.set("key", v)` / `c.get("key")` / `c.var.key` | per-request values, typed through `Variables` |
+| `c.env` | runtime bindings: Workers `env`, the Bun `Server`, Node's `incoming`/`outgoing` |
+| `env(c)` from `hono/adapter` | environment variables on any runtime |
+| `c.executionCtx.waitUntil(p)` | Workers: finish work after responding |
+| `c.error` | the thrown error, visible to middleware after `next()` |
+
+```ts
+import { Hono } from "hono";
+
+type AppEnv = {
+  Bindings: { DB_URL: string };      // c.env (Workers)
+  Variables: { user: { id: string } };
+};
+
+const app = new Hono<AppEnv>();
+
+app.use(async (c, next) => {
+  c.set("user", { id: "u_1" });    // checked vs AppEnv
+  await next();
+});
+
+app.get("/me", (c) => c.json({ id: c.var.user.id }));
+```
+
+## Middleware
+
+Middleware is `async (c, next) => { …; await next(); … }`. Code before `next()` runs on the way in,
+code after it runs on the way out (onion order). Return a `Response` instead of calling `next()`
+to short-circuit.
+
+| Middleware | Import | Notes |
+| :--------- | :----- | :---- |
+| `logger()` | `hono/logger` | method, path, status, time |
+| `cors({ origin, credentials })` | `hono/cors` | `origin` may be a string, list or function |
+| `secureHeaders()` | `hono/secure-headers` | Helmet-style headers, CSP option |
+| `csrf({ origin })` | `hono/csrf` | checks `Origin` on form posts |
+| `jwt({ secret, alg: "HS256" })` | `hono/jwt` | `alg` is required; payload in `c.get("jwtPayload")` |
+| `bearerAuth({ token })` | `hono/bearer-auth` | static token(s) or `verifyToken` |
+| `basicAuth({ username, password })` | `hono/basic-auth` | or `verifyUser` |
+| `etag()` | `hono/etag` | `ETag` plus 304 on match |
+| `compress()` | `hono/compress` | gzip/deflate via `CompressionStream` |
+| `timeout(5000)` | `hono/timeout` | 504 when the handler is slower |
+| `bodyLimit({ maxSize: 1 << 20 })` | `hono/body-limit` | 413 on larger bodies |
+| `requestId()` | `hono/request-id` | `c.var.requestId`, `X-Request-Id` header |
+| `prettyJSON()`, `timing()`, `cache()` | `hono/pretty-json`, `hono/timing`, `hono/cache` | `?pretty`, `Server-Timing`, Cache API |
+| `ipRestriction(getConnInfo, rules)` | `hono/ip-restriction` | allow/deny lists |
+| `serveStatic({ root: "./public" })` | `hono/bun` | static files on Bun |
+| `every`, `some`, `except` | `hono/combine` | compose middleware |
+
+Cookies: `getCookie`, `setCookie`, `deleteCookie`, `getSignedCookie`, `setSignedCookie` from
+`hono/cookie`.
+
+```ts title="src/middleware/auth.ts"
+import { createMiddleware } from "hono/factory";
+import { HTTPException } from "hono/http-exception";
+
+type User = { id: string; role: "admin" | "user" };
+declare function findSession(
+  token: string,
+): Promise<User | null>;
+
+export const requireUser = createMiddleware<{
+  Variables: { user: User };
+}>(async (c, next) => {
+  const token = c.req.header("authorization")?.slice(7);
+  const user = token ? await findSession(token) : null;
+  if (!user) throw new HTTPException(401);
+  c.set("user", user);           // typed for later handlers
+  await next();
+});
+```
+
+`createFactory<AppEnv>()` from `hono/factory` gives `createApp`, `createMiddleware` and `createHandlers`
+that share one `Env` type.
+
+## Validation
+
+| Target | Validates |
+| :----- | :-------- |
+| `json` | body; needs `Content-Type: application/json` |
+| `form` | `multipart/form-data` or urlencoded body |
+| `query`, `param`, `header`, `cookie` | the matching request part (header names lowercase) |
+
+```ts
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+
+const ListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  tag: z.string().optional(),
+});
+
+const app = new Hono().get(
+  "/items",
+  zValidator("query", ListQuery, (result, c) => {
+    if (!result.success) {
+      return c.json({ error: result.error.issues }, 400);
+    }
+  }),
+  (c) => {
+    const { page, tag } = c.req.valid("query");  // typed
+    return c.json({ page, tag });
+  },
+);
+```
+
+| Package | Works with |
+| :------ | :--------- |
+| `@hono/zod-validator` → `zValidator` | Zod 3 and 4 |
+| `@hono/standard-validator` → `sValidator` | any Standard Schema lib: Zod, Valibot, ArkType |
+| `validator(target, fn)` from `hono/validator` | hand-written checks; return data or a `Response` |
+
+Without a hook, a failed validation returns 400 with the error details. With several validators, the
+body is still parsed only once.
+
+## Error handling
+
+```ts
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+
+const app = new Hono();
+
+app.get("/admin", () => {
+  throw new HTTPException(403, { message: "Admins only" });
+});
+
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) return err.getResponse();
+  console.error(err);
+  return c.json({ error: "Internal error" }, 500);
+});
+```
+
+| API | Notes |
+| :-- | :---- |
+| `new HTTPException(status, { message, res, cause })` | `res` overrides the whole response |
+| `err.getResponse()` | plain-text response with the status (or `res`) |
+| `app.onError((err, c) => Response)` | catches everything thrown in handlers and middleware |
+| `app.notFound((c) => Response)` | only on the top-level app |
+| `c.error` | after `await next()`, middleware can inspect what was thrown |
+
+## RPC client
+
+`hc<AppType>()` from `hono/client` turns the server's route types into a typed `fetch` client. The client
+needs only `import type`, so no server code ships.
+
+```ts title="web/api.ts"
+import { hc } from "hono/client";
+import type { InferResponseType } from "hono/client";
+import type { AppType } from "../src/app";
+
+const client = hc<AppType>("http://localhost:3000");
+
+const res = await client.api.books[":id"].$get({
+  param: { id: "7" },
+});
+if (res.ok) {
+  const book = await res.json();         // { id: number }
+}
+
+type Books = InferResponseType<
+  typeof client.api.books.$get
+>;                                  // { books: string[] }
+const url = client.api.books.$url();      // URL object
+```
+
+| Rule | Why |
+| :--- | :-- |
+| Chain `.get().post()` and `.route()` calls; export `typeof app` | unchained calls drop the route types |
+| `c.json(body, 404)` with explicit statuses | `res.status` then narrows `res.json()` |
+| `{ json }`, `{ form }`, `{ query }`, `{ param }`, `{ header }` | request args mirror the validators |
+| `parseResponse(client.x.$get())` | parses by `Content-Type`, throws `DetailedError` on non-2xx |
+| `hc(url, { headers, fetch, init })` | auth headers, custom fetch, `credentials` |
+| `strict: true` in both tsconfigs | otherwise inference degrades to `any` |
+| Large apps: compile `hc<typeof app>` in a build step | keeps editor type checking fast |
+
+## JSX, streaming & SSE
+
+```tsx title="src/pages.tsx"
+import { Hono } from "hono";
+import type { FC } from "hono/jsx";
+
+const Layout: FC = (props) => (
+  <html>
+    <body>{props.children}</body>
+  </html>
+);
+
+const app = new Hono();
+
+app.get("/hello/:name", (c) =>
+  c.html(
+    <Layout>
+      <h1>Hello {c.req.param("name")}</h1>
+    </Layout>,
+  ),
+);
+```
+
+| Helper | Import | Does |
+| :----- | :----- | :--- |
+| `jsxRenderer(Layout)` + `c.render(jsx)` | `hono/jsx-renderer` | shared layout per route group |
+| `Suspense`, `renderToReadableStream` | `hono/jsx/streaming` | stream async components |
+| `` html`...` ``, `raw(s)` | `hono/html` | tagged template with escaping |
+| `stream(c, async (s) => ...)` | `hono/streaming` | raw bytes: `s.write`, `s.pipe(readable)` |
+| `streamText(c, cb)` | `hono/streaming` | `text/plain` chunks: `s.writeln` |
+| `streamSSE(c, cb)` | `hono/streaming` | `s.writeSSE({ data, event, id, retry })` |
+| `s.onAbort(fn)`, `s.sleep(ms)`, `s.aborted` | all streams | cleanup when the client leaves |
+
+`hono/jsx/dom` is a small client-side React-like renderer. SSE and chunked details are in
+[Streaming](/typescript/backend/streaming/).
+
+## WebSockets on Bun
+
+```ts title="src/ws.ts"
+import { Hono } from "hono";
+import { upgradeWebSocket, websocket } from "hono/bun";
+
+const app = new Hono();
+
+app.get(
+  "/ws",
+  upgradeWebSocket((c) => ({
+    onOpen(_evt, ws) {
+      ws.send(`hi ${c.req.query("name") ?? "anon"}`);
+    },
+    onMessage(evt, ws) {
+      ws.send(`echo: ${String(evt.data)}`);
+    },
+    onClose() {
+      console.log("closed");
+    },
+  })),
+);
+
+export default { fetch: app.fetch, websocket };
+```
+
+Export `websocket` next to `fetch`, or Bun can't upgrade. Middleware that rewrites headers (for
+example `cors`) clashes with the upgrade, so keep it off `/ws`. Node uses `upgradeWebSocket` from
+`@hono/node-server` with `ws`. The RPC client connects with `client.ws.$ws()`. Protocol details are in
+[WebSockets](/typescript/backend/websockets/).
+
+## Testing
+
+```ts title="test/books.test.ts"
+import { describe, expect, it } from "bun:test";
+import { testClient } from "hono/testing";
+import app from "../src/app";
+
+describe("books", () => {
+  it("lists", async () => {
+    const res = await app.request("/api/books");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ books: [] });
+  });
+
+  it("creates", async () => {
+    const res = await app.request("/api/books", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Dune" }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("typed client", async () => {
+    const client = testClient(app);
+    const res = await client.api.books.$get();
+    expect(res.ok).toBe(true);
+  });
+});
+```
+
+- `app.request(pathOrRequest, init?, env?)` runs the app in-process, with no port. The third
+  argument mocks `Bindings`.
+- `testClient(app)` is `hc` wired to `app.request`, so tests get the same types as clients.
+- Run with `bun test`. See [Testing](/typescript/testing/).
+
+## Deploying
+
+| Target | Setup | Run |
+| :----- | :---- | :-- |
+| Bun | `export default app` or `Bun.serve` | `bun run src/index.ts`; `bun build src/index.ts --target=bun` to bundle |
+| Node | `serve({ fetch: app.fetch, port })` from `@hono/node-server` | `node dist/index.js` (build with `tsc` or `tsdown`) |
+| Cloudflare Workers | `bun create hono` → `cloudflare-workers`, `wrangler.jsonc` | `bunx wrangler dev`, `bunx wrangler deploy` |
+| Vercel | `export default app` in `src/index.ts` | `vercel deploy` |
+| Docker | `oven/bun` image, `CMD ["bun", "src/index.ts"]` | see [Dockerfile](/infrastructure/containers/dockerfile/) |
+
+```ts title="src/node.ts"
+import { serve } from "@hono/node-server";
+import app from "./app";
+
+const server = serve(
+  { fetch: app.fetch, port: 3000 },
+  (info) => console.log(`listening on :${info.port}`),
+);
+
+process.on("SIGTERM", () => server.close());
+```
+
+Workers bindings: type them in `Bindings` (or run `wrangler types`) and read them with `c.env.MY_KV`.
+There is no `process.env` by default.
+
+## Project layout
+
+```tree title="Hono API on Bun"
+my-api/
+  src/
+    index.ts            # Bun entry: Bun.serve + shutdown
+    app.ts              # builds the app, exports AppType
+    env.ts              # Zod-parsed process.env
+    types.ts            # AppEnv: Bindings + Variables
+    routes/
+      books.ts          # new Hono() sub-app, chained
+      users.ts
+      auth.ts           # login, refresh
+    middleware/
+      auth.ts           # createMiddleware + typed Variables
+      rate-limit.ts
+    lib/
+      db.ts
+      errors.ts         # HTTPException helpers
+    views/
+      layout.tsx        # hono/jsx, if you render HTML
+  test/
+    books.test.ts       # app.request / testClient
+  bunfig.toml
+  tsconfig.json         # strict, jsxImportSource hono/jsx
+  package.json
+```
+
+- One sub-app per resource, mounted with `app.route()` in `app.ts`. Keep `index.ts` runtime-specific
+  so `app.ts` stays portable and testable.
+- Put the shared `AppEnv` in `types.ts` and use `new Hono<AppEnv>()` everywhere, so `c.var` and `c.env`
+  agree across files.
+- In a monorepo, the frontend imports only `type AppType` (see
+  [pnpm monorepos](/typescript/runtime-tooling/pnpm-monorepos/)).
+
+## Recipes
+
+### CRUD API with Zod validation
+Use as the skeleton for a resource router.
+
+```ts title="src/routes/todos.ts"
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+
+const Input = z.object({
+  title: z.string().min(1),
+  done: z.boolean().default(false),
+});
+type Todo = z.infer<typeof Input> & { id: string };
+const db = new Map<string, Todo>();
+const save = (t: Todo) => { db.set(t.id, t); return t; };
+const body = zValidator("json", Input);
+
+export const todos = new Hono()
+  .get("/", (c) => c.json([...db.values()]))
+  .post("/", body, (c) => {
+    const id = crypto.randomUUID();
+    return c.json(save({ ...c.req.valid("json"), id }), 201);
+  })
+  .put("/:id", body, (c) => {
+    const id = c.req.param("id");
+    return c.json(save({ ...c.req.valid("json"), id }), 200);
+  })
+  .delete("/:id", (c) =>
+    c.body(null, db.delete(c.req.param("id")) ? 204 : 404));
+```
+
+### JWT-protected routes
+Use for stateless API auth with a short-lived access token.
+
+```ts title="src/routes/auth.ts"
+import { Hono } from "hono";
+import { jwt, sign } from "hono/jwt";
+import type { JwtVariables } from "hono/jwt";
+
+const SECRET = process.env.JWT_SECRET ?? "";
+if (SECRET.length < 32) throw new Error("weak JWT_SECRET");
+const app = new Hono<{ Variables: JwtVariables }>();
+
+app.post("/login", async (c) => {
+  const { email } = await c.req.json<{ email: string }>();
+  // ...verify the password here
+  const exp = Math.floor(Date.now() / 1000) + 15 * 60;
+  const claims = { sub: email, exp };
+  const token = await sign(claims, SECRET, "HS256");
+  return c.json({ token });
+});
+
+app.use("/api/*", jwt({ secret: SECRET, alg: "HS256" }));
+
+app.get("/api/me", (c) => {
+  const payload = c.get("jwtPayload");  // verified claims
+  return c.json({ sub: payload.sub });
+});
+
+export default app;
+```
+
+### Typed RPC client
+Use when a TypeScript frontend calls your Hono API.
+
+```ts title="web/books.ts"
+import { hc, type InferRequestType } from "hono/client";
+import type { AppType } from "../src/app";
+
+const api = hc<AppType>("/", {
+  headers: () => ({ authorization: `Bearer ${getToken()}` }),
+}).api;
+
+type NewBook = InferRequestType<typeof api.books.$post>;
+
+export async function getBook(id: number) {
+  const res = await api.books[":id"].$get({
+    param: { id: String(id) },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();                   // typed body
+}
+
+declare function getToken(): string;
+```
+
+### Server-Sent Events stream
+Use to push live updates (progress, notifications) over plain HTTP.
+
+```ts title="src/routes/events.ts"
+import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
+
+export const events = new Hono().get("/clock", (c) =>
+  streamSSE(c, async (stream) => {
+    let id = 0;
+    stream.onAbort(() => console.log("client left"));
+    while (!stream.aborted) {
+      await stream.writeSSE({
+        event: "tick",
+        id: String(id++),
+        data: JSON.stringify({ now: Date.now() }),
+      });
+      await stream.sleep(1000);
+    }
+  }),
+);
+// browser: new EventSource("/clock").addEventListener(
+//   "tick", (e) => console.log(e.data))
+```
+
+### Graceful shutdown on Bun
+Use in containers so deploys don't cut off in-flight requests.
+
+```ts title="src/index.ts"
+import app from "./app";
+
+const server = Bun.serve({
+  port: Number(process.env.PORT ?? 3000),
+  fetch: app.fetch,
+});
+
+let closing = false;
+async function shutdown(signal: string) {
+  if (closing) return;
+  closing = true;
+  console.log(`${signal}: draining`);
+  // stop accepting, wait for in-flight requests
+  await server.stop();
+  // await db.end(); flush logs, close queues...
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+```
+
+### Rate limit middleware
+Use for a fixed-window limit on one instance behind a proxy that sets `X-Forwarded-For`. Without a
+proxy, key on `getConnInfo(c).remote.address` from `hono/bun`. With several instances, keep the
+counters in Redis.
+
+```ts title="src/middleware/rate-limit.ts"
+import { createMiddleware } from "hono/factory";
+
+type Bucket = { count: number; reset: number };
+export function rateLimit(limit: number, windowMs: number) {
+  const buckets = new Map<string, Bucket>();
+  return createMiddleware(async (c, next) => {
+    const fwd = c.req.header("x-forwarded-for");
+    const key = fwd?.split(",")[0]?.trim() || "anon";
+    const now = Date.now();
+    const old = buckets.get(key);
+    const b = old && old.reset > now
+      ? { ...old, count: old.count + 1 }
+      : { count: 1, reset: now + windowMs };
+    buckets.set(key, b);
+    const left = Math.max(0, limit - b.count);
+    c.header("RateLimit-Limit", String(limit));
+    c.header("RateLimit-Remaining", String(left));
+    if (b.count > limit) {
+      const secs = Math.ceil((b.reset - now) / 1000);
+      c.header("Retry-After", String(secs));
+      return c.json({ error: "Too many requests" }, 429);
+    }
+    await next();
+  });
+}
+```
+
+## References
+
+- [MDN: Request](https://developer.mozilla.org/en-US/docs/Web/API/Request) and [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response): the objects every handler works with
+- [MDN: Server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events): the SSE wire format
+- [Hono docs](https://hono.dev/docs/): API, middleware and helper reference
+- [Hono: Getting started on Bun](https://hono.dev/docs/getting-started/bun)
+- [Hono: Validation](https://hono.dev/docs/guides/validation): validator targets, Standard Schema
+- [Hono: RPC](https://hono.dev/docs/guides/rpc): `hc`, type inference, performance tips
+- [Hono: Best practices](https://hono.dev/docs/guides/best-practices): structuring larger apps
+- [Hono: Testing](https://hono.dev/docs/guides/testing) and [testClient](https://hono.dev/docs/helpers/testing)
+- [Hono: WebSocket helper](https://hono.dev/docs/helpers/websocket)
+- [honojs/middleware](https://github.com/honojs/middleware): third-party middleware (`zod-validator`, `zod-openapi`, …)
+- [Bun: HTTP server](https://bun.com/docs/runtime/http/server): `Bun.serve`, `server.stop()`

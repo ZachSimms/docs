@@ -1,0 +1,520 @@
+---
+title: Web Animations API
+date: 2026-09-25
+order: 5
+---
+
+`element.animate()`, the `Animation` object and `KeyframeEffect`: CSS-grade animations driven from
+TypeScript, with play/pause/seek, promises and scroll timelines. Core API is Baseline widely available
+(2020); scroll-driven timelines are not Baseline yet. For CSS `@keyframes` and transitions see
+[CSS animation](/design/css/animation/).
+
+## Basics
+
+```ts
+declare const box: HTMLElement;
+
+const anim = box.animate(
+  [
+    { transform: "translateY(8px)", opacity: 0 },
+    { transform: "none", opacity: 1 },
+  ],
+  { duration: 300, easing: "ease-out", fill: "backwards" },
+);
+
+await anim.finished; // resolves when it ends
+```
+
+`el.animate(keyframes, options)` builds a `KeyframeEffect`, wraps it in an `Animation` on
+`document.timeline`, and plays it immediately. Passing a number as `options` sets only `duration`.
+
+| Support | Baseline |
+| :------ | :------- |
+| `animate()`, `Animation`, `KeyframeEffect`, `finished`, `getAnimations` | widely available (2020) |
+| `commitStyles()`, `persist()`, auto-removal | widely available (2020) |
+| `composite` (`add` / `accumulate`) | widely available (2022) |
+| `linear()` easing, individual `translate`/`rotate`/`scale` | widely available |
+| `iterationComposite` | limited: Firefox, Safari |
+| `ScrollTimeline`, `ViewTimeline`, `rangeStart`/`rangeEnd` | limited: Chromium 115+, Safari 26+ |
+
+## Keyframes
+
+Two equivalent formats. Property names are camelCase (`backgroundColor`), values are CSS strings or
+numbers.
+
+```ts
+declare const el: HTMLElement;
+
+// array of keyframes: one object per step
+el.animate(
+  [
+    { opacity: 0, offset: 0 },
+    { opacity: 1, offset: 0.7, easing: "ease-in" },
+    { opacity: 0.5 }, // offset 1 inferred
+  ],
+  1000,
+);
+
+// property-indexed: one array per property
+el.animate(
+  {
+    opacity: [0, 1],
+    transform: ["scale(0.9)", "scale(1)"],
+    easing: ["ease-out"], // per segment
+  },
+  1000,
+);
+```
+
+| Key | Meaning |
+| :-- | :------ |
+| any CSS property | camelCase; `float` is `cssFloat`, CSS `offset` is `cssOffset` |
+| `offset` | position of the keyframe, `0` to `1`; spaced evenly if omitted |
+| `easing` | easing from this keyframe to the next |
+| `composite` | per-keyframe `replace`, `add` or `accumulate` |
+| CSS custom properties | `"--hue": [0, 360]`, animated only if registered with `@property` |
+
+A single keyframe (`{ opacity: 0 }`) is allowed: the missing end is the element's current computed
+value. Use it to animate "from wherever it is now" after an interruption.
+
+## Timing options
+
+| Option | Default | Values / notes |
+| :----- | :------ | :------------- |
+| `duration` | `0` | ms; `"auto"` for scroll timelines |
+| `delay` | `0` | ms before the active phase; negative starts part-way |
+| `endDelay` | `0` | ms after; negative cuts the end short |
+| `easing` | `"linear"` | any CSS easing: `ease-out`, `cubic-bezier()`, `steps()`, `linear()` |
+| `iterations` | `1` | number or `Infinity` |
+| `iterationStart` | `0` | start part-way into an iteration, e.g. `0.5` |
+| `direction` | `"normal"` | `reverse`, `alternate`, `alternate-reverse` |
+| `fill` | `"none"` | `forwards`, `backwards`, `both`, `auto` |
+| `composite` | `"replace"` | `add`, `accumulate`; see [Composite modes](#composite-modes) |
+| `iterationComposite` | `"replace"` | `accumulate` builds on each loop; limited support |
+| `pseudoElement` | none | `"::before"`, `"::after"`, `"::marker"` |
+| `id` | `""` | `animate()` only; shows up as `anim.id` |
+| `timeline` | `document.timeline` | `animate()` only; a `ScrollTimeline`, `ViewTimeline` or `null` |
+| `rangeStart` / `rangeEnd` | `"normal"` | `animate()` only; e.g. `"entry 0%"`; view timelines |
+
+<Note kind="warning">Two defaults differ from CSS: `easing` is `linear` (CSS uses `ease`) and
+`duration` is `0`, so `el.animate(frames)` without options jumps straight to the end.</Note>
+
+## The Animation object
+
+| Method | Effect |
+| :----- | :----- |
+| `play()` | start or resume; from the start if finished |
+| `pause()` | freeze at `currentTime` |
+| `reverse()` | flip `playbackRate` sign and play |
+| `finish()` | jump to the end (or start when reversed); throws on infinite iterations |
+| `cancel()` | drop all effects, `playState` becomes `"idle"`, `finished` rejects |
+| `updatePlaybackRate(r)` | change speed smoothly, after pending tasks settle |
+| `commitStyles()` | write the current values into the inline `style` attribute |
+| `persist()` | opt out of automatic removal |
+
+| Property | Type | Meaning |
+| :------- | :--- | :------ |
+| `currentTime` | `CSSNumberish \| null` | ms into the animation; settable to seek; `null` when idle |
+| `startTime` | `CSSNumberish \| null` | timeline time when it started |
+| `playbackRate` | `number` | `1` normal, `2` double, `-1` backwards; setting it jumps |
+| `playState` | `AnimationPlayState` | `"idle"`, `"running"`, `"paused"`, `"finished"` |
+| `pending` | `boolean` | waiting to start or pause |
+| `ready` | `Promise<Animation>` | resolves when no longer pending |
+| `finished` | `Promise<Animation>` | resolves on finish; rejects with `AbortError` on `cancel()` |
+| `effect` | `AnimationEffect \| null` | usually a `KeyframeEffect`; swappable |
+| `timeline` | `AnimationTimeline \| null` | what drives time |
+| `replaceState` | `AnimationReplaceState` | `"active"`, `"removed"`, `"persisted"` |
+
+Events: `finish`, `cancel`, `remove` (`onfinish`, `oncancel`, `onremove`).
+
+```ts
+declare const panel: HTMLElement;
+
+const slide = panel.animate(
+  [{ translate: "-100% 0" }, { translate: "0 0" }],
+  { duration: 250, easing: "ease-out", fill: "both" },
+);
+slide.pause();
+
+// scrub from a slider: 0..1
+function scrub(t: number) {
+  slide.currentTime = t * 250;
+}
+
+// toggle open/closed, even mid-flight
+function toggle() {
+  slide.reverse();
+}
+
+// cancel() rejects `finished`: swallow AbortError
+slide.finished.then(
+  () => panel.classList.add("open"),
+  () => {},
+);
+```
+
+## Finding running animations
+
+| Call | Returns |
+| :--- | :------ |
+| `el.getAnimations()` | animations whose target is `el` (WAAPI, CSS animations, CSS transitions) |
+| `el.getAnimations({ subtree: true })` | also descendants and their pseudo-elements |
+| `document.getAnimations()` | every animation in the document |
+
+```ts
+declare const dialog: HTMLElement;
+
+// wait for all animations (CSS ones included) to end
+await Promise.allSettled(
+  dialog
+    .getAnimations({ subtree: true })
+    .map((a) => a.finished),
+);
+
+// pause every CSS @keyframes animation called "spin"
+for (const a of document.getAnimations()) {
+  const isSpin =
+    a instanceof CSSAnimation && a.animationName === "spin";
+  if (isSpin) a.pause();
+}
+```
+
+CSS-created animations come back as `CSSAnimation` (`animationName`) and `CSSTransition`
+(`transitionProperty`), so JS can pause, seek or await animations declared in CSS.
+
+## KeyframeEffect & Animation
+
+`animate()` is a shortcut. Build the parts yourself to reuse an effect, start paused, or swap
+effects later.
+
+```ts
+declare const card: HTMLElement;
+
+const effect = new KeyframeEffect(
+  card,
+  [{ opacity: 0 }, { opacity: 1 }],
+  { duration: 200, fill: "both" },
+);
+const anim = new Animation(effect, document.timeline);
+anim.play();
+
+effect.setKeyframes([{ opacity: 1 }, { opacity: 0 }]);
+effect.updateTiming({ duration: 400 });
+const t = effect.getComputedTiming();
+t.progress;         // 0..1 within the iteration, or null
+t.currentIteration; // number or null
+```
+
+| `KeyframeEffect` member | Use |
+| :---------------------- | :-- |
+| `target`, `pseudoElement` | the element (and pseudo) being animated |
+| `getKeyframes()` | computed keyframes, offsets filled in |
+| `setKeyframes(frames)` | replace keyframes in place |
+| `getTiming()` / `updateTiming(partial)` | read / patch timing |
+| `getComputedTiming()` | `progress`, `currentIteration`, `activeDuration`, `endTime` |
+| `composite` | `replace`, `add`, `accumulate` |
+
+## Composite modes
+
+How an effect combines with the underlying value (the base style plus lower animations).
+
+| Mode | Result | Example: base `translateX(50px)`, keyframe `translateX(10px)` |
+| :--- | :----- | :------------------------------------------------------------- |
+| `replace` | keyframe value wins | `translateX(10px)` |
+| `add` | appended to the underlying value | `translateX(50px) translateX(10px)` |
+| `accumulate` | values merged into one | `translateX(60px)`; `blur(2px)` + `blur(3px)` is `blur(5px)` |
+
+```ts
+declare const btn: HTMLElement;
+
+// hover lift that stacks on top of any existing transform
+btn.animate(
+  { transform: ["translateY(0)", "translateY(-2px)"] },
+  { duration: 150, fill: "forwards", composite: "add" },
+);
+```
+
+Needed for layered effects: a base pulse plus a hover wobble on the same `transform`, without one
+cancelling the other. CSS's equivalent is `animation-composition`.
+
+## Keeping the end state
+
+`fill: "forwards"` keeps the last frame, but the animation then overrides the element's styles
+forever: later `style` or class changes appear to do nothing, and the effect holds memory.
+
+```ts
+declare const el: HTMLElement;
+
+const a = el.animate(
+  { transform: "translateX(200px)" },
+  { duration: 300, fill: "forwards" },
+);
+await a.finished;
+a.commitStyles(); // bake final value into el.style
+a.cancel();       // release the fill
+```
+
+| Behaviour | Detail |
+| :-------- | :----- |
+| auto-removal | a filling animation fully covered by a newer one on the same element and properties is removed (`replaceState: "removed"`, `remove` event) |
+| `persist()` | keep a filling animation that would be auto-removed |
+| `commitStyles()` | throws `InvalidStateError` if the element is not being rendered (`display: none`, detached) |
+| `fill` without `forwards` | newer engines let `commitStyles()` work without it; keep `fill` for older ones |
+
+## Timelines
+
+| Timeline | Drives time from | Support |
+| :------- | :--------------- | :------ |
+| `document.timeline` | page time in ms (default) | Baseline |
+| `new DocumentTimeline({ originTime })` | page time with an offset | Baseline |
+| `new ScrollTimeline({ source, axis })` | scroll position of `source` (default: document scroller) | Chromium, Safari 26+ |
+| `new ViewTimeline({ subject, axis, inset })` | how far `subject` has crossed its scrollport | Chromium, Safari 26+ |
+| `null` | nothing: only moves when you set `currentTime` | Baseline |
+
+```ts
+declare const bar: HTMLElement;
+declare const card: HTMLElement;
+
+// reading progress bar
+bar.animate(
+  { transform: ["scaleX(0)", "scaleX(1)"] },
+  {
+    timeline: new ScrollTimeline({
+      source: document.documentElement,
+      axis: "block",
+    }),
+    fill: "both",
+  },
+);
+
+// fade in while the card enters the viewport
+card.animate(
+  { opacity: [0, 1], translate: ["0 40px", "0 0"] },
+  {
+    timeline: new ViewTimeline({ subject: card }),
+    rangeStart: "entry 0%",
+    rangeEnd: "entry 100%",
+    fill: "both",
+  },
+);
+```
+
+With a scroll timeline, times are percentages, `duration` is `"auto"`, and `currentTime` is a
+`CSSUnitValue` in `%`. Range names: `cover`, `contain`, `entry`, `exit`, `entry-crossing`,
+`exit-crossing`. Feature-detect with `"ScrollTimeline" in window` and fall back to an
+`IntersectionObserver` or a static state. The CSS equivalents (`animation-timeline: scroll()` /
+`view()`) are on [CSS animation](/design/css/animation/).
+
+### Types for scroll timelines
+
+TypeScript's `lib.dom` (5.9) has no `ScrollTimeline`, `ViewTimeline` or `rangeStart`. Declare what
+you use:
+
+```ts title="scroll-timeline.d.ts"
+type ScrollAxis = "block" | "inline" | "x" | "y";
+
+interface ScrollTimelineOptions {
+  source?: Element | null;
+  axis?: ScrollAxis;
+}
+declare class ScrollTimeline extends AnimationTimeline {
+  constructor(options?: ScrollTimelineOptions);
+  readonly source: Element | null;
+  readonly axis: ScrollAxis;
+}
+
+interface ViewTimelineOptions {
+  subject?: Element | null;
+  axis?: ScrollAxis;
+  inset?: string | (string | CSSNumericValue)[];
+}
+declare class ViewTimeline extends ScrollTimeline {
+  constructor(options?: ViewTimelineOptions);
+  readonly subject: Element | null;
+}
+
+interface KeyframeAnimationOptions {
+  rangeStart?: string | CSSNumericValue;
+  rangeEnd?: string | CSSNumericValue;
+}
+```
+
+## Reduced motion
+
+Respect `prefers-reduced-motion: reduce` (Baseline widely available): drop movement, keep
+opacity or colour changes, or skip to the end state.
+
+```ts title="motion.ts"
+const query = matchMedia("(prefers-reduced-motion: reduce)");
+
+export function animateSafe(
+  el: Element,
+  frames: Keyframe[],
+  opts: KeyframeAnimationOptions,
+): Animation {
+  if (!query.matches) return el.animate(frames, opts);
+  // same end state, no motion
+  return el.animate(frames, { ...opts, duration: 0 });
+}
+
+// react to the user flipping the setting
+query.addEventListener("change", () => {
+  if (query.matches) {
+    document.getAnimations().forEach((a) => a.finish());
+  }
+});
+```
+
+`finish()` throws on infinite animations; `cancel()` those instead. Motion that conveys state
+(a spinner, progress) can stay, slower or as a fade.
+
+## WAAPI vs CSS animations
+
+| | CSS `@keyframes` / transitions | Web Animations API |
+| :-- | :------------------------------ | :----------------- |
+| Declared in | stylesheet | TypeScript |
+| Values | static, or via custom properties | computed at runtime (measured sizes, pointer position) |
+| Control | toggle classes, `animation-play-state` | `play`, `pause`, `reverse`, seek, `playbackRate` |
+| Completion | `animationend` / `transitionend` events | `finished` promise |
+| Performance | same engine; `transform`/`opacity` run on the compositor | same |
+| Interruption | transitions retarget automatically | start a new animation, or single-keyframe from current |
+| Best for | hover/focus states, entrance on load, simple loops | gestures, FLIP, sequencing, anything data-driven |
+
+Libraries: Motion (`motion` on npm) uses WAAPI under the hood, adding springs and sequencing.
+For whole-page or element swaps with a crossfade, see the View Transitions API (Baseline 2025).
+
+## Performance
+
+| Property | Cost |
+| :------- | :--- |
+| `transform`, `translate`, `scale`, `rotate`, `opacity` | composite only; can run off the main thread |
+| `filter`, `clip-path` | paint; often composited in Chromium |
+| `color`, `background-color`, `box-shadow` | paint every frame |
+| `width`, `height`, `top`, `left`, `margin`, `font-size` | layout every frame: avoid; use FLIP |
+
+Compositor-run animations keep going while JS is busy. `will-change: transform` promotes an element
+up front; use it sparingly, since each layer costs memory.
+
+## Pitfalls
+
+| Trap | Fix |
+| :--- | :-- |
+| `el.animate(frames)` does nothing visible | pass a `duration`; the default is `0` |
+| Motion feels mechanical | set `easing`; the default is `linear` |
+| Element snaps back at the end | `fill: "forwards"` or, better, `commitStyles()` then `cancel()` |
+| Class changes ignored after an animation | a `fill: "forwards"` animation still overrides them; cancel it |
+| `Uncaught (in promise) AbortError` | `cancel()` rejects `finished`; attach a rejection handler |
+| `transform` keyframe wipes an existing transform | use `composite: "add"` or individual `translate`/`scale`/`rotate` |
+| kebab-case keys (`"background-color"`) | camelCase: `backgroundColor` |
+| React Strict Mode runs effects twice | start in `useEffect`, call `anim.cancel()` in the cleanup |
+| `finish()` throws `InvalidStateError` | the animation has `iterations: Infinity`; `cancel()` it |
+| `playbackRate = 2` jumps visually | `updatePlaybackRate(2)` keeps the current position |
+
+## Recipes
+
+### FLIP layout transition
+Animate a layout change (reorder, expand) cheaply by measuring before and after, then animating a
+`transform`.
+
+```ts
+export function flip(el: HTMLElement, mutate: () => void) {
+  const first = el.getBoundingClientRect();
+  mutate(); // change the DOM or classes
+  const last = el.getBoundingClientRect();
+  const dx = first.left - last.left;
+  const dy = first.top - last.top;
+  const sx = first.width / last.width;
+  const sy = first.height / last.height;
+  const from =
+    `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+  return el.animate(
+    [
+      { transformOrigin: "top left", transform: from },
+      { transformOrigin: "top left", transform: "none" },
+    ],
+    { duration: 300, easing: "ease-out" },
+  );
+}
+```
+
+### Staggered list entrance
+Reveal list items one after another with a per-index `delay`.
+
+```ts
+export function stagger(
+  items: Iterable<Element>,
+  step = 40,
+): Promise<Animation[]> {
+  const anims = [...items].map((el, i) =>
+    el.animate(
+      [
+        { opacity: 0, translate: "0 12px" },
+        { opacity: 1, translate: "0 0" },
+      ],
+      {
+        duration: 250,
+        delay: i * step,
+        easing: "ease-out",
+        fill: "backwards",
+      },
+    ),
+  );
+  return Promise.all(anims.map((a) => a.finished));
+}
+```
+
+### Run animations in sequence
+Chain steps with `await`; each one starts where the last ended.
+
+```ts
+declare const toast: HTMLElement;
+
+async function showToast(ms = 3000) {
+  const opts = { duration: 200, fill: "forwards" } as const;
+  const enter = toast.animate(
+    { opacity: [0, 1], translate: ["0 100%", "0 0"] },
+    opts,
+  );
+  await enter.finished;
+  await new Promise((r) => setTimeout(r, ms));
+  const exit = toast.animate({ opacity: [1, 0] }, opts);
+  await exit.finished;
+  enter.cancel();
+  exit.cancel();
+  toast.hidden = true;
+}
+```
+
+### Interruptible open/close
+One animation reversed on every toggle, so a click mid-flight turns it around smoothly.
+
+```ts
+export function makeToggle(el: HTMLElement) {
+  const anim = el.animate(
+    [
+      { opacity: 0, scale: "0.96" },
+      { opacity: 1, scale: "1" },
+    ],
+    { duration: 180, easing: "ease-out", fill: "both" },
+  );
+  anim.pause();
+  anim.currentTime = 0;
+  let open = false;
+  return () => {
+    open = !open;
+    anim.playbackRate = open ? 1 : -1;
+    anim.play();
+  };
+}
+```
+
+## References
+
+- MDN: [Web Animations API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API), [`Element.animate()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/animate), [`Animation`](https://developer.mozilla.org/en-US/docs/Web/API/Animation), [`KeyframeEffect`](https://developer.mozilla.org/en-US/docs/Web/API/KeyframeEffect)
+- MDN: [Keyframe formats](https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API/Keyframe_Formats), [`commitStyles()`](https://developer.mozilla.org/en-US/docs/Web/API/Animation/commitStyles), [`getAnimations()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getAnimations)
+- MDN: [`ScrollTimeline`](https://developer.mozilla.org/en-US/docs/Web/API/ScrollTimeline), [`ViewTimeline`](https://developer.mozilla.org/en-US/docs/Web/API/ViewTimeline), [Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll-driven_animations)
+- MDN: [`prefers-reduced-motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion)
+- [W3C: Web Animations Level 1](https://www.w3.org/TR/web-animations-1/), [Scroll-driven Animations](https://drafts.csswg.org/scroll-animations-1/)
+- Chrome for Developers: [Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)
+- [web-features / Baseline](https://web-platform-dx.github.io/web-features-explorer/): support status used above
+- [Motion](https://motion.dev/): WAAPI-based animation library

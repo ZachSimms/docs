@@ -1,0 +1,598 @@
+---
+title: pnpm & monorepos
+date: 2026-09-25
+order: 3
+---
+
+pnpm 12.x (12.7, Sept 2026: the native Rust rewrite; 11.x still gets fixes) and how to lay out,
+link, build, version and ship a TypeScript monorepo. Bun workspaces are compared at the end; the
+Bun-only side lives in [Bun](/typescript/runtime-tooling/bun/).
+
+## Install & pin
+
+```sh
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+npx get-pnpm                  # via npm (Node 22.13+)
+pnpm self-update              # latest; or self-update 12.7.0
+pnpm --version
+
+corepack enable pnpm          # Node 24 only: Corepack
+                              # isn't bundled from Node 25
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Binary | pnpm 12 is a native executable: no Node needed to run pnpm itself |
+| Aliases | `pn` for `pnpm`, `pnx` for `pnpm dlx` |
+| Project pin | `pnpm init` writes `"packageManager": "pnpm@12.x"` and `devEngines.packageManager` with `onFail: "download"`, so any pnpm switches to the pinned version |
+| Node for the project | `pnpm runtime set node 24` saves `devEngines.runtime`; `-g` installs globally |
+| One-off version | `pnpm with 11 install` ignores the pin for one command |
+| Docker | `ghcr.io/pnpm/pnpm:12` (pnpm only, add Node with `pnpm runtime set node 24 -g`) |
+
+| Major | Changed |
+| :---- | :------ |
+| 10 | dependency lifecycle scripts blocked by default; settings could live in `pnpm-workspace.yaml` |
+| 11 | settings **only** in `pnpm-workspace.yaml` or global `config.yaml` (`.npmrc` is auth/registry only); `allowBuilds` replaces `onlyBuiltDependencies`; `minimumReleaseAge` defaults to 1 day; SQLite store (`store/v11`); env prefix `pnpm_config_*` |
+| 12 | Rust CLI; workspace task scheduler (`tasks`, `pnpm pipeline`); `pnpm change`/`version -r` release flow; unknown workspace settings are errors when pnpm is pinned |
+
+## CLI vs npm & Bun
+
+| Task | pnpm | npm | Bun |
+| :--- | :--- | :-- | :-- |
+| Install all | `pnpm i` | `npm i` | `bun i` |
+| CI install | `pnpm ci` / `pnpm i --frozen-lockfile` | `npm ci` | `bun ci` |
+| Add dep / dev dep | `pnpm add zod` / `add -D vitest` | `npm i zod` / `-D` | `bun add zod` / `-d` |
+| Add to workspace root | `pnpm add -w -D typescript` | `npm i -D x` (at root) | `bun add -d x` (at root) |
+| Add to one package | `pnpm --filter api add zod` | `npm i zod -w api` | `bun add zod --filter api` |
+| Remove | `pnpm rm zod` | `npm uninstall zod` | `bun rm zod` |
+| Update (interactive, latest) | `pnpm up -i -L` | `npm update` | `bun update -i --latest` |
+| Outdated | `pnpm outdated -r` | `npm outdated` | `bun outdated` |
+| Run script | `pnpm dev` / `pnpm run dev` | `npm run dev` | `bun dev` |
+| Script in all packages | `pnpm -r build` | `npm run build -ws` | `bun --filter '*' build` |
+| Run a bin once | `pnpm dlx create-vite` / `pnx` | `npx` | `bunx` |
+| Local bin | `pnpm exec tsc` | `npx tsc` | `bunx tsc` |
+| Why installed | `pnpm why react` | `npm explain react` | `bun why react` |
+| Audit | `pnpm audit --fix` | `npm audit fix` | `bun audit fix` |
+| Patch a dep | `pnpm patch x` + `patch-commit` | `patch-package` | `bun patch x` + `--commit` |
+| Clean `node_modules` | `pnpm clean` | `rm -rf` | `rm -rf` |
+| Lockfile | `pnpm-lock.yaml` | `package-lock.json` | `bun.lock` |
+| Import lockfile | `pnpm import` | none | automatic |
+
+## `node_modules` layout
+
+Every file of every package version is stored once in a global content-addressable store and
+hard-linked (or reflinked) into projects. `node_modules` holds only your direct deps, as symlinks
+into a virtual store.
+
+```tree title="Isolated layout (default)"
+node_modules/
+  .pnpm/                # virtual store
+    express@5.1.0/
+      node_modules/
+        express/        # hard links to the store
+        body-parser/    # symlink to its .pnpm dir
+    body-parser@2.2.0/
+  express/              # symlink into .pnpm
+  .modules.yaml
+```
+
+The app's `package.json` declares only `express`, so only `express` appears at the top level; its own
+dependencies sit next to it inside `.pnpm`, where Node's resolution finds them.
+
+| Concept | Meaning |
+| :------ | :------ |
+| Store | `pnpm store path`: `~/Library/pnpm/store` (macOS), `~/.local/share/pnpm/store` (Linux); `pnpm store prune` cleans it |
+| Strictness | code can import only what its `package.json` declares: no phantom dependencies |
+| Phantom dep | importing a package you don't declare that npm happened to hoist; pnpm fails at runtime, so add it explicitly |
+| `hoistPattern` | default `['*']`: everything hoisted into the hidden `.pnpm/node_modules`, visible to deps only |
+| `publicHoistPattern` | hoist matching deps into the root `node_modules` for tools that need it (default `[]`) |
+| `shamefullyHoist: true` | npm-style flat root; last resort for broken tools |
+| `nodeLinker` | `isolated` (default), `hoisted` (flat, no symlinks: React Native, some serverless bundlers), `pnp` |
+| `packageImportMethod` | `auto` (hardlink or clone), `copy`, `clone`, `hardlink` |
+| `enableGlobalVirtualStore` | share the `.pnpm` virtual store across projects too (default `false`) |
+
+## `pnpm-workspace.yaml`
+
+Since pnpm 11 this file holds the pnpm settings for the repo (and for a single package too). `.npmrc` keeps
+only registry and auth lines.
+
+```yaml title="pnpm-workspace.yaml"
+packages:
+  - apps/*
+  - packages/*
+  - "!**/test/**"
+
+catalog:                  # "react": "catalog:"
+  react: ^19.2.0
+  zod: ^4.5.0
+catalogs:
+  react18:                # "react": "catalog:react18"
+    react: ^18.3.1
+
+allowBuilds:              # deps allowed to run scripts
+  esbuild: true
+  sharp: true
+  core-js: false          # silence, never build
+
+minimumReleaseAge: 1440   # minutes: skip versions < 1 day
+minimumReleaseAgeExclude:
+  - "@acme/*"
+
+overrides:
+  "lodash@<4.17.21": ^4.17.21
+  "express>qs": 6.13.0
+  "foo@1>bar": "-"        # remove a transitive dep
+
+packageExtensions:
+  some-pkg@1:
+    peerDependencies:
+      react: "*"
+
+patchedDependencies:
+  left-pad@1.3.0: patches/left-pad@1.3.0.patch
+
+publicHoistPattern:
+  - "*eslint*"
+  - "*prettier*"
+```
+
+| Setting | Default | Notes |
+| :------ | :------ | :---- |
+| `allowBuilds` | none allowed | map of package to `true`/`false`; `pnpm approve-builds` edits it interactively |
+| `strictDepBuilds` | `true` (11+) | install fails when an unapproved dep wants to build |
+| `dangerouslyAllowAllBuilds` | `false` | exactly what it says |
+| `minimumReleaseAge` | `1440` (11+) | supply-chain delay, in minutes (Bun's is seconds) |
+| `blockExoticSubdeps` | `true` (11+) | only direct deps may come from git or tarball URLs |
+| `trustPolicy` | `off` | `no-downgrade` fails if a version lost provenance/trust |
+| `autoInstallPeers` | `true` | install missing peer deps |
+| `strictPeerDependencies` | `false` | fail on peer mismatches |
+| `linkWorkspacePackages` | `false` | only `workspace:` specs link locally |
+| `saveWorkspaceProtocol` | `rolling` | `pnpm add` of a workspace package saves `workspace:^` |
+| `injectWorkspacePackages` | `false` | hard-link workspace deps instead of symlinking (needed for some deploys) |
+| `catalogMode` | `manual` | `prefer` or `strict` make `pnpm add` use catalog entries |
+| `verifyDepsBeforeRun` | `install` (11+) | `pnpm run` installs first if `node_modules` is stale |
+| `engineStrict` | `false` | fail on `engines` mismatches |
+
+```ini title=".npmrc"
+@acme:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}
+```
+
+Global settings go in `~/.config/pnpm/config.yaml`. Environment overrides use `pnpm_config_<name>`
+(`npm_config_*` is ignored from pnpm 11).
+
+## Workspaces & `workspace:`
+
+```json title="apps/api/package.json"
+{
+  "name": "@acme/api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@acme/db": "workspace:*",
+    "@acme/utils": "workspace:^",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@acme/tsconfig": "workspace:*"
+  }
+}
+```
+
+| Spec | Links | On `pnpm publish` becomes |
+| :--- | :---- | :------------------------ |
+| `workspace:*` | always the local package | `1.5.0` (exact) |
+| `workspace:^` | local | `^1.5.0` |
+| `workspace:~` | local | `~1.5.0` |
+| `workspace:^1.2.0` | local, must satisfy the range | `^1.2.0` |
+| `workspace:@acme/b@*` | alias | `npm:@acme/b@1.5.0` |
+| `catalog:` / `catalog:name` | registry version from the catalog | the catalog range |
+| `^1.5.0` (no protocol) | registry, unless `linkWorkspacePackages` | unchanged |
+
+The root `package.json` is `private: true` and holds repo-wide dev tools (TypeScript, lint, Turborepo);
+`pnpm add` at the root needs `-w`.
+
+## Filtering & recursive runs
+
+| Selector | Picks |
+| :------- | :---- |
+| `--filter @acme/api` / `-F api` | one package (name, or a unique name without scope) |
+| `--filter "@acme/*"` | name glob |
+| `--filter "./apps/**"` / `"{apps}"` | by path / everything under a directory |
+| `--filter "api..."` | `api` and everything it depends on |
+| `--filter "api^..."` | only `api`'s dependencies |
+| `--filter "...ui"` | `ui` and everything that depends on it |
+| `--filter "...^ui"` | only the dependents of `ui` |
+| `--filter "[origin/main]"` | packages changed since `origin/main` |
+| `--filter "...[origin/main]"` | changed packages plus their dependents: the "affected" set |
+| `--filter "!docs"` | exclude (combine several `--filter`s) |
+| `--filter-prod "api..."` | like `--filter`, following `dependencies` only |
+| `--fail-if-no-match` | exit 1 when nothing matches |
+
+| Command | Does |
+| :------ | :--- |
+| `pnpm -r build` | `build` in every package, in dependency (topological) order |
+| `pnpm -r --parallel dev` | all at once, ignoring order (long-running watchers) |
+| `pnpm -r --workspace-concurrency=2 test` | cap parallelism |
+| `pnpm -r run --dry-run build` | print the task graph |
+| `pnpm --filter "api..." build` | build `api` plus its deps first |
+| `pnpm --filter api exec tsc --noEmit` | any command inside a package |
+| `pnpm -r --stream` / `--aggregate-output` | interleaved prefixed lines / one block per package |
+| `pnpm -r --if-present lint` | skip packages without the script |
+
+`--test-pattern "test/**"` stops a test-only change from marking dependents as changed;
+`--changed-files-ignore-pattern "**/*.md"` ignores docs.
+
+## Monorepo structure
+
+```tree title="apps / packages / tooling"
+acme/
+  apps/
+    web/                 # Next.js app
+      package.json       # "@acme/web", private
+      tsconfig.json      # extends @acme/tsconfig
+    api/                 # Hono on Node or Bun
+      src/main.ts
+      package.json
+      tsconfig.json
+  packages/
+    ui/                  # React components
+      src/index.ts
+      package.json       # exports ./src/index.ts
+    db/                  # schema + client
+    utils/
+  tooling/
+    tsconfig/            # shared compiler options
+    eslint-config/
+  .changeset/            # release notes, if publishing
+  pnpm-workspace.yaml
+  pnpm-lock.yaml         # one lockfile at the root
+  package.json           # private root: dev tools, scripts
+  tsconfig.json          # project references (optional)
+  turbo.json             # task graph + cache (optional)
+```
+
+| Rule | Why |
+| :--- | :-- |
+| `apps/` deploy, `packages/` are imported, `tooling/` configures | clear dependency direction: apps → packages → tooling |
+| Scope every name (`@acme/*`) | no clashes with npm; easy `--filter "@acme/*"` |
+| Internal packages export TS source (`"exports": { ".": "./src/index.ts" }`) | no build step; Next.js (`transpilePackages`), Vite, Bun and Node 24 type stripping read it directly |
+| Build only what you publish | compiled packages need `dist/`, `.d.ts` and project references |
+| Keep one version of React, TS, etc. | catalogs; `pnpm dedupe --check` in CI |
+| Never import across packages by relative path | always through the package name, so the graph stays honest |
+
+```tree title="Internal package"
+packages/ui/
+  src/
+    button.tsx
+    index.ts            # export * from "./button.tsx"
+  package.json          # name, exports, peerDependencies
+  tsconfig.json         # extends @acme/tsconfig
+```
+
+## Shared tsconfig & project references
+
+```json title="tooling/tsconfig/package.json"
+{
+  "name": "@acme/tsconfig",
+  "private": true,
+  "files": ["*.json"],
+  "exports": {
+    "./base.json": "./base.json",
+    "./node.json": "./node.json",
+    "./react.json": "./react.json"
+  }
+}
+```
+
+```json title="tooling/tsconfig/base.json"
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": []
+  }
+}
+```
+
+```json title="packages/utils/tsconfig.json"
+{
+  "extends": "@acme/tsconfig/base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [{ "path": "../db" }]
+}
+```
+
+```json title="tsconfig.json (root)"
+{
+  "files": [],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "packages/utils" },
+    { "path": "packages/db" }
+  ]
+}
+```
+
+| Piece | Does |
+| :---- | :--- |
+| `extends: "@acme/tsconfig/base.json"` | resolves through `node_modules` and the package `exports` |
+| `composite: true` | required for a referenced project: forces `declaration`, known file set |
+| `references` | build order + type-check against the dependency's `.d.ts`, not its source |
+| `tsc -b` / `tsc -b --watch` | build every referenced project incrementally, from the root |
+| `tsc -b --clean` | delete outputs |
+| `paths` | avoid: workspace symlinks + `exports` already resolve `@acme/*` |
+
+Paths in `extends`d files resolve relative to the file that declares them, so keep `rootDir`,
+`outDir` and `include` in each package. TypeScript 7 (native `tsc`, 2026) defaults `types` to `[]` and
+`strict` to `true`, drops `baseUrl` and `moduleResolution: node`, and parallelises `tsc -b` with
+`--builders`. Source-only internal packages can skip references entirely and let each app type-check
+the lot with `tsc --noEmit`.
+
+## Task runners
+
+pnpm 12 orders `-r` runs by the dependency graph and can declare task dependencies and cached
+pipelines itself; Turborepo and Nx add remote caching and richer affected detection.
+
+```yaml title="pnpm-workspace.yaml"
+tasks:
+  build:
+    dependsOn: ["^build"]     # deps' build first
+    outputs: ["dist/**"]      # cacheable (pnpm pipeline)
+  test:
+    dependsOn: ["build"]      # own build first
+pipelines:
+  default: [build, test, lint]
+```
+
+```sh
+pnpm -r run build           # follows tasks.dependsOn
+pnpm pipeline               # frozen install, affected since
+                            # origin/main, cached results
+pnpm pipeline --base main --dry-run
+```
+
+```json title="turbo.json"
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "typecheck": { "dependsOn": ["^build"] },
+    "test": { "dependsOn": ["build"], "outputs": [] },
+    "lint": {},
+    "dev": { "cache": false, "persistent": true }
+  }
+}
+```
+
+| Tool | Commands | Strength |
+| :--- | :------- | :------- |
+| pnpm `-r` / `pipeline` | `pnpm -r build`, `pnpm pipeline` | nothing to install; cache is local |
+| Turborepo 2.x | `turbo run build`, `turbo run test --affected`, `turbo prune web --docker` | content-hash cache, remote cache (Vercel or self-hosted), TUI |
+| Nx 23 | `nx run-many -t build`, `nx affected -t test`, `nx graph` | project graph, generators, distributed CI |
+
+Put the runner in the root `package.json` scripts (`"build": "turbo run build"`) so `pnpm build` works
+everywhere; `^build` means "the same task in my dependencies".
+
+## Versioning & publishing
+
+| Approach | Flow |
+| :------- | :--- |
+| Changesets | `pnpm add -Dw @changesets/cli`, `pnpm changeset init`; per PR `pnpm changeset`; release with `pnpm changeset version` then `pnpm changeset publish` |
+| pnpm 12 built-in | `pnpm change` records an intent in `.changeset/` (same format); `pnpm version -r` bumps versions and writes changelogs |
+| Fixed or independent | Changesets `fixed` / `linked` groups in `.changeset/config.json` |
+| Private apps | `"private": true`: versioned for changelogs, never published |
+
+```sh
+pnpm change --bump minor --summary "Add Button size" \
+  @acme/ui                    # non-interactive intent
+pnpm change status            # pending intents
+pnpm version -r               # apply bumps + CHANGELOG.md
+pnpm -r publish --access public   # skips existing versions
+pnpm publish --dry-run --filter @acme/ui
+```
+
+`pnpm publish` rewrites `workspace:` and `catalog:` to real ranges, refuses a dirty tree or a
+non-default branch (`--no-git-checks` to override) and supports `--provenance` from CI.
+
+### Patching dependencies
+
+```sh
+pnpm patch left-pad@1.3.0     # prints a temp dir to edit
+# ...edit files in that dir...
+pnpm patch-commit /tmp/abc123  # writes patches/*.patch +
+                               # patchedDependencies entry
+pnpm patch-remove left-pad@1.3.0
+```
+
+Prefer `overrides` to swap a version and `packageExtensions` to fix a broken `package.json`; patches
+are for code changes, and upstream PRs remain the real fix.
+
+## Docker & deploy
+
+| Command | Use |
+| :------ | :-- |
+| `pnpm fetch` | download everything in `pnpm-lock.yaml` into the store: needs only the lockfile, so the layer caches until deps change |
+| `pnpm install --offline --frozen-lockfile` | link from that store after copying the sources |
+| `pnpm --filter api deploy --prod out/` | copy one package plus a pruned, self-contained `node_modules` (workspace deps included) into `out/` |
+| `turbo prune api --docker` | alternative: emit `out/json` (manifests) and `out/full` (sources) for the same layering |
+| BuildKit cache | `--mount=type=cache,id=pnpm,target=/pnpm/store` |
+
+pnpm 10 needed `injectWorkspacePackages: true` (or `--legacy`) for `deploy`; 12 copies workspace deps
+into the target either way, and pnpm's Docker guide still sets it. Full recipe below; image basics are
+in [Dockerfile](/infrastructure/containers/dockerfile/).
+
+## Bun workspaces comparison
+
+| | pnpm 12 | Bun 1.4 |
+| :- | :------ | :------ |
+| Workspace list | `packages:` in `pnpm-workspace.yaml` | `"workspaces"` in root `package.json` |
+| Catalogs | `catalog` / `catalogs` in the YAML | `workspaces.catalog` / `catalogs` in `package.json` |
+| Protocols | `workspace:`, `catalog:` | same |
+| Layout | isolated symlinks + global store | isolated by default for new workspaces, `hoisted` optional |
+| Lockfile | `pnpm-lock.yaml` | `bun.lock` (JSONC) |
+| Build scripts | `allowBuilds` map, `approve-builds` | `trustedDependencies`, `bun pm trust` |
+| Release-age gate | `minimumReleaseAge` (minutes, default 1 day) | `[install] minimumReleaseAge` (seconds, off) |
+| Filters | `--filter` with `...`, `^`, `[since]` | `--filter` with `...`, `^`, `{dir}`; no `[since]` |
+| Task ordering | `-r` topological, `tasks.dependsOn`, `pipeline` cache | `--filter` topological; no cache (add Turborepo) |
+| Deploy | `pnpm deploy` | none: `bun build --compile` or copy + `bun install --production --filter` |
+| Migrate | `pnpm import` from npm/yarn locks | `bun install` reads `pnpm-lock.yaml` |
+
+Bun installs and runs faster, and one tool also runs your code. pnpm wins on monorepo tooling:
+`deploy`, `[since]` filters, patches with review, supply-chain defaults. Mixing is common: pnpm for the
+workspace, `bun` to run scripts and tests.
+
+## Recipes
+
+### New monorepo from scratch
+A pnpm workspace with shared tool versions in a catalog, ready for Turborepo.
+
+```sh
+mkdir acme && cd acme && git init
+pnpm init                        # pins pnpm in package.json
+pnpm pkg set private=true
+mkdir -p apps packages tooling
+cat > pnpm-workspace.yaml <<'EOF'
+packages:
+  - apps/*
+  - packages/*
+  - tooling/*
+EOF
+pnpm add -w -D typescript turbo --save-catalog
+# root devDependencies now say "catalog:"
+pnpm pkg set scripts.build="turbo run build" \
+  scripts.test="turbo run test"
+printf "node_modules\ndist\n.turbo\n" > .gitignore
+pnpm install
+```
+
+### Add an internal package
+A source-only package that apps import by name, with no build step.
+
+```sh
+mkdir -p packages/utils/src
+cat > packages/utils/package.json <<'EOF'
+{
+  "name": "@acme/utils",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}
+EOF
+cat > packages/utils/src/index.ts <<'EOF'
+export const slug = (s: string) =>
+  s.toLowerCase().replace(/\W+/g, "-");
+EOF
+pnpm --filter @acme/api add "@acme/utils@workspace:*"
+pnpm --filter @acme/api exec tsc --noEmit
+```
+
+Apps then `import { slug } from "@acme/utils"`. Next.js needs `transpilePackages: ["@acme/utils"]`;
+Vite, Bun and Node 24 read the `.ts` directly.
+
+### Shared tsconfig package
+One place for compiler options, versioned like any other package.
+
+```sh
+mkdir -p tooling/tsconfig
+cat > tooling/tsconfig/package.json <<'EOF'
+{ "name": "@acme/tsconfig", "private": true,
+  "files": ["*.json"] }
+EOF
+# add base.json, node.json, react.json (see above)
+pnpm --filter "./apps/*" --filter "./packages/*" \
+  add -D "@acme/tsconfig@workspace:*"
+```
+
+```json title="tooling/tsconfig/react.json"
+{
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  }
+}
+```
+
+### Run affected only
+CI runs lint, tests and builds only for what a PR changed plus everything downstream.
+
+```sh
+git fetch origin main --depth=50
+# pnpm filters
+pnpm --filter "...[origin/main]" -r run lint
+pnpm --filter "...[origin/main]" -r run test
+# pnpm 12 pipeline (affected + cache)
+pnpm pipeline --base origin/main
+# Turborepo
+pnpm turbo run build test --affected
+# Nx
+pnpm nx affected -t build test --base=origin/main
+```
+
+### Prune for Docker
+Build one app from the monorepo into a small image, with cache-friendly layers.
+
+```dockerfile title="apps/api/Dockerfile"
+FROM ghcr.io/pnpm/pnpm:12 AS build
+RUN pnpm runtime set node 24 -g
+WORKDIR /repo
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm fetch
+COPY . .
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --offline --frozen-lockfile
+RUN pnpm --filter "@acme/api..." run build
+RUN pnpm --filter @acme/api deploy --prod /out
+
+FROM node:24-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /out .
+USER node
+EXPOSE 3000
+CMD ["node", "dist/main.js"]
+```
+
+Build from the repo root: `docker build -f apps/api/Dockerfile .`. Add a `.dockerignore` with
+`node_modules`, `dist` and `.git`.
+
+## References
+
+- [pnpm docs](https://pnpm.io/): CLI, settings, workspaces
+- [pnpm: What's different in pnpm 12](https://pnpm.io/blog/whats-different-in-pnpm-12) and [pnpm 11 release](https://pnpm.io/blog/releases/11.0): breaking changes
+- [pnpm: Settings](https://pnpm.io/settings): every `pnpm-workspace.yaml` key
+- [pnpm: Workspaces](https://pnpm.io/workspaces), [Catalogs](https://pnpm.io/catalogs), [Filtering](https://pnpm.io/filtering)
+- [pnpm: Task orchestration](https://pnpm.io/workspace-task-orchestration) and [pipeline](https://pnpm.io/cli/pipeline)
+- [pnpm: Docker](https://pnpm.io/docker) and [deploy](https://pnpm.io/cli/deploy)
+- [pnpm: Symlinked node_modules](https://pnpm.io/symlinked-node-modules-structure): the layout explained
+- [TypeScript: Project references](https://www.typescriptlang.org/docs/handbook/project-references.html)
+- [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/): native compiler, new defaults
+- [Turborepo: Configuration](https://turborepo.dev/docs/reference/configuration)
+- [Nx: Affected](https://nx.dev/ci/features/affected)
+- [Changesets](https://github.com/changesets/changesets): versioning and changelogs
+- [Bun: Workspaces](https://bun.com/docs/pm/workspaces): the Bun alternative

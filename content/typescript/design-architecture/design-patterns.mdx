@@ -1,0 +1,1033 @@
+---
+title: Design patterns
+date: 2026-09-25
+order: 1
+---
+
+Classic design patterns, React component patterns, rendering strategies and loading-performance
+patterns, following the three sections of patterns.dev, written in TypeScript. Each entry gives the
+intent, a short typed example, when to reach for it and what to watch out for.
+
+## Creational
+
+Patterns that control how objects get made.
+
+### Singleton
+
+One shared instance for the whole program. In JavaScript an **ES module is already a
+singleton**: its body runs once and every importer gets the same bindings.
+
+```ts title="config.ts"
+type Settings = { theme: "light" | "dark"; debug: boolean };
+
+let settings: Settings = { theme: "dark", debug: false };
+
+export const config = {
+  get: (): Readonly<Settings> => settings,
+  set: (next: Partial<Settings>): void => {
+    settings = { ...settings, ...next };
+  },
+};
+```
+
+The class form, when you need lazy creation or `instanceof`:
+
+```ts
+class Counter {
+  static #instance: Counter | undefined;
+  #count = 0;
+  private constructor() {}
+
+  static get instance(): Counter {
+    return (Counter.#instance ??= new Counter());
+  }
+  increment(): number {
+    return ++this.#count;
+  }
+}
+
+Counter.instance.increment(); // 1
+// @ts-expect-error constructor is private
+new Counter();
+```
+
+- **Use when:** one logger, one DB pool, one config object.
+- **Watch out:** hidden global state, order-dependent tests, and two copies when a package is
+  installed twice or loaded as both CJS and ESM (the dual-package hazard in
+  [Modules & packages](/typescript/design-architecture/modules-packages/)). Prefer passing the
+  instance in (dependency injection) where tests need to swap it.
+
+### Factory
+
+A function that decides which concrete object to build and hides `new`.
+
+```ts
+type Shape =
+  | { kind: "circle"; r: number }
+  | { kind: "rect"; w: number; h: number };
+
+interface Area {
+  area(): number;
+}
+
+function createShape(s: Shape): Area {
+  switch (s.kind) {
+    case "circle":
+      return { area: () => Math.PI * s.r ** 2 };
+    case "rect":
+      return { area: () => s.w * s.h };
+  }
+}
+
+createShape({ kind: "rect", w: 2, h: 3 }).area(); // 6
+```
+
+- **Use when:** creation depends on config or input, or you want to return plain objects
+  instead of class instances.
+- **Watch out:** a factory that only wraps one `new` is noise.
+
+### Builder
+
+Assemble a complex object step by step through a fluent API. This version is immutable: every
+step returns a new builder, so partial builders can be reused.
+
+```ts
+interface Query {
+  table: string;
+  where: readonly string[];
+  limit?: number;
+}
+
+interface QueryBuilder {
+  where(cond: string): QueryBuilder;
+  limit(n: number): QueryBuilder;
+  toSQL(): string;
+}
+
+function build(q: Query): QueryBuilder {
+  return {
+    where: (c) => build({ ...q, where: [...q.where, c] }),
+    limit: (n) => build({ ...q, limit: n }),
+    toSQL: () =>
+      [
+        `SELECT * FROM ${q.table}`,
+        q.where.length
+          ? `WHERE ${q.where.join(" AND ")}`
+          : "",
+        q.limit !== undefined ? `LIMIT ${q.limit}` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+  };
+}
+
+const from = (table: string) => build({ table, where: [] });
+const active = from("users").where("active = true");
+active.limit(10).toSQL();
+// SELECT * FROM users WHERE active = true LIMIT 10
+```
+
+- **Use when:** many optional parts, or construction order matters.
+- **Watch out:** an options object with defaults (`{ ...defaults, ...opts }`) is often enough.
+
+### Prototype
+
+New objects delegate to an existing object instead of copying behaviour. Every JS class is sugar
+over this: methods live once on `Class.prototype`.
+
+```ts
+const proto = {
+  describe(this: { name: string }): string {
+    return `I am ${this.name}`;
+  },
+};
+type Named = typeof proto & { name: string };
+
+const rex: Named = Object.create(proto);
+rex.name = "Rex"; // own property; describe() is shared
+rex.describe(); // "I am Rex"
+Object.getPrototypeOf(rex) === proto; // true
+
+// Copying data rather than sharing behaviour: deep clone
+const copy = structuredClone({
+  tags: ["a"],
+  at: new Date(),
+});
+```
+
+- **Use when:** many objects share methods (memory) or you clone templates.
+- **Watch out:** `Object.create` returns `any`, so annotate; `structuredClone` drops functions
+  and class prototypes.
+
+## Structural
+
+Patterns for composing objects and modules.
+
+### Module
+
+Encapsulate private state behind an explicit public API. ES modules do this natively:
+anything not exported is private.
+
+```ts title="cart.ts"
+const items = new Map<string, number>(); // private
+
+export function add(sku: string, qty = 1): void {
+  items.set(sku, (items.get(sku) ?? 0) + qty);
+}
+export const count = (): number =>
+  [...items.values()].reduce((a, b) => a + b, 0);
+```
+
+- **Use when:** always; it is the default unit of code in TS.
+- **Watch out:** module state is a singleton (see above); `#private` fields do the same job
+  inside classes.
+
+### Proxy
+
+Intercept operations on an object (get, set, has, delete, apply) with `Proxy`, and forward the
+default behaviour with `Reflect`.
+
+```ts
+const user = { name: "Ada", age: 36 };
+
+const guarded = new Proxy(user, {
+  get(target, key, receiver) {
+    if (!Reflect.has(target, key)) {
+      throw new Error(`No property ${String(key)}`);
+    }
+    return Reflect.get(target, key, receiver);
+  },
+  set(target, key, value: unknown, receiver) {
+    if (key === "age" && typeof value !== "number") {
+      throw new TypeError("age must be a number");
+    }
+    return Reflect.set(target, key, value, receiver);
+  },
+});
+
+guarded.age = 37; // ok
+```
+
+| Trap             | Intercepts                     | `Reflect` twin              |
+| :--------------- | :----------------------------- | :-------------------------- |
+| `get` / `set`    | property read / write          | `Reflect.get` / `.set`      |
+| `has`            | `key in obj`                   | `Reflect.has`               |
+| `deleteProperty` | `delete obj.key`               | `Reflect.deleteProperty`    |
+| `ownKeys`        | `Object.keys`, `for...in`      | `Reflect.ownKeys`           |
+| `apply`          | calling a function proxy       | `Reflect.apply`             |
+| `construct`      | `new` on a function proxy      | `Reflect.construct`         |
+
+- **Use when:** validation, logging, reactivity (Vue, MobX), lazy or remote objects.
+- **Watch out:** slower than plain access; breaks on objects with `#private` fields and on
+  built-ins with internal slots (`Map`, `Date`); `set` must return `true` or strict mode throws.
+
+### Decorator
+
+Add behaviour to a function without changing it by wrapping it. Higher-order functions keep
+the signature through generics.
+
+```ts
+function withRetry<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+  attempts = 3,
+): (...args: A) => Promise<R> {
+  return async (...args) => {
+    let lastError: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError;
+  };
+}
+
+const getUser = async (id: string) => ({ id });
+// (id: string) => ...
+const robustGetUser = withRetry(getUser);
+```
+
+TS 5.0+ also implements standard `@decorator` syntax for classes and members:
+
+```ts
+function logged<This, A extends unknown[], R>(
+  target: (this: This, ...args: A) => R,
+  ctx: ClassMethodDecoratorContext<This>,
+) {
+  return function (this: This, ...args: A): R {
+    console.debug(`-> ${String(ctx.name)}`);
+    return target.call(this, ...args);
+  };
+}
+
+class Api {
+  @logged
+  getUser(id: string) {
+    return { id };
+  }
+}
+```
+
+- **Use when:** cross-cutting concerns: retry, timing, caching, auth checks.
+- **Watch out:** `@` decorators need compiling (not erasable, not in browsers or Node type
+  stripping yet); `experimentalDecorators` is the older, incompatible flavour.
+
+### Adapter
+
+Wrap an incompatible interface so it fits the one your code expects.
+
+```ts
+interface Logger {
+  log(level: "info" | "error", msg: string): void;
+}
+
+class LegacyLogger {
+  write(line: string): void {
+    process.stdout.write(line + "\n");
+  }
+}
+
+const adapt = (legacy: LegacyLogger): Logger => ({
+  log: (level, msg) => legacy.write(`[${level}] ${msg}`),
+});
+```
+
+- **Use when:** integrating third-party SDKs, swapping vendors, testing with fakes.
+- **Watch out:** adapters that leak the wrapped type defeat the point.
+
+### Facade
+
+One simple function in front of a fiddly subsystem.
+
+```ts
+export async function getJSON<T>(
+  url: string,
+  parse: (data: unknown) => T,
+): Promise<T> {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  return parse(await res.json());
+}
+```
+
+- **Use when:** callers repeat the same multi-step setup (see [Fetch API](/typescript/web-apis/fetch-api/)).
+- **Watch out:** facades grow into god objects; keep the escape hatch to the full API.
+
+### Flyweight
+
+Share immutable intrinsic state between many objects; keep per-object (extrinsic) state outside.
+
+```ts
+interface Glyph {
+  readonly char: string;
+  readonly font: string;
+}
+const glyphs = new Map<string, Glyph>();
+
+function glyph(char: string, font: string): Glyph {
+  const key = `${char}:${font}`;
+  const hit = glyphs.get(key);
+  if (hit) return hit;
+  const g = Object.freeze({ char, font });
+  glyphs.set(key, g);
+  return g;
+}
+
+// position (extrinsic) lives outside the shared glyph
+const line = [..."hello"].map((c, x) => ({
+  g: glyph(c, "mono"),
+  x,
+}));
+```
+
+- **Use when:** very many similar objects (tiles, glyphs, map markers).
+- **Watch out:** the cache itself can leak; consider `WeakRef` or an LRU bound.
+
+### Mixin
+
+Compose behaviour into classes without deep inheritance. A mixin is a function from a class to
+a subclass.
+
+```ts
+type Ctor<T = object> = new (...args: any[]) => T;
+
+function Timestamped<B extends Ctor>(Base: B) {
+  return class extends Base {
+    createdAt = new Date();
+  };
+}
+function Taggable<B extends Ctor>(Base: B) {
+  return class extends Base {
+    tags = new Set<string>();
+  };
+}
+
+class User {
+  name = "anon";
+}
+const RichUser = Taggable(Timestamped(User));
+const u = new RichUser();
+u.createdAt; u.tags; u.name; // all typed
+```
+
+- **Use when:** a few orthogonal capabilities shared across unrelated classes.
+- **Watch out:** name clashes and opaque types; plain composition (a field holding a helper)
+  or functions over data is usually clearer. React dropped mixins for hooks.
+
+## Behavioural
+
+Patterns for how objects communicate.
+
+### Observer
+
+Subjects notify subscribers when something happens. A typed event emitter maps event names to
+payload types.
+
+```ts
+type Listener<T> = (payload: T) => void;
+
+class Emitter<E extends Record<string, unknown>> {
+  #subs: { [K in keyof E]?: Set<Listener<E[K]>> } = {};
+
+  on<K extends keyof E>(type: K, fn: Listener<E[K]>) {
+    const set = (this.#subs[type] ??= new Set());
+    set.add(fn);
+    return () => void set.delete(fn); // unsubscribe
+  }
+
+  emit<K extends keyof E>(type: K, payload: E[K]): void {
+    this.#subs[type]?.forEach((fn) => fn(payload));
+  }
+}
+
+type AppEvents = {
+  login: { id: string };
+  logout: undefined;
+};
+const bus = new Emitter<AppEvents>();
+
+const off = bus.on("login", (e) => e.id.toUpperCase());
+bus.emit("login", { id: "u1" });
+// @ts-expect-error id must be a string
+bus.emit("login", { id: 1 });
+off();
+```
+
+Built-in alternatives: `EventTarget` + `CustomEvent` (browser and Node), Node's
+`EventEmitter<{ login: [id: string] }>` (generic in `@types/node`), and signals/observables.
+
+- **Use when:** decoupling producers from consumers, UI state, domain events.
+- **Watch out:** forgotten unsubscribes leak memory; the event map must be a `type` alias
+  (interfaces have no implicit index signature, so they fail `Record<string, unknown>`).
+
+### Mediator and middleware
+
+A mediator centralises communication so components talk to it, not to each other. Middleware
+is a mediator shaped as a pipeline: each step can act, then call `next()`.
+
+```ts
+type Ctx = { path: string; user?: string; status?: number };
+type Next = () => Promise<void>;
+type Middleware = (ctx: Ctx, next: Next) => Promise<void>;
+
+function compose(stack: readonly Middleware[]) {
+  return (ctx: Ctx): Promise<void> => {
+    const run = (i: number): Promise<void> => {
+      const mw = stack[i];
+      return mw
+        ? mw(ctx, () => run(i + 1))
+        : Promise.resolve();
+    };
+    return run(0);
+  };
+}
+
+const auth: Middleware = async (ctx, next) => {
+  if (!ctx.user) {
+    ctx.status = 401;
+    return;
+  }
+  await next();
+};
+const handler = compose([auth, async (ctx) => {
+  ctx.status = 200;
+}]);
+```
+
+- **Use when:** request pipelines (Express, Koa, Hono), chat rooms, form field coordination,
+  Redux middleware.
+- **Watch out:** the mediator becomes the one class that knows everything; order of middleware
+  is behaviour.
+
+### Command
+
+Turn an action into a value so it can be queued, logged, retried or undone.
+
+```ts
+type State = { items: readonly string[] };
+
+interface Command {
+  apply(s: State): State;
+  revert(s: State): State;
+}
+
+const addItem = (item: string): Command => ({
+  apply: (s) => ({ items: [...s.items, item] }),
+  revert: (s) => ({ items: s.items.slice(0, -1) }),
+});
+
+let state: State = { items: [] };
+let done: readonly Command[] = [];
+
+function exec(cmd: Command): void {
+  state = cmd.apply(state);
+  done = [...done, cmd];
+}
+function undo(): void {
+  const last = done.at(-1);
+  if (!last) return;
+  state = last.revert(state);
+  done = done.slice(0, -1);
+}
+```
+
+- **Use when:** undo/redo, job queues, macro recording, Redux actions (commands as data).
+- **Watch out:** commands that capture stale state; keep them pure where possible.
+
+### Strategy
+
+Pick an interchangeable algorithm at runtime. In TS a strategy is usually just a function in
+a lookup table.
+
+```ts
+type Pricing = (subtotal: number) => number;
+
+const pricing = {
+  regular: (n) => n,
+  member: (n) => n * 0.9,
+  clearance: (n) => Math.max(0, n - 20),
+} satisfies Record<string, Pricing>;
+
+type Tier = keyof typeof pricing; // "regular" | ...
+const total = (n: number, tier: Tier) => pricing[tier](n);
+```
+
+- **Use when:** a `switch` over "how" keeps growing; sorting comparators, auth providers.
+- **Watch out:** `satisfies` keeps the literal keys; a `Record<string, Pricing>` annotation
+  would widen `Tier` to `string`.
+
+### Iterator and generators
+
+Walk a sequence without exposing its structure. Generators make any object iterable and lazy.
+
+```ts
+function* range(start: number, end: number, step = 1) {
+  for (let i = start; i < end; i += step) yield i;
+}
+[...range(0, 5)]; // [0, 1, 2, 3, 4]
+
+class Bag<T> implements Iterable<T> {
+  #items: readonly T[];
+  constructor(items: readonly T[]) {
+    this.#items = items;
+  }
+  *[Symbol.iterator]() {
+    yield* this.#items; // delegate to the array
+  }
+}
+for (const x of new Bag([1, 2])) x;
+
+// ES2025 iterator helpers: lazy map/filter/take
+range(0, Infinity)
+  .filter((n) => n % 7 === 0)
+  .take(3)
+  .toArray();
+```
+
+Async generators page through remote data:
+
+```ts
+type Page<T> = { items: T[]; next: string | null };
+
+async function* paginate<T>(first: string) {
+  let url: string | null = first;
+  while (url) {
+    const res: Response = await fetch(url);
+    const page = (await res.json()) as Page<T>;
+    yield* page.items;
+    url = page.next;
+  }
+}
+// for await (const user of paginate<User>("/api/users")) ...
+```
+
+- **Use when:** lazy or infinite sequences, streaming, custom collections.
+- **Watch out:** iterator helpers are Baseline 2025 (older Safari lacks them); generators are
+  single-use.
+
+### State machine
+
+Model states and transitions explicitly with discriminated unions so impossible states can't
+be represented. See [Fundamentals](/typescript/language/fundamentals/) for narrowing.
+
+```ts
+type State =
+  | { status: "idle" }
+  | { status: "loading"; startedAt: number }
+  | { status: "success"; data: string }
+  | { status: "error"; error: Error };
+
+type Msg =
+  | { type: "FETCH" }
+  | { type: "RESOLVE"; data: string }
+  | { type: "REJECT"; error: Error }
+  | { type: "RESET" };
+
+const assertNever = (x: never): never => {
+  throw new Error(`Unhandled: ${JSON.stringify(x)}`);
+};
+
+function transition(s: State, m: Msg): State {
+  switch (s.status) {
+    case "idle":
+      return m.type === "FETCH"
+        ? { status: "loading", startedAt: Date.now() }
+        : s;
+    case "loading":
+      if (m.type === "RESOLVE") {
+        return { status: "success", data: m.data };
+      }
+      if (m.type === "REJECT") {
+        return { status: "error", error: m.error };
+      }
+      return s;
+    case "success":
+    case "error":
+      return m.type === "RESET" ? { status: "idle" } : s;
+    default:
+      return assertNever(s);
+  }
+}
+```
+
+- **Use when:** UI flows (fetch, wizard, checkout), protocols, anything with "is it loading
+  and errored at once?" bugs. Plugs straight into `useReducer`.
+- **Watch out:** big machines get hard to read; XState adds visualisation, guards, actors.
+
+## React component patterns
+
+React 19 with TypeScript; see [TypeScript + React](/typescript/react/typescript-react/) for
+prop typing. Hooks have replaced most HOC and render-prop uses.
+
+### Container / presentational
+
+Split data fetching (container) from rendering (presentational). With Server Components the
+container is an async server component.
+
+```tsx
+type User = { id: string; name: string };
+declare function getUsers(): Promise<User[]>;
+
+// presentational: pure props in, JSX out
+function UserList({ users }: { users: User[] }) {
+  return (
+    <ul>
+      {users.map((u) => <li key={u.id}>{u.name}</li>)}
+    </ul>
+  );
+}
+
+// container: owns the data
+export async function UsersPage() {
+  const users = await getUsers();
+  return <UserList users={users} />;
+}
+```
+
+- **Use when:** you want presentational components that are easy to test and reuse.
+- **Watch out:** in client-only apps a custom hook (`useUsers()`) usually replaces the container.
+
+### Higher-order components
+
+A function that takes a component and returns an enhanced one.
+
+```tsx
+import type { ComponentType } from "react";
+
+function withLoading<P extends object>(
+  Wrapped: ComponentType<P>,
+) {
+  return function WithLoading(
+    props: P & { loading: boolean },
+  ) {
+    const { loading, ...rest } = props;
+    if (loading) return <p>Loading…</p>;
+    return <Wrapped {...(rest as unknown as P)} />;
+  };
+}
+```
+
+- **Use when:** wrapping third-party components, or cross-cutting concerns in libraries
+  (`memo`, `forwardRef`-era APIs are HOCs).
+- **Watch out:** prop-name collisions, "wrapper hell" in DevTools, awkward generics (the cast
+  above). Prefer a hook.
+
+### Render props
+
+Pass a function that returns UI, so the component shares state without owning the markup.
+
+```tsx
+import type { ReactNode } from "react";
+
+type Pos = { x: number; y: number };
+
+type MouseProps = { children: (p: Pos) => ReactNode };
+
+// useMousePosition: see Hooks below
+function Mouse({ children }: MouseProps) {
+  return children(useMousePosition());
+}
+
+const View = () => (
+  <Mouse>{({ x, y }) => <p>{x}, {y}</p>}</Mouse>
+);
+```
+
+- **Use when:** the consumer must control rendering (virtualised lists `renderItem`, headless
+  UI libraries).
+- **Watch out:** nesting several render props gets deep; a hook composes flatter.
+
+### Hooks
+
+Reusable stateful logic as a function whose name starts with `use`. The same mouse logic:
+
+```tsx
+import { useEffect, useState } from "react";
+
+export function useMousePosition() {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const move = (e: MouseEvent) =>
+      setPos({ x: e.clientX, y: e.clientY });
+    window.addEventListener("mousemove", move);
+    return () =>
+      window.removeEventListener("mousemove", move);
+  }, []);
+  return pos;
+}
+
+function Cursor() {
+  const { x, y } = useMousePosition();
+  return <p>{x}, {y}</p>;
+}
+```
+
+- **Use when:** by default for sharing logic between components.
+- **Watch out:** rules of hooks (top level, same order every render); a hook shares logic, not
+  state (each caller gets its own).
+
+### Compound components
+
+A parent shares implicit state with its named children through context, giving a flexible,
+declarative API (`Tabs.Tab`, `Tabs.Panel`).
+
+```tsx
+import { createContext, use, useState } from "react";
+import type { ReactNode } from "react";
+
+type TabsState = {
+  active: string;
+  select: (id: string) => void;
+};
+const TabsCtx = createContext<TabsState | null>(null);
+
+function useTabs(): TabsState {
+  const ctx = use(TabsCtx);
+  if (!ctx) throw new Error("Tabs.* must be inside <Tabs>");
+  return ctx;
+}
+
+type Kids = { children: ReactNode };
+
+type TabsProps = Kids & { initial: string };
+
+export function Tabs({ initial, children }: TabsProps) {
+  const [active, select] = useState(initial);
+  return (
+    <TabsCtx value={{ active, select }}>{children}</TabsCtx>
+  );
+}
+
+function Tab({ id, children }: Kids & { id: string }) {
+  const { active, select } = useTabs();
+  return (
+    <button
+      aria-selected={active === id}
+      onClick={() => select(id)}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Panel({ id, children }: Kids & { id: string }) {
+  return useTabs().active === id ? (
+    <div>{children}</div>
+  ) : null;
+}
+
+Tabs.Tab = Tab;
+Tabs.Panel = Panel;
+```
+
+- **Use when:** component libraries: selects, menus, accordions, tabs.
+- **Watch out:** children must render inside the parent's tree; give a clear error when not.
+
+### Provider
+
+Make a value available to a whole subtree through context instead of prop drilling.
+
+```tsx
+import { createContext, use, useState } from "react";
+import type { ReactNode } from "react";
+
+type Kids = { children: ReactNode };
+type Theme = "light" | "dark";
+type ThemeCtx = { theme: Theme; toggle: () => void };
+
+const ThemeContext = createContext<ThemeCtx | null>(null);
+
+export function ThemeProvider({ children }: Kids) {
+  const [theme, setTheme] = useState<Theme>("light");
+  const toggle = () =>
+    setTheme((t) => (t === "light" ? "dark" : "light"));
+  return (
+    <ThemeContext value={{ theme, toggle }}>
+      {children}
+    </ThemeContext>
+  );
+}
+
+export function useTheme(): ThemeCtx {
+  const ctx = use(ThemeContext);
+  if (!ctx) {
+    throw new Error("useTheme needs <ThemeProvider>");
+  }
+  return ctx;
+}
+```
+
+- **Use when:** theme, auth user, locale, feature flags: values read in many places.
+- **Watch out:** every consumer re-renders when the value changes; split fast-changing values
+  into their own context or use a store (Zustand, Jotai). React 19 renders `<Ctx>` directly as
+  the provider and reads it with `use(Ctx)`.
+
+## Rendering patterns
+
+Where and when HTML gets produced. Most frameworks (Next.js, Remix/React Router, Astro, Nuxt)
+let you mix these per route.
+
+| Pattern | Renders where / when | Pros | Cons |
+| :------ | :------------------- | :--- | :--- |
+| CSR (client-side) | browser, after JS downloads; server sends an empty shell | cheap hosting, rich interactivity, simple mental model | slow first paint and LCP on weak devices, SEO relies on crawler JS, big bundles |
+| SSR (server-side) | server, on every request; client hydrates | fresh per-request data, good SEO, fast FCP | server cost, TTFB grows with slowest query, hydration cost (TTI) |
+| SSG (static) | build time; served from CDN | fastest TTFB, cheap, cacheable | stale until rebuild; builds slow with many pages |
+| ISR (incremental static) | build time, then regenerated in the background after a TTL or on-demand revalidation | CDN speed with periodic freshness | briefly stale content; platform support needed |
+| Streaming SSR | server, sends HTML in chunks as `Suspense` boundaries resolve | early first byte, slow parts don't block fast ones | needs streaming-capable host; layout shift if fallbacks are poor |
+| React Server Components | server (at build or request); only client components ship JS | zero JS for server parts, direct DB access, smaller bundles | server/client boundary rules, framework-bound, serialisable props only |
+| Islands | static HTML with isolated interactive widgets hydrated independently (Astro, Fresh) | minimal JS, per-island loading (`client:visible`) | cross-island state is awkward; less suited to app-like UIs |
+
+Related hydration techniques: **progressive hydration** (hydrate parts later or on visibility),
+**selective hydration** (React 18+ hydrates `Suspense` boundaries independently and prioritises
+the ones the user interacts with), and **partial prerendering** (static shell plus streamed
+dynamic holes).
+
+```tsx title="app/page.tsx"
+import { Suspense, type ReactNode } from "react";
+
+declare function Recommendations(): Promise<ReactNode>;
+
+export default function Page() {
+  return (
+    <main>
+      <h1>Shop</h1> {/* in the first flush */}
+      <Suspense fallback={<p>Loading picks…</p>}>
+        <Recommendations /> {/* streamed in later */}
+      </Suspense>
+    </main>
+  );
+}
+```
+
+## Performance patterns
+
+Load less, load later, load in the right order.
+
+| Pattern | Idea | How |
+| :------ | :--- | :-- |
+| Bundle splitting | many small chunks instead of one bundle; better caching | bundler `splitChunks` / automatic in Vite, Next |
+| Dynamic import | load a module only when needed | `await import("./x.js")` |
+| Import on interaction | fetch code on click/hover/focus | dynamic import in the event handler |
+| Import on visibility | fetch when scrolled near | `IntersectionObserver` + dynamic import |
+| Route-based splitting | one chunk per route | `React.lazy`, framework routers do it by default |
+| Preload | high-priority fetch of a resource needed now | `<link rel="preload">`, `modulepreload` |
+| Prefetch | low-priority fetch of a likely next resource | `<link rel="prefetch">`, `<Link prefetch>` |
+| Tree shaking | drop unused exports at build time | ESM, named exports, `"sideEffects": false` |
+| PRPL | Push critical, Render initial route, Pre-cache rest, Lazy-load | preload + SSR + service worker + splitting |
+| List virtualization | render only visible rows | TanStack Virtual, `react-window`, `content-visibility` |
+| Compression | shrink text assets on the wire | Brotli / gzip / zstd, precompressed at build |
+
+### Dynamic import and import on interaction
+
+```ts
+const button = document.querySelector("#export")!;
+
+button.addEventListener("click", async () => {
+  // chunk is fetched on the first click, then cached
+  const { toCSV } = await import("./csv-export.js");
+  toCSV([{ a: 1 }]);
+});
+```
+
+### Import on visibility
+
+```ts
+function onVisible(
+  el: Element,
+  load: () => Promise<unknown>,
+) {
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      io.disconnect();
+      void load();
+    }
+  }, { rootMargin: "200px" }); // start a bit early
+  io.observe(el);
+}
+
+onVisible(document.querySelector("#chart")!, () =>
+  import("./chart.js").then((m) => m.render("#chart")),
+);
+```
+
+### Route-based splitting
+
+```tsx
+import { lazy, Suspense } from "react";
+
+// default export required by lazy()
+const Settings = lazy(() => import("./Settings.js"));
+
+export function App({ route }: { route: string }) {
+  return (
+    <Suspense fallback={<p>Loading…</p>}>
+      {route === "/settings" ? <Settings /> : <p>Home</p>}
+    </Suspense>
+  );
+}
+```
+
+### Preload and prefetch
+
+```html
+<!-- needed for this page, discovered late
+     (font, hero, LCP) -->
+<link rel="preload" href="/fonts/inter.woff2" as="font"
+      type="font/woff2" crossorigin>
+<link rel="modulepreload" href="/assets/app.js">
+<!-- probably needed next: idle-time, low priority -->
+<link rel="prefetch" href="/assets/checkout.js">
+<link rel="preconnect" href="https://api.example.com">
+```
+
+### Tree shaking
+
+- Ship ESM with named exports; CommonJS is hard to shake.
+- Mark the package side-effect free: `"sideEffects": false` (or list CSS files that are).
+- Avoid barrel files (`index.ts` re-exporting everything) in apps; they defeat splitting in some
+  bundlers and slow dev servers.
+- `/* @__PURE__ */` marks a call as droppable if its result is unused.
+
+### List virtualization
+
+The core arithmetic every virtualiser does:
+
+```ts
+function visibleRange(
+  scrollTop: number,
+  viewport: number,
+  rowHeight: number,
+  total: number,
+  overscan = 5,
+): { start: number; end: number; offset: number } {
+  const first = Math.floor(scrollTop / rowHeight);
+  const count = Math.ceil(viewport / rowHeight);
+  const start = Math.max(0, first - overscan);
+  const end = Math.min(total, first + count + overscan);
+  return { start, end, offset: start * rowHeight };
+}
+```
+
+Render rows `start` to `end` inside a spacer of height `total * rowHeight`, translated by
+`offset`. For plain long pages, CSS `content-visibility: auto` skips rendering off-screen
+sections with no JS.
+
+### Compression
+
+| Encoding | Ratio | Notes |
+| :------- | :---- | :---- |
+| gzip | good | universal fallback |
+| Brotli (`br`) | 15-25% smaller than gzip on text | all modern browsers over HTTPS; precompress at level 11 |
+| zstd | close to Brotli, faster to compress | newer; check browser support before relying on it |
+
+Never compress already-compressed formats (JPEG, PNG, WOFF2, video).
+
+## Choosing a pattern
+
+| Problem | Reach for |
+| :------ | :-------- |
+| exactly one shared instance | ES module (singleton) |
+| creation varies by input | factory |
+| many optional construction steps | builder, or options object |
+| validate or observe property access | proxy |
+| add retry/logging/caching to a function | decorator (wrapper) |
+| third-party API doesn't fit your interface | adapter |
+| callers repeat the same setup | facade |
+| thousands of near-identical objects | flyweight |
+| notify many listeners of changes | observer / event emitter |
+| request pipeline, cross-cutting steps | middleware |
+| undo/redo, queues, replay | command |
+| swap algorithms at runtime | strategy (function map) |
+| lazy or infinite sequences | generators |
+| mutually exclusive UI states | state machine (discriminated union) |
+| share stateful logic in React | custom hook |
+| flexible multi-part component | compound components |
+| app-wide value in React | provider (context) |
+| content-heavy, SEO pages | SSG / ISR / RSC |
+| heavy code used rarely | dynamic import on interaction/visibility |
+| huge lists | virtualization |
+
+<Callout type="warn" title="Anti-patterns">
+  Singletons as a global mutable store; factories and interfaces with exactly one
+  implementation; chains of HOCs; a context holding the whole app state (everything re-renders);
+  mediators that know every module; barrel files in large apps; memoising everything by reflex.
+  Start with plain functions and modules, and add a pattern when a concrete pain shows up.
+</Callout>
+
+## References
+
+- [MDN: Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy),
+  [Reflect](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect),
+  [Iterator helpers](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator),
+  [rel=preload](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/preload)
+- [patterns.dev](https://www.patterns.dev/): design, rendering and performance patterns
+- [TypeScript handbook: Mixins](https://www.typescriptlang.org/docs/handbook/mixins.html),
+  [Decorators (5.0 notes)](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html)
+- [React: Reusing logic with custom hooks](https://react.dev/learn/reusing-logic-with-custom-hooks),
+  [Passing data deeply with context](https://react.dev/learn/passing-data-deeply-with-context)
+- [web.dev: Rendering on the web](https://web.dev/articles/rendering-on-the-web)

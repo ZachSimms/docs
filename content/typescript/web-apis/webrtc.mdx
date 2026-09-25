@@ -1,0 +1,722 @@
+---
+title: WebRTC
+date: 2026-09-25
+order: 12
+---
+
+Peer-to-peer audio, video and data in the browser with `RTCPeerConnection`: signaling, ICE/STUN/TURN,
+negotiation, data channels, stats, topologies and the servers you still need. Capture lives in
+[Media devices](/typescript/web-apis/media-devices/), raw encoding in [WebCodecs](/typescript/web-apis/webcodecs/).
+
+## Architecture
+
+WebRTC standardises the media path, not the discovery path. You bring a **signaling** channel
+(WebSocket, HTTP, anything) to swap SDP and ICE candidates; after that, media flows peer to peer or
+through a TURN relay.
+
+```text
+   Peer A                                         Peer B
+ ┌───────────────────┐   SDP offer/answer    ┌───────────────────┐
+ │ RTCPeerConnection │ ◄── ICE candidates ──►│ RTCPeerConnection │
+ └─────────┬─────────┘   (your signaling     └─────────┬─────────┘
+           │              server, e.g. WS)             │
+           │  "what is my public ip:port?"             │
+           ├──────────────► STUN ◄─────────────────────┤
+           │                                           │
+           │ ◄════ direct UDP: DTLS-SRTP + SCTP ═════► │
+           │                                           │
+           └────────────► TURN relay ◄─────────────────┘
+                     (fallback when NAT/firewall
+                      blocks the direct path)
+```
+
+```text
+   audio / video            RTCDataChannel
+ ┌──────────────┐          ┌──────────────┐
+ │     SRTP     │          │     SCTP     │
+ └──────┬───────┘          ├──────────────┤
+        │ keys from DTLS   │     DTLS     │
+ ┌──────┴──────────────────┴──────────────┐
+ │        ICE (STUN checks, TURN)         │
+ ├────────────────────────────────────────┤
+ │   UDP  (TCP or TLS/443 via TURN)       │
+ └────────────────────────────────────────┘
+```
+
+| Piece | Spec | Job |
+| :---- | :--- | :-- |
+| SDP / JSEP | RFC 8866, RFC 8829 | text blob describing codecs, tracks, ICE credentials, DTLS fingerprint |
+| Signaling | not specified | your channel that carries SDP and candidates between peers |
+| ICE | RFC 8445 | gathers candidate addresses, runs connectivity checks, picks a pair |
+| STUN | RFC 8489 | tells a peer its public address (server-reflexive); ICE check packets |
+| TURN | RFC 8656 | relays traffic when no direct path works; costs bandwidth |
+| DTLS | RFC 9147 | handshake over UDP; keys SRTP and encrypts SCTP |
+| SRTP | RFC 3711 | encrypted RTP media (DTLS-SRTP, RFC 5764) |
+| SCTP | RFC 8831 | message transport under data channels: ordered or not, reliable or not |
+
+## Support & TypeScript
+
+| Feature | Status (MDN / Baseline) |
+| :------ | :---------------------- |
+| `RTCPeerConnection`, `getStats()`, `RTCDataChannel` | Baseline widely available (since 2020) |
+| Implicit `setLocalDescription()`, `restartIce()` | widely available |
+| `connectionState`, `pc.sctp` (`RTCSctpTransport`) | widely available (Firefox 113+) |
+| `setCodecPreferences()` | Baseline 2024 (Firefox 128) |
+| `RTCRtpScriptTransform` (encoded transforms, E2EE) | Baseline 2025 (Chrome 141) |
+| `"transport"` stats entry | Firefox added it in 153: not Baseline yet |
+| Mandatory codecs | VP8, H.264 Constrained Baseline, Opus, G.711; VP9, AV1, H.265 optional |
+
+All need a secure context (HTTPS or `localhost`) for camera and mic; a data-only connection works
+anywhere. Bun and Node have no built-in `RTCPeerConnection`; use a library (see
+[Libraries](#libraries)) for server-side peers.
+
+- `lib.dom` ships every core type: `RTCConfiguration`, `RTCIceServer`, `RTCSessionDescriptionInit`,
+  `RTCIceCandidateInit`, `RTCDataChannelInit`, `RTCRtpEncodingParameters`, `RTCStatsType`.
+- `RTCStatsReport` is a `Map<string, any>`: narrow on `s.type` and treat fields as optional.
+- `pc.localDescription` is nullable; it is set once `setLocalDescription()` resolves.
+- `RTCSessionDescription` and `RTCIceCandidate` have `toJSON()`, so send them through
+  `JSON.stringify` and type the wire format as the `*Init` dictionaries.
+- TS 5.9 `lib.dom` lacks `scalabilityMode` on `RTCRtpEncodingParameters`; extend the type for SVC.
+
+## Connection lifecycle
+
+| Step | Offerer (caller) | Answerer (callee) |
+| :--- | :--------------- | :---------------- |
+| 1 | `new RTCPeerConnection(config)` | `new RTCPeerConnection(config)` |
+| 2 | `addTrack()` / `createDataChannel()` fires `negotiationneeded` | |
+| 3 | `setLocalDescription()` makes the offer; send `localDescription` | |
+| 4 | | `setRemoteDescription(offer)` |
+| 5 | | `setLocalDescription()` makes the answer; send it back |
+| 6 | `setRemoteDescription(answer)` | |
+| 7 | trickle `icecandidate` events to the other side | same, both ways |
+| 8 | ICE checks, DTLS handshake: `connectionState` is `"connected"` | same |
+| 9 | `pc.close()` and stop local tracks | same |
+
+`setLocalDescription()` with no argument creates the right offer or answer for the current
+`signalingState`; you rarely need `createOffer()`/`createAnswer()` any more.
+
+```ts
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+});
+
+pc.addEventListener("negotiationneeded", async () => {
+  await pc.setLocalDescription(); // implicit offer
+  signal({ description: pc.localDescription!.toJSON() });
+});
+
+declare function signal(msg: unknown): void;
+```
+
+| `signalingState` | Meaning |
+| :--------------- | :------ |
+| `stable` | no exchange in progress |
+| `have-local-offer` | we sent an offer and wait for the answer |
+| `have-remote-offer` | we received an offer and owe an answer |
+| `have-local-pranswer` / `have-remote-pranswer` | provisional answer (rare) |
+| `closed` | `close()` was called |
+
+### Perfect negotiation
+
+Renegotiation happens whenever tracks or channels change, so both peers may send an offer at the
+same time ("glare"). The perfect negotiation pattern gives the two peers asymmetric roles and one
+code path; the [recipe](#perfect-negotiation-handler) has the full handler.
+
+| Piece | Rule |
+| :---- | :--- |
+| polite peer | on collision, drops its own offer (implicit rollback) and answers the remote one |
+| impolite peer | on collision, ignores the incoming offer; its own offer wins |
+| `makingOffer` | true while our `setLocalDescription()` for an offer is in flight |
+| collision | an offer arrives while `makingOffer` or `signalingState !== "stable"` |
+| `ignoreOffer` | set by the impolite peer; also swallow `addIceCandidate` errors for that offer |
+| roles | decide out of band, e.g. whoever joined the room second is polite |
+
+## ICE, STUN & TURN
+
+| Candidate type | Address | Where it comes from |
+| :------------- | :------ | :------------------ |
+| `host` | local interface (often an mDNS `*.local` name) | the machine itself |
+| `srflx` | public ip:port seen by a STUN server | server-reflexive, through the NAT |
+| `prflx` | address learned during connectivity checks | peer-reflexive |
+| `relay` | address on a TURN server | TURN allocation |
+
+```ts title="config.ts"
+export const config: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.example.com:3478" },
+    {
+      urls: [
+        "turn:turn.example.com:3478?transport=udp",
+        "turns:turn.example.com:443?transport=tcp",
+      ],
+      username: "1790000000:alice", // short-lived
+      credential: "base64-hmac",
+    },
+  ],
+  iceTransportPolicy: "all", // "relay": TURN only
+  bundlePolicy: "max-bundle", // one transport for all
+  iceCandidatePoolSize: 0, // >0 pre-gathers
+};
+```
+
+| `RTCConfiguration` key | Values | Notes |
+| :--------------------- | :----- | :---- |
+| `iceServers` | `RTCIceServer[]` | `urls` accepts `stun:`, `turn:`, `turns:` |
+| `iceTransportPolicy` | `"all"` \| `"relay"` | `"relay"` hides client IPs, forces TURN |
+| `bundlePolicy` | `"balanced"`, `"max-compat"`, `"max-bundle"` | `max-bundle` = one port for everything |
+| `iceCandidatePoolSize` | `0`–`255` | gather before `setLocalDescription()` |
+| `certificates` | `RTCCertificate[]` | from `RTCPeerConnection.generateCertificate()` |
+
+**Trickle ICE:** send each `icecandidate` as it fires instead of waiting for gathering to finish;
+`event.candidate === null` means gathering is complete. The signaling channel must keep order
+so the description arrives before its candidates.
+
+```ts
+pc.addEventListener("icecandidate", ({ candidate }) => {
+  if (candidate) signal({ candidate: candidate.toJSON() });
+});
+
+// ICE restart after a network change or failure
+pc.addEventListener("iceconnectionstatechange", () => {
+  if (pc.iceConnectionState === "failed") pc.restartIce();
+});
+```
+
+`restartIce()` fires `negotiationneeded`; the next offer carries fresh ICE credentials.
+
+## Tracks & transceivers
+
+Every m-line in the SDP is an `RTCRtpTransceiver`: a sender plus a receiver sharing a `mid`.
+
+```ts
+const stream = await navigator.mediaDevices.getUserMedia({
+  audio: true,
+  video: true,
+});
+for (const track of stream.getTracks()) {
+  pc.addTrack(track, stream); // stream ids tie a/v together
+}
+
+pc.addEventListener("track", ({ track, streams }) => {
+  remote.srcObject = streams[0] ?? new MediaStream([track]);
+});
+
+declare const remote: HTMLVideoElement;
+```
+
+| Call | Renegotiates? | Use |
+| :--- | :------------ | :-- |
+| `pc.addTrack(track, ...streams)` | yes | send a track; reuses a free transceiver |
+| `pc.removeTrack(sender)` | yes | stop sending; transceiver stays |
+| `pc.addTransceiver(trackOrKind, init)` | yes | explicit `direction`, `sendEncodings`, receive-only |
+| `sender.replaceTrack(track)` | no | swap camera, start screen share, mute with `null` |
+| `sender.setParameters(params)` | no | `maxBitrate`, `maxFramerate`, `active`, `scaleResolutionDownBy` |
+| `transceiver.direction = "recvonly"` | yes | `sendrecv`, `sendonly`, `recvonly`, `inactive` |
+| `transceiver.setCodecPreferences(codecs)` | next offer | order codecs; call before negotiating |
+| `transceiver.stop()` | yes | permanently kill the m-line |
+| `RTCRtpSender.getCapabilities("video")` | no | list supported codecs |
+
+```ts
+// cap the video bitrate without renegotiating
+async function capBitrate(
+  sender: RTCRtpSender,
+  bps: number,
+) {
+  const params = sender.getParameters();
+  await sender.setParameters({
+    ...params,
+    encodings: params.encodings.map((e) => ({
+      ...e,
+      maxBitrate: bps,
+    })),
+  });
+}
+
+// prefer AV1, keep the rest as fallbacks
+function preferCodec(t: RTCRtpTransceiver, mime: string) {
+  const caps = RTCRtpReceiver.getCapabilities("video");
+  const all = caps?.codecs;
+  if (!all) return;
+  t.setCodecPreferences([
+    ...all.filter((c) => c.mimeType === mime),
+    ...all.filter((c) => c.mimeType !== mime),
+  ]);
+}
+preferCodec(pc.getTransceivers()[0]!, "video/AV1");
+```
+
+## Data channels
+
+```ts
+// reliable + ordered by default
+const chat = pc.createDataChannel("chat");
+const state = pc.createDataChannel("state", {
+  ordered: false,
+  maxRetransmits: 0, // fire and forget
+});
+
+// remote side, for channels it didn't create itself
+pc.addEventListener("datachannel", ({ channel }) => {
+  channel.addEventListener("message", (e) => {
+    console.log(channel.label, e.data);
+  });
+});
+```
+
+| `RTCDataChannelInit` | Default | Effect |
+| :------------------- | :------ | :----- |
+| `ordered` | `true` | deliver in send order (head-of-line blocking) |
+| `maxRetransmits` | unlimited | give up after N retransmissions |
+| `maxPacketLifeTime` | unlimited | give up after N ms; exclusive with `maxRetransmits` (`TypeError`) |
+| `negotiated` + `id` | `false` | both sides call `createDataChannel` with the same `id`; no `datachannel` event |
+| `protocol` | `""` | sub-protocol label for the app |
+
+| Mode | Options | Good for |
+| :--- | :------ | :------- |
+| reliable, ordered | `{}` | chat, RPC, file transfer |
+| reliable, unordered | `{ ordered: false }` | independent messages |
+| unreliable | `{ ordered: false, maxRetransmits: 0 }` | cursors, game state, telemetry |
+| timed | `{ ordered: false, maxPacketLifeTime: 150 }` | stale-after-150 ms updates |
+
+| Member | Notes |
+| :----- | :---- |
+| `readyState` | `connecting`, `open`, `closing`, `closed`; `send()` throws unless `open` |
+| `send(data)` | `string`, `Blob`, `ArrayBuffer`, `ArrayBufferView` |
+| `binaryType` | `"arraybuffer"` (default) or `"blob"` |
+| `bufferedAmount` | bytes queued; watch it for backpressure |
+| `bufferedAmountLowThreshold` | fires `bufferedamountlow` when the queue drops to it |
+| `pc.sctp?.maxMessageSize` | peer's limit from SDP (`64 KiB` if absent); chunk files to 16–64 KiB |
+
+```ts
+// send a big file without blowing the SCTP buffer
+async function sendFile(dc: RTCDataChannel, file: Blob) {
+  const CHUNK = 16 * 1024;
+  const HIGH = 4 * 1024 * 1024;
+  dc.bufferedAmountLowThreshold = 1024 * 1024;
+  for (let at = 0; at < file.size; at += CHUNK) {
+    if (dc.bufferedAmount > HIGH) {
+      await new Promise((r) =>
+        dc.addEventListener("bufferedamountlow", r, {
+          once: true,
+        }),
+      );
+    }
+    dc.send(await file.slice(at, at + CHUNK).arrayBuffer());
+  }
+}
+```
+
+## Connection states
+
+| `connectionState` | Meaning | Typical reaction |
+| :---------------- | :------ | :--------------- |
+| `new` | nothing started | |
+| `connecting` | ICE checks or DTLS handshake running | show "connecting" |
+| `connected` | at least one working transport | start UI, stats polling |
+| `disconnected` | lost connectivity, may recover by itself | wait a few seconds |
+| `failed` | ICE or DTLS gave up | `restartIce()` or tear down |
+| `closed` | `pc.close()` called | clean up |
+
+| Property | Event | Values |
+| :------- | :---- | :----- |
+| `connectionState` | `connectionstatechange` | aggregate of ICE + DTLS (above) |
+| `iceConnectionState` | `iceconnectionstatechange` | `new`, `checking`, `connected`, `completed`, `disconnected`, `failed`, `closed` |
+| `iceGatheringState` | `icegatheringstatechange` | `new`, `gathering`, `complete` |
+| `signalingState` | `signalingstatechange` | see [Connection lifecycle](#connection-lifecycle) |
+| `dc.readyState` | `open`, `close` | per data channel |
+
+```ts
+pc.addEventListener("connectionstatechange", () => {
+  switch (pc.connectionState) {
+    case "failed":
+      pc.restartIce();
+      break;
+    case "closed":
+      cleanup();
+      break;
+  }
+});
+
+declare function cleanup(): void;
+```
+
+## Stats
+
+`await pc.getStats(selector?)` returns an `RTCStatsReport`: a map of id to stats object, each with
+`type`, `id`, `timestamp` (ms). Rates come from the delta between two samples.
+
+| `type` | Useful fields |
+| :----- | :------------ |
+| `outbound-rtp` | `bytesSent`, `packetsSent`, `framesPerSecond`, `frameWidth`, `qualityLimitationReason`, `rid` |
+| `inbound-rtp` | `bytesReceived`, `packetsLost`, `jitter`, `framesDropped`, `jitterBufferDelay` |
+| `remote-inbound-rtp` | `roundTripTime`, `fractionLost` (as reported by the peer) |
+| `candidate-pair` | `state`, `nominated`, `currentRoundTripTime`, `availableOutgoingBitrate` |
+| `local-candidate` / `remote-candidate` | `candidateType`, `protocol`, `address`, `port` |
+| `transport` | `selectedCandidatePairId`, `dtlsState`, `bytesSent` |
+| `codec` | `mimeType`, `clockRate`, `sdpFmtpLine` |
+| `data-channel` | `messagesSent`, `bytesReceived`, `state` |
+
+```ts
+// is this call going through TURN?
+async function isRelayed(pc: RTCPeerConnection) {
+  const stats = await pc.getStats();
+  let pair: any;
+  for (const s of stats.values()) {
+    if (s.type === "transport" && s.selectedCandidatePairId)
+      pair = stats.get(s.selectedCandidatePairId);
+  }
+  // Firefox before 153 has no "transport" entry
+  pair ??= [...stats.values()].find(
+    (s) => s.type === "candidate-pair" && s.nominated &&
+      s.state === "succeeded",
+  );
+  const local = pair && stats.get(pair.localCandidateId);
+  return local?.candidateType === "relay";
+}
+```
+
+## Topologies & simulcast
+
+| Topology | Each client uploads | Server | Scales to | Notes |
+| :------- | :------------------ | :----- | :-------- | :---- |
+| Mesh (P2P) | N−1 streams | signaling (+TURN) | ~4–6 people | no media server; upload and CPU grow per peer |
+| SFU | 1 stream (or simulcast set) | forwards packets, no decoding | hundreds per room | the default today; E2EE possible with encoded transforms |
+| MCU | 1 stream | decodes, mixes, re-encodes | large, CPU bound | one mixed stream down; latency and cost go up |
+
+**Simulcast:** the sender encodes the same track at several resolutions (`rid`s); the SFU forwards
+the layer each subscriber can take. **SVC** (`scalabilityMode`, VP9/AV1) does it within one stream.
+
+```ts
+pc.addTransceiver(camTrack, {
+  direction: "sendonly",
+  sendEncodings: [
+    { rid: "q", scaleResolutionDownBy: 4, maxBitrate: 15e4 },
+    { rid: "h", scaleResolutionDownBy: 2, maxBitrate: 5e5 },
+    { rid: "f", maxBitrate: 1.5e6 },
+  ],
+});
+
+declare const camTrack: MediaStreamTrack;
+```
+
+Simulcast only makes sense towards an SFU; a plain browser peer receives just one layer.
+
+## Signaling server
+
+Any ordered, authenticated channel works. A room-scoped WebSocket relay on Bun is enough for 1:1 and
+small mesh calls; see [WebSockets](/typescript/backend/websockets/) for auth, heartbeats and
+scaling.
+
+```ts title="signal.ts"
+type Data = { room: string };
+
+const server = Bun.serve({
+  port: 8080,
+  fetch(req, server) {
+    const room = new URL(req.url).searchParams.get("room");
+    if (!room) return new Response("room?", { status: 400 });
+    // authenticate here (cookie, token) before upgrading
+    if (server.upgrade(req, { data: { room } })) return;
+    return new Response("upgrade failed", { status: 500 });
+  },
+  websocket: {
+    data: {} as Data,
+    open(ws) {
+      ws.subscribe(ws.data.room);
+    },
+    message(ws, msg) {
+      ws.publish(ws.data.room, msg); // everyone but sender
+    },
+  },
+});
+console.log(`signaling on :${server.port}`);
+```
+
+```sh
+bun signal.ts          # dev
+bun build signal.ts --target=bun --outfile=dist/signal.js
+```
+
+A matching client adapter, typed like the `*Init` dictionaries the recipes use:
+
+```ts title="signaling.ts"
+export type Signal =
+  | { description: RTCSessionDescriptionInit }
+  | { candidate: RTCIceCandidateInit };
+
+export interface Signaling {
+  send(msg: Signal): void;
+  onMessage(fn: (msg: Signal) => void): void;
+}
+
+export function wsSignaling(ws: WebSocket): Signaling {
+  return {
+    send: (msg) => ws.send(JSON.stringify(msg)),
+    onMessage: (fn) =>
+      ws.addEventListener("message", (e) =>
+        fn(JSON.parse(String(e.data)) as Signal),
+      ),
+  };
+}
+
+// create + send the offer or answer the state calls for
+export async function describe(
+  pc: RTCPeerConnection,
+  sig: Signaling,
+) {
+  await pc.setLocalDescription();
+  sig.send({ description: pc.localDescription! });
+}
+```
+
+Validate incoming messages (e.g. with Zod) in real code; a peer can send anything.
+
+## TURN with coturn
+
+STUN alone fails behind symmetric NATs and UDP-blocking firewalls; plan for TURN in production.
+[coturn](https://github.com/coturn/coturn) is the standard open-source server.
+
+```ini title="/etc/coturn/turnserver.conf"
+listening-port=3478
+tls-listening-port=5349
+realm=turn.example.com
+external-ip=203.0.113.10
+min-port=49152
+max-port=65535
+fingerprint
+use-auth-secret
+static-auth-secret=CHANGE_ME
+cert=/etc/ssl/turn/fullchain.pem
+pkey=/etc/ssl/turn/privkey.pem
+no-cli
+no-multicast-peers
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+```
+
+```sh
+docker run -d --network=host \
+  -v "$PWD/turnserver.conf:/etc/coturn/turnserver.conf" \
+  coturn/coturn
+```
+
+| Port | Protocol | Why |
+| :--- | :------- | :-- |
+| 3478 | UDP + TCP | STUN and TURN |
+| 5349 (or 443) | TLS | `turns:`; 443 gets through strict corporate proxies |
+| 49152–65535 | UDP | relay allocations (`min-port`/`max-port`) |
+
+`use-auth-secret` enables the TURN REST scheme: your backend mints short-lived credentials from
+the shared secret, so none ship in the client.
+
+```ts title="turn-credentials.ts"
+import { createHmac } from "node:crypto";
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} not configured`);
+  return value;
+}
+const secret = requireEnv("TURN_SECRET");
+
+export function turnCredentials(user: string, ttl = 3600) {
+  const expires = Math.floor(Date.now() / 1000) + ttl;
+  const username = `${expires}:${user}`;
+  const credential = createHmac("sha1", secret)
+    .update(username)
+    .digest("base64");
+  return {
+    urls: [
+      "turn:turn.example.com:3478",
+      "turns:turn.example.com:5349?transport=tcp",
+    ],
+    username,
+    credential,
+  };
+}
+```
+
+Test a server with the [Trickle ICE sample](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/):
+a `relay` candidate means TURN works. Managed options: Cloudflare, Twilio, Xirsys, Metered.
+
+## Security
+
+| Concern | What to do |
+| :------ | :--------- |
+| Encryption | mandatory: DTLS-SRTP for media, DTLS for data; it can't be turned off |
+| Man in the middle | the DTLS fingerprint rides in SDP; serve signaling over TLS and authenticate it |
+| IP leakage | host candidates use mDNS names; `iceTransportPolicy: "relay"` hides public IPs too |
+| TURN abuse | short-lived REST credentials, per-user quotas, `denied-peer-ip` for private ranges |
+| SFU trust | the SFU sees plaintext media unless you add E2EE via `RTCRtpScriptTransform` |
+| Permissions | camera/mic need HTTPS, a user grant and `allow="camera; microphone"` in iframes |
+| Untrusted input | validate every signaling message and data-channel payload |
+
+## Debugging & pitfalls
+
+| Tool | Where |
+| :--- | :---- |
+| `chrome://webrtc-internals` | live stats graphs, SDP, ICE candidate pairs; "Create dump" to save |
+| `about:webrtc` | Firefox equivalent, with connection logs |
+| Trickle ICE sample | check that STUN/TURN servers return `srflx`/`relay` candidates |
+| `pc.getStats()` | log `qualityLimitationReason` (`cpu`, `bandwidth`) and RTT |
+| `icecandidateerror` event | STUN/TURN failures with `errorCode` (401 = bad credentials) |
+
+- **Remote video stays black:** the element needs `autoplay` and `playsinline`; autoplay with sound
+  needs a user gesture or `muted`.
+- **Candidates before the description:** `addIceCandidate()` rejects without a remote description;
+  keep signaling ordered or queue candidates.
+- **Connected on LAN, fails across networks:** no TURN, or UDP blocked; add `turns:` on 443.
+- **`pc.close()` does not stop the camera:** call `track.stop()` on local tracks too.
+- **Glare:** both sides offer at once; use perfect negotiation instead of "caller always offers".
+- **Every `addTrack` renegotiates:** batch changes, or use `replaceTrack()` which never does.
+- **Don't munge SDP** unless you must; prefer `setCodecPreferences()` and `setParameters()`.
+
+## Libraries
+
+| Library | What it is | Pick it when |
+| :------ | :--------- | :----------- |
+| [LiveKit](https://docs.livekit.io/) | open-source Go SFU + `livekit-client` SDK, or LiveKit Cloud | rooms, simulcast, recording and agents without building an SFU |
+| [mediasoup](https://mediasoup.org/) | Node.js SFU library (C++ workers) + `mediasoup-client` | you want full control of the SFU inside your own server |
+| [simple-peer](https://github.com/feross/simple-peer) | thin wrapper over one `RTCPeerConnection` | quick 1:1 demos; unmaintained since 2023 |
+| [PeerJS](https://peerjs.com/) | wrapper + hosted broker for signaling | prototypes with no backend |
+| [Pion](https://github.com/pion/webrtc) | WebRTC in Go | server-side peers, bots, custom media servers |
+| [Janus](https://janus.conf.meetecho.com/) | C media server with plugins | SIP bridging, streaming, SFU |
+
+```sh
+bun add livekit-client            # npm i / pnpm add
+bun add mediasoup mediasoup-client
+```
+
+## Recipes
+
+### Data channel between two peers
+
+A text channel over any ordered signaling channel; exactly one side passes `caller = true`.
+
+```ts
+import { describe, type Signaling } from "./signaling";
+
+export async function connect(
+  sig: Signaling, caller: boolean, cfg: RTCConfiguration,
+) {
+  const pc = new RTCPeerConnection(cfg);
+  // negotiated: both sides create it, no datachannel event
+  const dc = pc.createDataChannel("chat", {
+    negotiated: true, id: 0,
+  });
+  pc.onicecandidate = ({ candidate }) =>
+    candidate && sig.send({ candidate: candidate.toJSON() });
+  sig.onMessage(async (m) => {
+    if ("candidate" in m)
+      return pc.addIceCandidate(m.candidate);
+    const d = m.description;
+    await pc.setRemoteDescription(d);
+    if (d.type === "offer") await describe(pc, sig);
+  });
+  if (caller) await describe(pc, sig);
+  await new Promise((r) => (dc.onopen = r));
+  return { pc, dc }; // dc.send("hi"); dc.onmessage = ...
+}
+```
+
+### Perfect negotiation handler
+
+Wire once per connection; after that either side can add or remove tracks and channels freely.
+
+```ts title="negotiate.ts"
+import { describe, type Signaling } from "./signaling";
+
+export function negotiate(pc: RTCPeerConnection,
+  sig: Signaling, polite: boolean) {
+  let making = false, ignore = false, answering = false;
+  pc.onnegotiationneeded = () => {
+    making = true;
+    describe(pc, sig).finally(() => (making = false));
+  };
+  pc.onicecandidate = ({ candidate }) =>
+    candidate && sig.send({ candidate: candidate.toJSON() });
+  sig.onMessage(async (m) => {
+    if ("candidate" in m) return pc.addIceCandidate(
+      m.candidate).catch((e) => { if (!ignore) throw e; });
+    const offer = m.description.type === "offer";
+    const busy = making ||
+      (pc.signalingState !== "stable" && !answering);
+    ignore = !polite && offer && busy;
+    if (ignore) return;
+    answering = !offer;
+    await pc.setRemoteDescription(m.description); // rollback
+    answering = false;
+    if (offer) await describe(pc, sig);
+  });
+}
+```
+
+### Video call sketch
+
+Camera + mic both ways on top of the negotiation handler; `hangUp` releases everything.
+
+```ts
+import { negotiate } from "./negotiate";
+import type { Signaling } from "./signaling";
+
+export async function startCall(
+  sig: Signaling, polite: boolean, cfg: RTCConfiguration,
+  local: HTMLVideoElement, remote: HTMLVideoElement,
+) {
+  const pc = new RTCPeerConnection(cfg);
+  negotiate(pc, sig, polite);
+  const inbound = new MediaStream();
+  remote.srcObject = inbound; // <video autoplay playsinline>
+  pc.ontrack = ({ track }) => inbound.addTrack(track);
+  const cam = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: { width: 1280, height: 720 },
+  });
+  local.srcObject = cam; // local preview must be muted
+  for (const t of cam.getTracks()) pc.addTrack(t, cam);
+  return function hangUp() {
+    for (const t of cam.getTracks()) t.stop();
+    pc.close();
+  };
+}
+```
+
+### Bitrate monitor with getStats
+
+Polls outbound video every second and reports kbit/s (bits per millisecond equals kbit/s).
+
+```ts
+export function watchBitrate(
+  pc: RTCPeerConnection,
+  onKbps: (kbps: number) => void,
+  everyMs = 1000,
+) {
+  let prev: { bytes: number; ts: number } | undefined;
+  const id = setInterval(async () => {
+    let bytes = 0, ts = 0;
+    for (const s of (await pc.getStats()).values()) {
+      if (s.type !== "outbound-rtp") continue;
+      if (s.kind !== "video") continue;
+      bytes += s.bytesSent ?? 0; // sums simulcast layers
+      ts = Math.max(ts, s.timestamp);
+    }
+    if (prev && ts > prev.ts) {
+      onKbps(((bytes - prev.bytes) * 8) / (ts - prev.ts));
+    }
+    prev = { bytes, ts };
+  }, everyMs);
+  return () => clearInterval(id);
+}
+```
+
+## References
+
+- MDN: [WebRTC API](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API), [`RTCPeerConnection`](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection), [Perfect negotiation](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation), [Using data channels](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Using_data_channels): the source of truth for API shape and support
+- MDN: [WebRTC protocols](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols), [Connectivity](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity), [`getStats()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/getStats), [Codecs used by WebRTC](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/WebRTC_codecs)
+- W3C: [WebRTC 1.0](https://www.w3.org/TR/webrtc/), [Identifiers for WebRTC's Statistics API](https://www.w3.org/TR/webrtc-stats/)
+- IETF: [RFC 8445 ICE](https://www.rfc-editor.org/rfc/rfc8445), [RFC 8489 STUN](https://www.rfc-editor.org/rfc/rfc8489), [RFC 8656 TURN](https://www.rfc-editor.org/rfc/rfc8656), [RFC 8829 JSEP](https://www.rfc-editor.org/rfc/rfc8829), [RFC 8831 data channels](https://www.rfc-editor.org/rfc/rfc8831)
+- Ilya Grigorik, [High Performance Browser Networking: WebRTC](https://hpbn.co/webrtc/): the protocol stack, NAT traversal and data channel performance
+- [webrtc.org samples](https://webrtc.github.io/samples/): runnable demos, including the Trickle ICE tester
+- [WebRTC for the Curious](https://webrtcforthecurious.com/): protocol deep dive from the Pion authors
+- [coturn](https://github.com/coturn/coturn), [LiveKit docs](https://docs.livekit.io/), [mediasoup docs](https://mediasoup.org/documentation/)

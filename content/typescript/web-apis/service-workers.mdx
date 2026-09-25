@@ -1,0 +1,652 @@
+---
+title: Service Workers & PWAs
+date: 2026-09-25
+order: 8
+---
+
+A service worker is a script the browser runs between your pages and the network: it intercepts
+requests, caches responses, and wakes up for push and sync. This sheet covers its lifecycle, caching
+strategies, updates, the web app manifest and installability, in TypeScript, with Workbox 7 and
+Serwist 9 notes. Service workers are Baseline widely available; they need HTTPS (or `localhost`).
+
+## Lifecycle
+
+```text
+navigator.serviceWorker.register("/sw.js")
+        │  download, byte-compare with the current version
+        ▼
+   installing ── "install": precache (event.waitUntil)
+        │         rejected promise → redundant, old SW stays
+        ▼
+   installed (waiting) ── old SW still controls open tabs
+        │  every old tab closed, or self.skipWaiting()
+        ▼
+   activating ── "activate": delete old caches, clients.claim()
+        ▼
+   activated ── handles fetch, push, sync, message events
+        │  a newer version activates
+        ▼
+   redundant
+```
+
+| Step | API | Notes |
+| :--- | :-- | :---- |
+| register | `navigator.serviceWorker.register(url, opts)` | from the page; idempotent; returns `ServiceWorkerRegistration` |
+| install | `install` event, `event.waitUntil(p)` | runs once per version; failure discards the new worker |
+| wait | `registration.waiting` | new version waits until no tab uses the old one; a reload is not enough |
+| skip the wait | `self.skipWaiting()` | activate now; old tabs switch mid-session |
+| activate | `activate` event | migrate: delete old caches and IndexedDB stores |
+| take control | `self.clients.claim()` | control already-open, uncontrolled tabs (the first visit) |
+| control | `navigator.serviceWorker.controller` | `null` until the page is controlled (hard reload bypasses it) |
+
+The browser stops an idle worker after ~30 s and restarts it per event: keep no state in globals,
+use IndexedDB or the Cache API.
+
+## Registration & scope
+
+```ts title="register.ts"
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register(
+        "/sw.js",
+        { scope: "/" },
+      );
+      console.log("SW scope:", reg.scope);
+    } catch (err) {
+      console.error("SW registration failed", err);
+    }
+  });
+}
+```
+
+| Option | Default | Meaning |
+| :----- | :------ | :------ |
+| `scope` | the script's directory | URL prefix the worker controls |
+| `type` | `"classic"` | `"module"` allows `import`; Baseline 2026 (newly available, Firefox 147) |
+| `updateViaCache` | `"imports"` | `imports`: bypass HTTP cache for `sw.js`, not for imported scripts; `all`, `none` |
+
+| Scope rule | Detail |
+| :--------- | :----- |
+| max scope | the script's own path: `/js/sw.js` can control `/js/*` only |
+| wider scope | serve the script with `Service-Worker-Allowed: /` |
+| one per scope | the most specific matching scope wins for a page |
+| same origin | the script must be same-origin; no redirects |
+| secure context | HTTPS, or `localhost` / `127.0.0.1` in development |
+
+Register after `load` so the worker's install doesn't compete with the first page load. Put
+`sw.js` at the site root.
+
+## Fetch event
+
+```ts title="sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  if (request.method !== "GET") return; // default: network
+  if (url.origin !== self.location.origin) return;
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(cacheFirst(request));
+  }
+});
+
+declare function networkFirst(r: Request): Promise<Response>;
+declare function cacheFirst(r: Request): Promise<Response>;
+export {};
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| `respondWith(p)` | call synchronously inside the handler; later is an error |
+| don't call it | the browser does a normal network fetch |
+| `waitUntil(p)` | keep the worker alive for background work (cache writes) |
+| `request.mode === "navigate"` | a page load; the HTML document |
+| `request.destination` | `"script"`, `"style"`, `"image"`, `"font"`, `"document"`, … |
+| `event.clientId` / `resultingClientId` | which tab asked / the new tab a navigation creates |
+| scope | only requests from controlled pages, plus navigations inside the scope |
+
+## Caching strategies
+
+| Strategy | Order | Fresh? | Offline? | Use for |
+| :------- | :---- | :----- | :------- | :------ |
+| Cache first | cache, else network (then store) | only when a new URL | yes | hashed assets (`app.3f9a.js`), fonts, images |
+| Network first | network, else cache | yes when online | yes | HTML navigations, API reads that must be current |
+| Stale-while-revalidate | cache now, refresh cache in background | next visit | yes | avatars, non-critical API data, CSS without hashes |
+| Network only | network | yes | no | `POST`, analytics, auth, payments |
+| Cache only | cache | as precached | yes | the precached app shell, offline page |
+
+```ts title="strategies.ts"
+export async function cacheFirst(
+  req: Request,
+  cacheName: string,
+): Promise<Response> {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok) await cache.put(req, res.clone());
+  return res;
+}
+
+export async function networkFirst(
+  req: Request,
+  cacheName: string,
+  timeoutMs = 3000,
+): Promise<Response> {
+  const cache = await caches.open(cacheName);
+  try {
+    const res = await fetch(req, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.ok) await cache.put(req, res.clone());
+    return res;
+  } catch {
+    return (await cache.match(req)) ?? Response.error();
+  }
+}
+```
+
+A response body can be read once: `clone()` before one copy goes to the cache and the other to the
+page.
+
+## Cache API
+
+`caches` is available in pages and workers. It stores `Request` → `Response` pairs and never
+expires anything by itself.
+
+| Method | Effect |
+| :----- | :----- |
+| `caches.open(name)` | `Promise<Cache>`; creates if missing |
+| `caches.match(req, opts?)` | search every cache |
+| `caches.keys()` / `caches.delete(name)` | list / drop whole caches |
+| `cache.add(url)` / `addAll(urls)` | fetch and store; rejects if any response is not `ok` |
+| `cache.put(req, res)` | store a response you already have |
+| `cache.match(req, { ignoreSearch, ignoreVary })` | find one |
+| `cache.matchAll`, `cache.keys`, `cache.delete(req)` | list / remove entries |
+
+| Gotcha | Detail |
+| :----- | :----- |
+| `GET` only | `put` rejects other methods |
+| query strings | `/a?x=1` and `/a?x=2` are different keys unless `ignoreSearch: true` |
+| `Vary` | respected on match; `Vary: *` never matches |
+| opaque responses | `no-cors` cross-origin: `status` 0, unreadable; padded to several MB each in quota |
+| no expiry | you must delete old entries or caches; Workbox/Serwist have expiration plugins |
+| quota | shared with IndexedDB; see [Storage & IndexedDB](/typescript/web-apis/storage-indexeddb/#quota--persistence) |
+
+## Updating & versioning
+
+| The browser checks for a new `sw.js` when | |
+| :---------------------------------------- | :-- |
+| a navigation into the scope happens | usually once per page load |
+| a functional event (`push`, `sync`) fires | if the last check was over 24 h ago |
+| `register()` is called with a different script URL | |
+| you call `registration.update()` | e.g. on an interval or on `visibilitychange` |
+
+A byte difference in `sw.js` or any `importScripts()` file installs a new version. Serve `sw.js` with
+`Cache-Control: no-cache` so CDNs don't pin an old one.
+
+```ts title="sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+const VERSION = "v42";
+const KEEP = new Set([`shell-${VERSION}`, `rt-${VERSION}`]);
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      for (const name of await caches.keys()) {
+        if (!KEEP.has(name)) await caches.delete(name);
+      }
+    })(),
+  );
+});
+
+// the page asks the waiting worker to take over
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
+});
+export {};
+```
+
+<Note kind="warning">`skipWaiting()` on every install swaps code under open tabs: lazy chunks from
+the old build may 404 and old HTML may meet a new cache. Prefer the "update available, reload?"
+prompt in the recipes.</Note>
+
+## Navigation preload
+
+Without it, a navigation waits for the worker to boot before its `fetch()` starts. Preload sends the
+request in parallel (with `Service-Worker-Navigation-Preload: true`). Baseline widely available
+(2022).
+
+```ts title="sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("activate", (event) => {
+  const { navigationPreload } = self.registration;
+  event.waitUntil(navigationPreload.enable());
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode !== "navigate") return;
+  event.respondWith(
+    (async () => {
+      const preloaded: Response | undefined =
+        await event.preloadResponse;
+      if (preloaded) return preloaded;
+      return fetch(event.request);
+    })(),
+  );
+});
+export {};
+```
+
+Only worth it when the worker handles navigations with a network-first strategy. If you enable it,
+always consume `preloadResponse`, or the request is wasted.
+
+## Background sync & push
+
+| API | Wakes the SW when | Support |
+| :-- | :---------------- | :------ |
+| Push (`PushManager`, `push` event) | the server sends a push message | Baseline 2023; iOS only for installed web apps |
+| Background Sync (`registration.sync`, `sync` event) | connectivity returns after an offline write | Chromium only |
+| Periodic Background Sync | a browser-chosen interval, installed apps | Chromium only |
+| Background Fetch | a large download continues after the tab closes | Chromium only |
+| Static routing (`event.addRoutes`) | never: routes requests without starting the SW | Chromium 123+, Safari 27 |
+
+```ts title="sync-sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+// lib.webworker has no Background Sync types yet
+interface SyncEvent extends ExtendableEvent {
+  readonly tag: string;
+  readonly lastChance: boolean;
+}
+declare function flushOutbox(): Promise<void>;
+
+self.addEventListener("sync", ((event: SyncEvent) => {
+  if (event.tag === "outbox") event.waitUntil(flushOutbox());
+}) as EventListener);
+export {};
+```
+
+Without Background Sync, retry the outbox on `online` and on the next page load. Push
+subscriptions, VAPID and notifications: [Notifications & push](/typescript/web-apis/notifications-push/).
+
+## Web app manifest
+
+```html
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f172a">
+```
+
+| Field | Purpose |
+| :---- | :------ |
+| `name` / `short_name` | full name (install dialog, splash) / home-screen label |
+| `id` | stable app identity; defaults to `start_url`, so set it once and never change it |
+| `start_url` | page opened on launch; add `?source=pwa` for analytics |
+| `scope` | URLs that stay inside the app window |
+| `display` | `standalone`, `fullscreen`, `minimal-ui`, `browser` |
+| `display_override` | ordered fallbacks, e.g. `["window-controls-overlay", "standalone"]` |
+| `icons` | `src`, `sizes`, `type`, `purpose` (`any`, `maskable`, `monochrome`) |
+| `theme_color` / `background_color` | title bar / splash background |
+| `description`, `screenshots` | richer install dialog on Chrome and Android |
+| `shortcuts` | jump list / long-press menu entries |
+| `orientation`, `lang`, `dir`, `categories` | hints |
+| `share_target`, `file_handlers`, `protocol_handlers` | OS integration (mostly Chromium) |
+
+Serve it as `application/manifest+json`. In Next.js, `app/manifest.ts` returning
+`MetadataRoute.Manifest` generates it; see [Next.js](/typescript/react/next-js/).
+
+## Installability
+
+| Browser | How users install | Requirements |
+| :------ | :---------------- | :----------- |
+| Chrome, Edge (desktop, Android) | install icon, menu, or your own button via `beforeinstallprompt` | HTTPS; manifest with `name`/`short_name`, 192 px and 512 px icons, `start_url`, `display` not `browser`; the user clicked and stayed ~30 s |
+| Safari iOS / iPadOS | Share → Add to Home Screen | none strictly; manifest and `apple-touch-icon` improve it |
+| Safari macOS 14+ | File → Add to Dock | same |
+| Firefox Android | menu → Install | manifest |
+| Firefox desktop | no manifest-based install | |
+
+Chrome dropped the offline `fetch` handler requirement (108 mobile, 112 desktop), but its automatic
+install prompt still looks for one. `beforeinstallprompt` is Chromium-only and missing from
+`lib.dom`:
+
+```ts
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  readonly userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+  }>;
+}
+
+let deferred: BeforeInstallPromptEvent | null = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // keep it for our own button
+  deferred = e as BeforeInstallPromptEvent;
+});
+
+export async function install(): Promise<boolean> {
+  if (!deferred) return false;
+  await deferred.prompt();
+  const { outcome } = await deferred.userChoice;
+  deferred = null;
+  return outcome === "accepted";
+}
+
+// running as an installed app?
+const standalone = matchMedia("(display-mode: standalone)")
+  .matches;
+```
+
+## TypeScript setup
+
+A service worker needs `lib: ["webworker"]`, which conflicts with `dom`; compile it as its own
+program, as in [Web workers](/typescript/web-apis/web-workers/#typescript-setup).
+
+```tree title="service worker in a Next.js or Vite app"
+public/
+  sw.js              # build output, served at /sw.js
+  manifest.webmanifest
+src/
+  sw/
+    tsconfig.json    # lib: es2024, webworker
+    sw.ts            # typed as ServiceWorkerGlobalScope
+  register.ts        # runs in the page
+tsconfig.json        # lib: es2024, dom; excludes src/sw
+```
+
+```sh
+# bundle the worker into one classic script
+bun build src/sw/sw.ts --outfile public/sw.js --minify
+
+# or with esbuild
+npx esbuild src/sw/sw.ts --bundle --minify \
+  --outfile=public/sw.js
+```
+
+In `sw.ts`, `declare const self: ServiceWorkerGlobalScope;` (in a module) types `self.clients`,
+`self.registration` and every event (`FetchEvent`, `ExtendableEvent`, `PushEvent`) through
+`addEventListener`.
+
+## Workbox & Serwist
+
+Hand-written workers are fine for a few routes. For precache manifests with revision hashes, cache
+expiry, and routing, use a library.
+
+| Library | What it is | Setup |
+| :------ | :--------- | :---- |
+| Workbox 7 (`workbox-*`) | Google's modular SW toolkit: `workbox-routing`, `workbox-strategies`, `workbox-precaching`, `workbox-expiration` | `workbox-build` / CLI injects the precache list; `workbox-window` on the page |
+| Serwist 9 (`serwist`, `@serwist/*`) | maintained fork of Workbox with a single `Serwist` class | `@serwist/vite`, `@serwist/turbopack` (Next.js 16), `@serwist/next` (webpack builds) |
+| `vite-plugin-pwa` | Vite plugin wrapping Workbox; generates SW and manifest | `registerType: "prompt"` gives an update prompt |
+
+```ts title="app/sw.ts"
+import { defaultCache } from "@serwist/turbopack/worker";
+import {
+  Serwist,
+  type PrecacheEntry,
+  type SerwistGlobalConfig,
+} from "serwist";
+
+declare global {
+  interface WorkerGlobalScope extends SerwistGlobalConfig {
+    __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
+  }
+}
+declare const self: ServiceWorkerGlobalScope;
+
+const serwist = new Serwist({
+  precacheEntries: self.__SW_MANIFEST,
+  skipWaiting: false, // show an update prompt instead
+  clientsClaim: true,
+  navigationPreload: true,
+  runtimeCaching: defaultCache,
+  fallbacks: {
+    entries: [
+      {
+        url: "/~offline",
+        matcher({ request }) {
+          return request.destination === "document";
+        },
+      },
+    ],
+  },
+});
+serwist.addEventListeners();
+
+self.addEventListener("message", (e) => {
+  if (e.data?.type !== "SKIP_WAITING") return;
+  void self.skipWaiting();
+});
+```
+
+Next.js 16 with Turbopack (the default bundler):
+
+1. `bun add -D @serwist/turbopack esbuild serwist`
+2. wrap the config: `export default withSerwist(nextConfig)`
+3. add `app/serwist/[path]/route.ts` exporting `createSerwistRoute({ swSrc: "app/sw.ts" })`
+4. register with `<SerwistProvider swUrl="/serwist/sw.js">` from `@serwist/turbopack/react`
+
+`@serwist/next` needs `next build --webpack`. For connectivity-aware UI without a service worker,
+Next.js 16 also has the experimental `useOffline` hook (`next/offline`).
+
+## Debugging
+
+| Where | What |
+| :---- | :--- |
+| Chrome DevTools → Application → Service workers | status, **Update on reload**, **Bypass for network**, Offline, push/sync test buttons, unregister |
+| Application → Cache storage / Storage | inspect caches, **Clear site data** |
+| Application → Manifest | parsed manifest, icon and installability errors |
+| Network panel | a gear icon marks responses served by the service worker |
+| `chrome://serviceworker-internals` | every registration, logs, stop/inspect |
+| Firefox `about:debugging#/runtime/this-firefox` | inspect and unregister workers |
+| Safari → Develop → Service Workers | inspect the worker for a site |
+| Hard reload (Shift + reload) | loads the page uncontrolled, bypassing the SW |
+
+Turn **Update on reload** on while developing; turn it off to test the real update flow.
+
+## Pitfalls
+
+| Trap | Fix |
+| :--- | :-- |
+| Cache-first HTML: users stuck on an old release | network-first (or stale-while-revalidate) for navigations |
+| `sw.js` cached by a CDN for a year | `Cache-Control: no-cache` on `sw.js`; hashed names for everything else |
+| Renaming `sw.js` each release | keep one stable URL; the old worker keeps looking for the old one |
+| Worker at `/static/sw.js` can't control `/` | serve from the root, or add `Service-Worker-Allowed` |
+| `respondWith` inside an `await` | call it synchronously, pass it a promise |
+| Caching error pages, `POST`s, or opaque responses | store only `res.ok` `GET` responses you can read |
+| Cache grows forever | version cache names, delete in `activate`, cap entries |
+| `skipWaiting` breaks lazy chunks | prompt the user, reload on `controllerchange` |
+| Globals lost between events | the worker is killed when idle; persist in IndexedDB |
+| A bad worker in production | ship a kill-switch worker (recipe below) at the same URL |
+| SW active in `next dev` / Vite dev | disable registration in development; HMR and caching fight |
+
+## Recipes
+
+### Minimal offline service worker
+Serve the network when it answers, and a precached offline page when it doesn't.
+
+```ts title="sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+const CACHE = "offline-v1";
+const OFFLINE_URL = "/offline.html";
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((c) => c.add(OFFLINE_URL)),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode !== "navigate") return;
+  event.respondWith(
+    fetch(event.request).catch(async () => {
+      const page = await caches.match(OFFLINE_URL);
+      return page ?? Response.error();
+    }),
+  );
+});
+export {};
+```
+
+### Stale-while-revalidate handler
+Answer instantly from cache and refresh it in the background, for data that may be a little old.
+
+```ts title="swr-sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  if (request.method !== "GET") return;
+  if (!url.pathname.startsWith("/api/feed")) return;
+
+  const cacheP = caches.open("feed-v1");
+  const networkP = cacheP.then(async (cache) => {
+    const res = await fetch(request);
+    if (res.ok) await cache.put(request, res.clone());
+    return res;
+  });
+  event.waitUntil(networkP.catch(() => undefined));
+  event.respondWith(
+    cacheP.then(async (cache) =>
+      (await cache.match(request)) ?? networkP,
+    ),
+  );
+});
+export {};
+```
+
+### Update prompt flow
+Tell the user a new version is ready and switch only when they agree; pairs with the
+`SKIP_WAITING` handler in [Updating & versioning](#updating--versioning).
+
+```ts title="update-prompt.ts"
+export async function registerSW(
+  onUpdate: (apply: () => void) => void,
+): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  const sw = navigator.serviceWorker;
+  const reg = await sw.register("/sw.js");
+  const offer = (w: ServiceWorker) =>
+    onUpdate(() => w.postMessage({ type: "SKIP_WAITING" }));
+
+  if (reg.waiting && sw.controller) offer(reg.waiting);
+  reg.addEventListener("updatefound", () => {
+    const w = reg.installing;
+    w?.addEventListener("statechange", () => {
+      if (w.state === "installed" && sw.controller) offer(w);
+    });
+  });
+  let reloaded = false;
+  sw.addEventListener("controllerchange", () => {
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+}
+```
+
+### Precache the app shell
+Store the shell at install time under a versioned cache, then serve it cache-first.
+
+```ts title="shell-sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+const SHELL = "shell-v3";
+const FILES = ["/", "/app.css", "/app.js", "/icon-192.png"];
+self.addEventListener("install", (event) => {
+  const cache = caches.open(SHELL);
+  event.waitUntil(cache.then((c) => c.addAll(FILES)));
+});
+self.addEventListener("activate", (event) => {
+  const dropOld = async () => {
+    for (const n of await caches.keys()) {
+      if (n.startsWith("shell-") && n !== SHELL) {
+        await caches.delete(n);
+      }
+    }
+  };
+  event.waitUntil(dropOld());
+});
+self.addEventListener("fetch", (event) => {
+  const path = new URL(event.request.url).pathname;
+  if (!FILES.includes(path)) return;
+  event.respondWith(
+    caches.match(path).then((r) => r ?? fetch(path)),
+  );
+});
+export {};
+```
+
+### Kill switch
+Deploy this at the same `sw.js` URL to remove a broken worker from every client.
+
+```ts title="kill-sw.ts"
+declare const self: ServiceWorkerGlobalScope;
+
+self.addEventListener("install", () => {
+  void self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n)));
+      await self.registration.unregister();
+      const tabs = await self.clients.matchAll({
+        type: "window",
+      });
+      for (const tab of tabs) void tab.navigate(tab.url);
+    })(),
+  );
+});
+export {};
+```
+
+### manifest.webmanifest
+A manifest that passes Chrome's install checks and gives Android adaptive icons.
+
+```json title="public/manifest.webmanifest"
+{
+  "id": "/",
+  "name": "Easy Notes",
+  "short_name": "Notes",
+  "description": "Offline-first notes",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192",
+      "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512",
+      "type": "image/png" },
+    { "src": "/maskable-512.png", "sizes": "512x512",
+      "type": "image/png", "purpose": "maskable" }
+  ]
+}
+```
+
+## References
+
+- MDN: [Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API), [Using service workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers), [`ServiceWorkerContainer.register()`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register), [`FetchEvent`](https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent)
+- MDN: [`Cache`](https://developer.mozilla.org/en-US/docs/Web/API/Cache), [`CacheStorage`](https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage), [`NavigationPreloadManager`](https://developer.mozilla.org/en-US/docs/Web/API/NavigationPreloadManager), [Background Synchronization API](https://developer.mozilla.org/en-US/docs/Web/API/Background_Synchronization_API)
+- MDN: [Progressive web apps](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps), [Web app manifest](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest), [Making PWAs installable](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)
+- [W3C: Service Workers](https://w3c.github.io/ServiceWorker/), [Web Application Manifest](https://w3c.github.io/manifest/)
+- web.dev: [The service worker lifecycle](https://web.dev/articles/service-worker-lifecycle), [Install criteria](https://web.dev/articles/install-criteria); Chrome for Developers: [Revisiting installability criteria](https://developer.chrome.com/blog/update-install-criteria)
+- [Workbox](https://developer.chrome.com/docs/workbox), [Serwist](https://serwist.pages.dev/), [Serwist with Next.js Turbopack](https://serwist.pages.dev/docs/next/turbo), [vite-plugin-pwa](https://vite-pwa-org.netlify.app/)
+- Next.js: [Progressive Web Apps guide](https://nextjs.org/docs/app/guides/progressive-web-apps), [`manifest` file](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/manifest)

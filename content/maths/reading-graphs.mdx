@@ -1,0 +1,179 @@
+---
+title: Reading equations as graphs
+date: 2026-09-04
+order: 2
+---
+
+What a formula looks like, and what each number in it does. Every plot draws the same base
+function several times with one constant changed, so the effect of that constant is the
+difference between the curves. Read left to right: as $x$ grows, what happens to $y$?
+
+## Building blocks
+
+| Equation         | Shape                                   | As $x$ grows                    |
+| :--------------- | :-------------------------------------- | :------------------------------ |
+| $y = c$          | flat line at height $c$                 | nothing changes                 |
+| $y = x$          | straight line through the origin, slope 1 | $y$ grows at the same rate    |
+| $y = x^2$        | U shape, bottom at the origin           | grows faster and faster         |
+| $y = x^3$        | S shape through the origin              | grows even faster, odd symmetry |
+| $y = \sqrt{x}$   | half of a sideways U, starts at 0       | grows, but slower and slower    |
+| $y = 1/x$        | two hyperbola branches, never touches the axes | shrinks toward 0        |
+| $y = e^x$        | hugs the axis on the left, shoots up on the right | grows, multiplying itself |
+| $y = \ln x$      | shoots down near 0, climbs slowly       | grows, slower than any root     |
+| $y = \sin x$     | wave between $-1$ and $1$               | repeats every $2\pi$            |
+
+<Graphs>
+<Graph small title="constants y = c" curves={[{ fn: "identity", a: 0, k: 2, label: "c = 2" }, { fn: "identity", a: 0, k: 0.5, label: "c = 0.5" }, { fn: "identity", a: 0, k: -1, label: "c = −1" }]} range={[-3, 3]} />
+<Graph small title="the line y = x" curves={[{ fn: "identity", label: "y = x" }]} range={[-3, 3]} />
+</Graphs>
+
+## Adding and subtracting a number
+
+Adding to the whole expression moves the graph up; subtracting moves it down. Adding to $x$
+_inside_ the function moves the graph left; subtracting moves it right. The shape never changes.
+
+<Graphs>
+<Graph small title="y = x + c" curves={[{ fn: "identity", k: 2, label: "x + 2" }, { fn: "identity", label: "x" }, { fn: "identity", k: -2, label: "x − 2" }]} range={[-5, 5]} />
+<Graph small title="y = (x − c)²" curves={[{ fn: "square", h: -1, label: "(x + 1)²" }, { fn: "square", label: "x²" }, { fn: "square", h: 2, label: "(x − 2)²" }]} domain={[-4, 4]} range={[-1, 6]} />
+</Graphs>
+
+| Change                | Effect                                    |
+| :-------------------- | :---------------------------------------- |
+| $f(x) + c$            | up by $c$ (down if $c < 0$)               |
+| $f(x - c)$            | right by $c$ (left if $c < 0$)            |
+| $f(x + c)$            | left by $c$                               |
+
+## Multiplying by a number
+
+Multiplying the whole expression by $c$ makes it steeper ($c > 1$), flatter ($0 < c < 1$),
+or flips it upside down ($c < 0$). Multiplying $x$ inside squeezes the graph horizontally.
+
+<Graphs>
+<Graph small title="y = c·x" curves={[{ fn: "identity", a: 2, label: "2x" }, { fn: "identity", label: "x" }, { fn: "identity", a: 0.5, label: "0.5x" }, { fn: "identity", a: -1, label: "−x" }]} range={[-4, 4]} />
+<Graph small title="y = c·x²" curves={[{ fn: "square", a: 2, label: "2x²" }, { fn: "square", label: "x²" }, { fn: "square", a: 0.5, label: "0.5x²" }, { fn: "square", a: -1, label: "−x²" }]} domain={[-3, 3]} range={[-6, 6]} />
+</Graphs>
+
+<Graphs>
+<Graph small title="y = sin(c·x)" curves={[{ fn: "sin", b: 2, label: "sin 2x" }, { fn: "sin", label: "sin x" }, { fn: "sin", b: 0.5, label: "sin(x/2)" }]} ticks="pi" />
+<Graph small title="y = c·sin x" curves={[{ fn: "sin", a: 2, label: "2 sin x" }, { fn: "sin", label: "sin x" }, { fn: "sin", a: 0.5, label: "0.5 sin x" }]} range={[-2.5, 2.5]} ticks="pi" />
+</Graphs>
+
+| Change                | Effect                                                   |
+| :-------------------- | :------------------------------------------------------- |
+| $c \cdot f(x)$, $c > 1$ | taller: stretched away from the $x$-axis               |
+| $c \cdot f(x)$, $0 < c < 1$ | shorter: squashed toward the $x$-axis              |
+| $-f(x)$               | flipped over the $x$-axis                                |
+| $f(c \cdot x)$, $c > 1$ | narrower: everything happens $c$ times sooner          |
+| $f(c \cdot x)$, $0 < c < 1$ | wider: everything happens later                    |
+| $f(-x)$               | mirrored over the $y$-axis                               |
+
+## Dividing by a number
+
+Dividing by $c$ is multiplying by $1/c$: the graph gets flatter. Dividing _by_ $x$ is a
+different animal: $1/x$ blows up near $0$ and fades toward $0$ far away.
+
+<Graphs>
+<Graph small title="y = x / c" curves={[{ fn: "identity", label: "x" }, { fn: "identity", a: 0.5, label: "x/2" }, { fn: "identity", a: 0.25, label: "x/4" }]} range={[-3, 3]} />
+<Graph small title="y = c / x" curves={[{ fn: "recip", label: "1/x" }, { fn: "recip", a: 2, label: "2/x" }, { fn: "recip", a: -1, label: "−1/x" }]} />
+</Graphs>
+
+| Equation        | Near $x = 0$                    | Far from $0$                 |
+| :-------------- | :------------------------------ | :--------------------------- |
+| $c/x$           | shoots to $\pm\infty$ (vertical asymptote) | fades to $0$ (horizontal asymptote) |
+| $c/x^2$         | shoots to $+\infty$ on both sides | fades to $0$ faster         |
+| $1/(x - a)$     | asymptote moves to $x = a$      |                              |
+
+## Powers of x
+
+For $x > 1$ a bigger exponent grows faster; for $0 < x < 1$ a bigger exponent is _smaller_.
+Every $x^c$ passes through $(1, 1)$.
+
+<Graphs>
+<Graph small title="y = xᶜ near 1" curves={[{ fn: "sqrt", label: "x^0.5" }, { fn: "identity", label: "x^1" }, { fn: "square", label: "x^2" }, { fn: "cube", label: "x^3" }]} domain={[0, 2]} range={[0, 4]} />
+<Graph small title="even vs odd" curves={[{ fn: "square", label: "x²" }, { fn: "cube", label: "x³" }]} domain={[-2, 2]} range={[-6, 6]} />
+</Graphs>
+
+| Exponent          | Shape                                                    |
+| :---------------- | :------------------------------------------------------- |
+| even ($x^2, x^4$) | U shape, symmetric, always $\ge 0$                       |
+| odd ($x^3, x^5$)  | S shape, negative on the left, positive on the right     |
+| between 0 and 1 ($\sqrt{x}$) | rises quickly then flattens; only for $x \ge 0$ |
+| negative ($x^{-1}$) | $1/x$: asymptotes at both axes                         |
+
+## Exponentials: a number to the power x
+
+Base bigger than 1 grows, base between 0 and 1 decays, and the further the base is from 1
+the faster it happens. Every $c^x$ passes through $(0, 1)$. Multiplying $x$ by $k$ in
+$e^{kx}$ sets the rate: $k > 0$ grows, $k < 0$ decays.
+
+<Graphs>
+<Graph small title="y = cˣ" curves={[{ fn: "exp", b: 1, label: "eˣ" }, { fn: "exp", b: 0.6931, label: "2ˣ" }, { fn: "exp", b: 0.4055, label: "1.5ˣ" }, { fn: "exp", b: -0.6931, label: "0.5ˣ" }]} domain={[-3, 3]} range={[0, 8]} />
+<Graph small title="y = e^(k·x)" curves={[{ fn: "exp", b: 2, label: "e^2x" }, { fn: "exp", label: "eˣ" }, { fn: "exp", b: 0.5, label: "e^0.5x" }, { fn: "exp", b: -1, label: "e^−x" }]} domain={[-3, 3]} range={[0, 8]} />
+</Graphs>
+
+| Equation            | Behaviour                                                       |
+| :------------------ | :-------------------------------------------------------------- |
+| $c^x$, $c > 1$      | growth; doubles every $\ln 2 / \ln c$ units of $x$              |
+| $c^x$, $0 < c < 1$  | decay toward $0$, never reaching it                             |
+| $e^{kx}$            | growth for $k > 0$, decay for $k < 0$; doubling time $\ln 2 / k$ |
+| $A e^{kx}$          | starts at $A$ when $x = 0$                                      |
+| $e^{x} + c$         | horizontal asymptote moves from $0$ to $c$                      |
+
+## Logarithms
+
+The inverse of exponentials: every log passes through $(1, 0)$, climbs forever but ever
+more slowly, and plunges to $-\infty$ as $x \to 0$. A bigger base is a flatter curve.
+Multiplying $x$ inside a log only shifts the curve up, because $\ln(cx) = \ln x + \ln c$.
+
+<Graphs>
+<Graph small title="y = log_c x" curves={[{ fn: "ln", a: 1.4427, label: "log₂ x" }, { fn: "ln", label: "ln x" }, { fn: "ln", a: 0.4343, label: "log₁₀ x" }]} domain={[0, 8]} range={[-3, 4]} />
+<Graph small title="y = ln(c·x)" curves={[{ fn: "ln", b: 4, label: "ln 4x" }, { fn: "ln", b: 2, label: "ln 2x" }, { fn: "ln", label: "ln x" }]} domain={[0, 8]} range={[-3, 4]} />
+</Graphs>
+
+## Who wins over time
+
+On the way up, exponentials eventually beat every power, and every power beats every
+log. On the way down, $e^{-x}$ fades fastest, then $1/x^2$, then $1/x$.
+
+<Graphs>
+<Graph small title="growth" curves={[{ fn: "exp", b: 0.6931, label: "2ˣ" }, { fn: "square", label: "x²" }, { fn: "identity", label: "x" }, { fn: "ln", label: "ln x" }]} domain={[0, 5]} range={[0, 16]} />
+<Graph small title="decay" curves={[{ fn: "exp", b: -1, label: "e^−x" }, { fn: "recip2", label: "1/x²" }, { fn: "recip", label: "1/x" }]} domain={[0, 5]} range={[0, 3]} />
+</Graphs>
+
+| Rank (large $x$)  | Family                        | Example            |
+| :---------------- | :---------------------------- | :----------------- |
+| fastest           | exponential                   | $2^x$, $e^x$       |
+|                   | polynomial, higher power first | $x^3$, $x^2$, $x$ |
+|                   | roots                         | $\sqrt{x}$         |
+| slowest           | logarithmic                   | $\ln x$            |
+
+## Waves: A sin(ωx + φ) + C
+
+Four numbers, four separate effects. Amplitude $A$ sets the height, angular frequency
+$\omega$ sets how many waves fit in a stretch, phase $\phi$ slides the wave sideways by
+$-\phi/\omega$, and $C$ lifts the centre line.
+
+<Graphs>
+<Graph small title="amplitude A" curves={[{ fn: "sin", a: 2, label: "2 sin x" }, { fn: "sin", label: "sin x" }, { fn: "sin", a: 0.5, label: "0.5 sin x" }]} range={[-2.5, 2.5]} ticks="pi" />
+<Graph small title="frequency ω" curves={[{ fn: "sin", b: 2, label: "sin 2x" }, { fn: "sin", label: "sin x" }, { fn: "sin", b: 0.5, label: "sin x/2" }]} ticks="pi" />
+<Graph small title="phase φ" curves={[{ fn: "sin", h: -1.5708, label: "sin(x + π/2)" }, { fn: "sin", label: "sin x" }, { fn: "sin", h: 1.5708, label: "sin(x − π/2)" }]} ticks="pi" />
+<Graph small title="offset C" curves={[{ fn: "sin", k: 1, label: "sin x + 1" }, { fn: "sin", label: "sin x" }, { fn: "sin", k: -1, label: "sin x − 1" }]} range={[-2.5, 2.5]} ticks="pi" />
+</Graphs>
+
+## Reading an equation
+
+| You see                                | Expect                                                       |
+| :------------------------------------- | :----------------------------------------------------------- |
+| only $x$ to the first power            | a straight line; the coefficient is the slope                |
+| highest power even                     | both ends go the same way (up if the coefficient is positive) |
+| highest power odd                      | ends go opposite ways                                        |
+| $x$ in a denominator                   | a vertical asymptote where the denominator is $0$           |
+| $x$ in an exponent                     | growth or decay that outruns any power                       |
+| $x$ inside a log                       | only defined for positive arguments, slow growth             |
+| $x$ inside sin or cos                  | a wave; what multiplies $x$ sets the frequency               |
+| a number added outside                 | the whole graph moves up or down                             |
+| a number added inside                  | the whole graph moves left or right                          |
+| a number multiplied outside            | taller or shorter; negative flips it                         |
+| a number multiplied inside             | narrower or wider; negative mirrors it                       |
+| $\sqrt{\;}$ or even root               | starts at the point where the inside becomes $0$             |
+| $\lvert \cdots \rvert$                 | the negative part folds up above the axis                    |

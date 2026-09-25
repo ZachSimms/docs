@@ -1,0 +1,223 @@
+---
+title: Demo
+date: 2026-09-04
+---
+
+export const meta = { updated: "2026-09-04", author: "Zach" };
+import Shared from "./_shared-snippet.mdx";
+
+This page doubles as a tour of everything a cheatsheet can use. Every construct below
+is plain Markdown, GitHub-flavoured Markdown, or a small piece of JSX, and it all renders in the
+house style with no extra client JavaScript.
+
+## Text
+
+Paragraphs wrap at the column width. Inline styles: **bold**, _italic_, ~~struck~~, `inline code`,
+and a [link to another sheet](/python/overview/), an [external link](https://williamjansson.com/),
+and an autolink: https://nextjs.org. Footnotes work too.[^1]
+
+Keys render as chips: <kbd>⌘</kbd> <kbd>K</kbd> opens search.
+
+### Third-level heading
+
+Headings get ids, so `#third-level-heading` links straight here: [jump](#third-level-heading).
+
+## Lists
+
+- Unordered lists get the `*` marker from the original site
+- Nested items
+  - indent by two spaces
+  - and keep the marker
+- Done
+
+1. Ordered lists
+2. keep their numbers
+3. and align
+
+- [x] Task lists render as brackets
+- [ ] not native checkboxes
+
+## Tabs, steps, callouts and cards
+
+Four more components are available without an import. `<Tabs>` switches panels; give
+several groups the same `persist` key and they change together and remember the choice.
+
+<Tabs items={["bun", "npm"]} persist="pm">
+  <Tab>
+
+    ```bash
+    bun add katex
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```bash
+    npm install katex
+    ```
+
+  </Tab>
+</Tabs>
+
+<Tabs items={["bun", "npm"]} persist="pm">
+  <Tab>Runs on the Bun runtime in development.</Tab>
+  <Tab>Runs on Node in development.</Tab>
+</Tabs>
+
+`<Steps>` numbers a procedure like the site's lists:
+
+<Steps>
+  <Step title="Write the sheet">Add a file under `content/<topic>/` with a title and a date.</Step>
+  <Step title="Check it">Run `bun run dev` and open the page.</Step>
+  <Step title="Ship it">Run `bun run build`; every sheet is prerendered.</Step>
+</Steps>
+
+`<Callout>` takes a `type` of `info`, `warn` or `error` and an optional `title`:
+
+<Callout type="warn" title="Mind the fences">
+  Inside JSX, indent fenced code blocks by exactly the same amount as the surrounding tags.
+</Callout>
+
+`<Cards>` lists links with a description each:
+
+<Cards>
+  <Card title="Math fundamentals" href="/maths/math-fundamentals/" description="Chapter 1 as tables and formulas." />
+  <Card title="Notation" href="/maths/notation/" description="Every symbol in one place." />
+  <Card title="KaTeX" href="https://katex.org/" description="The typesetting engine behind the maths." />
+</Cards>
+
+## Including files
+
+Partials are MDX files whose names start with `_`. Import one and use it as a component:
+
+```mdx
+import Shared from "./_shared-snippet.mdx";
+
+<Shared />
+```
+
+<Shared />
+
+The table of contents in the right margin is generated automatically from the `##` and `###` headings.
+
+## Quotes and notes
+
+> Blockquotes carry a dotted rule on the left.
+> Good for a definition or a quoted rule of thumb.
+
+<Note kind="tip">`<Note>` is a component available to every MDX file, no import needed.</Note>
+
+<Note kind="warning">Pass a different `kind` to change the label.</Note>
+
+## Code
+
+Fenced blocks are highlighted at build time. Name the language after the fence.
+
+```python
+def spacing(step: int, base: int = 4) -> int:
+    """Return a value on a 4pt spacing scale."""
+    return base * step
+```
+
+```css
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+}
+```
+
+```bash
+bun run dev   # dev server on the Bun runtime
+```
+
+```diff
+- padding: 13px;
++ padding: var(--space-3);
+```
+
+```text
+Blocks without a real language stay plain, still boxed.
+```
+
+### Titles, highlighted lines, line numbers
+
+Add a title, a line range and `showLineNumbers` after the language:
+```` ```python title="spacing.py" {2,4-5} showLineNumbers ````
+
+```python title="spacing.py" {2,4-5} showLineNumbers
+BASE = 4
+
+def spacing(step: int) -> int:
+    """Return a value on the spacing scale."""
+    return BASE * step
+
+print(spacing(3))
+```
+
+### File trees
+
+A `tree` fence draws a directory layout from an indented outline: two spaces per level,
+a trailing `/` for directories, `# text` for a comment. Fence meta takes a `title`.
+
+```tree title="monorepo"
+repo/
+  apps/
+    web/            # Next.js app
+      package.json
+  packages/
+    ui/
+      src/
+      package.json  # "name": "@acme/ui"
+  pnpm-workspace.yaml
+  package.json
+```
+
+## Tables
+
+| Token       | Value | Use for                    |
+| :---------- | ----: | :------------------------- |
+| `--space-1` |   4px | hairline gaps              |
+| `--space-2` |   8px | inside compact controls    |
+| `--space-4` |  16px | between related blocks     |
+| `--space-6` |  24px | between sections of a card |
+
+Columns can be left- or right-aligned. Wide tables scroll sideways inside the column.
+
+## Images
+
+![Spacing scale swatch](/images/design/spacing.png)
+
+Files under `public/images/` get real dimensions at build time and load through `next/image`.
+
+## Details
+
+<details>
+  <summary>Collapsed by default</summary>
+
+Anything inside `<details>` is hidden until the summary is clicked. Markdown works inside.
+
+- including lists
+- and `code`
+
+</details>
+
+## Maths
+
+LaTeX between single dollars is inline, $E = mc^2$, and between double dollars is a display block:
+
+$$
+\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}
+$$
+
+Rendered at build time by KaTeX; the [Maths overview](/maths/overview/) has more.
+
+## Expressions and exports
+
+MDX can evaluate JavaScript at build time. This page exports `meta` at the top and reads it here:
+last updated **{meta.updated}** by {meta.author}. Arithmetic works too: 4 × 6 = {4 * 6}.
+
+---
+
+A horizontal rule above. Footnotes collect at the bottom of the page.
+
+[^1]: Footnotes are numbered automatically and link back to where they were used.

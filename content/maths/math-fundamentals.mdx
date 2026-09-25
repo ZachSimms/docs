@@ -1,0 +1,565 @@
+---
+title: Math fundamentals
+date: 2026-09-04
+order: 1
+---
+
+Quick reference for the material in chapter 1 of Ivan Savov's _No bullshit guide to math & physics_,
+one block per section. Nothing here is explained; it is the chart you look at once you already know
+the idea. See also [notation](/maths/notation/) and
+[constants, units and conversions](/maths/constants-units-conversions/).
+
+## 1.1 Solving equations
+
+Isolate the unknown by undoing operations, applying the same change to both sides.
+
+| To undo         | Apply                                  | Watch out                            |
+| :-------------- | :------------------------------------- | :----------------------------------- |
+| $+\,c$          | $-\,c$                                 |                                      |
+| $\times\,c$     | $\div\,c$                              | $c \neq 0$                           |
+| $x^2$           | $\sqrt{\;}$                            | two roots: $x = \pm\sqrt{\;}$        |
+| $\sqrt{x}$      | square                                 | requires $x \ge 0$                   |
+| $x^n$           | $\sqrt[n]{\;}$                         | even $n$: $\pm$; odd $n$: one root   |
+| $e^x$           | $\ln$                                  | argument must be positive            |
+| $10^x$          | $\log_{10}$                            |                                      |
+| $\sin, \cos, \tan$ | $\sin^{-1}, \cos^{-1}, \tan^{-1}$   | restrict to the principal range      |
+| $-\,c$          | $+\,c$                                 |                                      |
+| $\div\,c$      | $\times\,c$                            | $c \neq 0$                           |
+| $-x$ (negation) | $-(\;)$                                | its own inverse                      |
+| $1/x$           | $1/(\;)$                               | $x \neq 0$; its own inverse          |
+| $x^3$           | $\sqrt[3]{\;}$                         | one root, negatives allowed          |
+| $\lvert x \rvert$ | $\pm(\;)$                           | two cases: $x = \pm(\;)$, needs $(\;) \ge 0$ |
+| $b^x$           | $\log_b$                               | argument must be positive            |
+| $\ln x$         | $e^{(\;)}$                             | result is always positive            |
+| $\log_b x$      | $b^{(\;)}$                             |                                      |
+| $\dfrac{c}{x}$  | $\dfrac{c}{(\;)}$                      | $x \neq 0$; equivalently cross-multiply |
+
+Order of operations: brackets, exponents, multiplication and division, addition and subtraction.
+
+| Situation                          | Move                                                        |
+| :--------------------------------- | :---------------------------------------------------------- |
+| unknown on both sides              | collect $x$ terms on one side, constants on the other        |
+| unknown inside brackets            | expand, or divide by the bracket's coefficient first         |
+| unknown in a denominator           | multiply both sides by the denominator ($\neq 0$)            |
+| two fractions equal                | cross-multiply: $\tfrac{a}{b} = \tfrac{c}{d} \Rightarrow ad = bc$ |
+| product equals zero                | $ab = 0 \Rightarrow a = 0$ or $b = 0$                        |
+| $x^2$ and $x$ both present         | quadratic: rearrange to $ax^2 + bx + c = 0$ (1.7)            |
+| same unknown under a root and outside | isolate the root, square, check for extraneous roots      |
+| done                               | substitute back into the original equation                  |
+
+## 1.2 Numbers
+
+| Set | Symbol         | Contains                                      | Closed under                          |
+| :-- | :------------- | :-------------------------------------------- | :------------------------------------ |
+| natural  | $\mathbb{N}$ | $0, 1, 2, 3, \ldots$                         | $+$, $\times$                         |
+| integers | $\mathbb{Z}$ | $\ldots, -2, -1, 0, 1, 2, \ldots$            | $+$, $-$, $\times$                    |
+| rational | $\mathbb{Q}$ | $p/q$ with $p, q \in \mathbb{Z}$, $q \neq 0$ | $+$, $-$, $\times$, $\div$            |
+| real     | $\mathbb{R}$ | rationals and irrationals ($\sqrt{2}, \pi, e$) | limits of sequences                 |
+| complex  | $\mathbb{C}$ | $a + bi$ with $i^2 = -1$                     | roots of every polynomial             |
+
+$$
+\mathbb{N} \subset \mathbb{Z} \subset \mathbb{Q} \subset \mathbb{R} \subset \mathbb{C}
+$$
+
+Irrational: cannot be written as $p/q$; decimal expansion never repeats. Prime: integer greater than 1
+whose only divisors are 1 and itself.
+
+## 1.3 Number representations
+
+| Form            | Example                        | Convert                                                |
+| :-------------- | :----------------------------- | :----------------------------------------------------- |
+| fraction        | $\tfrac{3}{8}$                 | divide: $3 \div 8 = 0.375$                             |
+| decimal         | $0.375$                        | $\tfrac{375}{1000} = \tfrac{3}{8}$                     |
+| repeating       | $0.\overline{3}$               | $x = 0.\overline{3}$, $10x - x = 3$, $x = \tfrac{1}{3}$ |
+| percent         | $37.5\%$                       | $\div 100$                                             |
+| scientific      | $3.75 \times 10^{-1}$          | mantissa in $[1, 10)$, integer exponent                |
+| mixed number    | $2\tfrac{1}{2}$                | $= \tfrac{5}{2}$                                       |
+| prime factors   | $360 = 2^3 \cdot 3^2 \cdot 5$  | divide out primes in order                             |
+
+Fraction arithmetic:
+
+$$
+\frac{a}{b} \pm \frac{c}{d} = \frac{ad \pm bc}{bd},
+\qquad
+\frac{a}{b} \cdot \frac{c}{d} = \frac{ac}{bd},
+\qquad
+\frac{a}{b} \div \frac{c}{d} = \frac{a}{b} \cdot \frac{d}{c}
+$$
+
+## 1.4 Variables
+
+| Letters            | Usual meaning                          |
+| :----------------- | :------------------------------------- |
+| $x, y, z$          | unknowns and coordinates               |
+| $a, b, c$          | known constants, coefficients          |
+| $n, m, k, i, j$    | integers, counters, indices            |
+| $t$                | time                                   |
+| $\theta, \phi, \alpha, \beta$ | angles                      |
+| $f, g, h$          | functions                              |
+| $\lambda, \mu$     | rates, wavelengths, means              |
+| $\epsilon, \delta$ | small quantities                       |
+
+Constant: fixed value. Parameter: fixed within one problem, may change between problems.
+Unknown: the thing to solve for.
+
+## 1.5 Functions and their inverses
+
+$f^{-1}(f(x)) = x$ and $f(f^{-1}(y)) = y$. Solving $f(x) = y$ means applying $f^{-1}$ to both sides.
+
+| $f(x)$        | $f^{-1}(y)$            | Domain of $f^{-1}$          |
+| :------------ | :--------------------- | :-------------------------- |
+| $x + c$       | $y - c$                | all $y$                     |
+| $cx$          | $y/c$                  | all $y$, $c \neq 0$         |
+| $x^2$         | $\pm\sqrt{y}$          | $y \ge 0$                   |
+| $x^3$         | $\sqrt[3]{y}$          | all $y$                     |
+| $\sqrt{x}$    | $y^2$                  | $y \ge 0$                   |
+| $1/x$         | $1/y$                  | $y \neq 0$                  |
+| $e^x$         | $\ln y$                | $y > 0$                     |
+| $b^x$         | $\log_b y$             | $y > 0$                     |
+| $\sin x$      | $\sin^{-1} y$          | $-1 \le y \le 1$, gives $[-\tfrac{\pi}{2}, \tfrac{\pi}{2}]$ |
+| $\cos x$      | $\cos^{-1} y$          | $-1 \le y \le 1$, gives $[0, \pi]$ |
+| $\tan x$      | $\tan^{-1} y$          | all $y$, gives $(-\tfrac{\pi}{2}, \tfrac{\pi}{2})$ |
+| $x - c$       | $y + c$                | all $y$                     |
+| $x/c$         | $cy$                   | all $y$, $c \neq 0$         |
+| $mx + b$      | $(y - b)/m$            | all $y$, $m \neq 0$         |
+| $-x$          | $-y$                   | all $y$                     |
+| $x^n$, odd $n$ | $\sqrt[n]{y}$         | all $y$                     |
+| $x^n$, even $n$ | $\pm\sqrt[n]{y}$     | $y \ge 0$                   |
+| $\sqrt[n]{x}$ | $y^n$                  | $y \ge 0$ (even $n$), all $y$ (odd $n$) |
+| $1/x^2$       | $\pm 1/\sqrt{y}$       | $y > 0$                     |
+| $\lvert x \rvert$ | $\pm y$            | $y \ge 0$                   |
+| $\ln x$       | $e^y$                  | all $y$                     |
+| $\log_b x$    | $b^y$                  | all $y$                     |
+| $10^x$        | $\log_{10} y$          | $y > 0$                     |
+| $\sin^{-1} x$ | $\sin y$               | $-\tfrac{\pi}{2} \le y \le \tfrac{\pi}{2}$ |
+| $f(g(x))$     | $g^{-1}(f^{-1}(y))$    | undo the outer function first |
+
+A function has an inverse only where it is one-to-one; that is why $x^2$ and $\sin x$ need a restricted
+domain. Graphically, $f^{-1}$ is $f$ reflected in the line $y = x$ (1.12).
+
+## 1.6 Basic rules of algebra
+
+| Rule          | Statement                                   |
+| :------------ | :------------------------------------------ |
+| commutative   | $a + b = b + a$, $ab = ba$                  |
+| associative   | $(a + b) + c = a + (b + c)$, $(ab)c = a(bc)$ |
+| distributive  | $a(b + c) = ab + ac$                        |
+| identity      | $a + 0 = a$, $a \cdot 1 = a$                |
+| inverse       | $a + (-a) = 0$, $a \cdot \tfrac{1}{a} = 1$  |
+| zero product  | $ab = 0 \Rightarrow a = 0$ or $b = 0$       |
+
+Expanding and factoring:
+
+$$
+\begin{aligned}
+(a + b)^2 &= a^2 + 2ab + b^2 \\
+(a - b)^2 &= a^2 - 2ab + b^2 \\
+(a + b)(a - b) &= a^2 - b^2 \\
+(a + b)^3 &= a^3 + 3a^2 b + 3ab^2 + b^3 \\
+a^3 - b^3 &= (a - b)(a^2 + ab + b^2) \\
+a^3 + b^3 &= (a + b)(a^2 - ab + b^2) \\
+(x + p)(x + q) &= x^2 + (p + q)x + pq \\
+(ax + b)(cx + d) &= acx^2 + (ad + bc)x + bd
+\end{aligned}
+$$
+
+Names: in $abc + de = 0$, the products $abc$ and $de$ are terms, $a$, $b$, $c$, $d$, $e$ are factors,
+the left side is an expression, the whole thing is an equation.
+
+## 1.7 Solving quadratic equations
+
+$$
+ax^2 + bx + c = 0
+\quad\Longrightarrow\quad
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+$$
+
+| Discriminant $\Delta = b^2 - 4ac$ | Roots                                  |
+| :-------------------------------- | :------------------------------------- |
+| $\Delta > 0$                      | two distinct real roots                |
+| $\Delta = 0$                      | one repeated real root $x = -b/2a$     |
+| $\Delta < 0$                      | two complex conjugate roots            |
+
+| Form            | Expression                       | Reads off                       |
+| :-------------- | :------------------------------- | :------------------------------ |
+| standard        | $ax^2 + bx + c$                  | $y$-intercept $c$               |
+| factored        | $a(x - r_1)(x - r_2)$            | roots $r_1, r_2$                |
+| vertex          | $a(x - h)^2 + k$                 | vertex $(h, k)$, $h = -b/2a$    |
+
+Completing the square: $x^2 + bx = \left(x + \tfrac{b}{2}\right)^2 - \tfrac{b^2}{4}$.
+Vieta: $r_1 + r_2 = -\tfrac{b}{a}$ and $r_1 r_2 = \tfrac{c}{a}$.
+
+## 1.8 Exponents
+
+| Rule                | Form                                   |
+| :------------------ | :------------------------------------- |
+| product             | $a^m a^n = a^{m+n}$                    |
+| quotient            | $a^m / a^n = a^{m-n}$                  |
+| power of a power    | $(a^m)^n = a^{mn}$                     |
+| power of a product  | $(ab)^n = a^n b^n$                     |
+| power of a quotient | $(a/b)^n = a^n / b^n$                  |
+| zero                | $a^0 = 1$ for $a \neq 0$               |
+| negative            | $a^{-n} = 1/a^n$                       |
+| fractional          | $a^{1/n} = \sqrt[n]{a}$, $a^{m/n} = \sqrt[n]{a^m}$ |
+| roots               | $\sqrt{ab} = \sqrt{a}\sqrt{b}$, $\sqrt{a/b} = \sqrt{a}/\sqrt{b}$ |
+| one                 | $a^1 = a$, $1^n = 1$                   |
+| zero base           | $0^n = 0$ for $n > 0$; $0^0$ is left undefined (often taken as $1$) |
+| negative fractional | $a^{-m/n} = \dfrac{1}{\sqrt[n]{a^m}}$   |
+| negative quotient   | $(a/b)^{-n} = (b/a)^n$                 |
+| negative base       | $(-a)^n = a^n$ for even $n$, $-a^n$ for odd $n$ |
+| root of a power     | $\sqrt[n]{a^n} = \lvert a \rvert$ for even $n$, $= a$ for odd $n$ |
+| nested roots        | $\sqrt[m]{\sqrt[n]{a}} = \sqrt[mn]{a}$   |
+| root of a root index | $\sqrt[n]{a^m} = \left(\sqrt[n]{a}\right)^m$ |
+| rationalising       | $\dfrac{1}{\sqrt{a}} = \dfrac{\sqrt{a}}{a}$, $\dfrac{1}{\sqrt{a} + \sqrt{b}} = \dfrac{\sqrt{a} - \sqrt{b}}{a - b}$ |
+| any base as $e$     | $a^x = e^{x \ln a}$                    |
+| same base equal     | $a^m = a^n \Rightarrow m = n$ for $a > 0$, $a \neq 1$ |
+| same exponent equal | $a^n = b^n \Rightarrow a = b$ (odd $n$), $a = \pm b$ (even $n$) |
+| scientific notation | $d.ddd \times 10^n$, one non-zero digit before the point |
+
+Fractional powers with even $n$ need $a \ge 0$ in the reals; $\sqrt{\;}$ always means the non-negative root.
+
+Not rules: $(a + b)^n \neq a^n + b^n$, $\sqrt{a + b} \neq \sqrt{a} + \sqrt{b}$, $a^m a^n \neq a^{mn}$,
+$a^m b^n \neq (ab)^{m+n}$, and $(a^m)^n \neq a^{m^n}$ (compare $a^{(m^n)}$ with $(a^m)^n = a^{mn}$).
+
+## 1.9 Logarithms
+
+$\log_b x = y$ means $b^y = x$, for $b > 0$, $b \neq 1$, $x > 0$.
+
+| Rule           | Form                                            |
+| :------------- | :---------------------------------------------- |
+| product        | $\log_b(xy) = \log_b x + \log_b y$              |
+| quotient       | $\log_b(x/y) = \log_b x - \log_b y$             |
+| power          | $\log_b(x^n) = n \log_b x$                      |
+| base           | $\log_b b = 1$, $\log_b 1 = 0$                  |
+| inverse        | $b^{\log_b x} = x$, $\log_b(b^x) = x$           |
+| change of base | $\log_b x = \dfrac{\log_c x}{\log_c b} = \dfrac{\ln x}{\ln b}$ |
+| reciprocal     | $\log_b(1/x) = -\log_b x$                       |
+| root           | $\log_b \sqrt[n]{x} = \dfrac{1}{n}\log_b x$      |
+| swap           | $\log_b a = \dfrac{1}{\log_a b}$                 |
+| power of base  | $\log_{b^n} x = \dfrac{1}{n}\log_b x$, $\log_{1/b} x = -\log_b x$ |
+| exponent swap  | $x^{\log_b y} = y^{\log_b x}$                   |
+| equality       | $\log_b x = \log_b y \iff x = y$               |
+| sign           | $\log_b x < 0$ for $0 < x < 1$, $> 0$ for $x > 1$ (when $b > 1$) |
+| solving $a^x = c$ | $x = \log_a c = \dfrac{\ln c}{\ln a}$          |
+| solving $\log_b x = c$ | $x = b^c$                                 |
+| any base       | $a^x = e^{x \ln a}$, so $\ln(a^x) = x \ln a$     |
+
+Not rules: $\log_b(x + y) \neq \log_b x + \log_b y$, $\log_b(xy) \neq \log_b x \cdot \log_b y$,
+$(\log_b x)^n \neq n \log_b x$, and $\dfrac{\log_b x}{\log_b y} \neq \log_b(x/y)$.
+
+| Name    | Notation   | Base |
+| :------ | :--------- | :--- |
+| natural | $\ln x$    | $e \approx 2.71828$ |
+| common  | $\log x$   | $10$ |
+| binary  | $\log_2 x$ | $2$  |
+
+## 1.10 The Cartesian plane
+
+| Quantity            | Formula                                             |
+| :------------------ | :-------------------------------------------------- |
+| point               | $P = (x, y)$                                        |
+| distance            | $d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$          |
+| midpoint            | $\left(\tfrac{x_1 + x_2}{2}, \tfrac{y_1 + y_2}{2}\right)$ |
+| slope               | $m = \dfrac{y_2 - y_1}{x_2 - x_1} = \dfrac{\Delta y}{\Delta x}$ |
+| quadrants           | I $(+,+)$, II $(-,+)$, III $(-,-)$, IV $(+,-)$      |
+
+Parallel lines share a slope; perpendicular lines have slopes with $m_1 m_2 = -1$.
+
+## 1.11 Functions
+
+$f : A \to B$ takes each $x$ in the domain $A$ to one $f(x)$ in the codomain $B$.
+The image is the set of values actually produced.
+
+| Term          | Meaning                                                  |
+| :------------ | :------------------------------------------------------- |
+| domain        | inputs where $f$ is defined                              |
+| image / range | outputs $\{ f(x) : x \in A \}$                           |
+| composition   | $(g \circ f)(x) = g(f(x))$                               |
+| one-to-one    | $f(x_1) = f(x_2) \Rightarrow x_1 = x_2$; invertible      |
+| even          | $f(-x) = f(x)$, symmetric about the $y$-axis             |
+| odd           | $f(-x) = -f(x)$, symmetric about the origin              |
+| periodic      | $f(x + T) = f(x)$                                        |
+| zero / root   | $x$ with $f(x) = 0$; graph crosses the $x$-axis          |
+
+| Restriction on the domain   | Reason                    |
+| :-------------------------- | :------------------------ |
+| $x \neq 0$ in $1/x$         | division by zero          |
+| $x \ge 0$ in $\sqrt{x}$     | real square root          |
+| $x > 0$ in $\ln x$          | log of a positive number  |
+| $x \neq \tfrac{\pi}{2} + n\pi$ in $\tan x$ | $\cos x = 0$ |
+
+## 1.12 Functions reference
+
+| Function         | $f(x)$                   | Domain                   | Image                 | Notes                                        |
+| :--------------- | :----------------------- | :----------------------- | :-------------------- | :------------------------------------------- |
+| line             | $mx + b$                 | $\mathbb{R}$             | $\mathbb{R}$          | slope $m$, intercept $b$; root $-b/m$        |
+| square           | $x^2$                    | $\mathbb{R}$             | $[0, \infty)$         | even; vertex at origin                       |
+| square root      | $\sqrt{x}$               | $[0, \infty)$            | $[0, \infty)$         | inverse of $x^2$ on $x \ge 0$                |
+| absolute value   | $\lvert x \rvert$        | $\mathbb{R}$             | $[0, \infty)$         | $= \sqrt{x^2}$; V shape                      |
+| polynomial       | $a_n x^n + \cdots + a_0$ | $\mathbb{R}$             | depends on degree     | at most $n$ roots; $n$ roots in $\mathbb{C}$ |
+| sine             | $\sin x$                 | $\mathbb{R}$             | $[-1, 1]$             | odd; period $2\pi$; zeros at $n\pi$          |
+| cosine           | $\cos x$                 | $\mathbb{R}$             | $[-1, 1]$             | even; period $2\pi$; $= \sin(x + \tfrac{\pi}{2})$ |
+| tangent          | $\tan x$                 | $x \neq \tfrac{\pi}{2} + n\pi$ | $\mathbb{R}$    | odd; period $\pi$; $= \sin x / \cos x$       |
+| exponential      | $e^x$                    | $\mathbb{R}$             | $(0, \infty)$         | $e^0 = 1$; own derivative                    |
+| natural log      | $\ln x$                  | $(0, \infty)$            | $\mathbb{R}$          | $\ln 1 = 0$, $\ln e = 1$; inverse of $e^x$   |
+
+Shapes, drawn over each function's usual window:
+
+<Graphs>
+<Graph small title="line" curves={[{ fn: "line" }]} />
+<Graph small title="square" curves={[{ fn: "square" }]} />
+<Graph small title="square root" curves={[{ fn: "sqrt" }]} />
+<Graph small title="absolute value" curves={[{ fn: "abs" }]} />
+<Graph small title="polynomial" curves={[{ fn: "poly" }]} />
+<Graph small title="exponential" curves={[{ fn: "exp" }]} />
+<Graph small title="natural log" curves={[{ fn: "ln" }]} />
+<Graph small title="sine" curves={[{ fn: "sin" }]} ticks="pi" />
+<Graph small title="cosine" curves={[{ fn: "cos" }]} ticks="pi" />
+<Graph small title="tangent" curves={[{ fn: "tan" }]} ticks="pi" />
+</Graphs>
+
+<Graph title="inverses reflect in y = x" curves={[{ fn: "square", label: "x²" }, { fn: "sqrt", label: "√x" }, { fn: "identity", label: "y = x" }]} domain={[0, 4]} range={[0, 4]} />
+
+## 1.13 Function transformations
+
+| New function     | Effect on the graph of $f$                     |
+| :--------------- | :--------------------------------------------- |
+| $f(x) + c$       | shift up by $c$                                |
+| $f(x - c)$       | shift right by $c$                             |
+| $a f(x)$         | stretch vertically by $a$ ($a > 1$), squash if $0 < a < 1$ |
+| $f(x / a)$       | stretch horizontally by $a$                    |
+| $-f(x)$          | reflect in the $x$-axis                        |
+| $f(-x)$          | reflect in the $y$-axis                        |
+| $f^{-1}(x)$      | reflect in the line $y = x$                    |
+
+General sinusoid: $A \sin(\omega x + \phi) + C$ has amplitude $A$, period $2\pi/\omega$,
+phase shift $-\phi/\omega$, vertical offset $C$.
+
+Each plot shows $f$ in the first colour and the transformed copies in the others:
+
+<Graph title="shifts" curves={[{ fn: "square", label: "f(x) = x²" }, { fn: "square", k: 2, label: "f(x) + 2" }, { fn: "square", h: 2, label: "f(x − 2)" }]} range={[-1, 9]} />
+
+<Graph title="stretches" curves={[{ fn: "sin", label: "f(x) = sin x" }, { fn: "sin", a: 2, label: "2 f(x)" }, { fn: "sin", b: 2, label: "f(2x)" }]} range={[-2.5, 2.5]} ticks="pi" />
+
+<Graph title="reflections" curves={[{ fn: "exp", label: "f(x) = eˣ" }, { fn: "exp", a: -1, label: "−f(x)" }, { fn: "exp", b: -1, label: "f(−x)" }]} domain={[-3, 3]} range={[-8, 8]} />
+
+<Graph title="sinusoid" curves={[{ fn: "sin", label: "sin x" }, { fn: "sin", a: 2, b: 2, h: 0.5, k: 1, label: "2 sin(2(x − 0.5)) + 1" }]} range={[-2, 4]} ticks="pi" />
+
+## 1.14 Geometry
+
+| Shape        | Area / surface                       | Perimeter / volume                  |
+| :----------- | :----------------------------------- | :---------------------------------- |
+| triangle     | $\tfrac{1}{2} b h$                   | $a + b + c$                         |
+| square       | $s^2$                                | $4s$                                |
+| rectangle    | $\ell w$                             | $2\ell + 2w$                        |
+| parallelogram| $b h$                                |                                     |
+| trapezoid    | $\tfrac{1}{2}(a + b) h$              |                                     |
+| circle       | $\pi r^2$                            | $2\pi r$                            |
+| sphere       | $4\pi r^2$                           | $\tfrac{4}{3}\pi r^3$               |
+| cylinder     | $2\pi r h + 2\pi r^2$                | $\pi r^2 h$                         |
+| cone         | $\pi r \ell + \pi r^2$               | $\tfrac{1}{3}\pi r^2 h$             |
+| box          | $2(\ell w + w h + \ell h)$           | $\ell w h$                          |
+
+Pythagoras: $a^2 + b^2 = c^2$ for a right triangle with hypotenuse $c$.
+Heron: $A = \sqrt{s(s-a)(s-b)(s-c)}$ with $s = \tfrac{a+b+c}{2}$.
+Angles in a triangle sum to $\pi$; in an $n$-gon to $(n - 2)\pi$.
+
+## 1.15 Trigonometry
+
+For a right triangle with angle $\theta$, opposite $o$, adjacent $a$, hypotenuse $h$:
+
+$$
+\sin\theta = \frac{o}{h}, \qquad \cos\theta = \frac{a}{h}, \qquad \tan\theta = \frac{o}{a} = \frac{\sin\theta}{\cos\theta}
+$$
+
+| $\theta$ (deg) | rad             | $\sin$               | $\cos$               | $\tan$               |
+| :------------- | :-------------- | :------------------- | :------------------- | :------------------- |
+| $0$            | $0$             | $0$                  | $1$                  | $0$                  |
+| $30$           | $\pi/6$         | $\tfrac{1}{2}$       | $\tfrac{\sqrt{3}}{2}$ | $\tfrac{1}{\sqrt{3}}$ |
+| $45$           | $\pi/4$         | $\tfrac{\sqrt{2}}{2}$ | $\tfrac{\sqrt{2}}{2}$ | $1$                 |
+| $60$           | $\pi/3$         | $\tfrac{\sqrt{3}}{2}$ | $\tfrac{1}{2}$       | $\sqrt{3}$           |
+| $90$           | $\pi/2$         | $1$                  | $0$                  | undefined            |
+| $180$          | $\pi$           | $0$                  | $-1$                 | $0$                  |
+| $270$          | $3\pi/2$        | $-1$                 | $0$                  | undefined            |
+
+Reciprocals: $\csc = 1/\sin$, $\sec = 1/\cos$, $\cot = 1/\tan$.
+Unit circle: the point at angle $\theta$ is $(\cos\theta, \sin\theta)$.
+Degrees to radians: multiply by $\pi/180$. One full turn is $2\pi$ rad.
+
+![Unit circle with the standard angles in degrees and radians and their (cos, sin) coordinates](/images/unit_circle.jpg)
+
+Any triangle with sides $a, b, c$ opposite angles $A, B, C$:
+
+$$
+\frac{\sin A}{a} = \frac{\sin B}{b} = \frac{\sin C}{c},
+\qquad
+c^2 = a^2 + b^2 - 2ab\cos C
+$$
+
+## 1.16 Trigonometric identities
+
+$$
+\begin{aligned}
+\sin^2\theta + \cos^2\theta &= 1 \\
+1 + \tan^2\theta &= \sec^2\theta \\
+\sin(a \pm b) &= \sin a \cos b \pm \cos a \sin b \\
+\cos(a \pm b) &= \cos a \cos b \mp \sin a \sin b \\
+\tan(a \pm b) &= \frac{\tan a \pm \tan b}{1 \mp \tan a \tan b} \\
+\sin 2\theta &= 2 \sin\theta \cos\theta \\
+\cos 2\theta &= \cos^2\theta - \sin^2\theta = 2\cos^2\theta - 1 = 1 - 2\sin^2\theta \\
+\sin^2\theta &= \tfrac{1}{2}(1 - \cos 2\theta) \\
+\cos^2\theta &= \tfrac{1}{2}(1 + \cos 2\theta) \\
+\sin a \sin b &= \tfrac{1}{2}[\cos(a - b) - \cos(a + b)] \\
+\cos a \cos b &= \tfrac{1}{2}[\cos(a - b) + \cos(a + b)] \\
+\sin a \cos b &= \tfrac{1}{2}[\sin(a + b) + \sin(a - b)]
+\end{aligned}
+$$
+
+| Symmetry     | Identity                                                     |
+| :----------- | :----------------------------------------------------------- |
+| parity       | $\sin(-\theta) = -\sin\theta$, $\cos(-\theta) = \cos\theta$  |
+| cofunction   | $\sin(\tfrac{\pi}{2} - \theta) = \cos\theta$, $\cos(\tfrac{\pi}{2} - \theta) = \sin\theta$ |
+| half turn    | $\sin(\theta + \pi) = -\sin\theta$, $\cos(\theta + \pi) = -\cos\theta$ |
+| period       | $\sin(\theta + 2\pi) = \sin\theta$, $\tan(\theta + \pi) = \tan\theta$ |
+
+## 1.17 Circles and polar coordinates
+
+| Quantity               | Formula                                        |
+| :--------------------- | :--------------------------------------------- |
+| circle, centre origin  | $x^2 + y^2 = r^2$                              |
+| circle, centre $(h,k)$ | $(x - h)^2 + (y - k)^2 = r^2$                  |
+| parametric             | $x = r\cos\theta$, $y = r\sin\theta$           |
+| arc length             | $s = r\theta$ ($\theta$ in radians)            |
+| sector area            | $A = \tfrac{1}{2} r^2 \theta$                  |
+| chord length           | $2r\sin(\theta/2)$                             |
+
+Polar $(r, \theta)$ and Cartesian $(x, y)$:
+
+$$
+\begin{aligned}
+x &= r\cos\theta, & y &= r\sin\theta \\
+r &= \sqrt{x^2 + y^2}, & \theta &= \operatorname{atan2}(y, x)
+\end{aligned}
+$$
+
+## 1.18 Ellipse
+
+$$
+\frac{x^2}{a^2} + \frac{y^2}{b^2} = 1 \qquad (a \ge b)
+$$
+
+| Quantity      | Formula                                           |
+| :------------ | :------------------------------------------------ |
+| semi-axes     | $a$ (major), $b$ (minor)                          |
+| foci          | $(\pm c, 0)$ with $c = \sqrt{a^2 - b^2}$          |
+| eccentricity  | $\varepsilon = c/a$, $0 \le \varepsilon < 1$      |
+| area          | $\pi a b$                                         |
+| defining property | sum of distances to the foci is $2a$          |
+| parametric    | $x = a\cos t$, $y = b\sin t$                      |
+| polar (focus at origin) | $r(\theta) = \dfrac{a(1 - \varepsilon^2)}{1 + \varepsilon\cos\theta}$ |
+
+## 1.19 Parabola
+
+| Form                       | Vertex          | Opens        | Focus / directrix                  |
+| :------------------------- | :-------------- | :----------- | :--------------------------------- |
+| $y = ax^2 + bx + c$        | $x = -b/2a$     | up if $a > 0$ |                                   |
+| $y = a(x - h)^2 + k$       | $(h, k)$        | up if $a > 0$ | focus $(h, k + \tfrac{1}{4a})$, directrix $y = k - \tfrac{1}{4a}$ |
+| $x^2 = 4py$                | $(0, 0)$        | up if $p > 0$ | focus $(0, p)$, directrix $y = -p$ |
+| $y^2 = 4px$                | $(0, 0)$        | right if $p > 0$ | focus $(p, 0)$, directrix $x = -p$ |
+
+Defining property: every point is equidistant from the focus and the directrix. Eccentricity $\varepsilon = 1$.
+
+## 1.20 Hyperbola
+
+$$
+\frac{x^2}{a^2} - \frac{y^2}{b^2} = 1
+$$
+
+| Quantity      | Formula                                             |
+| :------------ | :-------------------------------------------------- |
+| vertices      | $(\pm a, 0)$                                        |
+| foci          | $(\pm c, 0)$ with $c = \sqrt{a^2 + b^2}$            |
+| asymptotes    | $y = \pm \tfrac{b}{a} x$                            |
+| eccentricity  | $\varepsilon = c/a > 1$                             |
+| defining property | difference of distances to the foci is $2a$     |
+| vertical form | $\tfrac{y^2}{a^2} - \tfrac{x^2}{b^2} = 1$, opens up and down |
+| rectangular   | $xy = k$, asymptotes are the axes                   |
+
+Conics by eccentricity: circle $0$, ellipse $0 < \varepsilon < 1$, parabola $1$, hyperbola $> 1$.
+
+## 1.21 Solving systems of linear equations
+
+| Method        | Steps                                                                  |
+| :------------ | :--------------------------------------------------------------------- |
+| substitution  | solve one equation for a variable; substitute into the other           |
+| elimination   | scale equations so a variable cancels when they are added              |
+| graphical     | the solution is where the lines cross                                  |
+| determinant   | Cramer's rule, below                                                   |
+
+For $a_1 x + b_1 y = c_1$ and $a_2 x + b_2 y = c_2$:
+
+$$
+D = a_1 b_2 - a_2 b_1,
+\qquad
+x = \frac{c_1 b_2 - c_2 b_1}{D},
+\qquad
+y = \frac{a_1 c_2 - a_2 c_1}{D}
+$$
+
+| $D$          | Solutions                                          |
+| :----------- | :------------------------------------------------- |
+| $D \neq 0$   | exactly one                                        |
+| $D = 0$      | none (parallel lines) or infinitely many (same line) |
+
+## 1.22 Compound interest
+
+| Scheme                 | Amount after $t$ years                       |
+| :--------------------- | :------------------------------------------- |
+| simple                 | $A = P(1 + rt)$                              |
+| compounded yearly      | $A = P(1 + r)^t$                             |
+| compounded $n$ times a year | $A = P\left(1 + \tfrac{r}{n}\right)^{nt}$ |
+| continuous             | $A = Pe^{rt}$                                |
+
+Effective annual rate: $(1 + \tfrac{r}{n})^n - 1$. Doubling time: $t = \dfrac{\ln 2}{\ln(1 + r)} \approx \dfrac{72}{100r}$.
+Present value: $P = A(1 + r)^{-t}$.
+
+## 1.23 Set notation
+
+| Symbol                 | Reads                          |
+| :--------------------- | :----------------------------- |
+| $\{a, b, c\}$          | the set containing $a$, $b$, $c$ |
+| $\{x : P(x)\}$         | the set of $x$ such that $P(x)$ |
+| $x \in A$              | $x$ is an element of $A$       |
+| $x \notin A$           | $x$ is not an element of $A$   |
+| $A \subseteq B$        | $A$ is a subset of $B$         |
+| $A \subset B$          | proper subset                  |
+| $A \cup B$             | union: in $A$ or $B$           |
+| $A \cap B$             | intersection: in both          |
+| $A \setminus B$        | difference: in $A$, not in $B$ |
+| $\bar{A}$ or $A^c$     | complement                     |
+| $\varnothing$          | the empty set                  |
+| $\lvert A \rvert$      | number of elements             |
+| $A \times B$           | Cartesian product: pairs $(a, b)$ |
+| $\forall$, $\exists$   | for all, there exists          |
+
+| Interval        | Set                          |
+| :-------------- | :--------------------------- |
+| $[a, b]$        | $\{x : a \le x \le b\}$      |
+| $(a, b)$        | $\{x : a < x < b\}$          |
+| $[a, b)$        | $\{x : a \le x < b\}$        |
+| $[a, \infty)$   | $\{x : x \ge a\}$            |
+
+Laws: $A \cup B = B \cup A$; $A \cap (B \cup C) = (A \cap B) \cup (A \cap C)$;
+De Morgan: $\overline{A \cup B} = \bar{A} \cap \bar{B}$ and $\overline{A \cap B} = \bar{A} \cup \bar{B}$.
+
+## 1.24 Math problems
+
+A checklist for working through the chapter's problem sets.
+
+| Step           | Do                                                             |
+| :------------- | :------------------------------------------------------------- |
+| read           | name the unknown; write down what is given with units          |
+| model          | pick the equation or identity that links given and unknown     |
+| solve          | isolate the unknown symbolically before substituting numbers   |
+| check          | units, sign, magnitude, special cases ($0$, $\infty$, symmetry) |
+| verify         | substitute the answer back into the original equation          |

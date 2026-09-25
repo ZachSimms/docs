@@ -1,0 +1,690 @@
+---
+title: Node.js
+date: 2026-09-25
+order: 2
+---
+
+Node.js 24 LTS "Krypton" (24.21, Active LTS until 2026-10-20; Node 26 becomes LTS on 2026-10-28):
+running TypeScript directly, modules, core APIs, CLI flags, the built-in test runner, diagnostics and
+the permission model. The Bun column shows what to reach for in [Bun](/typescript/runtime-tooling/bun/).
+
+## Versions & version managers
+
+| Line | Status (2026-09) | End of life |
+| :--- | :--------------- | :---------- |
+| 22 "Jod" | Maintenance LTS | 2027-04-30 |
+| 24 "Krypton" | Active LTS: default for production | 2028-04-30 |
+| 26 | Current; LTS from 2026-10-28 | 2029-04-30 |
+| odd (25, 27) | Current only, never LTS | about 8 months |
+
+Even-numbered majors ship each April and turn LTS in October: 12 months active, then 18 months of
+maintenance. Pin the version per project in `.nvmrc` or `.node-version` (`24`), plus `engines`.
+
+| Tool | Install & use | Notes |
+| :--- | :------------ | :---- |
+| fnm | `fnm install 24`, `fnm use`, `fnm default 24` | Rust, fast; `eval "$(fnm env --use-on-cd)"` auto-switches on `.nvmrc` |
+| nvm | `nvm install --lts`, `nvm use`, `nvm alias default 24` | POSIX shell script; slower shell startup |
+| mise | `mise use -g node@24`, `mise use node@22` (writes `mise.toml`) | polyglot (also Bun, pnpm, Python), env vars and tasks |
+| Volta | `volta pin node@24` | unmaintained since late 2025: maintainers recommend mise |
+| pnpm | `pnpm runtime set node 24` | pnpm 11+ can manage Node itself; see [pnpm](/typescript/runtime-tooling/pnpm-monorepos/) |
+| Docker | `FROM node:24-alpine` / `node:24-slim` | see [Dockerfile](/infrastructure/containers/dockerfile/) |
+
+```toml title="mise.toml"
+[tools]
+node = "24"
+bun = "1.4"
+pnpm = "12"
+```
+
+Node 24 bundles npm 11 and still ships Corepack (experimental). From Node 25, Corepack is no longer
+bundled: `npm i -g corepack` if you rely on it.
+
+## Running TypeScript
+
+Node 24 strips types natively (stable since 24.12): `node app.ts` replaces erasable annotations with
+whitespace and runs the result. It does **not** type-check and ignores `tsconfig.json`.
+
+```ts title="app.ts"
+import type { Server } from "node:http";   // type-only
+import { createServer } from "node:http";
+import { greet, type Greeting } from "./greet.ts";
+
+const server: Server = createServer((_req, res) => {
+  const g: Greeting = greet("node");
+  res.end(g.text);
+});
+server.listen(3000);
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Extensions | `.ts` follows `"type"` in `package.json`; `.mts` is always ESM, `.cts` always CJS; `.tsx` unsupported |
+| Import specifiers | must include the extension: `./greet.ts` |
+| Type-only imports | need `import type` or inline `type`, else a runtime error |
+| Non-erasable syntax | `enum`, runtime `namespace`, parameter properties, `import x =` fail with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` |
+| `--experimental-transform-types` | transforms those too |
+| Decorators | not supported at all |
+| `paths` | ignored: use `"imports"` subpath patterns instead |
+| `node_modules` | TS inside dependencies is never stripped: publish JS |
+| `--no-strip-types` | turn the feature off |
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
+  }
+}
+```
+
+`erasableSyntaxOnly` makes `tsc` reject what Node can't strip; `verbatimModuleSyntax` forces
+`import type`. Type-check with `tsc --noEmit` in CI; to emit JS for publishing, drop `noEmit` and keep
+`rewriteRelativeImportExtensions` so `./a.ts` becomes `./a.js`. TypeScript 7 (native) defaults `types`
+to `[]`, so list `"node"` explicitly.
+
+## ESM & CommonJS
+
+| | ESM | CommonJS |
+| :- | :-- | :------- |
+| Selected by | `.mjs`/`.mts`, or `"type": "module"` | `.cjs`/`.cts`, or no `"type"` / `"type": "commonjs"` |
+| Syntax | `import` / `export` | `require` / `module.exports` |
+| Top-level `await` | yes | no |
+| `__dirname`, `__filename` | `import.meta.dirname`, `import.meta.filename` | built in |
+| Loading the other kind | `import cjs from "./x.cjs"` (default = `module.exports`) | `require("./x.mjs")` works (require(esm), no flag since 22.12) unless the graph has top-level `await` |
+| JSON | `import d from "./d.json" with { type: "json" }` | `require("./d.json")` |
+| Resolution | exact paths with extensions | extension and `index.js` guessing |
+
+```ts
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
+const here = import.meta.dirname;        // like __dirname
+const self = import.meta.filename;       // like __filename
+const cfgPath = join(here, "config.json");
+const cfg = JSON.parse(await readFile(cfgPath, "utf8"));
+
+// JSON import with an import attribute
+import pkg from "./package.json" with { type: "json" };
+
+// CommonJS-only package from ESM
+const require = createRequire(import.meta.url);
+const legacy = require("./legacy.cjs") as { run(): void };
+
+const url = import.meta.resolve("./greet.ts"); // file:// URL
+console.log(self, cfg, pkg, legacy, url);
+```
+
+With no `"type"` field, Node detects ESM syntax in a `.js` file and reruns it as ESM (a slower start).
+Set `"type": "module"` for new code. The module-system deep dive is in
+[Modules & packages](/typescript/design-architecture/modules-packages/).
+
+## `package.json` for apps
+
+```json title="package.json"
+{
+  "name": "@acme/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*",
+    "#config": "./src/config.ts"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": { "node": ">=24" },
+  "devEngines": {
+    "runtime": { "name": "node", "version": "^24.11.0" },
+    "packageManager": { "name": "pnpm", "version": "^12" }
+  },
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/main.ts",
+    "start": "node dist/main.js",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  }
+}
+```
+
+| Field | Use |
+| :---- | :-- |
+| `type` | `"module"` makes `.js`/`.ts` ESM |
+| `imports` | private `#` aliases, the Node-native replacement for `tsconfig` `paths` |
+| `exports` | public entry points; anything not listed is unreachable for consumers |
+| `main` | legacy entry, used only when `exports` is absent |
+| `engines` | declared runtime range; npm warns, pnpm/Bun can enforce |
+| `devEngines` | runtime and package manager for contributors (npm 11, pnpm 11+ act on it) |
+| `packageManager` | `"pnpm@12.7.0"`: pins the PM for Corepack and pnpm |
+| `bin` | CLI entry; add `#!/usr/bin/env node` to the file |
+| `private` | blocks accidental `npm publish` |
+
+## Core modules
+
+Import with the `node:` prefix (`node:sqlite`, `node:test` and `node:sea` require it). The Bun column
+lists the faster native API where one exists; Bun implements all of these modules too.
+
+| Module | Key APIs | Bun equivalent |
+| :----- | :------- | :------------- |
+| `node:fs/promises` | `readFile`, `writeFile`, `mkdir({ recursive })`, `readdir`, `stat`, `rm`, `glob`, `watch` | `Bun.file`, `Bun.write`, `Bun.Glob` |
+| `node:fs` | `createReadStream`, `createWriteStream`, `existsSync` | `file.stream()`, `file.writer()` |
+| `node:path` | `join`, `resolve`, `dirname`, `basename`, `extname`, `relative` | same module |
+| `node:url` | `fileURLToPath`, `pathToFileURL`, global `URL` | same |
+| `node:events` | `EventEmitter`, `once`, `on`, `addAbortListener` | same |
+| `node:stream` / `stream/promises` | `Readable`, `Transform`, `pipeline`, `Readable.fromWeb` | Web streams |
+| `node:worker_threads` | `Worker`, `parentPort`, `workerData`, `MessageChannel` | also Web `Worker` |
+| `node:child_process` | `spawn`, `execFile`, `fork`, `exec` (shell!) | `Bun.spawn`, `Bun.$` |
+| `node:crypto` | `randomUUID`, `createHash`, `createHmac`, `scrypt`, `timingSafeEqual`, `webcrypto` | `Bun.CryptoHasher`, `Bun.password` |
+| `node:http` / `https` | `createServer`, `request`, `Agent` | `Bun.serve` |
+| `node:util` | `parseArgs`, `promisify`, `inspect`, `styleText`, `parseEnv`, `types` | same |
+| `node:os` | `availableParallelism`, `cpus`, `tmpdir`, `homedir`, `EOL` | same |
+| `node:timers/promises` | `setTimeout(ms, v, { signal })`, `setInterval` (async iterator) | `Bun.sleep` |
+| `node:sqlite` | `DatabaseSync`, `prepare().all()` (unflagged, still experimental) | `bun:sqlite` |
+| `node:test` / `node:assert/strict` | test runner, assertions | `bun:test` |
+| `node:zlib` | gzip, brotli, zstd; `createGzip` streams | `Bun.gzipSync`, `CompressionStream` |
+| `node:readline` | `createInterface` line reader, prompts | `console` async iterator |
+| `node:perf_hooks` | `performance`, `monitorEventLoopDelay` | partial |
+| `node:async_hooks` | `AsyncLocalStorage` (request context) | same |
+
+Globals without imports: `fetch`, `WebSocket` (client), `URLPattern`, `AbortController`, `structuredClone`,
+`crypto`, `navigator`, `Blob`, `BroadcastChannel`. See [Fetch API](/typescript/web-apis/fetch-api/) and
+[File I/O](/typescript/backend/file-io/).
+
+## Process & environment
+
+```ts
+import { parseEnv } from "node:util";
+
+process.loadEnvFile(".env.local"); // set vars are kept,
+process.loadEnvFile();             // so specific first
+                                   // (throws if missing)
+const parsed = parseEnv("A=1\nB=two"); // { A, B }
+
+const port = Number(process.env.PORT ?? 3000);
+const dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) throw new Error("DATABASE_URL is required");
+
+process.argv;         // [execPath, script, ...args]
+process.exitCode = 1; // exit code when the loop drains
+console.log(parsed, port);
+```
+
+```ts title="env.d.ts"
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      DATABASE_URL?: string;
+      NODE_ENV?: "development" | "production" | "test";
+    }
+  }
+}
+export {};
+```
+
+| Topic | Node | Bun |
+| :---- | :--- | :-- |
+| `.env` loading | opt in: `--env-file=.env` (repeatable, later wins) or `--env-file-if-exists` | automatic |
+| In code | `process.loadEnvFile(path = ".env")` never overwrites; `util.parseEnv(str)` | automatic |
+| Precedence | real environment beats the file | same |
+| Exit | `process.exitCode = n` (graceful) over `process.exit(n)` (immediate) | same |
+| Signals | `process.on("SIGTERM", fn)`; `SIGKILL` can't be caught | same |
+| Info | `process.pid`, `process.platform`, `process.versions`, `process.memoryUsage()` | same |
+| Standard streams | `process.stdin`, `process.stdout.write()` | `Bun.stdin`, `Bun.stdout` |
+
+`.env` files support comments, quotes and multi-line values, but not `$VAR` expansion.
+
+## CLI flags
+
+| Flag | Does | Bun |
+| :--- | :--- | :-- |
+| `node app.ts` | run (types stripped) | `bun app.ts` |
+| `--watch` / `--watch-path=src` | restart on change (imports, or given paths) | `--watch`, `--hot` |
+| `--run dev` | run a `package.json` script, much faster than `npm run` | `bun run dev` |
+| `--test` | run the test runner | `bun test` |
+| `--env-file=.env` | load env vars | automatic |
+| `--import ./setup.ts` | preload an ESM module (register hooks, OTel) | `--preload` |
+| `--inspect` / `--inspect-brk` / `--inspect-wait` | debugger on 9229 (open `chrome://inspect`) | `--inspect` |
+| `--enable-source-maps` | map stack traces through source maps | always on |
+| `--max-old-space-size=4096` | V8 heap limit in MB; `-percentage` variant uses a share of RAM | `--smol` |
+| `--unhandled-rejections=strict` | modes: `throw` (default), `strict`, `warn`, `none` | same flag |
+| `--cpu-prof` / `--heap-prof` | write `.cpuprofile` / `.heapprofile` on exit | same flags |
+| `--trace-warnings` / `--trace-deprecation` | stack traces for warnings | same |
+| `--disable-warning=ExperimentalWarning` | silence one warning type | same |
+| `--permission` | enable the permission model | none |
+| `--experimental-transform-types` | allow enums and parameter properties | always |
+| `--experimental-config-file=node.config.json` | flags and permissions from a JSON file | `bunfig.toml` |
+| `--use-system-ca` | trust the OS certificate store | same |
+| `--use-env-proxy` | honour `HTTP_PROXY`/`HTTPS_PROXY` in `fetch` and `http` | automatic |
+| `-e 'code'` / `-p 'expr'` | eval / eval and print | same |
+| `NODE_OPTIONS="--max-old-space-size=4096"` | flags via the environment | `BUN_OPTIONS` |
+
+## Test runner
+
+`node --test` finds `**/*.test.*`, `*-test.*`, `*_test.*` and `test/**` files, TypeScript included, and
+runs each file in its own process.
+
+```ts title="sum.test.ts"
+import assert from "node:assert/strict";
+import { afterEach, describe, it, mock } from "node:test";
+import { sum } from "./sum.ts";
+
+describe("sum", () => {
+  afterEach(() => mock.restoreAll());
+
+  it("adds", () => {
+    assert.equal(sum(1, 2), 3);
+    assert.deepEqual({ a: [1] }, { a: [1] });
+  });
+
+  it("rejects", async () => {
+    await assert.rejects(
+      Promise.reject(new TypeError("bad")),
+      TypeError,
+    );
+  });
+
+  it("mocks", (t) => {
+    const fn = t.mock.fn((n: number) => n * 2);
+    fn(2);
+    assert.equal(fn.mock.callCount(), 1);
+    assert.deepEqual(fn.mock.calls[0]?.arguments, [2]);
+    t.mock.method(Math, "random", () => 0.5);
+    assert.equal(Math.random(), 0.5);
+  });
+
+  it("fake timers", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    let fired = false;
+    setTimeout(() => (fired = true), 1_000);
+    t.mock.timers.tick(1_000);
+    assert.ok(fired);
+  });
+
+  it("snapshot", (t) => {
+    t.assert.snapshot({ theme: "dark" });
+  });
+
+  it.todo("edge cases");
+  it.skip("flaky on CI", () => {});
+});
+```
+
+| Flag | Does |
+| :--- | :--- |
+| `node --test` / `node --test "src/**/*.test.ts"` | run all / matching files |
+| `--watch` | rerun on change |
+| `--test-name-pattern="adds"` / `--test-skip-pattern` | filter by name |
+| `--test-only` | run only `it.only` / `{ only: true }` |
+| `--test-update-snapshots` | create or refresh `*.snapshot` files (needed on the first run) |
+| `--experimental-test-coverage` | coverage; gate with `--test-coverage-lines=80` |
+| `--experimental-test-module-mocks` | enables `mock.module()` |
+| `--test-reporter=spec\|tap\|dot\|junit\|lcov` + `--test-reporter-destination` | output format and file |
+| `--test-shard=1/3` | split across CI machines |
+| `--test-concurrency=4`, `--test-isolation=none` | parallel files / share one process |
+| `--test-timeout=10000` | per-test timeout |
+
+Assertion styles: `assert.equal`, `deepEqual`, `match`, `throws`, `rejects`, `ok`, `partialDeepStrictEqual`.
+Vitest or `bun test` offer richer matchers; see [Testing](/typescript/testing/).
+
+## Events & streams
+
+```ts
+import { EventEmitter, on, once } from "node:events";
+
+type Events = {
+  job: [id: string, ms: number];   // listener args tuple
+  error: [err: Error];
+};
+
+const bus = new EventEmitter<Events>();
+bus.on("job", (id, ms) => console.log(id, ms)); // typed
+bus.once("error", (err) => console.error(err.message));
+
+const next = once(bus, "job");      // promise of next args
+bus.emit("job", "a1", 120);
+const [id, ms] = await next;
+
+const ac = new AbortController();
+setTimeout(() => bus.emit("job", "b2", 5), 10);
+setTimeout(() => ac.abort(), 100);
+try {
+  const jobs = on(bus, "job", { signal: ac.signal });
+  for await (const [jobId] of jobs) console.log(jobId);
+} catch (err) {
+  if ((err as Error).name !== "AbortError") throw err;
+}
+console.log(id, ms);
+```
+
+| Gotcha | Fix |
+| :----- | :-- |
+| `"error"` emitted with no listener | the process crashes: always listen for `error` |
+| `MaxListenersExceededWarning` | usually a leak; `emitter.setMaxListeners(n)` only if intended |
+| Listener throws | propagates to `emit()`'s caller, synchronously |
+| `once()` / `on()` | reject on `"error"`; accept `{ signal }` |
+| Browser-style events | `EventTarget` and `CustomEvent` are globals too |
+
+```ts
+import { createReadStream, createWriteStream }
+  from "node:fs";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
+
+await pipeline(                         // handles errors
+  createReadStream("access.log"),       // and backpressure
+  createGzip(),
+  createWriteStream("access.log.gz"),
+);
+
+const upper = new Transform({
+  transform(chunk: Buffer, _enc, cb) {
+    cb(null, chunk.toString().toUpperCase());
+  },
+});
+await pipeline(Readable.from(["a", "b"]), upper,
+  process.stdout);
+
+const res = await fetch("https://example.com/big.zip");
+if (!res.ok || !res.body) {
+  throw new Error(`HTTP ${res.status}`);
+}
+await pipeline(res.body, createWriteStream("big.zip"));
+```
+
+Prefer `pipeline` over `.pipe()`, which neither forwards errors nor cleans up. Node and Web streams
+interconvert with `Readable.fromWeb` / `Readable.toWeb`. More in [Streaming](/typescript/backend/streaming/).
+
+## Error handling
+
+| Event / mode | Fires when | Default |
+| :----------- | :--------- | :------ |
+| `uncaughtException` | a sync throw reaches the top | print and exit 1 |
+| `unhandledRejection` | a rejected promise has no handler after the microtask drain | same as an uncaught exception (`throw` mode) |
+| `warning` | `process.emitWarning`, deprecations | printed to stderr |
+| `exit` | the process is about to exit | sync code only |
+| `beforeExit` | the loop is empty (not on `process.exit`) | can schedule more work |
+
+```ts
+process.on("uncaughtException", (err, origin) => {
+  console.error(`fatal (${origin})`, err);
+  process.exit(1);           // state unknown: don't continue
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandled rejection", reason);
+  process.exit(1);           // a listener disables the crash
+});
+
+process.on("exit", (code) => {
+  // sync only: no timers, no promises
+  console.log(`exiting with ${code}`);
+});
+```
+
+Log and exit: never resume after `uncaughtException`, let the supervisor (systemd, Kubernetes, Docker
+`restart`) restart the process. `err.code` (`ENOENT`, `EADDRINUSE`, `ERR_*`) is the stable thing to branch
+on; type it as `NodeJS.ErrnoException`. Promise-level patterns are in
+[Async & Promises](/typescript/language/async-promises/).
+
+## Performance & diagnostics
+
+```ts
+import { monitorEventLoopDelay, performance }
+  from "node:perf_hooks";
+import { enableCompileCache } from "node:module";
+
+enableCompileCache();                 // faster next start
+
+const t0 = performance.now();
+performance.mark("load:start");
+await new Promise((r) => setTimeout(r, 50));
+performance.measure("load", "load:start");
+console.log(`${(performance.now() - t0).toFixed(1)} ms`);
+
+const h = monitorEventLoopDelay({ resolution: 10 });
+h.enable();
+setTimeout(() => {
+  h.disable();
+  console.log("p99 lag ms", h.percentile(99) / 1e6);
+}, 1_000);
+
+const { rss, heapUsed } = process.memoryUsage();
+console.log(rss, heapUsed, process.cpuUsage());
+```
+
+| Problem | Tool |
+| :------ | :--- |
+| CPU hot path | `node --cpu-prof app.js`, open the `.cpuprofile` in Chrome DevTools; or `--inspect` and record |
+| Memory leak | `--heapsnapshot-signal=SIGUSR2`, `--heapsnapshot-near-heap-limit=2`, compare snapshots |
+| Event-loop blocking | `monitorEventLoopDelay`, `--trace-sync-io`; move CPU work to `worker_threads` |
+| Crash forensics | `--report-on-fatalerror`, `--report-uncaught-exception` write a JSON diagnostic report |
+| Slow startup | `module.enableCompileCache()` or `NODE_COMPILE_CACHE=dir` |
+| Library tracing | `node:diagnostics_channel` (http, undici, fetch publish events); OpenTelemetry via `--import` |
+| Request context | `AsyncLocalStorage` from `node:async_hooks` |
+| Many cores | one process per core (`node:cluster`, PM2, or container replicas); worker threads for CPU tasks |
+
+## Permission model
+
+Off by default. With `--permission` a process can't touch the file system, spawn processes or workers,
+load addons or use WASI unless allowed. Stable since Node 23.5 / 22.13. Network access is not
+restricted in Node 24.
+
+```sh
+node --permission \
+  --allow-fs-read=./ \
+  --allow-fs-write=./tmp/ \
+  --allow-child-process \
+  app.js
+# denied calls throw ERR_ACCESS_DENIED
+node --permission-audit app.js   # log only, don't block
+```
+
+| Flag | Allows |
+| :--- | :----- |
+| `--allow-fs-read=path` / `--allow-fs-write=path` | file access (repeatable, `*` for all, trailing `/` for a directory) |
+| `--allow-child-process` | `child_process` |
+| `--allow-worker` | `worker_threads` |
+| `--allow-addons`, `--allow-wasi` | native addons, WASI |
+| `--allow-inspector` | the inspector |
+
+```ts
+if (process.permission?.has("fs.write", "/etc")) {
+  console.log("can write /etc");
+}
+try {
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync("/etc/x", "nope");
+} catch (err) {
+  // ERR_ACCESS_DENIED under --permission
+  console.error((err as NodeJS.ErrnoException).code);
+}
+```
+
+It is a seatbelt against mistakes and compromised dependencies, not a sandbox for hostile code:
+symlinks and already-open file descriptors are outside it. Other hardening: `npm ci --ignore-scripts`,
+lockfiles, `--disallow-code-generation-from-strings`, and never `exec` with user input (use `execFile`).
+
+## Recipes
+
+### Graceful shutdown
+Finish in-flight HTTP requests and close resources when the orchestrator sends `SIGTERM`.
+
+```ts title="server.ts"
+import { createServer } from "node:http";
+import { once } from "node:events";
+
+const server = createServer((req, res) => {
+  res.setHeader("content-type", "application/json");
+  res.end(JSON.stringify({ path: req.url }));
+});
+server.listen(Number(process.env.PORT ?? 3000));
+await once(server, "listening");
+
+let closing = false;
+async function shutdown(signal: NodeJS.Signals) {
+  if (closing) return;
+  closing = true;
+  console.log(`${signal}: draining`);
+  setTimeout(() => process.exit(1), 10_000).unref();
+  server.close();                  // stop accepting
+  server.closeIdleConnections();   // drop keep-alives
+  await once(server, "close");     // in-flight finished
+  // await db.end(); await queue.close(); ...
+  process.exit(0);
+}
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.once(sig, () => void shutdown(sig));
+}
+```
+
+### Parallel child processes
+Run many commands at once, capped at the number of cores, without spawning a shell.
+
+```ts
+import { execFile } from "node:child_process";
+import { availableParallelism } from "node:os";
+import { promisify } from "node:util";
+
+const exec = promisify(execFile);
+export async function runAll(
+  cmds: [string, ...string[]][],
+  limit = availableParallelism(),
+): Promise<string[]> {
+  const out: string[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < cmds.length) {
+      const i = next++;
+      const [file, ...args] = cmds[i]!;
+      const r = await exec(file, args, { timeout: 60_000 });
+      out[i] = r.stdout;
+    }
+  };
+  const n = Math.min(limit, cmds.length);
+  await Promise.all(Array.from({ length: n }, worker));
+  return out;
+}
+
+await runAll([["node", "-v"], ["git", "--version"]]);
+```
+
+### Worker thread pool
+Keeps CPU-heavy work (hashing, parsing, image work) off the event loop with a fixed set of workers.
+
+```ts title="pool.ts"
+import { once } from "node:events";
+import { availableParallelism } from "node:os";
+import { Worker } from "node:worker_threads";
+
+export function createPool(size = availableParallelism()) {
+  const all = Array.from({ length: size }, () =>
+    new Worker(new URL("./worker.ts", import.meta.url)));
+  const idle = [...all];
+  const waiting: ((w: Worker) => void)[] = [];
+  async function run<T>(input: unknown): Promise<T> {
+    const w = idle.pop() ??
+      (await new Promise<Worker>((r) => waiting.push(r)));
+    w.postMessage(input);
+    const reply = once(w, "message"); // rejects on "error"
+    const [result] = await reply.finally(() => {
+      const next = waiting.shift();
+      if (next) next(w);
+      else idle.push(w);
+    });
+    return result as T;
+  }
+  const close = () =>
+    Promise.all(all.map((w) => w.terminate()));
+  return { run, close };
+}
+```
+
+```ts title="worker.ts"
+import { parentPort } from "node:worker_threads";
+
+const fib = (n: number): number =>
+  n < 2 ? n : fib(n - 1) + fib(n - 2);
+parentPort?.on("message", (n: number) => {
+  parentPort?.postMessage(fib(n));
+});
+```
+
+Use it as `const pool = createPool(); await pool.run<number>(35);`. For production, `piscina` adds
+task cancellation and resource limits.
+
+### CLI with `util.parseArgs`
+A typed argument parser with no dependency.
+
+```ts title="cli.ts"
+#!/usr/bin/env node
+import { parseArgs } from "node:util";
+
+const { values, positionals } = parseArgs({
+  args: process.argv.slice(2),
+  allowPositionals: true,
+  options: {
+    out: { type: "string", short: "o", default: "dist" },
+    watch: { type: "boolean", short: "w", default: false },
+    tag: { type: "string", multiple: true },
+    help: { type: "boolean", short: "h" },
+  },
+});
+// values: { out: string; watch: boolean;
+//           tag?: string[]; help?: boolean }
+
+if (values.help || positionals.length === 0) {
+  console.log("usage: build [-w] [-o dir] [--tag t] FILE");
+  process.exit(values.help ? 0 : 1);
+}
+console.log(positionals, values.out, values.tag ?? []);
+```
+
+### Reading stdin
+Read piped input whole (small JSON) or line by line (logs of any size).
+
+```ts title="read.ts"
+import { createInterface } from "node:readline";
+import { text } from "node:stream/consumers";
+
+// whole input: cat data.json | node read.ts --all
+if (process.argv[2] === "--all") {
+  const data = JSON.parse(await text(process.stdin));
+  console.log(Object.keys(data));
+} else {
+  // line by line, constant memory: tail -f app.log | ...
+  const rl = createInterface({
+    input: process.stdin,
+    crlfDelay: Infinity,          // treat \r\n as one break
+  });
+  let n = 0;
+  for await (const line of rl) {
+    if (line.includes("ERROR")) n++;
+  }
+  console.log(`${n} error lines`);
+}
+```
+
+## References
+
+- [MDN: JavaScript modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules): the ESM semantics Node follows
+- [MDN: import attributes](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import/with): `with { type: "json" }`
+- [MDN: Streams API](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API): Web streams in `fetch` and `Readable.fromWeb`
+- [Node.js 24 API docs](https://nodejs.org/docs/latest-v24.x/api/): every core module
+- [Node.js: TypeScript](https://nodejs.org/docs/latest-v24.x/api/typescript.html): type stripping rules
+- [Node.js: Modules (packages)](https://nodejs.org/docs/latest-v24.x/api/packages.html): `type`, `exports`, `imports`
+- [Node.js: CLI options](https://nodejs.org/docs/latest-v24.x/api/cli.html)
+- [Node.js: Test runner](https://nodejs.org/docs/latest-v24.x/api/test.html)
+- [Node.js: Permissions](https://nodejs.org/docs/latest-v24.x/api/permissions.html)
+- [Node.js release schedule](https://github.com/nodejs/Release): LTS dates
+- [fnm](https://github.com/Schniz/fnm), [mise](https://mise.jdx.dev/), [nvm](https://github.com/nvm-sh/nvm): version managers
+- [Volta end of maintenance](https://github.com/volta-cli/volta/issues/2080): migration advice

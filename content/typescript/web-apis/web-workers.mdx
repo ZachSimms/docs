@@ -1,0 +1,630 @@
+---
+title: Web Workers
+date: 2026-09-25
+order: 7
+---
+
+Run TypeScript off the main thread: dedicated and shared workers, messaging with structured clone
+and transfer, typed protocols, shared memory with `Atomics`, `OffscreenCanvas`, Comlink, pools, and
+bundler setup (Vite 8, Next.js 16, Bun). Service workers have their own sheet:
+[Service workers](/typescript/web-apis/service-workers/).
+
+## Worker types
+
+| Kind | Created with | Shared by | Lives until | Baseline |
+| :--- | :----------- | :-------- | :---------- | :------- |
+| Dedicated worker | `new Worker(url, opts)` | the page that made it | `terminate()`, `close()`, or page unload | widely available |
+| Module worker | `new Worker(url, { type: "module" })` | same | same | widely available (2023) |
+| Shared worker | `new SharedWorker(url, opts)` | every same-origin page or tab that names it | last connected page closes | 2026 (newly available; Chrome Android 148) |
+| Service worker | `navigator.serviceWorker.register(url)` | all pages in its scope | browser decides; event-driven | widely available |
+| Worklets | `CSS.paintWorklet`, `audioContext.audioWorklet` | the renderer / audio thread | engine-managed | varies |
+
+| In a worker | Not in a worker |
+| :---------- | :-------------- |
+| `fetch`, `WebSocket`, `EventSource`, `BroadcastChannel` | `document`, DOM nodes, `window` |
+| IndexedDB, Cache API, OPFS (plus sync access handles) | `localStorage`, `sessionStorage` |
+| `crypto.subtle`, `TextEncoder`, streams, `WebAssembly` | `alert`, `confirm` |
+| `setTimeout`, `setInterval`, `requestAnimationFrame` (dedicated) | layout, `getComputedStyle` |
+| `OffscreenCanvas`, `createImageBitmap`, WebGPU | `HTMLCanvasElement` |
+| `importScripts()` (classic only), `import` (module only) | `import` in classic workers |
+| `navigator.hardwareConcurrency`, `navigator.storage`, `location` | `navigator.clipboard` |
+
+## Creating a worker
+
+```ts title="main.ts"
+const worker = new Worker(
+  new URL("./math.worker.ts", import.meta.url),
+  { type: "module", name: "math" },
+);
+
+worker.onmessage = (e: MessageEvent<number>) => {
+  console.log("result", e.data);
+};
+worker.postMessage([1, 2, 3]);
+```
+
+```ts title="math.worker.ts"
+self.onmessage = (e: MessageEvent<number[]>) => {
+  const sum = e.data.reduce((a, b) => a + b, 0);
+  self.postMessage(sum);
+};
+```
+
+| Option | Values | Notes |
+| :----- | :----- | :---- |
+| `type` | `"classic"` (default), `"module"` | module workers get `import`/`export` and strict mode |
+| `name` | string | shows in DevTools; `self.name` inside |
+| `credentials` | `omit`, `same-origin` (default), `include` | module workers only |
+
+`new URL("./x.ts", import.meta.url)` is the pattern bundlers (Vite, webpack 5, Turbopack, Parcel, esbuild
+plugins) detect: they bundle the worker as its own entry and rewrite the URL. Worker scripts must be
+same-origin; for a CDN, load a same-origin stub or a `blob:` URL that imports the real module.
+
+## Messaging & structured clone
+
+`postMessage(value)` copies `value` with the structured clone algorithm; the other side gets a
+`MessageEvent` whose `data` is the copy. Delivery is async and in order.
+
+| Clones fine | Throws `DataCloneError` | Silently lost |
+| :---------- | :---------------------- | :------------ |
+| primitives (not `symbol`), plain objects, arrays | functions, class methods | prototype: class instances arrive as plain objects |
+| `Date`, `RegExp`, `Map`, `Set`, `BigInt` | DOM nodes | getters/setters, property descriptors |
+| `ArrayBuffer`, typed arrays, `DataView` | `symbol` values | class private fields |
+| `Blob`, `File`, `ImageData`, `ImageBitmap`, `CryptoKey` | `WeakMap`, `WeakRef`, promises | `RegExp.lastIndex` |
+| `Error` types (`TypeError`, `RangeError`, …), `DOMException` | proxies | custom `Error` subclass names (become `Error`) |
+
+A value that clones on send but fails to deserialize fires `messageerror` instead of `message`.
+Cloning a large object graph costs time on **both** threads (serialize, then deserialize); for large
+binary data, transfer it instead.
+
+```ts
+declare const worker: Worker;
+
+// also works outside workers: deep copy with the same rules
+const copy = structuredClone({
+  at: new Date(),
+  tags: new Set(["a"]),
+});
+
+worker.postMessage(copy);                   // copied
+worker.postMessage(copy, { transfer: [] }); // options form
+```
+
+## Transferables
+
+Transferring moves ownership instead of copying: near-zero cost, and the sender's object is
+**detached** (an `ArrayBuffer` gets `byteLength` 0; using it throws).
+
+| Transferable | Typical use |
+| :----------- | :---------- |
+| `ArrayBuffer` | audio samples, file bytes, pixels, WASM data |
+| `MessagePort` | a private channel between two contexts |
+| `ImageBitmap`, `OffscreenCanvas`, `VideoFrame`, `AudioData` | graphics and media pipelines |
+| `ReadableStream`, `WritableStream`, `TransformStream` | stream a response into a worker; Baseline 2026 (newly available) |
+| `MediaStreamTrack`, `RTCDataChannel`, `MIDIAccess`, `MediaSourceHandle` | media, WebRTC |
+
+```ts
+declare const worker: Worker;
+
+const pixels = new Uint8ClampedArray(1920 * 1080 * 4);
+worker.postMessage({ pixels }, [pixels.buffer]);
+pixels.byteLength; // 0: detached
+
+// ES2024: move a buffer, optionally resizing it
+const a = new ArrayBuffer(8);
+const b = a.transfer(16); // a is now detached
+```
+
+Typed arrays themselves aren't transferable; list their `.buffer`. A typed array that views part of
+a shared buffer transfers the whole buffer.
+
+## A typed message protocol
+
+`MessageEvent.data` is `any`. Pin both directions with discriminated unions in a shared file that
+imports nothing from the DOM or the worker.
+
+```ts title="protocol.ts"
+export type Req =
+  | { type: "sum"; numbers: number[] }
+  | { type: "parseCsv"; csv: string };
+
+// result type for each request type
+export type ResultOf = {
+  sum: number;
+  parseCsv: string[][];
+};
+
+export type Call = { id: number; req: Req };
+
+export type Reply =
+  | { id: number; ok: true; result: ResultOf[Req["type"]] }
+  | { id: number; ok: false; error: string };
+```
+
+```ts title="rpc.worker.ts"
+import type * as P from "./protocol.ts";
+
+function handle(req: P.Req): P.ResultOf[P.Req["type"]] {
+  switch (req.type) {
+    case "sum":
+      return req.numbers.reduce((a, b) => a + b, 0);
+    case "parseCsv":
+      return req.csv
+        .trim()
+        .split("\n")
+        .map((line) => line.split(","));
+  }
+}
+
+self.onmessage = (e: MessageEvent<P.Call>) => {
+  const { id, req } = e.data;
+  let reply: P.Reply;
+  try {
+    reply = { id, ok: true, result: handle(req) };
+  } catch (err) {
+    reply = { id, ok: false, error: String(err) };
+  }
+  self.postMessage(reply);
+};
+```
+
+The switch is exhaustive: add a `Req` member and `handle` stops compiling until you handle it.
+The page side, with request ids and promises, is the first recipe below.
+
+### TypeScript setup
+
+`lib.dom` and `lib.webworker` declare the same globals differently, so one program can't include
+both. Give worker files their own `tsconfig`.
+
+```tree title="split lib settings"
+src/
+  workers/
+    tsconfig.json   # lib: es2024, webworker
+    rpc.worker.ts
+  protocol.ts       # types only, no globals
+  main.ts
+tsconfig.json       # lib: es2024, dom; excludes workers/
+```
+
+```json title="src/workers/tsconfig.json"
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "webworker"],
+    "types": []
+  },
+  "include": ["./**/*.ts", "../protocol.ts"]
+}
+```
+
+| Worker kind | Global `self` type | Fix in the file |
+| :---------- | :----------------- | :-------------- |
+| Dedicated | `WorkerGlobalScope & typeof globalThis`; `postMessage`, `onmessage` are globals | nothing |
+| Shared | same, but no `onconnect` | `declare const self: SharedWorkerGlobalScope;` |
+| Service | same, but no `clients`, `registration` | `declare const self: ServiceWorkerGlobalScope;` |
+
+The `declare const self` trick needs the file to be a module (any `import`/`export`). With
+`skipLibCheck: true`, a single `/// <reference lib="webworker" />` in a DOM project hides the
+conflicts, but DOM globals like `document` then type-check inside the worker and fail at runtime.
+
+## Errors & termination
+
+| Where it goes wrong | What the page sees |
+| :------------------ | :----------------- |
+| script 404, bad MIME type, syntax error at load | `error` event (a plain `Event`) on the `Worker` |
+| uncaught exception in the worker | `ErrorEvent` on the `Worker` (`message`, `filename`, `lineno`); worker keeps running |
+| unhandled promise rejection in the worker | nothing: `unhandledrejection` fires only inside the worker |
+| message can't be deserialized | `messageerror` |
+| `worker.terminate()` | worker stops at once; no cleanup, pending replies never arrive |
+| `self.close()` inside | worker finishes the current task, then stops |
+
+```ts
+declare const worker: Worker;
+
+worker.addEventListener("error", (e) => {
+  if (e instanceof ErrorEvent) {
+    console.error(`${e.filename}:${e.lineno} ${e.message}`);
+  } else {
+    console.error("worker failed to load");
+  }
+  e.preventDefault(); // suppress the console duplicate
+});
+worker.addEventListener("messageerror", () => {
+  console.error("unclonable message");
+});
+```
+
+Terminate workers you no longer need: an idle worker still holds its own heap (several MB). In
+React, create the worker in `useEffect` and `terminate()` it in the cleanup.
+
+## Shared workers
+
+One instance per origin and URL (plus `name`), shared by all tabs: good for one WebSocket or one
+database connection per user instead of per tab. Baseline 2026 (newly available).
+
+```ts title="main.ts"
+const shared = new SharedWorker(
+  new URL("./hub.shared-worker.ts", import.meta.url),
+  { type: "module", name: "hub" },
+);
+shared.port.onmessage = (e: MessageEvent<number>) => {
+  console.log("tabs connected:", e.data);
+};
+shared.port.postMessage("hello");
+```
+
+```ts title="hub.shared-worker.ts"
+declare const self: SharedWorkerGlobalScope;
+
+const ports = new Set<MessagePort>();
+
+self.onconnect = (e: MessageEvent) => {
+  const port = e.ports[0];
+  if (!port) return;
+  ports.add(port);
+  port.onmessage = () => {
+    for (const p of ports) p.postMessage(ports.size);
+  };
+};
+
+export {};
+```
+
+Setting `port.onmessage` starts the port; with `addEventListener("message", …)` call
+`port.start()`. There is no disconnect event: have tabs send "bye" on `pagehide`, or prune ports
+that stop answering. Debug at `chrome://inspect/#workers`.
+
+## SharedArrayBuffer & Atomics
+
+Real shared memory between threads. It needs a **cross-origin isolated** page, which the server
+enables with two headers on the document:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+| Piece | Detail |
+| :---- | :----- |
+| `crossOriginIsolated` | `true` when both headers are in effect; check before using `SharedArrayBuffer` |
+| COEP `require-corp` | every cross-origin subresource needs CORS or `Cross-Origin-Resource-Policy` |
+| COEP `credentialless` | alternative: cross-origin no-CORS loads go without cookies; check support |
+| COOP `same-origin` | breaks `window.opener` links with cross-origin popups (OAuth popups!) |
+| Baseline | `SharedArrayBuffer` widely available (2021); `Atomics.waitAsync` 2025 |
+
+```ts
+declare const worker: Worker;
+
+if (!crossOriginIsolated) {
+  throw new Error("SharedArrayBuffer needs COOP + COEP");
+}
+const sab = new SharedArrayBuffer(4); // room for one Int32
+const flag = new Int32Array(sab);
+worker.postMessage(sab); // shared, neither copied nor moved
+
+Atomics.store(flag, 0, 1);
+Atomics.notify(flag, 0); // wake a worker blocked in wait()
+```
+
+| `Atomics` | Use |
+| :-------- | :-- |
+| `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `exchange` | race-free reads and writes |
+| `compareExchange(ta, i, expected, value)` | lock-free updates, spinlocks |
+| `wait(ta, i, value, timeout?)` | block until notified; **throws on the main thread** |
+| `waitAsync(ta, i, value, timeout?)` | promise version, allowed on the main thread |
+| `notify(ta, i, count?)` | wake waiters |
+
+Only integer typed arrays (`Int32Array`, `BigInt64Array`) work with `wait`/`notify`.
+
+## OffscreenCanvas
+
+Hand a canvas to a worker and render there, so heavy drawing never blocks input. Widely available
+(2023).
+
+```ts title="main.ts"
+declare const worker: Worker;
+
+const canvas = document.querySelector("canvas")!;
+const offscreen = canvas.transferControlToOffscreen();
+worker.postMessage({ canvas: offscreen }, [offscreen]);
+```
+
+```ts title="render.worker.ts"
+type Init = { canvas: OffscreenCanvas };
+
+self.onmessage = (e: MessageEvent<Init>) => {
+  const { canvas } = e.data;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const frame = (t: number) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(100 + Math.sin(t / 300) * 80, 60, 40, 40);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+};
+```
+
+After the transfer the page can't draw on or resize that canvas's bitmap; send size changes as
+messages. Drawing APIs: [Canvas 2D](/typescript/web-apis/canvas-2d/), [WebGL](/typescript/web-apis/webgl/),
+[WebGPU](/typescript/web-apis/webgpu/).
+
+## Comlink
+
+[Comlink](https://github.com/GoogleChromeLabs/comlink) (4.x, ~1.1 kB) turns a worker into an async
+object: `expose(obj)` on one side, `wrap<T>(worker)` on the other, and every call returns a
+promise. `bun add comlink`.
+
+| API | Use |
+| :-- | :-- |
+| `expose(value, endpoint?)` | serve an object or function; `endpoint` defaults to `self` |
+| `wrap<T>(endpoint)` | returns `Remote<T>`: same shape, every member async |
+| `transfer(value, transferables)` | mark an argument or return value for transfer |
+| `proxy(value)` | pass a callback or object by reference (progress callbacks) |
+| `proxy[releaseProxy]()` | free the remote side; call when done |
+| `endpoint.port` of a `SharedWorker` | wrap it; `expose` inside `onconnect` |
+
+`Remote<T>` is best-effort: overloads and generics sometimes need `as unknown as Remote<X>`. See the
+Comlink recipe below.
+
+## Worker pools
+
+| Question | Answer |
+| :------- | :----- |
+| How many workers? | `navigator.hardwareConcurrency - 1` (leave the main thread a core), capped at ~4–8 |
+| Startup cost | tens of ms and a few MB each: create once, reuse |
+| Task size | at least a few ms of work; tiny tasks lose to messaging overhead |
+| Cancellation | `terminate()` the busy worker and spawn a replacement |
+| Libraries | `workerpool`, `threads.js`, `poolifier-web-worker`; or the recipe below |
+
+## Bundlers & frameworks
+
+| Tool | How to load a worker |
+| :--- | :------------------- |
+| Vite 8 | `new Worker(new URL("./w.ts", import.meta.url), { type: "module" })`; or `import W from "./w.ts?worker"` then `new W()`; `?sharedworker`, `?worker&inline`, `?worker&url` |
+| Next.js 16 (Turbopack and webpack) | `new URL(..., import.meta.url)` pattern inside a Client Component effect; `turbopackWorkerAssetPrefix` overrides the worker asset prefix |
+| webpack 5 | same `new URL` pattern; `worker-loader` is obsolete |
+| esbuild / Bun.build | build the worker as a separate entry point and pass its URL |
+
+Vite and Turbopack only detect the pattern when `new URL(...)` is written inline in the constructor
+and the options are string literals.
+
+```tsx title="use-worker.tsx"
+"use client";
+import { useEffect, useRef } from "react";
+
+export function useWorker(): React.RefObject<Worker | null> {
+  const ref = useRef<Worker | null>(null);
+  useEffect(() => {
+    const w = new Worker(
+      new URL("./rpc.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    ref.current = w;
+    return () => w.terminate(); // Strict Mode runs this too
+  }, []);
+  return ref;
+}
+```
+
+Workers can't be created during server rendering; keep them in effects or event handlers. For
+COOP/COEP in Next.js, set them in `headers()` in `next.config.ts`; in Vite, `server.headers`.
+
+## Bun & Node workers
+
+Bun implements the same Web `Worker` API on the server, with TypeScript and ESM out of the box. See
+[Bun](/typescript/runtime-tooling/bun/).
+
+```ts title="bun-main.ts"
+const worker = new Worker(
+  new URL("./hash.worker.ts", import.meta.url).href,
+  { smol: true }, // smaller heap
+);
+worker.addEventListener("open", () => console.log("ready"));
+worker.onmessage = (e: MessageEvent<string>) => {
+  console.log(e.data);
+  worker.terminate();
+};
+worker.postMessage("hello");
+worker.unref(); // don't keep the process alive for it
+```
+
+| | Browser | Bun | Node `worker_threads` |
+| :-- | :------ | :-- | :-------------------- |
+| API | `Worker`, `self.onmessage` | same Web API (plus `node:worker_threads`) | `new Worker(file)`, `parentPort.on("message")` |
+| TypeScript | via bundler | runs `.ts` directly | Node 23.6+ strips types; else a loader |
+| `type: "module"` | required for ESM | not needed | by file extension / `package.json` |
+| Relative path resolves from | the page URL | the project root; use `import.meta.url` | the cwd; use `new URL(..., import.meta.url)` |
+| Extras | `SharedWorker`, `OffscreenCanvas` | `smol`, `preload`, `ref`/`unref`, `open` and `close` events | `resourceLimits`, `workerData` |
+| Status | stable | Bun marks `Worker` experimental (mainly termination) | stable |
+
+In a Bun worker file, `declare var self: Worker;` gives `self.postMessage` a type without the
+`webworker` lib.
+
+## Pitfalls
+
+| Trap | Fix |
+| :--- | :-- |
+| `import` fails in the worker | pass `{ type: "module" }` |
+| Worker URL 404s after build | use the `new URL("./x.ts", import.meta.url)` pattern inline |
+| Class instance arrives without methods | send plain data; rebuild the instance on the other side |
+| Main thread janks while posting | a huge object is being cloned: transfer an `ArrayBuffer` or send less |
+| Buffer is empty after `postMessage` | it was transferred; copy first with `buf.slice(0)` if you still need it |
+| `SharedArrayBuffer is not defined` | page is not cross-origin isolated (COOP/COEP) |
+| `Atomics.wait` throws on the main thread | use `Atomics.waitAsync`, or wait in a worker |
+| Promise never settles | the worker threw or was terminated; reject pending calls on `error` / terminate |
+| Duplicate workers in React dev | Strict Mode mounts twice; terminate in the effect cleanup |
+| DOM types inside worker code | separate `tsconfig` with `lib: ["webworker"]` |
+
+## Recipes
+
+### Typed request/response client
+Call a worker like an async function, with the `protocol.ts` types above.
+
+```ts title="rpc-client.ts"
+import type * as P from "./protocol.ts";
+type Out<R extends P.Req> = P.ResultOf[R["type"]];
+type Waiter = PromiseWithResolvers<any>;
+export function createRpc(worker: Worker) {
+  let nextId = 0;
+  const pending = new Map<number, Waiter>();
+  worker.onmessage = (e: MessageEvent<P.Reply>) => {
+    const r = e.data;
+    const p = pending.get(r.id);
+    pending.delete(r.id);
+    if (r.ok) p?.resolve(r.result);
+    else p?.reject(new Error(r.error));
+  };
+  worker.onerror = (e) => {
+    for (const p of pending.values()) p.reject(e);
+    pending.clear();
+  };
+  return <R extends P.Req>(req: R): Promise<Out<R>> => {
+    const id = nextId++;
+    const p = Promise.withResolvers<Out<R>>();
+    pending.set(id, p);
+    worker.postMessage({ id, req } satisfies P.Call);
+    return p.promise;
+  };
+}
+```
+
+```ts
+import { createRpc } from "./rpc-client.ts";
+
+const call = createRpc(
+  new Worker(new URL("./rpc.worker.ts", import.meta.url), {
+    type: "module",
+  }),
+);
+const total = await call({ type: "sum", numbers: [1, 2] });
+//    ^? number
+```
+
+### Worker pool
+Spread many independent jobs across a fixed set of workers, queueing the rest; `make` keeps the
+`new Worker(new URL(...))` pattern inline for the bundler.
+
+```ts title="pool.ts"
+type Job<I, O> = [I, PromiseWithResolvers<O>];
+
+export function createPool<I, O>(make: () => Worker, n = 4) {
+  const all = Array.from({ length: n }, make);
+  const idle = [...all];
+  const queue: Job<I, O>[] = [];
+  const pump = () => {
+    while (idle.length && queue.length) {
+      const w = idle.pop()!;
+      const [input, job] = queue.shift()!;
+      const free = () => (idle.push(w), pump());
+      w.onmessage = (e) => (job.resolve(e.data), free());
+      w.onerror = (e) => (job.reject(e), free());
+      w.postMessage(input);
+    }
+  };
+  const run = (input: I) => {
+    const job = Promise.withResolvers<O>();
+    queue.push([input, job]);
+    pump();
+    return job.promise;
+  };
+  const close = () => all.forEach((w) => w.terminate());
+  return { run, close };
+}
+```
+
+```ts
+import { createPool } from "./pool.ts";
+
+const pool = createPool<number[], number>(
+  () =>
+    new Worker(new URL("./sum.worker.ts", import.meta.url), {
+      type: "module",
+    }),
+  Math.max(1, navigator.hardwareConcurrency - 1),
+);
+const sums = await Promise.all(
+  [[1, 2], [3, 4], [5, 6]].map((xs) => pool.run(xs)),
+);
+pool.close();
+```
+
+### Transfer an ArrayBuffer round trip
+Process a large binary payload in a worker without copying it either way.
+
+```ts title="gray.worker.ts"
+type Msg = { buf: ArrayBuffer };
+
+self.onmessage = (e: MessageEvent<Msg>) => {
+  const px = new Uint8ClampedArray(e.data.buf);
+  for (let i = 0; i < px.length; i += 4) {
+    const [r = 0, g = 0, b = 0] = px.subarray(i, i + 3);
+    const y = 0.299 * r + 0.587 * g + 0.114 * b;
+    px[i] = px[i + 1] = px[i + 2] = y;
+  }
+  self.postMessage({ buf: px.buffer }, [px.buffer]);
+};
+```
+
+```ts
+declare const ctx: CanvasRenderingContext2D;
+declare const worker: Worker;
+
+const img = ctx.getImageData(0, 0, 800, 600);
+const buf = img.data.buffer;
+worker.postMessage({ buf }, [buf]); // img.data now empty
+
+type Msg = { buf: ArrayBuffer };
+worker.onmessage = (e: MessageEvent<Msg>) => {
+  const data = new Uint8ClampedArray(e.data.buf);
+  ctx.putImageData(new ImageData(data, 800, 600), 0, 0);
+};
+```
+
+### Comlink
+Expose an object from the worker and call it with full types, including a progress callback.
+
+```ts title="api.worker.ts"
+import * as Comlink from "comlink";
+
+const api = {
+  async primes(max: number, report: (p: number) => void) {
+    const out: number[] = [];
+    for (let n = 2; n <= max; n++) {
+      if (out.every((p) => n % p !== 0)) out.push(n);
+      if (n % 10_000 === 0) await report(n / max);
+    }
+    return out;
+  },
+};
+export type Api = typeof api;
+Comlink.expose(api);
+```
+
+```ts
+import * as Comlink from "comlink";
+import type { Api } from "./api.worker.ts";
+
+const worker = new Worker(
+  new URL("./api.worker.ts", import.meta.url),
+  { type: "module" },
+);
+const api = Comlink.wrap<Api>(worker);
+const onProgress = (p: number) => console.log(`${p * 100}%`);
+const primes = await api.primes(
+  100_000,
+  Comlink.proxy(onProgress), // callbacks go by reference
+);
+api[Comlink.releaseProxy]();
+worker.terminate();
+```
+
+## References
+
+- MDN: [Web Workers API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), [Using Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers), [`Worker()`](https://developer.mozilla.org/en-US/docs/Web/API/Worker/Worker), [`SharedWorker`](https://developer.mozilla.org/en-US/docs/Web/API/SharedWorker)
+- MDN: [Structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), [Transferable objects](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Transferable_objects), [Functions and classes available to workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Functions_and_classes_available_to_workers)
+- MDN: [`SharedArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer), [`Atomics`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics), [`crossOriginIsolated`](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated), [`OffscreenCanvas`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas)
+- [HTML Standard: Workers](https://html.spec.whatwg.org/multipage/workers.html)
+- web.dev: [Making your website cross-origin isolated using COOP and COEP](https://web.dev/articles/coop-coep)
+- [Comlink](https://github.com/GoogleChromeLabs/comlink)
+- Vite: [Web Workers](https://vite.dev/guide/features#web-workers); Bun: [Workers](https://bun.com/docs/runtime/workers); Node.js: [`worker_threads`](https://nodejs.org/api/worker_threads.html)

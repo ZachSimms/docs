@@ -1,0 +1,639 @@
+---
+title: Objects
+date: 2026-09-25
+order: 2
+---
+
+Plain JavaScript objects and their typed counterparts: creating, reading, copying, iterating, locking down,
+comparing and serialising them, then the TypeScript side (shapes, index signatures, mapped types, immutability).
+Basic types and generics are on [Fundamentals](/typescript/language/fundamentals/).
+
+## Creating
+
+```ts
+const name = "Ada";
+const key = "role";
+
+const user = {
+  name,                        // shorthand for name: name
+  [key]: "admin",              // computed key
+  "first-name": "Ada",         // quoted key
+  greet() {                    // method shorthand
+    return `Hi ${this.name}`;
+  },
+};
+```
+
+| Form                                 | Result                                          |
+| :----------------------------------- | :---------------------------------------------- |
+| `{ a: 1 }`                           | plain object, prototype `Object.prototype`      |
+| `{ a }`                              | shorthand property from variable `a`            |
+| `{ [expr]: v }`                      | computed key (string, number or symbol)         |
+| `{ m() {} }`                         | method shorthand (can use `super`)              |
+| `{ __proto__: p }`                   | literal with prototype `p`                      |
+| `Object.create(p)`                   | empty object with prototype `p`                 |
+| `Object.create(null)`                | no prototype: safe dictionary, no `toString`    |
+| `Object.fromEntries(iterable)`       | from `[key, value]` pairs (arrays, a `Map`)     |
+| `Object.groupBy(items, fn)`          | null-prototype object of arrays (ES2024)        |
+| `new Foo()`                          | instance of a class, see [OOP](/typescript/language/oop/) |
+
+```ts
+const proto = { hello() { return "hi"; } };
+const child = Object.create(proto) as typeof proto;
+child.hello();
+
+const dict: Record<string, number> = Object.create(null);
+dict["toString"] = 1;  // no clash with Object.prototype
+
+const prices = new Map([["apple", 1.2], ["pear", 0.8]]);
+const obj = Object.fromEntries(prices);
+// { [k: string]: number }
+
+const doubled = Object.fromEntries(
+  Object.entries(obj).map(([k, v]) => [k, v * 2]),
+);
+
+const people = [
+  { name: "Ada", team: "core" },
+  { name: "Lin", team: "web" },
+];
+const byTeam = Object.groupBy(people, (p) => p.team);
+// Partial<Record<string, { name: string; team: string }[]>>
+```
+
+<Note kind="info">`Object.groupBy` / `Map.groupBy` are Baseline 2024 and need `lib: ["es2024"]` or later in
+tsconfig.</Note>
+
+## Accessing & destructuring
+
+```ts
+type User = {
+  name: string;
+  address?: { city?: string };
+  tags?: string[];
+  onSave?: () => void;
+};
+declare const u: User;
+
+u.name;               // dot access
+u["name"];            // bracket access (any expression)
+u.address?.city;      // undefined if address is nullish
+u.tags?.[0];          // optional element access
+u.onSave?.();         // call only if defined
+
+const city = u.address?.city ?? "Unknown";
+
+const {
+  name,
+  address: { city: c = "?" } = {},  // nested + defaults
+  ...rest                            // everything else
+} = u;
+```
+
+| Operator  | Falls back when left side is                   | Example              |
+| :-------- | :--------------------------------------------- | :------------------- |
+| `a ?? b`  | `null` or `undefined`                          | `count ?? 10` keeps `0` |
+| `a \|\| b` | any falsy (`0`, `""`, `false`, `NaN`, nullish) | `name \|\| "anon"`  |
+| `a ??= b` | assign only if `a` is nullish                  | `opts.retries ??= 3` |
+| `a \|\|= b` | assign only if `a` is falsy                  | `title \|\|= "Untitled"` |
+| `a &&= b` | assign only if `a` is truthy                   | `user &&= clean(user)` |
+
+### Checking for a key
+
+| Check                        | Own only | Includes inherited | Notes                               |
+| :--------------------------- | :------- | :----------------- | :---------------------------------- |
+| `Object.hasOwn(o, k)`        | yes      | no                 | preferred (ES2022)                  |
+| `o.hasOwnProperty(k)`        | yes      | no                 | fails on `Object.create(null)`      |
+| `k in o`                     | no       | yes                | also narrows unions in TS           |
+| `o[k] !== undefined`         | no       | yes                | wrong when the value is `undefined` |
+
+```ts
+const settings: Record<string, unknown> = { theme: "dark" };
+if (Object.hasOwn(settings, "theme")) {
+  console.log(settings.theme);
+}
+```
+
+## Copying & merging
+
+```ts
+const base = { a: 1, nested: { b: 2 } };
+
+const copy = { ...base };               // shallow
+const merged = { ...base, a: 9, c: 3 }; // later keys win
+const assigned = Object.assign({}, base, { c: 3 });
+
+copy.nested.b = 99;       // also changes base.nested.b!
+
+const deep = structuredClone(base);
+deep.nested.b = 1;        // base untouched
+
+// Conditional spread
+const flag = true;
+const opts = { ...(flag && { verbose: true }) };
+```
+
+| Technique              | Depth   | Prototype kept  | Getters       | Symbol keys | `Date` / `Map` / `Set` | Cycles | Functions |
+| :--------------------- | :------ | :-------------- | :------------ | :---------- | :-------------------- | :----- | :-------- |
+| `{ ...o }`             | shallow | no              | value copied  | yes         | shared refs           | n/a    | shared refs |
+| `Object.assign(t, o)`  | shallow | target's        | value copied; runs `t`'s setters | yes | shared refs | n/a | shared refs |
+| `structuredClone(o)`   | deep    | no (plain objects) | value copied | dropped   | cloned                | yes    | throw `DataCloneError` |
+| `JSON.parse(JSON.stringify(o))` | deep | no       | value copied  | dropped     | `Date` to string, `Map` to `{}` | throws | dropped |
+
+- Spread and `Object.assign` copy only **own enumerable** properties.
+- `Object.assign` mutates and returns its first argument; spread always builds a new object.
+- `structuredClone` loses class identity (instances come back as plain objects) and property descriptors.
+  Baseline since 2022, also in Node 17+ and Bun.
+
+## Iterating
+
+```ts
+const scores = { ada: 3, lin: 5 };
+
+Object.keys(scores);     // string[]  ["ada", "lin"]
+Object.values(scores);   // number[]  [3, 5]
+Object.entries(scores);  // [string, number][]
+
+for (const [who, n] of Object.entries(scores)) {
+  console.log(who, n.toFixed(1));
+}
+
+// Typed keys: only safe if no extra keys exist at runtime
+const keys = Object.keys(scores) as (keyof typeof scores)[];
+```
+
+| API                              | Own | Inherited | Non-enumerable | Symbols |
+| :------------------------------- | :-- | :-------- | :------------- | :------ |
+| `for…in`                         | yes | **yes**   | no             | no      |
+| `Object.keys / values / entries` | yes | no        | no             | no      |
+| `Object.getOwnPropertyNames`     | yes | no        | yes            | no      |
+| `Object.getOwnPropertySymbols`   | yes | no        | yes            | only    |
+| `Reflect.ownKeys`                | yes | no        | yes            | yes     |
+
+### `for…in` pitfalls
+
+- Walks inherited enumerable keys too; guard with `Object.hasOwn` or use `Object.keys`.
+- Keys are always strings, even for arrays (`"0"`, `"1"`), and it may include extra array properties.
+- TypeScript types the loop variable as `string`, so `obj[key]` needs a cast or an index signature.
+
+### Ordering rules
+
+Own keys come back in a fixed order:
+
+1. integer-like keys (`"0"`, `"42"`) in ascending numeric order,
+2. other string keys in insertion order,
+3. symbols in insertion order (only from `Reflect.ownKeys` / `getOwnPropertySymbols`).
+
+```ts
+const o = { b: 1, 2: "x", a: 2, 1: "y" };
+Object.keys(o);  // ["1", "2", "b", "a"]
+```
+
+Need insertion order for numeric-looking keys? Use a `Map`.
+
+`Object.keys` returns `string[]`, not `(keyof T)[]`: TypeScript types are open, so a value of type
+`{ a: number }` may carry more keys at runtime.
+
+## Descriptors, freeze & seal
+
+Every property has a descriptor. Data properties: `value`, `writable`. Accessor properties: `get`, `set`. Both:
+`enumerable`, `configurable`.
+
+```ts
+const acct = { id: 1 };
+
+Object.defineProperty(acct, "secret", {
+  value: "s3cr3t",
+  enumerable: false,   // hidden from keys / JSON / spread
+  writable: false,
+  configurable: false,
+});
+
+Object.getOwnPropertyDescriptor(acct, "id");
+// { value: 1, writable: true, enumerable: true,
+//   configurable: true }
+Object.keys(acct);  // ["id"]
+```
+
+`defineProperty` defaults every flag to `false`; plain assignment sets them all to `true`.
+
+| Operation              | `preventExtensions` | `seal`       | `freeze`     |
+| :--------------------- | :------------------ | :----------- | :----------- |
+| Add properties         | no                  | no           | no           |
+| Delete properties      | yes                 | no           | no           |
+| Change values          | yes                 | yes          | no           |
+| Reconfigure descriptors | yes                | no           | no           |
+| Change prototype       | no                  | no           | no           |
+| Check                  | `!Object.isExtensible` | `Object.isSealed` | `Object.isFrozen` |
+| TS return type         | `T`                 | `T`          | `Readonly<T>` |
+
+```ts
+const cfg = Object.freeze({ port: 80, db: { host: "x" } });
+// @ts-expect-error readonly property
+cfg.port = 81;
+cfg.db.host = "y";  // allowed: freeze is shallow
+```
+
+Writes to frozen or sealed objects are silently ignored in sloppy scripts and throw `TypeError` in strict mode.
+ES modules and class bodies are always strict.
+
+## Equality
+
+Objects compare by **reference**; two identical-looking literals are never `===`.
+
+| Comparison         | `==`  | `===` | `Object.is` | SameValueZero (`Map`, `Set`, `includes`) |
+| :----------------- | :---- | :---- | :---------- | :--------------------------------------- |
+| `NaN`, `NaN`       | false | false | true        | true                                     |
+| `0`, `-0`          | true  | true  | false       | true                                     |
+| `null`, `undefined` | true | false | false       | false                                    |
+| `"1"`, `1`         | true  | false | false       | false                                    |
+| `{}`, `{}`         | false | false | false       | false                                    |
+| `a`, `a` (same ref) | true | true  | true        | true                                     |
+
+### Structural comparison
+
+There is no built-in deep equality. Options:
+
+| Tool                                  | Where           |
+| :------------------------------------ | :-------------- |
+| `util.isDeepStrictEqual(a, b)`        | Node (`node:util`) |
+| `Bun.deepEquals(a, b)`                | Bun             |
+| `expect(a).toEqual(b)`                | test runners    |
+| `JSON.stringify(a) === JSON.stringify(b)` | quick hack; key order matters, drops `undefined` |
+
+```ts title="shallow-equal.ts"
+function shallowEqual(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every(
+    (k) => Object.hasOwn(b, k) && Object.is(a[k], b[k]),
+  );
+}
+```
+
+`shallowEqual` is how React's memo and many state libraries decide whether props changed.
+
+## Getters & setters
+
+```ts
+const temp = {
+  celsius: 20,
+  get fahrenheit() {
+    return (this.celsius * 9) / 5 + 32;
+  },
+  set fahrenheit(f: number) {
+    this.celsius = ((f - 32) * 5) / 9;
+  },
+};
+temp.fahrenheit = 212;   // temp.celsius === 100
+
+class Size {
+  #px = 0;
+  get px(): number { return this.#px; }
+  // setter may accept a wider type (TS 5.1+)
+  set px(v: number | string) { this.#px = Number(v); }
+  get label() { return `${this.#px}px`; }  // getter only
+}
+const s = new Size();
+s.px = "42";             // s.px is number
+// @ts-expect-error getter-only is readonly
+s.label = "x";
+```
+
+| Fact                      | Detail                                                      |
+| :------------------------ | :---------------------------------------------------------- |
+| Getter only               | typed `readonly`; assignment throws in strict mode          |
+| Spread / `Object.assign`  | call the getter and copy the **value**                      |
+| `JSON.stringify`          | serialises own enumerable getters on literals, not class ones (they live on the prototype) |
+| Different get/set types   | allowed since 5.1; the getter type need not be assignable to the setter type |
+| `Object.defineProperty`   | `{ get() {}, set(v) {} }` for accessors on existing objects |
+
+## Map, Set, WeakMap vs objects
+
+| Need                                        | Use            |
+| :------------------------------------------ | :------------- |
+| Fixed, known shape (records, DTOs, options) | object / class |
+| Dynamic keys, frequent add/delete           | `Map`          |
+| Keys that are objects, numbers, anything    | `Map`          |
+| Unique values, membership tests             | `Set`          |
+| Metadata attached to objects you don't own  | `WeakMap`      |
+| "Have I seen this object?" without leaks    | `WeakSet`      |
+| JSON round trip                             | object         |
+
+| Feature        | Object                           | `Map`                         |
+| :------------- | :------------------------------- | :---------------------------- |
+| Key types      | `string`, `symbol` (numbers coerced) | any value, by SameValueZero |
+| Order          | integer keys first, then insertion | insertion                   |
+| Size           | `Object.keys(o).length`          | `m.size`                      |
+| Iteration      | via `Object.entries`             | directly iterable             |
+| Inherited keys | yes, unless `Object.create(null)` | none                         |
+| JSON           | native                           | convert with `Object.fromEntries` |
+| Hot add/delete | slower (shape changes)           | optimised for it              |
+
+```ts
+const visits = new Map<string, number>();
+visits.set("/", (visits.get("/") ?? 0) + 1);
+for (const [path, n] of visits) console.log(path, n);
+
+const meta = new WeakMap<object, { seen: number }>();
+const el = {};
+meta.set(el, { seen: Date.now() });  // gone when el is GC'd
+```
+
+`WeakMap` / `WeakSet` keys must be objects (or non-registered symbols). They are not iterable and have no
+`size`.
+
+### Set methods (ES2025)
+
+Baseline 2024; in TypeScript they need `lib: ["esnext"]` (5.5+). Each takes any *set-like* argument (`size`,
+`has`, `keys`), so a `Map` works but an array does not. The first four return a new `Set`.
+
+| Method                       | Result                             |
+| :--------------------------- | :--------------------------------- |
+| `a.union(b)`                 | in `a` or `b`                      |
+| `a.intersection(b)`          | in both                            |
+| `a.difference(b)`            | in `a`, not in `b`                 |
+| `a.symmetricDifference(b)`   | in exactly one                     |
+| `a.isSubsetOf(b)`            | every element of `a` is in `b`     |
+| `a.isSupersetOf(b)`          | every element of `b` is in `a`     |
+| `a.isDisjointFrom(b)`        | no shared elements                 |
+
+```ts
+const frontend = new Set(["ts", "css", "html"]);
+const backend = new Set(["ts", "sql"]);
+
+frontend.union(backend);        // ts, css, html, sql
+frontend.intersection(backend); // ts
+frontend.difference(backend);   // css, html
+frontend.isDisjointFrom(new Set(["go"]));  // true
+
+const unique = [...new Set([1, 1, 2])];     // [1, 2]
+```
+
+## JSON
+
+```ts
+const payload = {
+  id: 1,
+  at: new Date(0),
+  note: undefined,
+  big: 10n,
+};
+
+const text = JSON.stringify(
+  payload,
+  (_key, value) =>
+    typeof value === "bigint" ? value.toString() : value,
+  2, // indent
+);
+// "note" is gone, "at" is "1970-01-01T00:00:00.000Z"
+
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const back = JSON.parse(text, (_key, value) =>
+  typeof value === "string" && ISO.test(value)
+    ? new Date(value)
+    : value,
+) as unknown;
+```
+
+| Value                    | In an object       | In an array | Top level          |
+| :----------------------- | :----------------- | :---------- | :----------------- |
+| `undefined`, function, symbol | key omitted   | `null`      | returns `undefined` |
+| `NaN`, `Infinity`        | `null`             | `null`      | `"null"`           |
+| `Date`                   | ISO string (`toJSON`) | ISO string | ISO string       |
+| `Map`, `Set`             | `{}`               | `{}`        | `"{}"`             |
+| `BigInt`                 | throws `TypeError` | throws      | throws             |
+| circular reference       | throws `TypeError` | throws      | throws             |
+| symbol keys, non-enumerable props | ignored   | n/a         | n/a                |
+| object with `toJSON()`   | its return value   | same        | same               |
+
+| Argument             | Purpose                                                          |
+| :------------------- | :--------------------------------------------------------------- |
+| replacer function    | `(key, value) => newValue`; return `undefined` to drop the key    |
+| replacer array       | allow-list of keys, e.g. `["id", "name"]`                         |
+| `space`              | number (max 10) or string used to indent                          |
+| reviver              | `(key, value) => newValue`, called bottom-up after parsing         |
+
+Replacers see `Date` values *after* `toJSON` has turned them into strings. `JSON.parse` returns `any`: type it as
+`unknown` and validate.
+
+```ts
+import { z } from "zod";
+
+const Entry = z.object({
+  id: z.number(),
+  at: z.coerce.date(),
+  tags: z.array(z.string()).default([]),
+});
+type Entry = z.infer<typeof Entry>;
+
+const json = '{"id":1,"at":"2026-01-01"}';
+const entry: Entry = Entry.parse(JSON.parse(json));
+// entry.at is a Date, entry.tags is []
+```
+
+## Typing objects
+
+For the `type` vs `interface` comparison see [Fundamentals](/typescript/language/fundamentals/#type-aliases-vs-interfaces).
+
+```ts
+interface Product {
+  readonly sku: string;      // no reassignment
+  name: string;
+  price?: number;            // optional
+  tags: readonly string[];   // readonly array
+}
+
+// Index signature: arbitrary string keys
+interface HeaderMap {
+  [name: string]: string;
+  "content-type": string;    // known keys must match it
+}
+
+// Record: finite or open key sets
+type Role = "admin" | "user";
+const perms: Record<Role, string[]> = {
+  admin: ["*"],
+  user: ["read"],
+};
+const cache: Record<string, number> = {};
+```
+
+| Type                        | Accepts                                            |
+| :-------------------------- | :------------------------------------------------- |
+| `object`                    | any non-primitive                                  |
+| `{}`                        | anything except `null` / `undefined` (even `1`)    |
+| `Object`                    | same as `{}`, avoid                                |
+| `Record<string, unknown>`   | object with string keys; good "some object" type  |
+| `Record<K, V>`              | exactly the keys in `K` (all required)             |
+| `Partial<Record<K, V>>`     | any subset of `K`                                  |
+| `{ [k: string]: V }`        | same as `Record<string, V>`                        |
+
+### Excess property checks
+
+Only **fresh object literals** are checked for unknown keys; the same object through a variable passes.
+
+```ts
+interface Point { x: number; y: number }
+
+// @ts-expect-error 'z' does not exist in type 'Point'
+const p1: Point = { x: 1, y: 2, z: 3 };
+
+const raw = { x: 1, y: 2, z: 3 };
+const p2: Point = raw;   // ok: structural, not fresh
+```
+
+### `satisfies` on objects
+
+```ts
+type Route = { path: `/${string}`; auth?: boolean };
+
+const routes = {
+  home: { path: "/" },
+  admin: { path: "/admin", auth: true },
+} satisfies Record<string, Route>;
+
+routes.admin.auth;    // boolean, key known
+// @ts-expect-error no such route
+routes.missing;
+```
+
+An annotation (`: Record<string, Route>`) would allow `routes.missing` and forget which keys exist.
+
+### Optional vs `undefined`
+
+| Declaration            | `{}` ok | `{ a: undefined }` ok        |
+| :--------------------- | :------ | :--------------------------- |
+| `a?: T`                | yes     | yes (no with `exactOptionalPropertyTypes`) |
+| `a?: T \| undefined`   | yes     | yes                          |
+| `a: T \| undefined`    | no      | yes                          |
+
+## Mapped types & key remapping
+
+A mapped type loops over a union of keys: `{ [K in Keys]: Type }`. Over `keyof T` it is *homomorphic* and keeps
+`readonly` / `?` modifiers from `T`.
+
+```ts
+interface User { id: number; name: string; email?: string }
+
+type Nullable<T> = { [K in keyof T]: T[K] | null };
+
+// Modifiers: + adds (default), - removes
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+type Complete<T> = { [K in keyof T]-?: T[K] };
+type Frozen<T> = { +readonly [K in keyof T]: T[K] };
+
+type C = Complete<User>;  // email: string (required)
+```
+
+### Key remapping with `as`
+
+```ts
+type Getters<T> = {
+  [K in keyof T as `get${Capitalize<string & K>}`]:
+    () => T[K];
+};
+type UG = Getters<{ id: number; name: string }>;
+// { getId: () => number; getName: () => string }
+
+// Filter keys: map to never to drop them
+type PickByValue<T, V> = {
+  [K in keyof T as T[K] extends V ? K : never]: T[K];
+};
+type Strs = PickByValue<{ a: string; b: number }, string>;
+// { a: string }
+
+// Keys from a union, not from an object
+type Handlers = {
+  [E in "click" | "focus" as `on${Capitalize<E>}`]:
+    (e: Event) => void;
+};
+// { onClick: ...; onFocus: ... }
+```
+
+| Pattern                              | Meaning                                           |
+| :----------------------------------- | :------------------------------------------------ |
+| `[K in keyof T]`                     | every key of `T`, modifiers preserved             |
+| `[K in U]`                           | every member of a union `U`                       |
+| `readonly` / `-readonly`             | add / remove readonly                             |
+| `?` / `-?`                           | add / remove optional                             |
+| `as NewKey`                          | rename the key (4.1+)                             |
+| `as ... ? K : never`                 | filter keys out                                   |
+| `` as `prefix${string & K}` ``       | template literal keys (`string & K` drops symbols) |
+| `T[K]`                               | property type for the current key                 |
+
+### Handy compositions
+
+```ts
+// Make some keys optional
+type Optional<T, K extends keyof T> =
+  Omit<T, K> & Partial<Pick<T, K>>;
+
+// Flatten an intersection for nicer hovers
+type Prettify<T> = { [K in keyof T]: T[K] } & {};
+
+type NewUser = Prettify<Optional<User2, "id">>;
+// { name: string; id?: number }
+interface User2 { id: number; name: string }
+```
+
+## Immutability patterns
+
+| Tool                          | Level        | Depth   | Notes                                        |
+| :---------------------------- | :----------- | :------ | :------------------------------------------- |
+| `readonly` property           | type only    | shallow | erased at runtime                            |
+| `Readonly<T>`                 | type only    | shallow | all properties `readonly`                    |
+| `readonly T[]`, `ReadonlyMap`, `ReadonlySet` | type only | shallow | hides mutating methods   |
+| `as const`                    | type only    | deep    | literal types + readonly all the way down    |
+| `Object.freeze`               | runtime + type | shallow | returns `Readonly<T>`                      |
+| `structuredClone` then edit   | runtime      | deep    | copy-on-write by hand                        |
+
+```ts
+type DeepReadonly<T> = T extends
+  (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+type State = DeepReadonly<{
+  user: { name: string; tags: string[] };
+  count: number;
+}>;
+
+declare const state: State;
+// @ts-expect-error readonly deep down
+state.user.tags.push("x");
+
+// Update by copying the path you change
+const next: State = {
+  ...state,
+  user: { ...state.user, tags: [...state.user.tags, "x"] },
+  count: state.count + 1,
+};
+
+// ES2023 non-mutating array methods
+const sorted = state.user.tags.toSorted();
+const swapped = state.user.tags.with(0, "first");
+```
+
+<Callout type="warn" title="readonly is not enforced on assignment">
+  A `{ readonly a: number }` value can be assigned to a `{ a: number }` variable and then mutated; `readonly` only
+  blocks writes through that exact type. Readonly **arrays** are stricter: `readonly T[]` is not assignable to
+  `T[]`. Use `Object.freeze` when mutation must fail at runtime.
+</Callout>
+
+More non-mutating array methods (`toReversed`, `toSpliced`, `with`) are on the
+[Array methods](/typescript/language/array-methods/) sheet.
+
+## References
+
+- [MDN: Working with objects](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_objects)
+- MDN: [`Object`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object), [`structuredClone`](https://developer.mozilla.org/en-US/docs/Web/API/Window/structuredClone), [`JSON.stringify`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify), [`Set`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set), [`Map`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map)
+- [MDN: Equality comparisons and sameness](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Equality_comparisons_and_sameness)
+- [MDN: Enumerability and ownership of properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Enumerability_and_ownership_of_properties)
+- TypeScript Handbook: [Object Types](https://www.typescriptlang.org/docs/handbook/2/objects.html), [Mapped Types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
+- [Total TypeScript Essentials](https://www.totaltypescript.com/books/total-typescript-essentials)

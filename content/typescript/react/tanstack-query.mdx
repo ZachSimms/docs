@@ -1,0 +1,948 @@
+---
+title: TanStack Query
+date: 2026-09-25
+order: 5
+---
+
+Server state in React with TanStack Query v5 (5.10x): query keys, `queryOptions`, caching, suspense,
+pagination, mutations, optimistic updates, Next.js App Router hydration and testing. Client-only state
+goes in [Zustand](/typescript/react/zustand/); request details are in
+[Fetch API](/typescript/web-apis/fetch-api/).
+
+## Setup
+
+```sh
+bun add @tanstack/react-query
+bun add -d @tanstack/react-query-devtools
+bun add -d @tanstack/eslint-plugin-query  # optional
+# npm i @tanstack/react-query
+# pnpm add @tanstack/react-query
+```
+
+```tsx title="main.tsx"
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import {
+  ReactQueryDevtools,
+} from "@tanstack/react-query-devtools";
+import { createRoot } from "react-dom/client";
+import { App } from "./app";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000 },
+  },
+});
+
+createRoot(document.getElementById("root")!).render(
+  <QueryClientProvider client={queryClient}>
+    <App />
+    <ReactQueryDevtools initialIsOpen={false} />
+  </QueryClientProvider>,
+);
+```
+
+Create the client **once** (module scope in an SPA, see [SSR](#ssr-and-nextjs-app-router) for
+servers). The devtools render only when `NODE_ENV` is `development`, so they are dropped from
+production builds.
+
+| Default | Value | Change when |
+| :------ | :---- | :---------- |
+| `staleTime` | `0`: cached data is stale at once | data changes rarely; SSR (set above `0`) |
+| `gcTime` | 5 min (`Infinity` on the server) | unused data should live longer or shorter |
+| `retry` | 3 on the client, 0 on the server; mutations 0 | 4xx errors should not retry |
+| `retryDelay` | exponential, 1 s doubling, max 30 s | custom backoff |
+| `refetchOnWindowFocus` | `true` | noisy dashboards, forms |
+| `refetchOnReconnect` | `true` | |
+| `refetchOnMount` | `true` (if stale) | |
+| `structuralSharing` | `true`: unchanged parts keep identity | huge payloads, non-JSON data |
+| `networkMode` | `"online"`: pause when offline | `"always"` for local-only query fns |
+
+## Query keys
+
+A key is a serializable array that identifies a cache entry. It is hashed deterministically, so
+object property order does not matter but array order does.
+
+| Rule | Example |
+| :--- | :------ |
+| Include every variable the `queryFn` reads | `["todos", "list", { status, page }]` |
+| Go generic to specific | `["todos"]` then `["todos", "detail", id]` |
+| Filters and invalidation match by prefix | `{ queryKey: ["todos"] }` hits every todo query |
+| `exact: true` matches one key only | `invalidateQueries({ queryKey, exact: true })` |
+| Same key, same data shape | don't reuse a key for a differently `select`ed fetch |
+| Keep keys in one place per domain | a key factory (below) |
+
+```ts title="queries/todo-keys.ts"
+export type TodoStatus = "all" | "open" | "done";
+
+export const todoKeys = {
+  all: ["todos"] as const,
+  lists: () => [...todoKeys.all, "list"] as const,
+  list: (status: TodoStatus) =>
+    [...todoKeys.lists(), { status }] as const,
+  details: () => [...todoKeys.all, "detail"] as const,
+  detail: (id: string) =>
+    [...todoKeys.details(), id] as const,
+};
+```
+
+| Filter call | Hits |
+| :---------- | :--- |
+| `{ queryKey: todoKeys.all }` | every todo query |
+| `{ queryKey: todoKeys.lists() }` | all lists, any status |
+| `{ queryKey: todoKeys.list("open") }` | one list |
+| `{ queryKey: todoKeys.detail(id), exact: true }` | one detail |
+| `{ predicate: (q) => ... }` | custom match on the `Query` |
+| `{ type: "active" \| "inactive" \| "all" }` | by observer presence |
+| `{ stale: true }`, `{ fetchStatus: "idle" }` | by state |
+
+## Query functions and cancellation
+
+The `queryFn` must return data or **throw**. `fetch` resolves on 404 and 500, so check `res.ok`.
+
+```ts title="use-todo.ts"
+import { useQuery } from "@tanstack/react-query";
+
+type Todo = { id: string; title: string; done: boolean };
+
+async function getTodo(id: string, signal: AbortSignal) {
+  const res = await fetch(`/api/todos/${id}`, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as Todo;
+}
+
+export function useTodo(id: string) {
+  return useQuery({
+    queryKey: ["todos", "detail", id],
+    queryFn: ({ signal }) => getTodo(id, signal),
+  }); // UseQueryResult<Todo, Error>
+}
+```
+
+| `QueryFunctionContext` | Meaning |
+| :--------------------- | :------ |
+| `queryKey` | the key, typed as passed |
+| `signal` | `AbortSignal`; aborted when the query is cancelled |
+| `pageParam` | infinite queries only |
+| `meta` | the query's `meta` option |
+| `client` | the `QueryClient` |
+
+| Cancellation | Behaviour |
+| :----------- | :-------- |
+| `signal` read in `queryFn` | fetch aborts when the last observer unmounts or the key changes |
+| `signal` never read | the request finishes and the result is cached anyway |
+| `queryClient.cancelQueries({ queryKey })` | cancel now; state reverts to before the fetch |
+| `CancelledError` | thrown for cancelled fetches; not shown as an error |
+
+## useQuery options
+
+| Option | Default | Meaning |
+| :----- | :------ | :------ |
+| `queryKey` | required | cache identity |
+| `queryFn` | required (or default fn) | fetcher; `skipToken` disables with types intact |
+| `staleTime` | `0` | ms until data counts as stale; `Infinity` or `"static"` |
+| `gcTime` | `300_000` | ms an **unused** entry stays cached before garbage collection |
+| `enabled` | `true` | `false` stops automatic fetching (dependent queries) |
+| `select` | none | derive `data` from the cached value; re-runs only if inputs change |
+| `placeholderData` | none | shown while pending, not cached; `keepPreviousData` for paging |
+| `initialData` | none | seeded into the cache as real data |
+| `retry` | `3` | number, boolean or `(failureCount, error) => boolean` |
+| `retryDelay` | exponential | `(attempt, error) => ms` |
+| `refetchOnWindowFocus` | `true` | also `"always"` or a function |
+| `refetchOnReconnect` | `true` | |
+| `refetchOnMount` | `true` | refetch stale data when a new observer mounts |
+| `refetchInterval` | `false` | polling in ms, or `(query) => ms \| false` |
+| `refetchIntervalInBackground` | `false` | keep polling in hidden tabs |
+| `throwOnError` | `false` | throw to the nearest error boundary |
+| `meta` | none | free-form data for global callbacks |
+| `notifyOnChangeProps` | tracked | re-render only for the result fields you read |
+| `subscribed` | `true` | `false` reads the cache without subscribing |
+
+| | `staleTime` | `gcTime` |
+| :-- | :---------- | :------- |
+| Question it answers | when to refetch | when to forget |
+| Clock starts | when data arrives | when the last observer unmounts |
+| While "fresh" or cached | served from cache, no request | served from cache, refetched if stale |
+| When it expires | next trigger refetches in background | entry deleted; next use is a hard load |
+
+`staleTime: Infinity` refetches only after `invalidateQueries`; `staleTime: "static"` ignores
+invalidation too (feature flags, boot config).
+
+## Status flags
+
+`status` answers "do I have data?"; `fetchStatus` answers "is the `queryFn` running?".
+
+| `status` | `fetchStatus` | Meaning |
+| :------- | :------------ | :------ |
+| `pending` | `fetching` | first load (`isLoading`) |
+| `pending` | `idle` | disabled, no data yet |
+| `pending` | `paused` | offline before the first load |
+| `success` | `fetching` | background refetch (`isRefetching`) |
+| `success` | `idle` | settled with data |
+| `error` | `fetching` | retrying after `refetch()` |
+| `error` | `idle` | failed; `error` is set |
+
+| Flag | True when |
+| :--- | :-------- |
+| `isPending` | no data yet |
+| `isLoading` | `isPending && isFetching` |
+| `isFetching` | any fetch is running, including background |
+| `isRefetching` | `isFetching && !isPending` |
+| `isError` / `isSuccess` | `status` is `error` / `success` |
+| `isPlaceholderData` | `data` comes from `placeholderData` |
+| `isStale` | past `staleTime` or invalidated |
+| `isRefetchError` | refetch failed but old `data` is kept |
+
+```tsx
+import { useTodo } from "./use-todo";
+
+function TodoTitle({ id }: { id: string }) {
+  const { data, error, isPending, isFetching } = useTodo(id);
+  if (isPending) return <p>Loading…</p>;
+  if (error) return <p>{error.message}</p>;
+  return <h2>{data.title}{isFetching && " ↻"}</h2>;
+}
+```
+
+Narrow on `isPending` and `error` before touching `data`; after both checks `data` is defined.
+
+## queryOptions and file layout
+
+`queryOptions()` returns its input unchanged but tags `queryKey` with the data type. Share one
+object between `useQuery`, `useSuspenseQuery`, `queryClient.query` and cache reads.
+
+```ts title="queries/todos.ts"
+import { queryOptions } from "@tanstack/react-query";
+import { z } from "zod";
+import { fetchJson } from "@/lib/fetch-json";
+import { todoKeys, type TodoStatus } from "./todo-keys";
+
+export const Todo = z.object({
+  id: z.string(),
+  title: z.string(),
+  done: z.boolean(),
+});
+export type Todo = z.infer<typeof Todo>;
+
+export const todoListOptions = (status: TodoStatus) =>
+  queryOptions({
+    queryKey: todoKeys.list(status),
+    queryFn: ({ signal }) =>
+      fetchJson(
+        `/api/todos?status=${status}`,
+        z.array(Todo),
+        { signal },
+      ),
+    staleTime: 30_000,
+  });
+
+export const todoOptions = (id: string) =>
+  queryOptions({
+    queryKey: todoKeys.detail(id),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/todos/${id}`, Todo, { signal }),
+  });
+```
+
+```ts
+import {
+  type QueryClient,
+  useQuery,
+} from "@tanstack/react-query";
+import {
+  todoListOptions,
+  todoOptions,
+} from "@/queries/todos";
+
+declare const qc: QueryClient;
+const { queryKey } = todoListOptions("open");
+
+const list = qc.getQueryData(queryKey); // Todo[] | undefined
+qc.setQueryData(queryKey, (old) => old?.slice(0, 10));
+
+export function useOpenCount() {
+  return useQuery({
+    ...todoListOptions("open"),
+    select: (todos) => todos.length,       // number
+  });
+}
+await qc.query(todoOptions("1"));        // Promise<Todo>
+```
+
+```tree title="Where query code lives"
+src/
+  lib/
+    query-client.ts     # makeQueryClient / getQueryClient
+    fetch-json.ts       # typed fetcher, HttpError
+  queries/
+    todo-keys.ts        # key factory
+    todos.ts            # queryOptions + Zod schemas
+    todo-mutations.ts   # useAddTodo, useToggleTodo
+    users.ts            # one file per domain
+  features/
+    todos/
+      todo-list.tsx     # useQuery(todoListOptions(s))
+      todo-list.test.tsx
+  app/
+    providers.tsx       # "use client" QueryClientProvider
+  react-query.d.ts      # Register augmentation
+```
+
+Export options and custom hooks, not raw `useQuery` calls with inline keys.
+
+## Dependent and parallel queries
+
+```ts
+import {
+  skipToken,
+  useQueries,
+  useQuery,
+} from "@tanstack/react-query";
+import { todoOptions } from "@/queries/todos";
+
+type User = { id: string; teamId: string | null };
+declare function getUser(e: string): Promise<User>;
+declare function getTeam(id: string): Promise<string[]>;
+
+export function useTeam(email: string) {
+  const user = useQuery({
+    queryKey: ["user", email],
+    queryFn: () => getUser(email),
+  });
+  const teamId = user.data?.teamId;
+  return useQuery({                  // waits for user
+    queryKey: ["team", teamId],
+    queryFn: teamId ? () => getTeam(teamId) : skipToken,
+  });
+}
+
+export function useTodosById(ids: string[]) {
+  return useQueries({          // parallel, dynamic count
+    queries: ids.map((id) => todoOptions(id)),
+    combine: (rs) => ({
+      todos: rs.flatMap((r) => (r.data ? [r.data] : [])),
+      pending: rs.some((r) => r.isPending),
+    }),
+  });
+}
+```
+
+| Pattern | Use |
+| :------ | :-- |
+| Several `useQuery` calls in one component | fixed number of independent queries; they run in parallel |
+| `enabled: !!x` | wait for `x`; `queryFn` still needs `x!` |
+| `queryFn: x ? fn : skipToken` | same, type-safe; `refetch()` won't run it |
+| `useQueries({ queries, combine })` | a dynamic list; `combine` merges results |
+| `useSuspenseQueries` | parallel under suspense (avoids waterfalls) |
+
+## Suspense
+
+```tsx title="components/todo-view.tsx"
+"use client";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { todoOptions } from "@/queries/todos";
+
+export function TodoView({ id }: { id: string }) {
+  const { data } = useSuspenseQuery(todoOptions(id));
+  return <h1>{data.title}</h1>; // data: Todo, defined
+}
+```
+
+```tsx
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import { TodoView } from "@/components/todo-view";
+
+export const Page = ({ id }: { id: string }) => (
+  <ErrorBoundary fallback={<p>Failed to load</p>}>
+    <Suspense fallback={<p>Loading…</p>}>
+      <TodoView id={id} />
+    </Suspense>
+  </ErrorBoundary>
+);
+```
+
+| `useSuspenseQuery` | Notes |
+| :----------------- | :---- |
+| `data` | always defined; `status` is `success` |
+| Not allowed | `enabled`, `placeholderData`, `throwOnError` |
+| Errors | thrown to the error boundary when there is no cached data |
+| Two in one component | run one after another: use `useSuspenseQueries` or prefetch |
+| Key change | suspends again; wrap the change in `startTransition` to keep old UI |
+| `useSuspenseInfiniteQuery` | infinite variant |
+
+## Pagination and infinite queries
+
+```tsx
+import {
+  keepPreviousData,
+  useQuery,
+} from "@tanstack/react-query";
+
+type PageOf<T> = { items: T[]; hasMore: boolean };
+declare function getPage(p: number): Promise<PageOf<string>>;
+
+export function usePage(page: number) {
+  return useQuery({
+    queryKey: ["projects", { page }],
+    queryFn: () => getPage(page),
+    placeholderData: keepPreviousData, // no page flash
+  });
+}
+// isPlaceholderData: old page is on screen, disable "Next"
+```
+
+| `useInfiniteQuery` option / result | Meaning |
+| :--------------------------------- | :------ |
+| `initialPageParam` | required; first `pageParam` |
+| `getNextPageParam(last, all, lastParam)` | next param, or `undefined`/`null` to stop |
+| `getPreviousPageParam(first, ...)` | for bi-directional lists |
+| `maxPages` | cap stored pages (needs both page-param fns) |
+| `data.pages`, `data.pageParams` | arrays in fetch order |
+| `fetchNextPage()`, `hasNextPage` | load more; is there more |
+| `isFetchingNextPage` | the "load more" spinner |
+| refetch | refetches every stored page in sequence |
+
+`infiniteQueryOptions()` is the infinite counterpart of `queryOptions()`:
+
+```ts title="queries/feed.ts"
+import { infiniteQueryOptions } from "@tanstack/react-query";
+
+type Item = { id: string; text: string };
+type Page = { items: Item[]; next: string | null };
+declare function getFeed(
+  cursor: string,
+  signal: AbortSignal,
+): Promise<Page>;
+
+export const feedOptions = infiniteQueryOptions({
+  queryKey: ["feed"],
+  queryFn: ({ pageParam, signal }) =>
+    getFeed(pageParam, signal),
+  initialPageParam: "",        // TPageParam = string
+  getNextPageParam: (last) => last.next, // null: no more
+  select: (d) => d.pages.flatMap((p) => p.items), // Item[]
+});
+```
+
+## Mutations
+
+```tsx
+import {
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { todoKeys } from "@/queries/todo-keys";
+import type { Todo } from "@/queries/todos";
+
+declare function postTodo(title: string): Promise<Todo>;
+
+export function AddTodo() {
+  const qc = useQueryClient();
+  const add = useMutation({
+    mutationKey: ["todos", "add"],
+    mutationFn: postTodo,
+    onSuccess: (todo) => {
+      qc.setQueryData(todoKeys.detail(todo.id), todo);
+      // return the promise: isPending lasts until refetched
+      return qc.invalidateQueries({
+        queryKey: todoKeys.lists(),
+      });
+    },
+  });
+  return (
+    <form
+      action={(fd) => add.mutate(String(fd.get("title")))}
+    >
+      <input name="title" disabled={add.isPending} />
+      {add.error && <p>{add.error.message}</p>}
+    </form>
+  );
+}
+```
+
+| Option / result | Notes |
+| :-------------- | :---- |
+| `mutationFn(vars, ctx)` | one argument for variables: pass an object for several |
+| `onMutate(vars, ctx)` | before the request; return value is `onMutateResult` |
+| `onSuccess(data, vars, onMutateResult, ctx)` | `ctx.client` is the `QueryClient` |
+| `onError(err, vars, onMutateResult, ctx)` | roll back here |
+| `onSettled(data, err, vars, onMutateResult, ctx)` | invalidate here |
+| `mutate(vars, { onSuccess })` | fire and forget; per-call callbacks run after the hook's, only if still mounted |
+| `mutateAsync(vars)` | returns a promise; you must catch |
+| `variables`, `submittedAt` | for optimistic UI |
+| `reset()` | back to `idle` |
+| `scope: { id }` | mutations with the same id run one after another |
+| `retry` | `0` by default |
+| `mutationOptions()` | typed, reusable mutation config |
+
+| After a mutation | Use |
+| :--------------- | :-- |
+| Response contains the new entity | `setQueryData(detailKey, data)` |
+| Lists may change order or count | `invalidateQueries({ queryKey: lists })` |
+| Must never show stale data | `removeQueries` then refetch |
+| UI must change before the server replies | optimistic update |
+
+### Optimistic updates via variables
+
+Render the pending item from `variables`; nothing to roll back. Best when one component shows
+it.
+
+```tsx title="features/todos/todo-list.tsx"
+import {
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
+import { todoKeys } from "@/queries/todo-keys";
+import { todoListOptions } from "@/queries/todos";
+
+declare function postTodo(title: string): Promise<unknown>;
+
+export function TodoList() {
+  const { data = [] } = useQuery(todoListOptions("all"));
+  const add = useMutation({
+    mutationFn: postTodo,
+    onSettled: (_d, _e, _v, _r, { client }) =>
+      client.invalidateQueries({ queryKey: todoKeys.all }),
+  });
+  return (
+    <ul>
+      {data.map((t) => <li key={t.id}>{t.title}</li>)}
+      {add.isPending && (
+        <li style={{ opacity: 0.5 }}>{add.variables}</li>
+      )}
+    </ul>
+  );
+}
+```
+
+Elsewhere in the tree, read pending variables with
+`useMutationState({ filters: { mutationKey, status: "pending" }, select: (m) => m.state.variables })`.
+
+### Optimistic updates via the cache
+
+Write to the cache in `onMutate`, snapshot for rollback, invalidate when settled. Use when several
+components show the data. See the optimistic toggle recipe.
+
+## SSR and Next.js App Router
+
+Server Components prefetch into a per-request `QueryClient`, `dehydrate` it, and pass the state to
+`HydrationBoundary`; Client Components below read it with the same keys.
+
+```ts title="lib/query-client.ts"
+import {
+  defaultShouldDehydrateQuery,
+  environmentManager,
+  QueryClient,
+} from "@tanstack/react-query";
+
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 60_000 }, // no instant refetch
+      dehydrate: {
+        shouldDehydrateQuery: (q) =>
+          defaultShouldDehydrateQuery(q) ||
+          q.state.status === "pending", // stream pending
+        shouldRedactErrors: () => false, // let Next see them
+      },
+    },
+  });
+}
+
+let browserClient: QueryClient | undefined;
+
+export function getQueryClient() {
+  if (environmentManager.isServer()) {
+    return makeQueryClient(); // fresh per request
+  }
+  return (browserClient ??= makeQueryClient());
+}
+```
+
+```tsx title="app/providers.tsx"
+"use client";
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { getQueryClient } from "@/lib/query-client";
+
+export function Providers({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const client = getQueryClient(); // not useState
+  return (
+    <QueryClientProvider client={client}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+```
+
+```tsx title="app/todos/page.tsx"
+import {
+  dehydrate,
+  HydrationBoundary,
+  noop,
+} from "@tanstack/react-query";
+import { getQueryClient } from "@/lib/query-client";
+import { todoListOptions } from "@/queries/todos";
+import { TodoList } from "@/features/todos/todo-list";
+
+export default async function TodosPage() {
+  const qc = getQueryClient();
+  await qc.query(todoListOptions("all")).catch(noop);
+  return (
+    <HydrationBoundary state={dehydrate(qc)}>
+      <TodoList />
+    </HydrationBoundary>
+  );
+}
+```
+
+| Piece | Notes |
+| :---- | :---- |
+| `queryClient.query(opts)` | fetch and cache; resolves with data, throws on error |
+| `.catch(noop)` | prefetch only: failed queries are simply not dehydrated |
+| `queryClient.infiniteQuery(opts)` | same for infinite queries |
+| `fetchQuery`, `prefetchQuery`, `ensureQueryData` | deprecated in recent v5 in favour of `query()` |
+| `staleTime` above `0` | otherwise the client refetches right after hydration |
+| One client per request | never share a module-level client on the server |
+| `cache(makeQueryClient)` from React | share one server client across Server Components in a request |
+| `useState(() => new QueryClient())` | fine only with a Suspense boundary below the provider |
+| Server-side `queryFn` | needs absolute URLs, or call the DB directly |
+| `@tanstack/react-query-next-experimental` | `useSuspenseQuery` fetches on the server with no prefetch code |
+
+Next.js caching, `params` and route handlers: see [Next.js](/typescript/react/next-js/).
+
+## Errors and error boundaries
+
+```tsx
+import {
+  QueryCache,
+  QueryClient,
+  QueryErrorResetBoundary,
+} from "@tanstack/react-query";
+import { Suspense, type ReactNode } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+
+declare function toast(msg: string): void;
+
+export const qc = new QueryClient({
+  queryCache: new QueryCache({
+    // once per failed query, not per component
+    onError: (err, query) => {
+      if (query.state.data !== undefined) toast(err.message);
+    },
+  }),
+});
+
+export const Boundary = (p: { children: ReactNode }) => (
+  <QueryErrorResetBoundary>
+    {({ reset }) => (
+      <ErrorBoundary
+        onReset={reset}
+        fallbackRender={({ resetErrorBoundary }) => (
+          <button onClick={resetErrorBoundary}>Retry</button>
+        )}
+      >
+        <Suspense fallback={<p>Loading…</p>}>
+          {p.children}
+        </Suspense>
+      </ErrorBoundary>
+    )}
+  </QueryErrorResetBoundary>
+);
+```
+
+| Tool | Use |
+| :--- | :-- |
+| `error` in the result | inline error UI |
+| `throwOnError: true` | send errors to the nearest boundary |
+| `throwOnError: (err, query) => boolean` | e.g. only 5xx go to the boundary |
+| `QueryErrorResetBoundary` / `useQueryErrorResetBoundary` | let "retry" refetch queries in that boundary |
+| `QueryCache({ onError })` / `MutationCache({ onError })` | global toasts and logging |
+| `retry: (n, err) => boolean` | skip retries for 4xx |
+| `isRefetchError` | background refetch failed; old `data` still shown |
+
+## Typing
+
+Let inference work: type the `queryFn` return value, never pass generics to `useQuery` by hand.
+
+```ts title="react-query.d.ts"
+import "@tanstack/react-query";
+import type { HttpError } from "@/lib/fetch-json";
+
+type Key = readonly unknown[];
+
+declare module "@tanstack/react-query" {
+  interface Register {
+    defaultError: HttpError;   // error type everywhere
+    queryMeta: { errorMessage?: string };
+    mutationMeta: { invalidates?: readonly Key[] };
+  }
+}
+```
+
+| Type | Use |
+| :--- | :-- |
+| `Register.defaultError` | default `error` type (else `Error`) |
+| `Register.queryMeta` / `mutationMeta` | typed `meta` |
+| `Register.queryKey` / `mutationKey` | narrow all keys repo-wide |
+| `UseQueryResult<TData, TError>` | return type of a custom hook |
+| `QueryFunctionContext<TKey>` | type a standalone `queryFn` |
+| `DataTag` | what `queryOptions` adds to the key |
+| `InfiniteData<T, TParam>` | shape of infinite `data` |
+| `skipToken` | type-safe disable (instead of `enabled` + `!`) |
+
+## Testing
+
+New `QueryClient` per test, retries off, real network mocked (MSW or a `fetch` spy).
+
+```tsx title="features/todos/use-todo.test.tsx"
+import { expect, spyOn, test } from "bun:test";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { todoOptions } from "@/queries/todos";
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={client}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
+test("loads a todo", async () => {
+  const todo = { id: "1", title: "Write", done: false };
+  const spy = spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json(todo),
+  );
+  const { result } = renderHook(
+    () => useQuery(todoOptions("1")),
+    { wrapper },
+  );
+  await waitFor(() =>
+    expect(result.current.isSuccess).toBe(true),
+  );
+  expect(result.current.data).toEqual(todo);
+  spy.mockRestore();
+});
+```
+
+| Tip | Why |
+| :-- | :-- |
+| New client per test | no cache leaks between tests |
+| `retry: false` | failures show at once instead of after 3 retries |
+| Wrapper creates the client | `renderHook`/`render` get isolated caches |
+| DOM for `bun test` | preload `@happy-dom/global-registrator` in `bunfig.toml` |
+| Test through hooks or components | not the `QueryClient` internals |
+| `queryClient.setQueryData` | seed cache for component tests without network |
+
+## Recipes
+
+### Query key factory with queryOptions
+Keep keys and options for a domain together so every caller shares one typed source.
+
+```ts title="queries/users.ts"
+import { queryOptions } from "@tanstack/react-query";
+
+type User = { id: string; name: string };
+type Get<T> = (arg: string, s: AbortSignal) => Promise<T>;
+declare const getUsers: Get<User[]>;
+declare const getUser: Get<User>;
+
+const all = ["users"] as const;
+
+export const userQueries = {
+  all,
+  lists: () => [...all, "list"] as const,
+  list: (search: string) =>
+    queryOptions({
+      queryKey: [...all, "list", { search }] as const,
+      queryFn: ({ signal }) => getUsers(search, signal),
+    }),
+  detail: (id: string) =>
+    queryOptions({
+      queryKey: [...all, "detail", id] as const,
+      queryFn: ({ signal }) => getUser(id, signal),
+      staleTime: 5 * 60_000,
+    }),
+};
+// qc.invalidateQueries({ queryKey: userQueries.lists() })
+```
+
+### Optimistic todo toggle
+Flip a checkbox instantly and roll back if the server rejects it.
+
+```ts title="queries/todo-mutations.ts"
+import { useMutation } from "@tanstack/react-query";
+import { todoKeys } from "./todo-keys";
+import { todoListOptions, type Todo } from "./todos";
+
+declare function patchTodo(t: Pick<Todo, "id" | "done">):
+  Promise<Todo>;
+const listKey = todoListOptions("all").queryKey;
+
+export const useToggleTodo = () =>
+  useMutation({
+    mutationFn: patchTodo,
+    onMutate: async ({ id, done }, { client }) => {
+      await client.cancelQueries({ queryKey: listKey });
+      const prev = client.getQueryData(listKey); // Todo[]
+      client.setQueryData(listKey, (old) =>
+        old?.map((t) => (t.id === id ? { ...t, done } : t)),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, res, { client }) =>
+      client.setQueryData(listKey, res?.prev),
+    onSettled: (_d, _e, _v, _r, { client }) =>
+      client.invalidateQueries({ queryKey: todoKeys.all }),
+  });
+```
+
+### Infinite scroll list
+Load the next page when a sentinel row scrolls into view (uses `feedOptions` from above).
+
+```tsx
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { feedOptions } from "@/queries/feed";
+
+export function Feed() {
+  const q = useInfiniteQuery(feedOptions);
+  // React 19: a ref callback may return its cleanup
+  const watch = (el: HTMLLIElement | null) => {
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e?.isIntersecting) void q.fetchNextPage();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  };
+  return (
+    <ul>
+      {q.data?.map((r) => <li key={r.id}>{r.text}</li>)}
+      {q.hasNextPage && !q.isFetchingNextPage && (
+        <li ref={watch} aria-hidden />
+      )}
+    </ul>
+  );
+}
+```
+
+### Prefetch on hover
+Start the detail request when the pointer or focus lands on a link.
+
+```tsx
+import { noop, useQueryClient } from "@tanstack/react-query";
+import { todoOptions } from "@/queries/todos";
+
+export function TodoLink(p: { id: string; title: string }) {
+  const qc = useQueryClient();
+  const prefetch = () => {
+    // no request while cached data is younger than 60 s
+    void qc
+      .query({ ...todoOptions(p.id), staleTime: 60_000 })
+      .catch(noop);
+  };
+  return (
+    <a
+      href={`/todos/${p.id}`}
+      onPointerEnter={prefetch}
+      onFocus={prefetch}
+    >
+      {p.title}
+    </a>
+  );
+}
+```
+
+### Next.js server prefetch with streaming
+Start the fetch on the server without awaiting; the pending query streams to the client and
+`useSuspenseQuery` picks it up.
+
+```tsx title="app/todos/[id]/page.tsx"
+import {
+  dehydrate,
+  HydrationBoundary,
+  noop,
+} from "@tanstack/react-query";
+import { Suspense } from "react";
+import { getQueryClient } from "@/lib/query-client";
+import { todoOptions } from "@/queries/todos";
+import { TodoView } from "@/components/todo-view";
+
+type Props = { params: Promise<{ id: string }> };
+
+export default async function Page({ params }: Props) {
+  const { id } = await params;
+  const qc = getQueryClient();
+  void qc.query(todoOptions(id)).catch(noop); // no await
+  return (
+    <HydrationBoundary state={dehydrate(qc)}>
+      <Suspense fallback={<p>Loading…</p>}>
+        <TodoView id={id} />
+      </Suspense>
+    </HydrationBoundary>
+  );
+}
+```
+
+Requires the `shouldDehydrateQuery` override from `lib/query-client.ts` above.
+
+### Typed fetcher with Zod
+Validate every response at the boundary so `data` types are real, and throw typed HTTP errors.
+
+```ts title="lib/fetch-json.ts"
+import { z } from "zod";
+
+export class HttpError extends Error {
+  override name = "HttpError";
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function fetchJson<S extends z.ZodType>(
+  url: string,
+  schema: S,
+  init: RequestInit = {},
+): Promise<z.output<S>> {
+  const headers = new Headers(init.headers);
+  headers.set("accept", "application/json");
+  const res = await fetch(url, { ...init, headers });
+  if (!res.ok) {
+    throw new HttpError(res.status, `${res.status} ${url}`);
+  }
+  return schema.parse(await res.json()); // throws ZodError
+}
+// no retry on 4xx:
+// retry: (n, e) =>
+//   n < 3 && !(e instanceof HttpError && e.status < 500)
+```
+
+## References
+
+- [TanStack Query: Overview](https://tanstack.com/query/latest/docs/framework/react/overview): official React docs
+- [TanStack Query: Important defaults](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults)
+- [TanStack Query: Query options](https://tanstack.com/query/latest/docs/framework/react/guides/query-options): `queryOptions` and typing
+- [TanStack Query: Optimistic updates](https://tanstack.com/query/latest/docs/framework/react/guides/optimistic-updates)
+- [TanStack Query: Advanced server rendering](https://tanstack.com/query/latest/docs/framework/react/guides/advanced-ssr): Next.js App Router, streaming
+- [TanStack Query: TypeScript](https://tanstack.com/query/latest/docs/framework/react/typescript): `Register`, `skipToken`
+- [TanStack Query: Testing](https://tanstack.com/query/latest/docs/framework/react/guides/testing)
+- [MDN: AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal): the `signal` passed to query functions
+- [MDN: IntersectionObserver](https://developer.mozilla.org/en-US/docs/Web/API/IntersectionObserver): infinite scroll trigger
+- [TkDodo: Effective React Query keys](https://tkdodo.eu/blog/effective-react-query-keys): key factories
+- [TkDodo: The query options API](https://tkdodo.eu/blog/the-query-options-api)
