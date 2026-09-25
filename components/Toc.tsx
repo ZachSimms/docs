@@ -4,7 +4,8 @@
  * Client component: the entries arrive as props from the server; the client
  * work is tracking which section is being read and keeping it in view. The
  * rail is fixed and hidden by CSS on viewports too narrow to fit it beside the
- * content column.
+ * content column; there, a `≡` button in the top bar opens the same list as a
+ * drop-down panel instead (CSS shows exactly one of the two).
  */
 
 "use client";
@@ -36,6 +37,13 @@ const SCROLL_MARGIN = 24;
 const PAGE_STEP = 0.8;
 /** Nothing hidden in either direction: what the server renders. */
 const NO_MORE: MoreContent = { up: false, down: false };
+
+/** Id of the drop-down panel, for the menu button's `aria-controls`. */
+const MENU_PANEL_ID = "toc-menu-panel";
+/** Body attribute set while the menu is open; `isOverlayOpen` reads it. */
+const MENU_OPEN_ATTRIBUTE = "data-toc-open";
+/** Where the rail replaces the menu; must match the `.toc-menu` media query in globals.css. */
+const WIDE_QUERY = "(min-width: 1240px)";
 
 /** Window events that mean the reader is scrolling on purpose, which ends a pin. */
 const READER_SCROLL_EVENTS = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
@@ -134,9 +142,7 @@ function useActiveIndex(ids: readonly string[]): readonly [number, (index: numbe
  *
  * @returns The current state and `measure()` to call after changing `scrollTop`.
  */
-function useMoreContent(
-  navRef: RefObject<HTMLElement | null>,
-): readonly [MoreContent, () => void] {
+function useMoreContent(navRef: RefObject<HTMLElement | null>): readonly [MoreContent, () => void] {
   const [more, setMore] = useState<MoreContent>(NO_MORE);
 
   const measure = useCallback(() => {
@@ -179,6 +185,133 @@ function scrollContents(nav: HTMLElement | null, direction: 1 | -1): void {
   });
 }
 
+/** Props shared by the rail and the menu panel's lists. */
+interface EntryLinksProps {
+  entries: readonly TocEntry[];
+  /** Index of the current entry. */
+  active: number;
+  /** Index of the current entry's `##`, or -1. */
+  parent: number;
+  /** Called with the index of the entry followed. */
+  onChoose: (index: number) => void;
+}
+
+/** One dotted link per entry, `###` indented, current and parent marked. */
+function EntryLinks({ entries, active, parent, onChoose }: EntryLinksProps) {
+  return entries.map((entry, i) => (
+    <a
+      key={entry.id}
+      href={`#${entry.id}`}
+      className={entry.depth === 3 ? "toc-sub" : undefined}
+      aria-current={i === active ? "location" : undefined}
+      data-parent-active={i === parent ? "" : undefined}
+      onClick={() => onChoose(i)}
+    >
+      <i>{entry.text}</i>
+    </a>
+  ));
+}
+
+/**
+ * The narrow-viewport contents: a `≡` button pinned at the right end of the top
+ * bar (right of the theme toggle) that opens the entries as a panel under it.
+ *
+ * Choosing an entry jumps to it, closes the panel and focuses its heading; so do
+ * Escape (claimed in the capture phase, so the page doesn't also go up a level;
+ * left to search when search is open on top), a press outside, tabbing out,
+ * widening past the breakpoint and the button again. While open, `body[data-toc-open]` makes
+ * `isOverlayOpen()` true, which keeps ←/h from navigating, and the current
+ * entry is scrolled into view inside the panel.
+ */
+function TocMenu({ entries, active, parent, onChoose }: EntryLinksProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    document.body.setAttribute(MENU_OPEN_ATTRIBUTE, "");
+    const close = () => setOpen(false);
+    const onKey = (event: KeyboardEvent) => {
+      // Search opened on top of the menu owns this Escape; the menu stays for afterwards.
+      if (event.key !== "Escape" || document.body.hasAttribute("data-search-open")) return;
+      event.preventDefault();
+      close();
+      buttonRef.current?.focus();
+    };
+    const onPointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close();
+    };
+    // Tabbing out of the panel closes it rather than leaving it open over the page.
+    const onFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget as Node | null;
+      if (next && !rootRef.current?.contains(next)) close();
+    };
+    // Widening past the breakpoint hides the menu; don't leave its flag muting the keys.
+    const wide = typeof window.matchMedia === "function" ? window.matchMedia(WIDE_QUERY) : undefined;
+    const onWide = () => {
+      if (wide?.matches) close();
+    };
+    const root = rootRef.current;
+    window.addEventListener("keydown", onKey, { capture: true });
+    document.addEventListener("pointerdown", onPointer);
+    root?.addEventListener("focusout", onFocusOut);
+    wide?.addEventListener("change", onWide);
+    return () => {
+      document.body.removeAttribute(MENU_OPEN_ATTRIBUTE);
+      window.removeEventListener("keydown", onKey, { capture: true });
+      document.removeEventListener("pointerdown", onPointer);
+      root?.removeEventListener("focusout", onFocusOut);
+      wide?.removeEventListener("change", onWide);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    const link = panel?.querySelectorAll<HTMLElement>("a")[active];
+    if (!open || !panel || !link) return;
+    panel.scrollTop = keepVisible(
+      { top: link.offsetTop, height: link.offsetHeight },
+      { scrollTop: panel.scrollTop, height: panel.clientHeight },
+      SCROLL_MARGIN,
+    );
+  }, [open, active]);
+
+  const choose = (index: number) => {
+    onChoose(index);
+    setOpen(false);
+    // The chosen link unmounts with the panel; move focus to its heading so keyboard and
+    // screen-reader users continue from the section they picked.
+    const heading = document.getElementById(entries[index]!.id);
+    if (heading) {
+      if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
+  };
+
+  return (
+    <div className="toc-menu" ref={rootRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="toc-menu-button"
+        aria-label="Table of contents"
+        aria-expanded={open}
+        aria-controls={MENU_PANEL_ID}
+        onClick={() => setOpen((was) => !was)}
+      >
+        ≡
+      </button>
+      {open && (
+        <nav ref={panelRef} id={MENU_PANEL_ID} className="toc toc-menu-panel" aria-label="Contents">
+          <EntryLinks entries={entries} active={active} parent={parent} onChoose={choose} />
+        </nav>
+      )}
+    </div>
+  );
+}
+
 /**
  * Render the table of contents as a dotted-link list. `###` entries are
  * indented by two characters. The current entry gets `aria-current="location"`
@@ -190,6 +323,8 @@ function scrollContents(nav: HTMLElement | null, direction: 1 | -1): void {
  * edge fades out (`data-more-up` / `data-more-down` on the nav, used by the
  * CSS mask) and a `^` / `v` button sits in the marker gutter; clicking it
  * scrolls the list by most of a box height.
+ *
+ * Also renders {@link TocMenu}, the `≡` drop-down used where the rail is hidden.
  */
 export function Toc({ entries }: TocProps) {
   const [active, pin] = useActiveIndex(entries.map((e) => e.id));
@@ -212,51 +347,43 @@ export function Toc({ entries }: TocProps) {
   if (entries.length < 2) return null;
 
   return (
-    <div className="toc-rail">
-      <div className="toc-frame">
-        {more.up && (
-          <button
-            type="button"
-            className="toc-more toc-more-up"
-            aria-label="Scroll contents up"
-            tabIndex={-1}
-            onClick={() => scrollContents(navRef.current, -1)}
-          >
-            ^
-          </button>
-        )}
-        <nav
-          ref={navRef}
-          className="toc"
-          aria-label="Contents"
-          data-more-up={more.up ? "" : undefined}
-          data-more-down={more.down ? "" : undefined}
-        >
-          {entries.map((entry, i) => (
-            <a
-              key={entry.id}
-              href={`#${entry.id}`}
-              className={entry.depth === 3 ? "toc-sub" : undefined}
-              aria-current={i === active ? "location" : undefined}
-              data-parent-active={i === parent ? "" : undefined}
-              onClick={() => pin(i)}
+    <>
+      <div className="toc-rail">
+        <div className="toc-frame">
+          {more.up && (
+            <button
+              type="button"
+              className="toc-more toc-more-up"
+              aria-label="Scroll contents up"
+              tabIndex={-1}
+              onClick={() => scrollContents(navRef.current, -1)}
             >
-              <i>{entry.text}</i>
-            </a>
-          ))}
-        </nav>
-        {more.down && (
-          <button
-            type="button"
-            className="toc-more toc-more-down"
-            aria-label="Scroll contents down"
-            tabIndex={-1}
-            onClick={() => scrollContents(navRef.current, 1)}
+              ^
+            </button>
+          )}
+          <nav
+            ref={navRef}
+            className="toc"
+            aria-label="Contents"
+            data-more-up={more.up ? "" : undefined}
+            data-more-down={more.down ? "" : undefined}
           >
-            v
-          </button>
-        )}
+            <EntryLinks entries={entries} active={active} parent={parent} onChoose={pin} />
+          </nav>
+          {more.down && (
+            <button
+              type="button"
+              className="toc-more toc-more-down"
+              aria-label="Scroll contents down"
+              tabIndex={-1}
+              onClick={() => scrollContents(navRef.current, 1)}
+            >
+              v
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+      <TocMenu entries={entries} active={active} parent={parent} onChoose={pin} />
+    </>
   );
 }

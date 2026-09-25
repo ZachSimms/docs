@@ -78,11 +78,17 @@ describe("isAnyPlainKey", () => {
 describe("isOverlayOpen", () => {
   afterEach(() => {
     document.body.removeAttribute("data-search-open");
+    document.body.removeAttribute("data-toc-open");
     document.body.innerHTML = "";
   });
 
   it("is false on a plain page", () => {
     expect(isOverlayOpen()).toBe(false);
+  });
+
+  it("is true while the contents menu is open", () => {
+    document.body.setAttribute("data-toc-open", "");
+    expect(isOverlayOpen()).toBe(true);
   });
 
   it("is true while the search palette or an open dialog is showing", () => {

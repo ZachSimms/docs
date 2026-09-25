@@ -94,12 +94,14 @@ export function isPlainKey(
 
 /**
  * Whether something modal is showing: the search palette (which marks
- * `<body data-search-open>`) or an open `<dialog>`. Page-level shortcuts stay
+ * `<body data-search-open>`), the contents menu (`<body data-toc-open>`) or an
+ * open `<dialog>`. Page-level shortcuts stay
  * quiet while it is, so `Esc` closes the overlay instead of leaving the page.
  */
 export function isOverlayOpen(): boolean {
   return (
     document.body.hasAttribute("data-search-open") ||
+    document.body.hasAttribute("data-toc-open") ||
     document.querySelector("dialog[open]") !== null
   );
 }

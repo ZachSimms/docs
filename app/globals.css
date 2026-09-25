@@ -84,19 +84,24 @@ html {
   height: 100%;
 }
 
+/* The column is at most 90ch and may shrink to the viewport (minimum 0, not `auto`): wide tables,
+   code and maths scroll inside their own boxes instead of widening the page on phones. */
 body {
   font: 1em/var(--lh) monospace;
   background: var(--bg);
   color: var(--fg);
-  padding: 16vh 2em 0;
+  padding: max(16vh, 5em) 2em 0;
   display: grid;
-  grid: 1fr / minmax(auto, 90ch);
+  grid: 1fr / minmax(0, 90ch);
+  overflow-wrap: break-word;
   justify-content: center;
   height: 100%;
 }
 
 a {
   display: inline-block;
+  /* An inline-block sizes to its longest word; cap it so long link text wraps inside the line. */
+  max-width: 100%;
   padding: 0.16666em;
   margin-left: -0.16666em;
   text-decoration: none;
@@ -697,6 +702,19 @@ kbd {
   margin-top: 0.25em;
 }
 
+/* Phones: an SVG can't reflow, so keep diagrams legible (labels ≈ 12px) and let them
+   scroll sideways inside the figure instead of shrinking to half size. */
+@media (max-width: 600px) {
+  .diagram > [role="img"] {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .diagram svg {
+    min-width: 540px;
+  }
+}
+
 .diagram .d-muted {
   opacity: 0.55;
 }
@@ -793,7 +811,7 @@ footer p {
   padding: 1.5em 2em 1em;
   background: linear-gradient(var(--bg) calc(100% - 1em), transparent);
   display: grid;
-  grid: auto / minmax(auto, 90ch);
+  grid: auto / minmax(0, 90ch);
   justify-content: center;
   pointer-events: none;
 }
@@ -818,10 +836,9 @@ footer p {
   outline: 1px dotted currentColor;
 }
 
-@media (max-device-width: 600px) {
+@media (max-width: 600px) {
   .theme-toggle-rail {
-    padding-top: 2em;
-    justify-content: start;
+    padding-top: 1em;
   }
 }
 
@@ -831,11 +848,12 @@ footer p {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 5;
+  /* Above the top bar's band (z 5, later in the DOM), which would otherwise paint over `../`. */
+  z-index: 6;
   margin-left: calc(100vw - 100%);
   padding: 1.5em 2em 0;
   display: grid;
-  grid: auto / minmax(auto, 90ch);
+  grid: auto / minmax(0, 90ch);
   justify-content: center;
   pointer-events: none;
 }
@@ -849,10 +867,9 @@ footer p {
   background: var(--bg);
 }
 
-@media (max-device-width: 600px) {
+@media (max-width: 600px) {
   .back-rail {
-    padding-top: 2em;
-    justify-content: start;
+    padding-top: 1em;
   }
 }
 
@@ -867,7 +884,7 @@ footer p {
   margin-left: calc(100vw - 100%);
   padding: 0 2em;
   display: grid;
-  grid: auto / minmax(auto, 90ch);
+  grid: auto / minmax(0, 90ch);
   justify-content: center;
   pointer-events: none;
 }
@@ -977,6 +994,91 @@ nav[data-menu] a[data-active]:focus-visible {
   outline: none;
 }
 
+/* Numbered rows (lists and search results): a long topic/dir/sheet starts beside its number and
+   wraps at its slashes. Inline, because Chrome breaks before an inline-block even after a no-break
+   space. The line-height adds back the inline-block's vertical padding (2 × 0.16666em), so rows
+   keep the original 23.8px rhythm. */
+nav[data-menu] a,
+.search .results a {
+  display: inline;
+  line-height: calc(var(--lh) + 0.33333em);
+  overflow-wrap: anywhere;
+}
+
+/* Contents menu for narrow viewports: `≡` at the right end of the top bar, right of the theme
+   toggle, opening the same list as a panel under the bar. Shown exactly where the rail is hidden. */
+.toc-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  margin-left: calc(100vw - 100%);
+  padding: 1.5em 2em 0;
+  display: grid;
+  grid: auto auto / minmax(0, 90ch);
+  justify-content: center;
+  pointer-events: none;
+}
+
+.toc-menu-button {
+  justify-self: end;
+  pointer-events: auto;
+  /* Like the toggle: the padding hangs past the column edge so the glyph lines up with it. */
+  margin-right: -0.25em;
+  padding: 0.25em;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.25em;
+  line-height: 0.88;
+  cursor: pointer;
+}
+
+.toc-menu-button:focus-visible {
+  outline: 1px dotted currentColor;
+}
+
+.toc-menu-panel.toc {
+  justify-self: end;
+  width: min(100%, 44ch);
+  max-height: 70vh;
+  margin-top: 1em;
+  padding: 0.5em 1ch 0.5em 3ch;
+  background: var(--bg);
+  border: 1px dotted currentColor;
+  border-radius: 3px;
+  scrollbar-width: thin;
+}
+
+.toc-menu-panel a {
+  padding-block: 0.25em;
+}
+
+@media (max-width: 600px) {
+  .toc-menu {
+    padding-top: 1em;
+  }
+
+  .toc-menu-panel.toc {
+    width: 100%;
+  }
+}
+
+@media (min-width: 1240px) {
+  .toc-menu {
+    display: none;
+  }
+}
+
+/* Where the menu shows, the theme toggle steps left of it: the `≡` glyph (0.75em at the button's
+   1.25em size, i.e. 0.75em here) plus a 2ch gap, minus the toggle's own -0.25em overhang. */
+@media (max-width: 1239px) {
+  body:has(.toc-menu) .theme-toggle {
+    margin-right: calc(0.5em + 2ch);
+  }
+}
+
 /* The rail sits ~32ch (≈250px) right of the 90ch column, so it needs a viewport of
    about 90ch + 2 × 32ch ≈ 1205px; below that it would be clipped, so hide it. */
 @media (max-width: 1239px) {
@@ -996,7 +1098,7 @@ nav[data-menu] a[data-active]:focus-visible {
   color: var(--fg);
   padding: 16vh 2em 0;
   display: grid;
-  grid: 1fr / minmax(auto, 90ch);
+  grid: 1fr / minmax(0, 90ch);
   justify-content: center;
 }
 
@@ -1026,23 +1128,18 @@ body[data-search-open] {
   overflow: hidden;
 }
 
-@media (max-device-width: 600px) {
+@media (max-width: 600px) {
+  /* Clears the top bar (1em padding + a line + its 1em fade), so the title isn't under it. */
   body {
-    padding-top: 2em;
-    justify-content: start;
+    padding-top: 4.5em;
   }
 
   .search {
-    padding-top: 2em;
-    justify-content: start;
+    padding-top: 4.5em;
   }
 
   footer {
     padding-bottom: 2em;
-  }
-
-  pre {
-    max-width: calc(100vw - 4em);
   }
 
   a i,

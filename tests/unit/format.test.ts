@@ -1,6 +1,6 @@
 /** Unit tests for `lib/format.ts`. */
 import { describe, expect, it } from "bun:test";
-import { formatDate, padNumber } from "@/lib/format";
+import { formatDate, padNumber, pathSegments } from "@/lib/format";
 
 describe("padNumber", () => {
   it("zero-pads single digits to two characters", () => {
@@ -23,5 +23,22 @@ describe("formatDate", () => {
   it("formats a Date as YYYY-MM-DD in UTC", () => {
     expect(formatDate(new Date(Date.UTC(2025, 11, 6)))).toBe("2025-12-06");
     expect(formatDate(new Date(Date.UTC(2026, 0, 1)))).toBe("2026-01-01");
+  });
+});
+
+describe("pathSegments", () => {
+  it("splits after each slash and keeps the slashes", () => {
+    expect(pathSegments("infrastructure/kubernetes/helm")).toEqual([
+      "infrastructure/",
+      "kubernetes/",
+      "helm",
+    ]);
+    expect(pathSegments("design/css/")).toEqual(["design/", "css/"]);
+    expect(pathSegments("/a//b")).toEqual(["/", "a/", "/", "b"]);
+  });
+
+  it("returns the label alone when it has no slash", () => {
+    expect(pathSegments("Maths")).toEqual(["Maths"]);
+    expect(pathSegments("")).toEqual([""]);
   });
 });

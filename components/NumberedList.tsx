@@ -14,6 +14,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { BreakablePath } from "@/components/BreakablePath";
 import { padNumber } from "@/lib/format";
 import {
   IN_KEYS,
@@ -63,8 +64,9 @@ function nothingFocused(): boolean {
 }
 
 /**
- * Render `<nav><span>NN.</span> <a><i>label</i></a><br>…</nav>`, exactly the
- * markup of the original site, so the CSS can stay byte-for-byte the same.
+ * Render `<nav><span>NN.</span>&nbsp;<a><i>label</i></a><br>…</nav>`, the
+ * markup of the original site except for the no-break space and the `<wbr>`
+ * break points after slashes, which keep a long path beside its number on phones.
  * The nav carries `data-menu` so the first list on a page can be found.
  *
  * `Enter` only opens the highlighted row when nothing else has focus; with a
@@ -126,14 +128,15 @@ export function NumberedList({ items }: { items: readonly NumberedItem[] }) {
         const on = i === active ? "" : undefined;
         return (
           <Fragment key={item.href}>
-            <span data-active={on}>{padNumber(item.number)}.</span>{" "}
+            {/* A no-break space keeps the label on the number's line; it wraps at its slashes. */}
+            <span data-active={on}>{padNumber(item.number)}.</span>{"\u00a0"}
             <DottedLink
               href={item.href}
               data-active={on}
               onMouseMove={i === active ? undefined : () => highlight(i)}
               onFocus={() => highlight(i)}
             >
-              {item.label}
+              <BreakablePath label={item.label} />
             </DottedLink>
             <br />
           </Fragment>

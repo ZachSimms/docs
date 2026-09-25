@@ -1065,3 +1065,237 @@ test.describe("python, physics and ml-ai", () => {
     }
   });
 });
+
+/** Phone and tablet sizes checked by the responsive tests. */
+const SIZES = [
+  { name: "small phone", width: 360, height: 740 },
+  { name: "phone", width: 390, height: 844 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "large tablet", width: 1024, height: 1366 },
+] as const;
+
+/** Sheets with wide tables, maths, code, demos, diagrams and swatches. */
+const HEAVY_SHEETS = [
+  "/databases/postgres/",
+  "/maths/math-fundamentals/",
+  "/python/language/fundamentals/",
+  "/design/css/css/",
+  "/design/principles/color-theory/",
+];
+
+/** Height of the transparent fade at the bottom of the top bar (1em). */
+const BAND_FADE = 16;
+
+/** Bottom edge of the opaque part of the top bar. */
+async function bandBottom(page: Page): Promise<number> {
+  const band = await page.locator(".theme-toggle-rail").boundingBox();
+  return (band?.y ?? 0) + (band?.height ?? 0) - BAND_FADE;
+}
+
+/** Whether the element's centre is the topmost thing there (nothing covers it). */
+async function uncovered(page: Page, selector: string): Promise<boolean> {
+  return page.locator(selector).first().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return hit !== null && (hit === el || el.contains(hit));
+  });
+}
+
+for (const size of SIZES) {
+  test.describe(`responsive: ${size.name} ${size.width}px`, () => {
+    test.use({
+      viewport: { width: size.width, height: size.height },
+      isMobile: size.width < 800,
+      hasTouch: true,
+    });
+
+    test("no page is wider than the screen", async ({ page }) => {
+      test.setTimeout(300_000);
+      await page.goto("/sheets/");
+      const all = await page
+        .locator("main nav a")
+        .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
+      // Every page on the two extreme sizes; the heavy ones elsewhere.
+      const full = size.width === 360 || size.width === 768;
+      const urls = full
+        ? ["/", "/typescript/", "/typescript/language/", "/info/", "/sheets/", ...all]
+        : ["/", "/info/", ...HEAVY_SHEETS];
+      for (const url of urls) {
+        await page.goto(url);
+        const [scroll, client] = await page.evaluate(() => [
+          document.documentElement.scrollWidth,
+          document.documentElement.clientWidth,
+        ]);
+        expect(scroll, url).toBeLessThanOrEqual(client);
+      }
+    });
+
+    test("numbered rows keep long paths beside their number", async ({ page }) => {
+      await page.goto("/sheets/");
+      const misplaced = await page.locator("main nav[data-menu]").evaluate((nav) =>
+        [...nav.querySelectorAll("a")]
+          .filter((a) => {
+            // Compare first text lines, not boxes (the link's box includes its padding).
+            const firstLine = (node: Node) => {
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              return range.getClientRects()[0]!.top;
+            };
+            return Math.abs(firstLine(a) - firstLine(a.previousElementSibling!)) > 2;
+          })
+          .map((a) => a.textContent),
+      );
+      expect(misplaced).toEqual([]);
+    });
+
+    test("content has equal gutters and code boxes span the column", async ({ page }) => {
+      for (const url of HEAVY_SHEETS) {
+        await page.goto(url);
+        const m = await page.evaluate(() => {
+          const vw = document.documentElement.clientWidth;
+          const main = document.querySelector("main")!.getBoundingClientRect();
+          const blocks = [...document.querySelectorAll("main > *")].map((el) => {
+            const r = el.getBoundingClientRect();
+            return { tag: el.tagName, left: r.left, right: r.right };
+          });
+          const codes = [...document.querySelectorAll("main pre")].map(
+            (el) => el.getBoundingClientRect().width,
+          );
+          return { vw, left: main.left, right: main.right, width: main.width, blocks, codes };
+        });
+        if (size.width < 800) expect(Math.abs(m.left - (m.vw - m.right)), url).toBeLessThanOrEqual(1);
+        for (const b of m.blocks) {
+          expect(b.left, `${url} ${b.tag}`).toBeGreaterThanOrEqual(m.left - 1);
+          expect(b.right, `${url} ${b.tag}`).toBeLessThanOrEqual(m.right + 1);
+        }
+        for (const w of m.codes) expect(Math.abs(w - m.width), url).toBeLessThanOrEqual(1);
+      }
+    });
+
+    test("../ and the theme toggle are on screen and clickable; the heading clears the top bar", async ({
+      page,
+    }) => {
+      await page.goto("/databases/postgres/");
+      await hydrated(page);
+      const vw = size.width;
+      for (const sel of [".back-rail a", ".theme-toggle", ".toc-menu-button"]) {
+        const box = await page.locator(sel).boundingBox();
+        expect(box, sel).not.toBeNull();
+        expect(box!.x, sel).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width, sel).toBeLessThanOrEqual(vw);
+        expect(await uncovered(page, sel), sel).toBe(true);
+      }
+      // The menu button sits at the right end of the bar, the theme toggle just left of it.
+      const toggle = (await page.locator(".theme-toggle").boundingBox())!;
+      const menu = (await page.locator(".toc-menu-button").boundingBox())!;
+      const main = (await page.locator("main").boundingBox())!;
+      expect(toggle.x + toggle.width).toBeLessThanOrEqual(menu.x);
+      expect(Math.abs(menu.x + menu.width - (main.x + main.width))).toBeLessThanOrEqual(8);
+      expect(Math.abs(toggle.y - menu.y)).toBeLessThanOrEqual(4);
+
+      const h1 = await page.locator("main h1").boundingBox();
+      expect(h1!.y).toBeGreaterThanOrEqual(await bandBottom(page));
+      await page.locator(".back-rail a").click();
+      await expect(page).toHaveURL(/\/databases\/$/);
+    });
+
+    test("diagrams stay legible: drawn at 85%+ of their size, scrolling inside the figure", async ({
+      page,
+    }) => {
+      await page.goto("/design/css/css/");
+      const figures = page.locator("figure.diagram");
+      for (let i = 0; i < (await figures.count()); i++) {
+        const svg = figures.nth(i).locator("svg");
+        await svg.scrollIntoViewIfNeeded();
+        const scale = await svg.evaluate(
+          (el: SVGSVGElement) => el.getBoundingClientRect().width / el.viewBox.baseVal.width,
+        );
+        expect(scale).toBeGreaterThanOrEqual(0.85);
+      }
+      const [scroll, client] = await page.evaluate(() => [
+        document.documentElement.scrollWidth,
+        document.documentElement.clientWidth,
+      ]);
+      expect(scroll).toBeLessThanOrEqual(client);
+    });
+
+    test("the contents menu opens, jumps to a section and closes", async ({ page }) => {
+      await page.goto("/databases/postgres/");
+      await hydrated(page);
+      await expect(page.locator(".toc-rail nav")).toBeHidden();
+      const button = page.getByRole("button", { name: "Table of contents" });
+      await button.click();
+      const panel = page.locator("#toc-menu-panel");
+      await expect(panel).toBeVisible();
+      await expect(button).toHaveAttribute("aria-expanded", "true");
+      const box = await panel.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(size.width);
+
+      const entry = panel.locator("a").nth(3);
+      const hash = await entry.getAttribute("href");
+      await entry.click();
+      await expect(panel).toBeHidden();
+      await expect(page).toHaveURL(new RegExp(`${hash}$`));
+      const heading = page.locator(`[id="${hash!.slice(1)}"]`);
+      await expect(heading).toBeInViewport();
+      expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual((await bandBottom(page)) - 1);
+
+      await button.click();
+      await expect(panel).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
+      await expect(page).toHaveURL(/\/databases\/postgres\//); // Esc didn't go up a level
+    });
+  });
+}
+
+test.describe("responsive: desktop", () => {
+  test("inline code in tables keeps identifiers whole", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto("/design/css/css/");
+    // Breaks at hyphens and punctuation are normal; a break between two letters is the bug.
+    // Inline code is highlighted into token spans, so walk every text node inside it.
+    const split = await page.locator("main table code").evaluateAll((codes) =>
+      codes.flatMap((c) => {
+        if (c.getClientRects().length < 2) return [];
+        const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+        const chars: { ch: string; top: number }[] = [];
+        const range = document.createRange();
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const t = n as Text;
+          for (let i = 0; i < t.data.length; i++) {
+            range.setStart(t, i);
+            range.setEnd(t, i + 1);
+            chars.push({ ch: t.data[i]!, top: range.getBoundingClientRect().top });
+          }
+        }
+        const midWord = chars.some(
+          (x, i) =>
+            i > 0 &&
+            /\w/.test(chars[i - 1]!.ch) &&
+            /\w/.test(x.ch) &&
+            Math.abs(x.top - chars[i - 1]!.top) > 2,
+        );
+        return midWord ? [c.textContent] : [];
+      }),
+    );
+    expect(split).toEqual([]);
+  });
+
+  test("numbered lists keep the original row rhythm", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto("/sheets/");
+    const tops = await page
+      .locator("main nav[data-menu] a")
+      .evaluateAll((links) => links.slice(0, 3).map((a) => a.getBoundingClientRect().top));
+    expect(tops[1]! - tops[0]!).toBeGreaterThanOrEqual(23);
+  });
+
+  test("wide screens show the contents rail and no menu button", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto("/databases/postgres/");
+    await expect(page.locator(".toc-rail nav")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Table of contents" })).toBeHidden();
+  });
+});

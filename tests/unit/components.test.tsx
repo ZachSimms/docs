@@ -13,7 +13,7 @@ import { SheetView } from "@/components/SheetView";
 import { Graph, Graphs } from "@/components/Graph";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { STORAGE_KEY } from "@/lib/theme";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { OPEN_SEARCH_EVENT } from "@/components/SearchLink";
 
 describe("DottedLink", () => {
@@ -379,7 +379,8 @@ describe("Toc", () => {
     Object.defineProperty(nav, "clientHeight", { value: 300, configurable: true });
     Object.defineProperty(nav, "scrollHeight", { value: 900, configurable: true });
     const scrolled: number[] = [];
-    nav.scrollBy = ((options: ScrollToOptions) => scrolled.push(options.top ?? 0)) as typeof nav.scrollBy;
+    nav.scrollBy = ((options: ScrollToOptions) =>
+      scrolled.push(options.top ?? 0)) as typeof nav.scrollBy;
     const up = () => screen.queryByRole("button", { name: "Scroll contents up" });
     const down = () => screen.queryByRole("button", { name: "Scroll contents down" });
 
@@ -403,6 +404,148 @@ describe("Toc", () => {
   it("renders nothing for fewer than two headings", () => {
     const { container } = render(<Toc entries={entries.slice(0, 1)} />);
     expect(container.querySelector(".toc")).toBeNull();
+    expect(container.querySelector(".toc-menu-button")).toBeNull();
+  });
+
+  describe("menu (narrow viewports)", () => {
+    const button = () => screen.getByRole("button", { name: "Table of contents" });
+    const panel = () => document.getElementById("toc-menu-panel");
+
+    it("starts closed: a ≡ button with aria-expanded false and no panel", () => {
+      render(<Toc entries={entries} />);
+      expect(button()).toHaveTextContent("≡");
+      expect(button()).toHaveAttribute("aria-expanded", "false");
+      expect(button()).toHaveAttribute("aria-controls", "toc-menu-panel");
+      expect(panel()).toBeNull();
+      expect(document.body).not.toHaveAttribute("data-toc-open");
+    });
+
+    it("opens a panel listing every entry with the current one marked, and flags the body", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      expect(button()).toHaveAttribute("aria-expanded", "true");
+      const links = [...panel()!.querySelectorAll("a")];
+      expect(links.map((a) => a.getAttribute("href"))).toEqual(["#one", "#one-a", "#two"]);
+      expect(links[1]).toHaveClass("toc-sub");
+      expect(links[0]).toHaveAttribute("aria-current", "location");
+      expect(document.body).toHaveAttribute("data-toc-open");
+    });
+
+    it("closes when an entry is chosen, and that entry becomes current", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      fireEvent.click(panel()!.querySelectorAll("a")[2]!);
+      expect(panel()).toBeNull();
+      expect(button()).toHaveAttribute("aria-expanded", "false");
+      expect(document.body).not.toHaveAttribute("data-toc-open");
+      const rail = screen.getByRole("navigation", { name: "Contents" });
+      expect(rail.querySelectorAll("a")[2]).toHaveAttribute("aria-current", "location");
+    });
+
+    it("closes on Escape, claiming the key so the page doesn't also go up a level", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      const event = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        window.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(true);
+      expect(panel()).toBeNull();
+      expect(document.activeElement).toBe(button());
+    });
+
+    it("closes on a press outside, but not inside the panel", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      fireEvent.pointerDown(panel()!);
+      expect(panel()).not.toBeNull();
+      fireEvent.pointerDown(document.body);
+      expect(panel()).toBeNull();
+    });
+
+    it("toggles closed from the button", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      fireEvent.click(button());
+      expect(panel()).toBeNull();
+    });
+
+    it("leaves Escape to search when search is open on top", () => {
+      render(<Toc entries={entries} />);
+      fireEvent.click(button());
+      document.body.setAttribute("data-search-open", "");
+      try {
+        const event = new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          window.dispatchEvent(event);
+        });
+        expect(event.defaultPrevented).toBe(false);
+        expect(panel()).not.toBeNull();
+      } finally {
+        document.body.removeAttribute("data-search-open");
+      }
+    });
+
+    it("closes when focus tabs out of it, not when it moves within", () => {
+      render(
+        <>
+          <Toc entries={entries} />
+          <button type="button">elsewhere</button>
+        </>,
+      );
+      fireEvent.click(button());
+      const [first, second] = [...panel()!.querySelectorAll("a")];
+      fireEvent.focusOut(first!, { relatedTarget: second });
+      expect(panel()).not.toBeNull();
+      fireEvent.focusOut(second!, {
+        relatedTarget: screen.getByRole("button", { name: "elsewhere" }),
+      });
+      expect(panel()).toBeNull();
+    });
+
+    it("closes when the viewport widens past the breakpoint", () => {
+      const listeners: (() => void)[] = [];
+      const mql = {
+        matches: false,
+        addEventListener: (_: string, fn: () => void) => listeners.push(fn),
+        removeEventListener: () => {},
+      };
+      const original = window.matchMedia;
+      window.matchMedia = (() => mql) as unknown as typeof window.matchMedia;
+      try {
+        render(<Toc entries={entries} />);
+        fireEvent.click(button());
+        mql.matches = true;
+        act(() => listeners.forEach((fn) => fn()));
+        expect(panel()).toBeNull();
+        expect(document.body).not.toHaveAttribute("data-toc-open");
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+
+    it("moves focus to the chosen section's heading", () => {
+      const heading = document.createElement("h2");
+      heading.id = "two";
+      document.body.append(heading);
+      try {
+        render(<Toc entries={entries} />);
+        fireEvent.click(button());
+        fireEvent.click(panel()!.querySelectorAll("a")[2]!);
+        expect(document.activeElement).toBe(heading);
+        expect(heading).toHaveAttribute("tabindex", "-1");
+      } finally {
+        heading.remove();
+      }
+    });
   });
 });
 

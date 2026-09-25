@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { BreakablePath } from "@/components/BreakablePath";
 import { padNumber } from "@/lib/format";
 import { isTypingTarget } from "@/lib/keys";
 import { docPath, rankSearch, type SearchDoc, type SearchHit } from "@/lib/search-rank";
@@ -227,7 +228,7 @@ export function SearchPalette() {
         <div id={RESULTS_ID} role="listbox" aria-label="Results" className="results">
           {hits.map((hit, i) => (
             <span key={hit.doc.url}>
-              <span>{padNumber(hits.length - 1 - i)}.</span>{" "}
+              <span>{padNumber(hits.length - 1 - i)}.</span>{"\u00a0"}
               <Link
                 id={`search-hit-${i}`}
                 role="option"
@@ -236,7 +237,9 @@ export function SearchPalette() {
                 onClick={close}
                 onMouseEnter={() => setSelected(i)}
               >
-                <i>{docPath(hit.doc)}</i>
+                <i>
+                  <BreakablePath label={docPath(hit.doc)} />
+                </i>
               </Link>
               <br />
             </span>

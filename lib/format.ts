@@ -35,3 +35,16 @@ export function padNumber(n: number): string {
 export function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
+
+/**
+ * Split a path-like label after each `/`, keeping the slashes, so a renderer
+ * can put a `<wbr>` break opportunity between the segments: a long
+ * `topic/dir/sheet` then wraps at a slash on narrow screens, not mid-word.
+ *
+ * @param label - E.g. `"infrastructure/kubernetes/helm"`.
+ * @returns E.g. `["infrastructure/", "kubernetes/", "helm"]`; `[label]` when it has no slash.
+ */
+export function pathSegments(label: string): string[] {
+  // No lookbehind: it would stop this client chunk parsing on Safari before 16.4.
+  return label.match(/[^/]*\/|[^/]+$/g) ?? [label];
+}
