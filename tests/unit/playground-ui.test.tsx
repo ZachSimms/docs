@@ -332,6 +332,7 @@ describe("SymbolRow", () => {
       moveCursor: (d) => calls.push(`move:${d}`),
       undo: () => calls.push("undo"),
       focus: () => calls.push("focus"),
+      showHover: () => calls.push("hover"),
     };
     const { rerender } = render(<SymbolRow handleRef={handle} indent={"\t"} visible={false} />);
     expect(screen.queryByRole("toolbar")).toBeNull();
@@ -346,7 +347,8 @@ describe("SymbolRow", () => {
     press("Tab");
     press("Cursor left");
     press("Undo");
-    expect(calls).toEqual(["insert:{", "insert:\t", "move:-1", "undo"]);
+    press("Info at cursor");
+    expect(calls).toEqual(["insert:{", "insert:\t", "move:-1", "undo", "hover"]);
   });
 });
 

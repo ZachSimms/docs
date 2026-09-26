@@ -31,6 +31,8 @@ export interface EditorHandle {
   moveCursor(delta: number): void;
   undo(): void;
   focus(): void;
+  /** Show the hover card for the name at the cursor (touch screens have no hover). */
+  showHover?(): void;
 }
 
 /** Props for {@link CodeEditor}. */
@@ -220,6 +222,23 @@ export function CodeEditor({
       },
       focus() {
         view.current?.focus();
+      },
+      showHover() {
+        const v = view.current;
+        if (!v) return;
+        // CodeMirror's hovers follow the pointer, so pretend the pointer rests on the character
+        // before the cursor (the end of the word just typed) or the one after it.
+        const { head } = v.state.selection.main;
+        const before = head > 0 && /\w/.test(v.state.sliceDoc(head - 1, head));
+        const coords = v.coordsAtPos(before ? head - 1 : head, 1);
+        if (!coords) return;
+        const x = coords.left + v.defaultCharacterWidth / 2;
+        const y = (coords.top + coords.bottom) / 2;
+        const target = document.elementFromPoint(x, y) ?? v.contentDOM;
+        if (!v.dom.contains(target)) return;
+        target.dispatchEvent(
+          new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y }),
+        );
       },
     };
     return () => {

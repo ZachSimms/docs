@@ -17,8 +17,10 @@ import type { EditorHandle } from "./CodeEditor";
 export const SYMBOL_KEYS: readonly {
   label: string;
   name: string;
-  action: "indent" | "left" | "right" | "undo" | string;
+  action: "indent" | "left" | "right" | "undo" | "info" | string;
 }[] = [
+  // Touch has no hover: show the hover card for the name at the cursor.
+  { label: "ⓘ", name: "Info at cursor", action: "info" },
   { label: "⇥", name: "Tab", action: "indent" },
   ...[
     "{",
@@ -90,6 +92,7 @@ export function SymbolRow({ handleRef, indent, visible }: SymbolRowProps) {
     else if (action === "left") editor.moveCursor(-1);
     else if (action === "right") editor.moveCursor(1);
     else if (action === "undo") editor.undo();
+    else if (action === "info") editor.showHover?.();
     else editor.insert(action);
   };
   return (

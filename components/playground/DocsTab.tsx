@@ -24,6 +24,7 @@ import {
   type FramedSource,
 } from "@/lib/playground/docs";
 import type { LanguageId } from "@/lib/playground/languages";
+import type { DocRequest } from "@/lib/reference-panel";
 import { DocsView } from "./DocsView";
 
 /** The committed manifest (see `scripts/build-docs-manifest.ts`). */
@@ -75,30 +76,43 @@ interface Opened {
 /** Props for {@link DocsTab}. */
 interface DocsTabProps {
   language: LanguageId;
+  /** A page to show (from an editor hover); `n` changes on every request. */
+  requested?: (DocRequest & { n: number }) | null;
 }
 
 /** Render the tab. */
-export function DocsTab({ language }: DocsTabProps) {
-  const [sets, setSets] = useState<Docset[] | null>(null);
+export function DocsTab({ language, requested = null }: DocsTabProps) {
+  /** Every docset (a hover can open one the project doesn't list). */
+  const [allSets, setAllSets] = useState<Docset[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [source, setSource] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<DocEntry[]>([]);
   const [selected, setSelected] = useState(0);
-  const [stack, setStack] = useState<readonly Opened[]>([]);
+  const [stack, setStack] = useState<readonly Opened[]>(requested ? [requested] : []);
+  const [seen, setSeen] = useState(requested?.n ?? 0);
+  if (requested && requested.n !== seen) {
+    setSeen(requested.n);
+    setStack([requested]);
+  }
   const [framed, setFramed] = useState<FramedSource | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let live = true;
     loadManifest().then(
-      (all) => live && setSets(all.filter((s) => DOCS_FOR[language].includes(s.slug))),
+      (all) => live && setAllSets(all),
       () => live && setFailed(true),
     );
     return () => {
       live = false;
     };
-  }, [language]);
+  }, []);
+
+  const sets = useMemo(
+    () => allSets?.filter((s) => DOCS_FOR[language].includes(s.slug)) ?? null,
+    [allSets, language],
+  );
 
   const active = useMemo(
     () => (sets ?? []).filter((s) => source === "all" || s.slug === source),
@@ -129,7 +143,7 @@ export function DocsTab({ language }: DocsTabProps) {
   );
   const current = Math.min(selected, Math.max(hits.length - 1, 0));
   const opened = stack.at(-1);
-  const openedSet = opened && sets?.find((s) => s.slug === opened.slug);
+  const openedSet = opened && allSets?.find((s) => s.slug === opened.slug);
   const extras = FRAMED_FOR[language] ?? [];
 
   const open = (entry: DocEntry) =>

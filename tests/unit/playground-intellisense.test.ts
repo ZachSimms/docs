@@ -98,3 +98,74 @@ describe("the editor side of the TypeScript service", () => {
     expect(dom.querySelector(".pg-hover-tag")?.textContent).toBe("@param a the first");
   });
 });
+
+describe("basedpyright", () => {
+  it("reads a workspace config that points at the bundled stubs and skips them", async () => {
+    const { pyrightInitOptions } = await import("@/lib/playground/intellisense/pyright-config");
+    const config = JSON.parse(pyrightInitOptions().files["/pyrightconfig.json"]!);
+    expect(config).toMatchObject({
+      typeshedPath: "/typeshed",
+      include: ["**/*.py"],
+      pythonVersion: "3.14",
+      typeCheckingMode: "standard",
+    });
+  });
+
+  it("maps project paths to URIs, and only Python files", async () => {
+    const { pythonFiles, pythonUri } = await import("@/lib/playground/intellisense/pyright-config");
+    expect(pythonUri("shapes/my circle.py")).toBe("file:///shapes/my%20circle.py");
+    expect([
+      ...pythonFiles({ "main.py": "x", "data/values.txt": "1", "t.pyi": "" }).keys(),
+    ]).toEqual(["file:///main.py", "file:///t.pyi"]);
+  });
+
+  it("softens type errors (they have a rule name) but not syntax errors", async () => {
+    const { softenDiagnostics } = await import("@/lib/playground/intellisense/pyright-config");
+    expect(
+      softenDiagnostics([
+        { severity: 1, code: "reportAttributeAccessIssue" },
+        { severity: 1 },
+        { severity: 3, code: "reportUnusedVariable" },
+      ]).map((d) => d.severity),
+    ).toEqual([2, 1, 3]);
+  });
+
+  it("opens every project file in the server once initialized, and keeps them in sync", async () => {
+    const { ProjectWorkspace } = await import("@/components/playground/intellisense/python");
+    const { EditorState } = await import("@codemirror/state");
+    const sent: string[] = [];
+    const client = {
+      notification: (method: string, params: { uri?: string; textDocument?: { uri: string } }) =>
+        sent.push(`${method} ${params.uri ?? params.textDocument?.uri}`),
+      didOpen: (file: { uri: string }) => sent.push(`open ${file.uri}`),
+      didClose: (uri: string) => sent.push(`close ${uri}`),
+    };
+    const workspace = new ProjectWorkspace(client as never);
+    workspace.setProject({ "main.py": "import shapes", "shapes/__init__.py": "" });
+    expect(sent).toEqual([]); // nothing before the server is up
+    workspace.connected();
+    expect(sent).toEqual([
+      "pyright/createFile file:///main.py",
+      "open file:///main.py",
+      "pyright/createFile file:///shapes/__init__.py",
+      "open file:///shapes/__init__.py",
+    ]);
+
+    sent.length = 0;
+    const view = { state: EditorState.create({ doc: "import shapes" }) };
+    workspace.openFile("file:///main.py", "python", view as never);
+    expect(sent).toEqual([]); // same text: nothing to send
+    workspace.setProject({ "main.py": "edited in the editor", "shapes/__init__.py": "X = 1" });
+    // main.py syncs from its editor; the other file from the project.
+    expect(sent).toEqual(["textDocument/didChange file:///shapes/__init__.py"]);
+
+    sent.length = 0;
+    workspace.closeFile("file:///main.py", view as never);
+    workspace.setProject({ "main.py": "print(1)" });
+    expect(sent).toEqual([
+      "close file:///shapes/__init__.py",
+      "pyright/deleteFile file:///shapes/__init__.py",
+      "textDocument/didChange file:///main.py",
+    ]);
+  });
+});
