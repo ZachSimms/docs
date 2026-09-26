@@ -3,7 +3,7 @@
  *
  * Client component. The project is linked (stylesheets inlined, modules turned
  * into `data:` URLs) half a second after typing stops, or at once on Run, and
- * shown in an `<iframe sandbox="allow-scripts" srcdoc>`, an opaque origin. Its
+ * shown in an `<iframe sandbox="allow-scripts allow-forms" srcdoc>`, an opaque origin. Its
  * console output reaches the page only through `acceptFrameMessage` (right
  * frame, current token, valid shape).
  */
@@ -17,7 +17,7 @@ import type { Project } from "@/lib/playground/project";
 import { acceptFrameMessage, newRunToken } from "@/lib/playground/runtime/protocol";
 import { buildPreviewSrcDoc } from "@/lib/playground/runtime/web-preview";
 import { transpile } from "@/lib/playground/transpile";
-import { SANDBOX_FLAGS } from "./useSandboxFrame";
+import { PREVIEW_SANDBOX_FLAGS } from "./useSandboxFrame";
 
 /** Wait this long after the last keystroke before refreshing. */
 export const PREVIEW_DEBOUNCE_MS = 500;
@@ -101,7 +101,7 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
       </div>
       <iframe
         ref={frame}
-        sandbox={SANDBOX_FLAGS}
+        sandbox={PREVIEW_SANDBOX_FLAGS}
         srcDoc={doc}
         title={`Preview of ${project.entry}`}
         className="pg-preview-frame"

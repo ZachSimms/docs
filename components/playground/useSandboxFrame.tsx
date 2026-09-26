@@ -14,8 +14,16 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { acceptFrameMessage, type FrameMessage } from "@/lib/playground/runtime/protocol";
 
-/** The only sandbox flags any playground frame gets. */
+/** The sandbox flags of the frames that run code (JS, TS, Python workers, Godot). */
 export const SANDBOX_FLAGS = "allow-scripts";
+
+/**
+ * The live preview's flags: also `allow-forms`, since Chromium otherwise blocks form
+ * submission before the `submit` event fires, so `onSubmit` handlers never run. A form
+ * can only navigate the preview itself, which is still an opaque origin without top
+ * navigation or popups; its scripts could already send data with `fetch`.
+ */
+export const PREVIEW_SANDBOX_FLAGS = "allow-scripts allow-forms";
 
 /** Where the frame's document comes from. */
 type FrameSource = { srcDoc: string; src?: never } | { src: string; srcDoc?: never };

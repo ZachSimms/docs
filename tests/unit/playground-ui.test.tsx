@@ -8,7 +8,11 @@ import { DOCS_MANIFEST_URL, resetDocsCache } from "@/components/playground/DocsT
 import { FileTree, type TreeCommand } from "@/components/playground/FileTree";
 import { ReferencePanel } from "@/components/playground/ReferencePanel";
 import { SymbolRow } from "@/components/playground/SymbolRow";
-import { SANDBOX_FLAGS, useSandboxFrame } from "@/components/playground/useSandboxFrame";
+import {
+  PREVIEW_SANDBOX_FLAGS,
+  SANDBOX_FLAGS,
+  useSandboxFrame,
+} from "@/components/playground/useSandboxFrame";
 import { WebPreview } from "@/components/playground/WebPreview";
 import { getLanguage } from "@/lib/playground/languages";
 import { appendOutput, EMPTY_OUTPUT } from "@/lib/playground/output";
@@ -380,8 +384,9 @@ describe("SymbolRow", () => {
 });
 
 describe("sandbox frames", () => {
-  it("only ever grant allow-scripts", () => {
+  it("grant code runners allow-scripts only, and the preview forms too", () => {
     expect(SANDBOX_FLAGS).toBe("allow-scripts");
+    expect(PREVIEW_SANDBOX_FLAGS).toBe("allow-scripts allow-forms");
     const { container } = render(
       <WebPreview
         project={TEMPLATES.web}
@@ -391,10 +396,8 @@ describe("sandbox frames", () => {
       />,
     );
     const frame = container.querySelector("iframe")!;
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame.getAttribute("sandbox")).not.toMatch(
-      /same-origin|popups|top-navigation|modals|forms/,
-    );
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-forms");
+    expect(frame.getAttribute("sandbox")).not.toMatch(/same-origin|popups|top-navigation|modals/);
   });
 });
 

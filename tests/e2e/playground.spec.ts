@@ -290,6 +290,9 @@ test.describe("playground: intellisense", () => {
     // A syntax error stays an error: it stops the program.
     await expect(page.locator(".cm-lintRange-error, .cm-lintPoint-error")).not.toHaveCount(0);
     await expectHover(page, "Circle", "class Circle(radius: float)");
+    // The signature is one code block, not a grid with a row per token (the site's code-block style).
+    const code = page.locator(".cm-tooltip-hover pre code").first();
+    expect(await code.evaluate((el) => getComputedStyle(el).display)).toBe("block");
     await page.mouse.move(0, 0);
     await expect(page.locator(".cm-tooltip-hover")).toBeHidden();
     await page.locator(".cm-content").click();
@@ -348,6 +351,21 @@ test.describe("playground: security", () => {
     await expect(output(page)).toContainText("origin null", { timeout: 5000 });
     await expect(output(page)).toContainText("storage blocked");
     await expect(output(page)).toContainText("after alert");
+  });
+
+  test("forms in the preview fire submit (onSubmit handlers work), without leaving the preview", async ({
+    page,
+  }) => {
+    await openPlayground(page, "web");
+    await page.locator('[role="treeitem"][data-path="index.html"]').click();
+    await setCode(
+      page,
+      '<form id="f"><input name="q" value="hi"><button>Add</button></form>\n<script>document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); console.log("submitted", new FormData(e.target).get("q")); });</script>',
+    );
+    const preview = page.frameLocator(".pg-preview-frame");
+    await preview.getByRole("button", { name: "Add" }).click();
+    await expect(output(page)).toContainText("submitted hi");
+    await expect(page).toHaveURL(/\/playground\/$/);
   });
 
   test("messages that don't come from the sandbox frame are ignored", async ({ page }) => {
@@ -516,12 +534,16 @@ test.describe("playground: layout, zen, menu, help", () => {
 });
 
 test.describe("playground: project types", () => {
-  test("React renders from esm.sh and state updates on click", async ({ page }) => {
+  test("React renders from esm.sh; clicks and the todo form update state", async ({ page }) => {
     test.skip(!process.env.E2E_NETWORK, "React loads from esm.sh (set E2E_NETWORK=1)");
     await openPlayground(page, "react");
     const preview = page.frameLocator(".pg-preview-frame");
     await preview.getByRole("button", { name: /Clicked 1 time/ }).click({ timeout: 15_000 });
     await expect(preview.getByRole("button", { name: /Clicked 2 times/ })).toBeVisible();
+    // The todo form submits (the preview allows forms).
+    await preview.getByPlaceholder("New todo").fill("Ship it");
+    await preview.getByRole("button", { name: "Add" }).click();
+    await expect(preview.getByRole("listitem").filter({ hasText: "Ship it" })).toBeVisible();
   });
 
   test("HTML/CSS/TS runs TypeScript modules in the preview", async ({ page }) => {

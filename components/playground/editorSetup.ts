@@ -71,6 +71,16 @@ export const editorTheme: Extension = EditorView.theme({
   ".pg-hover-open": { marginTop: "0.3em", font: "inherit" },
   ".pg-hover-credit": { fontSize: "0.85em", opacity: "0.7" },
   ".cm-lsp-documentation": { maxWidth: "min(70ch, 90vw)", fontFamily: "monospace" },
+  // The site's `pre code { display: grid }` (one row per Shiki line) would put every highlighted
+  // token of a hover's signature on its own row.
+  ".cm-tooltip pre": {
+    margin: "0.35em 0",
+    padding: "0.35em 1ch",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    borderRadius: "0",
+  },
+  ".cm-tooltip pre code": { display: "block", whiteSpace: "inherit" },
   ".cm-diagnostic": { fontFamily: "monospace", whiteSpace: "pre-wrap" },
   ".cm-panels": { backgroundColor: "var(--bg)", color: "var(--fg)" },
   ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--graph-0) 25%, transparent)" },
