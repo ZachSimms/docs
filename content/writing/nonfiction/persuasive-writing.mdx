@@ -1,0 +1,691 @@
+---
+title: Persuasive writing
+date: 2026-09-26
+order: 2
+---
+
+Writing that gets a specific reader to decide, act or change their mind: rhetoric basics, answer-first
+structure (Minto), Amazon-style memos and PR/FAQs, decision docs, emails that get answered, cold outreach,
+pitches and one-liners, copywriting formulas, headlines, stories, evidence, calls to action and the line between
+persuasion and manipulation. Sentence-level craft is in [clear writing](/writing/nonfiction/clear-writing/);
+biases that persuasion exploits are in [cognitive biases](/thinking/mental-models/cognitive-biases/); YC's
+founder advice is in [Y Combinator](/startups/advice/y-combinator/).
+
+## Rhetoric basics
+
+Aristotle, *Rhetoric* (4th century BC, trans. W. Rhys Roberts): "Of the modes of persuasion furnished by the
+spoken word there are three kinds. The first kind depends on the personal character of the speaker; the second
+on putting the audience into a certain frame of mind; the third on the proof, or apparent proof, provided by the
+words of the speech itself."
+
+| Appeal | Greek sense | On the page | Fails when |
+| :----- | :---------- | :---------- | :--------- |
+| **Ethos** | character, credibility | relevant track record, candour about weaknesses, accurate details, a named author who owns the recommendation | credentials are irrelevant or inflated; one wrong number destroys it |
+| **Pathos** | the audience's state of mind | the reader's stakes, a concrete customer story, vivid consequences | it replaces evidence, or the emotion is manufactured |
+| **Logos** | the argument itself | a clear claim, reasons, data, worked examples, the alternatives and why they lose | the logic is sound but the reader doesn't care (no pathos) or doesn't trust you (no ethos) |
+| **Kairos** | the opportune moment | why now: a deadline, a market shift, a budget cycle, a recent incident | the same proposal lands differently a quarter earlier or later |
+
+Aristotle adds that credibility "should be achieved by what the speaker says, not by what people think of his
+character before he begins to speak". On the page, ethos is built by precision: correct numbers, fair statement
+of the other side, and the specific detail only someone who has done the work would know.
+
+## Know the reader's decision
+
+Persuasive writing starts from the reader's decision, not your content. Before drafting, answer these.
+
+| Question | Why it matters |
+| :------- | :------------- |
+| Who decides? | a document aimed at "the team" persuades nobody; name the decision-maker |
+| What exactly are they deciding? | "approve \$40k for a pilot" is decidable; "think about AI" is not |
+| What do they care about? | revenue, risk, their team's time, their boss's goals, their reputation |
+| What do they already believe? | start from shared ground; don't argue what they already accept |
+| What will make them say no? | the objections you must answer in the document |
+| What is the cost of saying yes? | money, time, reversibility, political capital |
+| What happens if they do nothing? | the real alternative is usually the status quo, not a competitor |
+| When do they need to decide? | kairos; and your deadline, if you have one |
+
+Two rules follow:
+
+- **One document, one ask.** Two asks halve the chance of either. Split them.
+- **Make the ask the easy path.** Reduce the cost of saying yes: a pilot instead of a rollout, a reversible
+  decision, a default that happens unless they object.
+
+## Answer first: the Pyramid Principle
+
+Barbara Minto developed the Pyramid Principle at McKinsey in the 1960s–70s and published it as a book in the
+1980s (her site dates the original book to 1987; the expanded *The Minto Pyramid Principle* appeared in 1996).
+Her summary: "your thinking will be easy for a reader to grasp if you present the ideas organized as a pyramid
+under a single point."
+
+| Rule | Meaning |
+| :--- | :------ |
+| **Answer first** | the governing thought (recommendation, conclusion) goes at the top |
+| **Summarise below** | each idea summarises the group of ideas beneath it |
+| **Group logically** | ideas in a group are the same kind of idea and are MECE (mutually exclusive, collectively exhaustive, Minto's term) |
+| **Order logically** | within a group: deductive (argument chain), chronological, structural or by importance |
+| **Vertical Q&A** | each statement raises a question in the reader's mind ("why?", "how?"); the level below answers it |
+
+```text
+            Recommendation: move billing to Stripe by Q1
+          /                     |                       \
+ Cuts cost 30%         Removes PCI scope        Unblocks EU launch
+ - fees vs current     - no card data stored    - SEPA, VAT built in
+ - fewer FTE hours     - audit shrinks          - 6 weeks vs 6 months
+```
+
+### SCQ and SCQA introductions
+
+Minto's introduction structure (her "SCQ Framework") tells a story the reader already agrees with, then raises
+the question the document answers.
+
+| Part | Content | Example |
+| :--- | :------ | :------ |
+| **Situation** | uncontroversial context the reader accepts | "We process 40,000 payments a month through our in-house billing system." |
+| **Complication** | what changed or went wrong; creates tension | "The EU launch needs SEPA and VAT handling, which would take six months to build, and our PCI audit costs \$120k a year." |
+| **Question** | the question the complication raises (often implicit) | "Should we keep building billing ourselves?" |
+| **Answer** | the governing thought (top of the pyramid) | "No: move to Stripe by Q1." |
+
+**SCQA** is the common name for the four-part version. For an impatient reader, reorder to **A-SC**: answer
+first, then the situation and complication that justify it.
+
+### The "so what?" test
+
+For every statement, ask "so what?" until the answer is something the reader cares about. Consulting practice
+calls the result an **insight** as opposed to an **observation**.
+
+| Observation | So what? | Insight (write this) |
+| :---------- | :------- | :------------------- |
+| "Churn rose to 4% in Q3." | concentrated in accounts on the old plan | "Customers on the legacy plan are leaving: migrating them would cut churn by half." |
+| "The API has 120 endpoints." | 30 are unused | "Deleting 30 unused endpoints halves our security review." |
+| "Competitor X raised \$50M." | they will cut prices | "Expect a price war in the mid-market by spring; lock in annual contracts now." |
+
+## Memos and narratives
+
+### The Amazon six-pager
+
+Jeff Bezos's email to Amazon's senior team on 9 June 2004 had the subject line "No powerpoint presentations from
+now on at steam". Its reasoning (as published by Business Insider in 2015):
+
+> The reason writing a 4 page memo is harder than "writing" a 20 page powerpoint is because the narrative
+> structure of a good memo forces better thought and better understanding of what's more important than what,
+> and how things are related.
+
+In the 2017 shareholder letter: "We don't do PowerPoint (or any other slide-oriented) presentations at Amazon.
+Instead, we write narratively structured six-page memos. We silently read one at the beginning of each meeting
+in a kind of 'study hall.'" And on quality: "The great memos are written and re-written, shared with colleagues
+who are asked to improve the work, set aside for a couple of days, and then edited again with a fresh mind."
+
+| Practice | Why |
+| :------- | :-- |
+| full sentences, no bullet lists for reasoning | forces the logical connections bullets let you skip |
+| silent reading at the start of the meeting | everyone has actually read it; no presenter charisma |
+| appendices for data | the narrative stays at six pages; the evidence is available |
+| comments in the doc, then discussion | the meeting is spent on disagreement, not comprehension |
+| multiple drafts over days | quality comes from rewriting and outside review |
+
+### PR/FAQ (working backwards)
+
+Colin Bryar and Bill Carr, *Working Backwards* (2021), describe Amazon's PR/FAQ: write the launch **press
+release** and the **FAQs** before building anything, to force the author to start from the customer. Their
+published template's components:
+
+| Part | Content |
+| :--- | :------ |
+| Heading | name the product so the target customer understands it, one sentence |
+| Subheading | who the customer is and what benefit they get, one sentence |
+| Summary paragraph | city, outlet, planned launch date; the product and its benefits |
+| Problem paragraph | the customer's problem, from the customer's point of view |
+| Solution paragraph(s) | how the product solves it, and how it beats what customers use today |
+| Quotes and getting started | a company spokesperson quote, a hypothetical customer quote, how to start |
+| External FAQ | questions customers and press will ask (price, how it works, returns) |
+| Internal FAQ | questions leadership will ask: market size, cost, risks, dependencies, what must be true |
+
+The press release is short (about a page); the FAQ carries the hard thinking. Bryar and Carr describe the review
+as 15–20 minutes of silent reading followed by discussion aimed at truth-seeking, not selling.
+
+## Proposals and decision docs
+
+### One-page proposal
+
+A one-pager fits when the decision is modest and the reader is senior. The constraint is the point: if it does
+not fit on a page, you have not decided what matters.
+
+| Section | Length |
+| :------ | :----- |
+| Ask (BLUF) | 1–2 sentences: what, how much, by when |
+| Problem | 2–4 sentences with one number |
+| Proposal | what you will do; scope and non-scope |
+| Why this, why now | the alternatives briefly; the timing argument |
+| Cost and risk | money, people, time; what could go wrong; how reversible |
+| Success measure | the metric, target and check-in date |
+
+### Decision doc
+
+For contested or high-stakes decisions, lay out options fairly. A reader who spots a straw-man option stops
+trusting the whole document.
+
+| Section | Content |
+| :------ | :------ |
+| Decision needed | the question, the decider, the deadline |
+| Context | facts only, value-neutral; what constraints are fixed |
+| Options | 2–4 real options, including "do nothing" |
+| Comparison | a table of options against the criteria that matter |
+| Recommendation | which option and why, stated plainly |
+| Risks and mitigations | for the recommended option; what would change your mind |
+| Reversibility | one-way or two-way door; cost to undo |
+
+| Criterion | A: build in-house | B: Stripe | C: do nothing |
+| :-------- | :---------------- | :-------- | :------------ |
+| time to EU launch | 6 months | 6 weeks | blocked |
+| annual cost | \$300k eng time | 0.4% of volume | \$120k audit |
+| control of UX | full | high | full |
+| reversibility | high | medium (migration) | n/a |
+
+## Emails that get answered
+
+The reader decides in the preview pane whether to act now, later or never. Write for that pane.
+
+| Element | Rule | Before | After |
+| :------ | :--- | :----- | :---- |
+| Subject | state the action and deadline | "Quick question" | "Approve Q4 contractor budget by Thu?" |
+| First line | BLUF: the ask or the news | "Hope you're well! I wanted to reach out regarding…" | "Can you approve \$18k for two contractors in Q4?" |
+| Body | only what the reader needs to decide | a history of the project | three lines: why, what, what if not |
+| One ask | one question per email | four questions in one paragraph | one question; other topics in other emails |
+| Deadline | a real date and the reason | "when you get a chance" | "by Thursday, so they can start on the 1st" |
+| Easy yes | make replying trivial | "Thoughts?" | "Reply 'yes' and I'll send the contracts." |
+| Length | fits on a phone screen | 400 words | under 150 words |
+
+**Full example.**
+
+```text
+BEFORE
+Subject: Contractors
+
+Hi Sam,
+
+Hope you had a great weekend! I wanted to reach out about
+the Q4 plan. As you know we've been discussing the mobile
+app timeline for a while, and there have been some
+challenges with hiring, which I think we talked about in
+the last planning meeting. Anyway, the team has been
+looking at options and we think it might make sense to
+consider bringing in some contractors, potentially two,
+though we could discuss. Budget would be roughly $18k I
+think. Let me know your thoughts when you get a chance!
+
+AFTER
+Subject: Approve $18k for 2 contractors by Thu?
+
+Hi Sam,
+
+Can you approve $18k for two contract iOS developers for
+October-December?
+
+- Why: our open iOS role has been unfilled for 10 weeks;
+  without help the app slips from November to February.
+- What: two contractors from Acme, $9k each, vetted
+  by Priya.
+- Deadline: Thursday, so they can start on 1 October.
+
+Reply "yes" and I'll send the contracts for signature.
+
+Thanks,
+Alex
+```
+
+| Situation | Subject line pattern |
+| :-------- | :------------------- |
+| request | "[Action] by [date]?" — "Review pricing page by Fri?" |
+| FYI | "FYI: [the news]" — "FYI: EU launch moved to 3 Nov" |
+| decision made | "Decision: [what]" — "Decision: we're moving billing to Stripe" |
+| urgent | "Urgent: [impact] — [ask]" — "Urgent: checkout down — need DB access" |
+| intro | "Intro: [A] ↔ [B] ([why])" |
+
+## Cold outreach
+
+Cold emails compete with hundreds of others. The formula is **short, specific, easy yes**.
+
+Michael Seibel (YC), "How to Email Early Stage Investors": sentence one, "Clearly explain what you do"; sentence
+two, "Sell me on why I should be excited"; sentence three, "Ask for what you want". He adds: "Don't ask for a
+phone call or a meeting. Let me escalate things." His listed mistakes include "Writing too much. Walls of text
+result in slow/no replies."
+
+| Principle | Detail |
+| :-------- | :----- |
+| relevance | one line proving this is for *them*, not a mail-merge (their post, product, problem) |
+| specificity | numbers and names; "3,000 teams" beats "fast-growing" |
+| small ask | a question, feedback, a 15-minute call at most; not "partnership" |
+| easy yes | the reply can be one word |
+| no flattery padding | one genuine specific compliment at most; skip "I'm a huge fan" |
+| follow up once or twice | short, polite, adds something new; then stop |
+| send from a real address | company domain; a real name |
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "I'm the founder of an innovative AI-powered platform revolutionising workflows." | "We built a tool that turns Zendesk tickets into Jira bugs automatically; 40 support teams use it." | specific product, real traction |
+| "Would love to pick your brain sometime!" | "Would you tell me whether you'd pay \$20/seat for this? A one-word answer is plenty." | small, answerable ask |
+| "Let me know if you'd be open to hopping on a call to explore synergies." | "If useful, I can send a 2-minute demo video. Want it?" | easy yes, no calendar cost |
+
+## Pitches and one-liners
+
+### Pitch structure
+
+Sequoia's "Writing a Business Plan" outline, the standard skeleton for a pitch deck or narrative:
+
+| # | Section | Sequoia's prompt |
+| :- | :------ | :--------------- |
+| 1 | Company purpose | "Define your company in a single declarative sentence." |
+| 2 | Problem | "Describe the pain of your customer." |
+| 3 | Solution | "Explain your eureka moment." |
+| 4 | Why now? | "The best companies almost always have a clear why now?" |
+| 5 | Market potential | "Identify your customer and your market." |
+| 6 | Competition / alternatives | show "that you have a plan to win" |
+| 7 | Business model | "How do you intend to thrive?" |
+| 8 | Team | "Tell the story of your founders and key team members." |
+| 9 | Financials | "If you have any, please include." |
+| 10 | Vision | "If all goes well, what will you have built in five years?" |
+
+Michael Seibel's "How to Pitch Your Company" reduces it to seven questions: what do you do; how big is the
+market; what's your progress; what's your unique insight; what's your business model; who's on your team; what do
+you want. His editing rule: "eliminate jargon, acronyms, marketing speak, and any ambiguous terms such as
+'platform'", and "you don't need to sound cool. You need to be clear."
+
+The compact narrative order for a written pitch: **problem → solution → why now → traction → market → team → ask**.
+Lead with traction if it is your strongest card.
+
+### The one-liner
+
+Seibel's first answer is the model: start with the company name and what it does, e.g. "Socialcam is a mobile
+app that makes it easy to take videos and share them with friends and family." He adds: "There's no need to set up
+the problem, you can just get to the point."
+
+```text
+[Company] helps [specific who] [do what outcome]
+by [how / mechanism].
+
+Examples
+Acme helps Shopify stores recover abandoned carts
+by texting shoppers a one-tap checkout link.
+
+Ledgerly helps two-person accounting firms close
+the month in a day by reconciling bank feeds
+automatically.
+```
+
+| Test | Pass |
+| :--- | :--- |
+| a smart outsider can repeat it | Seibel's "Email Test": email two sentences to a friend and ask them to explain it back |
+| no buzzwords | no "platform", "AI-powered", "revolutionise", "ecosystem" |
+| the customer is specific | "Shopify stores", not "businesses" |
+| the outcome is concrete | "recover abandoned carts", not "drive growth" |
+
+**"X for Y" one-liners** ("Twitch for cooking", an example from Seibel's own investor-email post) are fast when
+both halves are well known and the analogy transfers the right thing. They fail when X is obscure, when X's
+business model is the wrong one to imply, or when every competitor uses the same X. Follow the analogy with the
+plain version.
+
+## Copywriting formulas
+
+Formulas are scaffolds for short persuasive copy: landing pages, ads, launch posts, cold emails.
+
+| Formula | Steps | Best for | Example |
+| :------ | :---- | :------- | :------ |
+| **AIDA** | Attention → Interest → Desire → Action | ads, landing pages | "Still reconciling by hand? (A) Ledgerly matches 95% of bank lines automatically (I). Close the month in a day, not a week (D). Start free (A)." |
+| **PAS** | Problem → Agitate → Solution | pain-driven products, cold email | "Deploys take 40 minutes. Every one blocks the team and invites a hotfix-on-hotfix. Our cache cuts builds to 4." |
+| **BAB** | Before → After → Bridge | outcome-driven products, case studies | "Before: on-call pages at 3 a.m. After: the fix is a one-click rollback. Bridge: Canary runs every deploy against real traffic first." |
+| **4 Us** | Useful, Urgent, Unique, Ultra-specific | headlines, subject lines | "Cut your AWS bill 30% before Q4 renewals (the 6 settings we changed)" |
+| **FAB** | Feature → Advantage → Benefit | product pages, sales copy | "SSO (F) means no separate passwords (A), so offboarding takes one click and no one keeps access (B)." |
+
+**AIDA's history** is murkier than its usual attribution. It is generally credited to advertising pioneer
+E. St. Elmo Lewis around 1898, but an anonymous formula ("attract attention… interest and convince") appeared in
+*Printers' Ink* in 1898, the four-step version was elaborated by others in the 1900s, and the acronym itself
+appears in print around 1921. Reviews of hierarchy-of-effects models (e.g. Vakratsas and Ambler, 1999) find
+little evidence that buyers move through the steps in order. Treat it as a checklist, not a model of the mind.
+
+The origins of PAS, BAB, FAB and the 4 Us are copywriting folklore; none has a reliable single inventor.
+
+## Headlines and titles
+
+A title is a promise. It must be specific enough to select the right readers and honest enough that the body
+delivers.
+
+| Lever | Before | After |
+| :---- | :----- | :---- |
+| specificity | "Improving our infrastructure" | "How we cut deploy time from 40 minutes to 4" |
+| numbers | "Some pricing lessons" | "7 pricing mistakes that cost us \$200k" |
+| reader benefit | "Our new caching layer" | "Faster pages with no code changes" |
+| the claim itself | "Thoughts on remote work" | "Remote teams need more writing, not more meetings" |
+| audience selection | "A guide to Postgres" | "Postgres indexing for Rails developers" |
+| question (sparingly) | "Microservices discussion" | "Do you actually need microservices?" |
+
+| Curiosity | Clickbait |
+| :-------- | :-------- |
+| withholds the answer but promises a specific one | withholds the answer and the body doesn't have one |
+| "Why our fastest-growing feature had no marketing" | "You won't believe what happened next" |
+| the reader is glad they clicked | the reader feels tricked and remembers your name for it |
+
+## Storytelling in persuasion
+
+Stories carry pathos and make logos memorable. In business writing a story is usually one customer, one moment,
+one change.
+
+**The story spine**, created by improv teacher Kenn Adams and widely circulated through a list of Pixar
+storytelling tips:
+
+```text
+Once upon a time...            (the world / the status quo)
+Every day...                   (the routine)
+But, one day...                (the event that breaks it)
+Because of that...             (consequence)
+Because of that...             (consequence)
+Until, finally...              (the climax)
+And, ever since then...        (the new normal)
+
+Business version
+Once upon a time, support teams copied tickets into Jira.
+Every day, bugs were lost or duplicated.
+One day, Maya's team missed a data-loss bug for a week.
+Because of that, they lost their biggest customer.
+Because of that, Maya built a script to sync tickets.
+Until finally, every support team in the company used it.
+And ever since, bugs reach engineering in minutes.
+(Now it's a product. Here's what we're asking for...)
+```
+
+| Story device | Use |
+| :----------- | :-- |
+| **Before / After / Bridge** | show the reader's world now, the better world, then your product as the bridge |
+| **Customer story** | one named (or anonymised but specific) customer with a real number |
+| **Anecdote + data** | the story makes it vivid; the data proves it isn't a one-off |
+| **Founder story** | only when it explains the unique insight; not biography |
+| **Contrast** | "Most teams do X. We found Y." |
+
+## Evidence and objections
+
+### Evidence
+
+| Type | Strength | Risk |
+| :--- | :------- | :--- |
+| data you measured | strong, specific | cherry-picking; show the baseline and the denominator |
+| experiment / A/B test | strongest for causal claims | underpowered tests; state sample size |
+| customer quote | vivid, credible | unrepresentative; say how many said similar |
+| case study | concrete proof it works somewhere | survivorship; mention failures |
+| expert or authority | borrows credibility | irrelevant authority; appeal-to-authority fallacy |
+| social proof (logos, user counts) | reduces perceived risk | vanity metrics; readers check |
+| analogy | makes the unfamiliar familiar | proves nothing; the analogy may break exactly where it matters |
+
+Rules: **give the number, the baseline and the source**; round sensibly; prefer one strong piece of evidence over
+five weak ones; never state a figure you cannot defend in the meeting.
+
+Robert Cialdini's principles of influence (reciprocity, commitment and consistency, social proof, authority,
+liking, scarcity, and later unity) describe real shortcuts readers use. See
+[cognitive biases](/thinking/mental-models/cognitive-biases/). Use them to present true things well, never to
+fabricate urgency or consensus.
+
+### Handling objections
+
+Answer the strongest objection in the document before the reader raises it. Unanswered objections become the
+meeting.
+
+| Technique | How | Example |
+| :-------- | :-- | :------ |
+| **pre-empt** | raise it yourself, then answer it | "The obvious worry is lock-in. Our data export runs nightly to S3, so switching costs a week." |
+| **concede and counter** | grant what is true, then show why it doesn't decide the question | "Yes, Stripe costs more per transaction. It still saves \$180k a year in audit and engineering." |
+| **steelman** | state the other side at its strongest | "The best case for building in-house is control over checkout UX…" |
+| **reframe the comparison** | compare to the real alternative, often the status quo | "The choice isn't Stripe vs perfect; it's Stripe vs a six-month delay." |
+| **reduce the stakes** | make it a pilot or a reversible step | "Let's run it for one region for 60 days." |
+| **FAQ section** | list and answer expected questions | the Amazon internal FAQ |
+
+## Calls to action
+
+| Rule | Before | After |
+| :--- | :----- | :---- |
+| one action | "Sign up, follow us, and read our blog" | "Start your free trial" |
+| a verb plus the outcome | "Submit" | "Get my report" |
+| specific commitment | "Let's chat sometime" | "Book a 15-minute call this week" |
+| deadline with a reason | "Reply soon" | "Reply by Friday; the pricing changes on the 1st" |
+| lower the cost | "Buy now" | "Try free for 14 days, no card" |
+| say what happens next | "Contact sales" | "Get a quote within one business day" |
+
+In internal documents the call to action is the **decision requested**: "I recommend option B and need your
+approval by 30 September to hit the Q1 launch."
+
+## Writing for skimmers
+
+Jakob Nielsen's "How Users Read on the Web" (NN/g, 1997) found that "79 percent of our test users always scanned
+any new page they came across; only 16 percent read word-by-word." Most business readers skim email and docs the
+same way.
+
+| Technique | Why |
+| :-------- | :-- |
+| BLUF in the first two lines | skimmers read the start and leave |
+| descriptive headings that state claims | "Stripe saves \$180k a year" beats "Cost analysis" |
+| bold the key phrase, not whole sentences | bold everything and nothing stands out |
+| short paragraphs, one idea each | each paragraph is an entry point |
+| tables for comparisons | options × criteria is the natural shape of a decision |
+| numbered lists for sequences and counts | "three reasons" sets expectations |
+| front-load sentences and list items | the first two words carry the scan |
+| a summary box or TL;DR | the reader who reads nothing else gets the point |
+
+## Persuasive essays and posts
+
+Paul Graham's essays (see [Y Combinator](/startups/advice/y-combinator/)) are a model of informal persuasion:
+plain words, a conversational voice, one idea pushed hard. In "How to Write Usefully" (2020) he argues an essay
+should aim to be useful rather than merely persuasive: "Useful writing tells people something true and important
+that they didn't already know, and tells them as unequivocally as possible." He adds: "Useful writing makes claims
+that are as strong as they can be made without becoming false."
+
+| Part | Job |
+| :--- | :-- |
+| Title | the claim or the question, specific |
+| Hook (first paragraph) | the surprising claim, a concrete scene or the question the reader already has |
+| Thesis | one sentence the whole piece defends |
+| Body | 3–5 reasons or steps, each with evidence or an example; counterarguments addressed |
+| Turn | the objection a thoughtful reader would raise, answered |
+| Conclusion | what follows: the implication, the action, the new question; not a summary |
+
+## Persuasion vs manipulation
+
+The line: **persuasion helps the reader make a decision they would endorse with full information; manipulation
+gets a decision they would reject if they saw how it was produced.**
+
+| Persuasion | Manipulation |
+| :--------- | :----------- |
+| true evidence, selected fairly | cherry-picked or invented numbers |
+| real deadlines with reasons | fake scarcity and countdown timers |
+| states the downsides and risks | hides them in fine print |
+| the reader's interest aligns with the ask | exploits a bias against the reader's interest |
+| you would be comfortable if the reader saw your draft notes | you would not |
+
+Besides ethics, manipulation is bad strategy for anyone who writes to the same readers twice: ethos is the
+appeal that compounds.
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| writing about your content, not the reader's decision | start from "who decides what, by when" |
+| burying the ask | first line, and repeat it at the end |
+| several asks in one document | one ask; split the rest |
+| background before the point | answer first, then SCQ |
+| straw-man alternatives | include the strongest alternative and "do nothing" |
+| ignoring the obvious objection | pre-empt it in the text or the FAQ |
+| adjectives instead of evidence | "fast" → the number, the baseline, the source |
+| buzzwords in pitches | Seibel's email test: a smart friend must be able to repeat it |
+| bullet lists instead of reasoning | narrative prose for arguments; tables for data |
+| clickbait titles | the title's promise must be kept by the body |
+| manufactured urgency | a real deadline and its reason, or none |
+| sending the first draft | write, wait, get a reviewer, rewrite |
+
+## Templates
+
+### Six-page narrative memo
+
+```text
+Title: [Recommendation as a sentence]
+Author / date / decision needed by: [..]
+
+1. Summary (1 paragraph)
+   What we propose, why, what it costs, what we need.
+2. Context
+   Situation the reader agrees with. Key numbers.
+3. Problem / opportunity
+   The complication. Why it matters now (kairos).
+4. Proposal
+   What we will do; scope and non-goals; milestones.
+5. Alternatives considered
+   Each option, why it loses. Include "do nothing".
+6. Risks and mitigations
+   What could go wrong; what would change our mind.
+7. Cost and resourcing
+   People, money, time; reversibility.
+8. Success metrics
+   Metric, baseline, target, review date.
+9. Ask
+   The specific decision or resources requested.
+
+Appendix: data, detailed financials, FAQ.
+Rules: full sentences; no slides; <= 6 pages + appendix.
+```
+
+### PR/FAQ
+
+```text
+HEADING: [Product name] [does what] for [whom]
+SUBHEADING: [Customer] can now [benefit] - [one sentence]
+
+[CITY] - [Launch date] - [Company] today announced
+[product], which [summary of benefit].
+
+PROBLEM: Today, [customer] [struggles with X]. [Why it
+hurts, in the customer's words.]
+
+SOLUTION: [Product] [how it solves X]. Unlike [current
+alternatives], it [key difference].
+
+"[Why we built it]," said [spokesperson, title].
+
+"[Specific benefit in plain words]," said [customer].
+
+GETTING STARTED: [How to start in one or two sentences.]
+
+EXTERNAL FAQ
+Q: How much does it cost?
+Q: How does it work?
+Q: What if [common concern]?
+
+INTERNAL FAQ
+Q: How big is the market and how do we know?
+Q: What does it cost to build and run?
+Q: What are the biggest risks?
+Q: What has to be true for this to succeed?
+Q: Why us, why now?
+```
+
+### Decision doc
+
+```text
+DECISION: [Question] - Decider: [name] - By: [date]
+
+CONTEXT (facts only)
+[..]
+
+OPTIONS
+A. [..]   B. [..]   C. Do nothing
+
+| Criterion | A | B | C |
+| ...       |   |   |   |
+
+RECOMMENDATION
+[Option], because [top 2-3 reasons].
+
+RISKS / WHAT WOULD CHANGE MY MIND
+[..]
+
+REVERSIBILITY
+[One-way or two-way door; cost to undo]
+```
+
+### Request email
+
+```text
+Subject: [Action] by [date]?
+
+Hi [Name],
+
+Can you [specific ask] by [date]?
+
+- Why: [one line, with a number]
+- What: [one line: scope, cost]
+- If not: [consequence or alternative]
+
+Reply "[yes]" and I'll [next step].
+
+[Name]
+```
+
+### Cold email
+
+```text
+Subject: [Specific, relevant, short]
+
+Hi [Name],
+
+[One line showing why you're writing to *them*.]
+
+[What you do, one sentence, no jargon.]
+[Why it's interesting: best traction or insight.]
+
+[Small, specific ask with an easy yes.]
+
+[Name], [role], [company domain]
+
+Follow-up (5-7 days later, same thread):
+"Hi [Name], quick bump - [one new fact]. Worth a look?"
+```
+
+### Pitch narrative
+
+```text
+ONE-LINER  [Company] helps [who] [outcome] by [how].
+PROBLEM    [Who] [pain], costing [number]. Today they
+           [workaround], which fails because [..].
+SOLUTION   [What it does]. [The insight others miss].
+WHY NOW    [Shift: tech, regulation, behaviour, cost].
+TRACTION   [Users/revenue/growth rate, time period].
+MARKET     [Bottom-up: # customers x price].
+COMPETITION [Alternatives and why we win].
+MODEL      [Who pays, how much, how often].
+TEAM       [Founders; the one relevant credential].
+ASK        [Amount, what it buys, milestones].
+```
+
+### Landing page (AIDA)
+
+```text
+HEADLINE (Attention)   [Outcome] for [who] [in time/cost]
+SUBHEAD (Interest)     [How it works, one sentence]
+PROOF (Desire)         [Number] [customer logos] [quote]
+BENEFITS (Desire)      3 x [feature -> benefit]
+OBJECTION              [Top worry] - [answer]
+CTA (Action)           [Verb + outcome] [risk reducer]
+```
+
+## References
+
+- [Aristotle, *Rhetoric*, trans. W. Rhys Roberts (MIT Internet Classics Archive)](https://classics.mit.edu/Aristotle/rhetoric.html): ethos, pathos and logos in the original
+- Barbara Minto, *The Minto Pyramid Principle: Logic in Writing, Thinking and Problem Solving* (1996 expanded edition): answer first, grouping, SCQ introductions
+- [Barbara Minto's site](https://www.barbaraminto.com/): the Pyramid Principle and SCQ Framework in her words, and book history
+- [Business Insider via Yahoo Finance, "A 2004 email from Jeff Bezos explains why PowerPoint presentations aren't allowed at Amazon" (2015)](https://finance.yahoo.com/news/2004-email-jeff-bezos-explains-182123490.html): the text of the "no powerpoint" email
+- [Jeff Bezos, 2017 letter to shareholders](https://www.aboutamazon.com/news/company-news/2017-letter-to-shareholders): six-page memos, "study hall" and how great memos are written
+- Colin Bryar and Bill Carr, *Working Backwards* (St. Martin's Press, 2021): narratives and the PR/FAQ process from inside Amazon
+- [Working Backwards: PR/FAQ instructions and template](https://workingbackwards.com/resources/working-backwards-pr-faq/): the authors' own description of PR/FAQ components and reviews
+- [Sequoia Capital, "Writing a Business Plan"](https://sequoiacap.com/article/writing-a-business-plan/): the ten-section pitch outline
+- [Michael Seibel, "How to Pitch Your Company"](https://www.michaelseibel.com/blog/how-to-pitch-your-company): seven questions and the email test
+- [Michael Seibel, "How to Email Early Stage Investors"](https://www.michaelseibel.com/blog/how-to-email-early-stage-investors): the three-sentence cold email
+- [AIDA (marketing) (Wikipedia)](https://en.wikipedia.org/wiki/AIDA_(marketing)): history and attribution of AIDA, and criticisms
+- Robert B. Cialdini, *Influence: The Psychology of Persuasion* (1984; new and expanded edition 2021): the principles of influence
+- [Jakob Nielsen, "How Users Read on the Web" (NN/g, 1997)](https://www.nngroup.com/articles/how-users-read-on-the-web/): the 79% scanning finding
+- [Paul Graham, "How to Write Usefully" (2020)](https://paulgraham.com/useful.html): essays that are true, important, new and strong
+- [Improv Encyclopedia: Story Spine](https://improvencyclopedia.org/games/Story_Spine.html): Kenn Adams's story spine and its structure
+- [Clear writing](/writing/nonfiction/clear-writing/) and [technical writing](/writing/nonfiction/technical-writing/): the companion sheets

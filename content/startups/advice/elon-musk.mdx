@@ -1,0 +1,344 @@
+---
+title: Elon Musk
+date: 2026-09-26
+order: 4
+---
+
+What Elon Musk has actually said about building things (the five-step "algorithm", deletion, first principles,
+iteration speed, urgency, hiring and mission), checked against Walter Isaacson's 2023 biography, his own talks and
+interviews, and the record of what happened next. The reasoning method itself has its own sheet,
+[first principles](/thinking/first-principles/); the practical build pipeline is in
+[idea to MVP](/startups/idea-to-mvp/playbook/). Compare with [Steve Jobs](/startups/advice/steve-jobs/) and
+[Peter Thiel](/startups/advice/peter-thiel/).
+
+## Who he is and why listen
+
+| Company | Role | What it shows |
+| :--- | :--- | :--- |
+| Zip2 (1995), X.com / PayPal (1999–2002) | co-founder | the first exits that funded everything else |
+| SpaceX (2002) | founder, CEO, chief engineer | reusable orbital rockets; the clearest case of his engineering method working |
+| Tesla (investor and chairman 2004, CEO 2008) | CEO, "product architect" | mass-market EVs; also the clearest case of the method failing first (Model 3 automation) |
+| Twitter / X (bought October 2022) | owner, then executive chair and CTO | what the same style does to a software and advertising business |
+
+**Why listen:** few people have built two hardware companies from nothing to category leaders, and both leaned on
+the same few habits: ruthless deletion of requirements, cost reasoned from materials, and very fast test cycles.
+**Why be careful:** he also has a long record of missed deadlines, labour and safety problems, and public behaviour
+that cost his companies money. Take the engineering method; judge the rest on the evidence.
+
+Most of the famous Musk process quotes come from two places: Isaacson's *Elon Musk* (2023), which reproduces the
+algorithm as Musk dictated it to his teams, and Musk's July 2021 Starbase tour with Tim Dodd (Everyday Astronaut),
+where he walked through it on camera. Wording differs slightly between the two; both are given below.
+
+<YouTube id="t705r8ICkRw" title="Starbase Tour with Elon Musk [PART 1 // Summer 2021]" channel="Everyday Astronaut" />
+
+## The algorithm
+
+Musk told Isaacson he became "a broken record" on a five-step process for any design or production line, and he
+insisted it be run **in order**. The step names below are Musk's (via Isaacson); the rest of each row is summary.
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| **1. Question every requirement** | every requirement must come with the name of the person who made it, never "legal" or "safety"; requirements from smart people are the most dangerous because nobody challenges them, including Musk's own | Isaacson 2023; Starbase tour 2021 ("make the requirements less dumb") | writing an owner's name next to every line of your spec and asking each owner "what breaks if we drop this?" |
+| **2. Delete any part or process you can** | delete aggressively; if you don't end up adding back at least 10% of what you cut, you didn't cut enough | Isaacson 2023; Starbase tour 2021 | cutting features, form fields, approval steps and integrations until something you need breaks, then restoring only that |
+| **3. Simplify and optimise** | only now improve what survived; optimising a thing that should not exist is the classic smart-engineer mistake | Isaacson 2023; Starbase tour 2021 | refactoring and polishing only code paths and screens that survived step 2 |
+| **4. Accelerate cycle time** | every process can be sped up, but only after steps 1–3 | Isaacson 2023; Starbase tour 2021 | shortening deploy, review, and customer-feedback loops for the flows that remain |
+| **5. Automate** | last; automating a process that should have been deleted locks the mistake in | Isaacson 2023; Starbase tour 2021 | doing the task by hand (a spreadsheet, a manual email) until it's stable, then scripting it |
+
+Two lines worth having verbatim. From Isaacson, on step 1: requirements must be traced to "the name of the real
+person who made that requirement". From the Starbase tour (as transcribed by Startup Archive): "Your requirements
+are definitely dumb". Musk's point is not that requirements are useless; it is that every requirement starts out
+wrong to some degree and has to earn its place.
+
+### The mistake of running it backwards
+
+Musk's own worked example of doing it wrong is the Tesla Model 3 ramp (2017–18). In the version Isaacson
+reproduces, he says his big mistake in Nevada and Fremont was trying to automate every step first, and that he
+spent a lot of time accelerating processes that should have been deleted. That is steps 5 → 4 → 3 run in reverse.
+
+- July 2017: at the first Model 3 handover Musk warned of "at least six months of production hell" (NBC News).
+- April 2018: after the line missed its targets, he tweeted "Yes, excessive automation at Tesla was a mistake. To be
+  precise, my mistake. Humans are underrated." Tesla had guided to 5,000 Model 3s a week by the end of 2017; Musk
+  announced the first 5,000-car week on 1 July 2018.
+- On the Starbase tour he gave a smaller example of step 2: fibreglass mats on the Model 3 battery pack that the
+  battery team and the noise-and-vibration team each said the other needed. Nobody could name an owner, and the mats
+  were deleted (his account; also retold by Isaacson).
+
+**The lesson for a startup:** automation, scale and optimisation are multipliers. Multiply a wrong process and you
+get more wrong, faster. Most early-stage "we need to automate onboarding" or "we need a data pipeline" problems are
+step-2 problems in disguise.
+
+### The corollaries
+
+Isaacson lists "corollaries" Musk added to the algorithm. Quoted wording is Musk's as reproduced in the book.
+
+| Corollary | What it means | Apply it by… |
+| :--- | :--- | :--- |
+| technical managers must be hands-on | software managers should spend at least 20% of their time coding; solar-roof managers do installs | founders keeping a direct hand in the product, support and sales until well past product–market fit |
+| comradery is dangerous | friendship makes people reluctant to challenge each other's work | separating "I like you" from "this design is wrong" in reviews |
+| "It's OK to be wrong. Just don't be confident and wrong." | admit mistakes early; overconfidence is the failure | stating confidence levels on decisions ("70% sure") and revisiting them |
+| never ask your troops to do what you won't | leadership by example | doing the worst job yourself once before delegating it |
+| skip-level meetings | when there is a problem, meet the people below your managers | talking to the engineer or support agent closest to the problem |
+| hire for attitude | skills can be taught; attitude changes "require a brain transplant" | weighting trial work and references over credentials |
+| "A maniacal sense of urgency is our operating principle." | speed is a default, not a phase | see [urgency](#urgency-surges-and-elon-time) below |
+| physics is the only hard rule | the only rules are the laws of physics; everything else is a recommendation | separating true constraints (law, maths, physics) from habits |
+
+## The best part is no part
+
+Musk's deletion slogan predates the 2021 tour. In the Q&A at SpaceX's *Starship Update* in Boca Chica on
+28 September 2019 he said: "the best part is no part. The best process is no process. It weighs nothing, costs
+nothing, can't go wrong." In the same answer he said the thing he is most impressed by in SpaceX design reviews is
+the question "What did you undesign?", and gave his schedule mantra: "If a schedule is long, it's wrong. If it's
+tight, it's right." (Wording per Wikiquote's transcript of the video; Tim Dodd tweeted the "best part" line as a
+Musk quote in December 2019.)
+
+On the Starbase tour he tied it to his claim that manufacturing, not design, is the hard problem: he said designing
+the production system for Raptor was 10–100× more effort than designing the engine, and the Everyday Astronaut
+write-up records him describing Starship features removed under the algorithm (a stage-separation pusher system,
+dedicated hot-gas thrusters on the booster).
+
+| Where it applies in software | Deleting it looks like |
+| :--- | :--- |
+| features | cut the settings page, the second pricing tier, the admin dashboard nobody uses |
+| process | drop the approval step, the weekly status report, the design sign-off for trivial changes |
+| infrastructure | one database, one deploy target, no microservices until one service hurts |
+| sign-up | email only; no profile, no tour, no card until they've seen value |
+
+The 10% add-back rule is the useful calibration: if nothing you deleted ever came back, you were too cautious.
+[Scoping the MVP](/startups/idea-to-mvp/product-design/) is the same idea applied before you build.
+
+## Requirements, physics and first principles
+
+### First principles, briefly
+
+Musk's standard explanation (TED 2013, with Chris Anderson): first principles means "boil things down to their
+fundamental truths and reason up from there, as opposed to reasoning by analogy". His best-known example is from a
+September 2012 interview with Kevin Rose: battery packs were said to cost about \$600/kWh and always would, but the
+raw materials priced on the London Metal Exchange came to about \$80/kWh, so the gap was a manufacturing problem, not
+a law of nature. BloombergNEF's December 2025 survey put the average lithium-ion pack at \$108/kWh (\$99/kWh for
+battery-electric-vehicle packs); most of that fall came from the whole industry, especially Chinese LFP makers,
+not from Tesla alone. The full method, the idiot index maths and worked examples are on
+[first principles](/thinking/first-principles/); they are not repeated here.
+
+### The idiot index
+
+Isaacson describes Musk asking for the ratio of a part's finished cost to the cost of its raw materials. A high
+ratio means the design or the manufacturing is wasteful, so that is where to look first (paraphrased from Isaacson).
+The software analogue is the ratio of what you pay (vendor price, engineer-weeks) to what the thing does: a
+\$2,000/month tool used to send one weekly email has a high idiot index.
+
+### Physics as the only hard constraint
+
+Isaacson's corollary puts it bluntly: the only rules are the ones dictated by the laws of physics, and everything
+else is a recommendation. Read charitably, it's a way of sorting constraints:
+
+| Kind of constraint | Examples | Musk's stance |
+| :--- | :--- | :--- |
+| physics and maths | energy density, orbital mechanics, latency across an ocean | hard; design around them |
+| law and safety regulation | FAA launch licences, vehicle safety standards | treated as negotiable in practice, which is where his companies repeatedly got into trouble (see [critiques](#critiques-and-limits)) |
+| industry convention | "launches cost \$X", "cars are sold through dealers" | a recommendation; this is where the upside lives |
+| internal habit | "we always do a security review for that" | ask who made the rule (step 1) |
+
+For a startup the useful part is the bottom two rows. The second row is where copying Musk gets people fined.
+
+## Iteration speed and testing hardware
+
+Musk's claim is that speed of iteration beats quality of any single iteration, *when failure is cheap*. He is
+explicit that this depends on the stakes (Starbase tour, per the Everyday Astronaut write-up):
+
+| Vehicle | Failure tolerance | Development style |
+| :--- | :--- | :--- |
+| Crew Dragon | can never fail | huge margins, exhaustive testing |
+| Falcon 9 | can lose a landing, not an ascent | in between |
+| Starship (uncrewed) | blowing up is data | build many prototypes, push each until it breaks |
+
+His contrast was the Space Shuttle, whose design he said "froze" because every flight carried crew, so change was
+high-risk and low-reward. On Starship: "Starship does not have anyone on board so we can blow things up. It's really
+helpful."
+
+What happened: the first full Starship stack launched on 20 April 2023 and exploded about four minutes after
+liftoff, and the launch threw debris and sand over the surrounding area. On 13 October 2024, flight 5, the Super
+Heavy booster was caught by the launch tower's arms, a design chosen to delete landing legs (step 2 again). NASA's
+crewed programmes, by contrast, are built around not failing at all; that is the right choice with people on board
+and a slow way to learn.
+
+**Transfer to software:** your "uncrewed prototype" is a feature flag, a staging environment, or a small cohort.
+Ship small, instrument it, expect some to fail. Don't apply Starship rules to payments, auth, or anything that
+loses customer data; that's your Crew Dragon. See [launch and iterate](/startups/idea-to-mvp/launch-iterate/).
+
+## Vertical integration and the factory
+
+Musk's recurring theme is that the factory is harder than the product. On the Starbase tour he said a factory is
+underrated and design is overrated. SpaceX builds its engines, structures and much of its avionics in-house rather
+than buying from the traditional aerospace supply chain, and Tesla makes its own battery packs, motors and much of
+its software. The motive is cost and cycle time: an outside supplier's quote, lead time and change process sit
+between you and every iteration. (Precise in-house percentages circulate widely; I could not verify one, so none
+is given here.)
+
+| Integrate when | Buy when |
+| :--- | :--- |
+| the part is core to the product's cost or performance | it's a commodity with many good suppliers |
+| supplier margins or lead times block iteration | you'd be building for fewer than a handful of units |
+| you need to change it weekly | the vendor is better than you'll be for years (payments, email delivery, cloud) |
+
+A seed-stage software company should integrate almost nothing: buy auth, payments, hosting and email, and spend
+engineering time only where you differ. That's the algorithm applied honestly: vertical integration is itself a
+requirement to question.
+
+## People: hiring, managers and communication
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| hire for attitude and ability, not credentials | skills can be taught, attitude can't | Isaacson 2023 (corollaries) | using paid trial projects and asking for the hardest thing the candidate has built |
+| evidence of exceptional ability | Musk has often said he looks for a track record of exceptional work rather than degrees (paraphrased; the exact phrase circulates without a primary source I could check) | Musk interviews, various | asking "what's the most impressive thing you've done, and what was your part?" |
+| managers stay hands-on | managers who can't do the work can't judge it | Isaacson 2023 | founders reviewing real code, calls and tickets |
+| communication goes direct | anyone should talk to anyone to get the job done, not route through the chain of command | Musk email to Tesla staff, April 2018, as leaked and widely reported (paraphrased; I could not retrieve the original text) | letting any engineer message any customer, investor or founder directly |
+| skip-levels | go below managers to find the truth | Isaacson 2023 | talking to the newest support hire when metrics look odd |
+
+The April 2018 email (sent during the Model 3 crisis) is usually summarised as: cut large and frequent meetings,
+walk out of meetings where you're not adding value, drop jargon and acronyms, and communicate by the shortest path
+rather than the org chart. The spirit is sound for any company over about 15 people; a four-person startup has no
+chain of command to bypass.
+
+## Urgency, surges and "Elon time"
+
+Isaacson's corollary: "A maniacal sense of urgency is our operating principle." On the Starbase tour Musk explained
+why, for SpaceX: "if we operate with extreme urgency we have a chance of making life multi-planetary. It's still just
+a chance, not for sure. If we don't act with extreme urgency, that chance is probably 0." Isaacson describes his
+habit of **surges**: sudden all-hands pushes to break a bottleneck, such as the 2018 Model 3 ramp, when an extra
+assembly line was built in a tent at Fremont.
+
+The flip side is deadlines that are wrong by years, widely mocked as **"Elon time"**. Examples, from Wikipedia's
+sourced summaries:
+
+| When | Claim | What happened |
+| :--- | :--- | :--- |
+| December 2015 | "complete autonomy" by 2018 | not delivered |
+| end of 2016 | Tesla to demonstrate full autonomy by end of 2017 | not delivered |
+| 2017 | Model 3 at 5,000 a week by end of 2017 | first 5,000-car week announced 1 July 2018 |
+| April 2019 (Autonomy Day) | one million robotaxis on the road in 2020; no driver oversight by Q2 2020 | Robotaxi launched 22 June 2025 in Austin for invited riders, with safety monitors |
+| early 2021 | Level 5 autonomy by end of 2021 | not delivered; the product is now sold as "Full Self-Driving (Supervised)" |
+| 2023 | full autonomy "later this year" | not delivered that year; small driverless fleets ran in several Texas and Florida cities by September 2026 |
+
+**Blunt read:** impossible deadlines do pull work forward (a tight schedule forces step 2), but only inside the
+team. When the same deadlines are told to customers and investors they become broken promises, and Tesla has faced
+lawsuits and regulatory scrutiny over how FSD was marketed. Set aggressive internal targets; make external
+commitments you can keep.
+
+## Mission and master plans
+
+Musk reasons backwards from a mission: SpaceX exists to make life multiplanetary, Tesla to accelerate the move to
+sustainable energy. The mission is used to justify priorities, and to justify urgency.
+
+The template is his blog post **"The Secret Tesla Motors Master Plan (just between you and me)"** (2 August 2006).
+In it he framed Tesla's purpose as helping move from a "mine-and-burn hydrocarbon economy" towards a solar electric
+one, and laid out the sequence (paraphrased): build an expensive, low-volume sports car; use that money to build a
+cheaper, higher-volume car; use that money to build an affordable mass-market car; and alongside, offer zero-emission
+power generation. That is roughly what happened (Roadster, Model S, Model 3). Sequels followed: *Master Plan, Part
+Deux* (July 2016: solar, more vehicle types, autonomy, car sharing), Part 3 (2023) and Part 4 (2025).
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| enter at the high end | early adopters pay for the learning curve | Master Plan (2006) | starting with the customer segment that will pay most for a rough product |
+| publish the plan | a written sequence is a commitment and a recruiting tool | Master Plan (2006) | writing a one-page "if this works, then…" plan for your team |
+| mission justifies focus | anything off-mission is deleted | Starbase tour 2021; Master Plans | testing each project against the one-sentence mission |
+
+The caution: a mission is also a way to excuse anything. See [critiques](#critiques-and-limits).
+
+## Feedback and being wrong
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| seek negative feedback | "really pay attention to negative feedback, and solicit it, particularly from friends" | TED 2013 (Chris Anderson interview) | asking five users "what would make you stop using this?" and friends "what's the weakest part?" |
+| don't be confident and wrong | admitting a mistake is fine; clinging to it isn't | Isaacson 2023 (corollaries) | holding post-mortems on your own decisions, not just the team's |
+| everyone is wrong some of the time | including the person who wrote the requirement | Starbase tour 2021 (paraphrased in the Everyday Astronaut write-up) | re-opening old decisions when the evidence changes |
+
+Musk's TED 2013 advice pairs the feedback line with his first-principles line; both are about not trusting received
+wisdom, including your own. He applies it unevenly: in 2023 he conceded his earlier self-driving
+predictions had been too optimistic, then made another one.
+
+## Critiques and limits
+
+Kept to the documented record.
+
+| Issue | What's documented |
+| :--- | :--- |
+| **workplace safety at Tesla** | Reveal (Center for Investigative Reporting) reported in 2018 that Tesla under-counted Fremont injuries; Tesla called it an ideologically motivated attack; Cal/OSHA later confirmed under-reporting for 2018. Tesla has acknowledged its injury rate exceeded the industry average in 2013–16. |
+| **workplace safety at SpaceX** | Reuters in 2023 documented at least 600 previously unreported workplace injuries since 2014, including amputations and one death. |
+| **labour law** | in 2021 the NLRB upheld a ruling that Tesla had illegally fought a union drive at Fremont and ordered a fired organiser reinstated; in 2023 a jury awarded \$3.175m to Owen Diaz over racial harassment at Fremont (a retrial after a much larger 2021 award was cut) |
+| **Twitter / X** | about half of staff were laid off from 4 November 2022; on 16 November Musk told the rest to commit to being "extremely hardcore" (long hours at high intensity) or leave; he later told the BBC headcount went from about 8,000 to under 1,500. The service kept running, but advertisers left: Fidelity marked its stake down 79% by October 2024 before the business was folded into xAI in March 2025. |
+| **burn-out culture** | the urgency and surge style depends on people working extreme hours; Isaacson and many former employees describe it as exhausting and high-turnover |
+| **erratic public behaviour** | his August 2018 "funding secured" tweet about taking Tesla private led to an SEC fraud charge; he and Tesla each paid \$20m and he stepped down as chairman (SEC, 29 September 2018) |
+| **regulation as "a recommendation"** | FSD marketing, the SEC case and repeated clashes with regulators follow directly from treating non-physics rules as optional |
+| **survivorship** | the method is celebrated because SpaceX and Tesla survived; both nearly went bankrupt in 2008, and the same habits produced the Model 3 near-disaster and the Twitter advertiser collapse |
+
+**Blunt conclusion:** the engineering method (question, delete, simplify, then speed up, then automate) is excellent
+and costs nothing to copy. The management style (berating staff, which Isaacson calls "demon mode", extreme hours,
+mass firings, deadlines as marketing) is not a method, and there is little evidence it is *why* his companies succeeded rather than something
+they survived.
+
+## What transfers to a small startup
+
+| Transfers | Doesn't transfer |
+| :--- | :--- |
+| the algorithm, in order, applied to your spec, your backlog and your processes | vertical integration: buy everything that isn't your product |
+| naming an owner for every requirement | "physics is the only rule": laws, privacy and consumer protection apply to you |
+| hardware-rich testing → feature flags, cohorts, cheap experiments | blowing things up in production where customer data or money is involved |
+| tight internal deadlines that force deletion | promising those deadlines to customers and investors |
+| hands-on founders, direct communication | "extremely hardcore" ultimatums; a four-person team that burns out has no bench |
+| cost from first principles (what should this cost?) | billion-dollar capital intensity; his runway is not yours |
+| a written mission and master plan | using the mission to excuse bad behaviour |
+
+For the step-by-step build process see [building the MVP](/startups/idea-to-mvp/building-mvp/); for how YC frames
+the same speed and focus, see [Y Combinator](/startups/advice/y-combinator/).
+
+## Takeaways checklist
+
+```text
+[ ] Every requirement in the spec has a person's name on it
+[ ] I asked each owner what breaks if we drop it
+[ ] I deleted until something broke; ~10% came back
+[ ] I only optimised what survived deletion
+[ ] I sped up loops (deploy, review, feedback) after that
+[ ] I automated last, and only stable, repeated work
+[ ] Hard constraints (physics, law, maths) listed apart
+    from conventions and habits
+[ ] Risky, reversible work ships fast behind flags;
+    payments, auth and data get "Crew Dragon" rules
+[ ] Internal deadlines are tight; external promises are
+    ones we can keep
+[ ] I buy commodity parts; I build only what makes us
+    different
+[ ] I asked users and friends for negative feedback
+    this week
+[ ] Our mission fits in one sentence and I used it to
+    say no to something
+[ ] Nobody on the team is being run into the ground
+```
+
+## References
+
+- Walter Isaacson, *Elon Musk* (Simon & Schuster, 2023): the five-step algorithm, its corollaries, the idiot index, surges and the Model 3 ramp
+- [Farnam Street, "The Busy Person's Algorithm for Solving Problems"](https://fs.blog/elon-musk-the-algorithm/): reproduces the algorithm and corollaries as printed in Isaacson
+- [Everyday Astronaut, "Starbase Tour and Interview with Elon Musk" (Trevor Sesnic, 11 August 2021)](https://everydayastronaut.com/starbase-tour-and-interview-with-elon-musk/): write-up of the 30 July 2021 tour, including the five steps, Dragon vs Starship testing and the urgency quote
+- [Everyday Astronaut, "Starbase Tour with Elon Musk [PART 1 // Summer 2021]" (YouTube)](https://www.youtube.com/watch?v=t705r8ICkRw): the primary video
+- [Startup Archive, "Elon Musk explains his 5-step algorithm for running companies"](https://www.startuparchive.org/p/elon-musk-explains-his-5-step-algorithm-for-running-companies-1eae): transcribed clip ("Your requirements are definitely dumb")
+- [SpaceX, "Starship Update" (28 September 2019, YouTube)](https://www.youtube.com/watch?v=sOpMrVnjYeY): Q&A source of "the best part is no part" and "if a schedule is long, it's wrong"
+- [Wikiquote, "Elon Musk"](https://en.wikiquote.org/wiki/Elon_Musk): transcript of the 2019 Starship Update quote with timestamp
+- [Tim Dodd on X (December 2019)](https://x.com/Erdayastronaut/status/1203840982497792005): early citation of "the best part is no part"
+- [TED, "Elon Musk: The mind behind Tesla, SpaceX, SolarCity" (2013), transcript](https://www.ted.com/talks/elon_musk_the_mind_behind_tesla_spacex_solarcity/transcript): first principles vs analogy; "pay attention to negative feedback"
+- [Kevin Rose, "Elon Musk and Kevin Rose" (*Foundation*, 2012, YouTube)](https://www.youtube.com/watch?v=L-s_3b5fRd8): the battery-cost example
+- [Startup Archive, "Elon Musk explains first principles thinking"](https://www.startuparchive.org/p/elon-musk-explains-first-principles-thinking): transcript of the battery passage
+- [Chris Anderson, "Elon Musk's Mission to Mars", *Wired* (October 2012)](https://www.wired.com/2012/10/ff-elon-musk-qa/): rocket materials cost vs price
+- [BloombergNEF, "Lithium-Ion Battery Pack Prices Fall to \$108 Per Kilowatt-Hour" (December 2025)](https://about.bnef.com/insights/clean-transport/lithium-ion-battery-pack-prices-fall-to-108-per-kilowatt-hour-despite-rising-metal-prices-bloombergnef/): current pack prices
+- [Elon Musk on X, 13 April 2018](https://x.com/elonmusk/status/984882630947753984): "excessive automation at Tesla was a mistake"
+- [TechCrunch, "Elon Musk says 'humans are underrated'" (13 April 2018)](https://techcrunch.com/2018/04/13/elon-musk-says-humans-are-underrated-calls-teslas-excessive-automation-a-mistake/): context of the automation tweet
+- [NBC News, "Elon Musk Warns of 'Manufacturing Hell' for Model 3" (July 2017)](https://www.nbcnews.com/business/autos/elon-musk-warns-manufacturing-hell-model-3-n788561): the production-hell warning
+- [Elon Musk, "The Secret Tesla Motors Master Plan (just between you and me)" (Tesla blog, 2 August 2006)](https://www.tesla.com/blog/secret-tesla-motors-master-plan-just-between-you-and-me): the original plan
+- [Elon Musk, "Master Plan, Part Deux" (Tesla blog, 20 July 2016)](https://www.tesla.com/blog/master-plan-part-deux): the sequel
+- [SEC press release 2018-226 (29 September 2018)](https://www.sec.gov/news/press-release/2018-226): settlement over the "funding secured" tweet
+- [Wikipedia, "Tesla Autopilot"](https://en.wikipedia.org/wiki/Tesla_Autopilot) and ["Tesla Robotaxi"](https://en.wikipedia.org/wiki/Tesla_Robotaxi): sourced lists of autonomy predictions and outcomes
+- [Wikipedia, "Tesla Model 3"](https://en.wikipedia.org/wiki/Tesla_Model_3): production targets and the July 2018 milestone
+- [Wikipedia, "SpaceX Starship"](https://en.wikipedia.org/wiki/SpaceX_Starship): flight test 1 (April 2023) and the first booster catch (October 2024)
+- [Wikipedia, "Criticism of Tesla, Inc."](https://en.wikipedia.org/wiki/Criticism_of_Tesla,_Inc.): Reveal investigation, Cal/OSHA, NLRB and Diaz rulings, with citations
+- [Wikipedia, "SpaceX"](https://en.wikipedia.org/wiki/SpaceX): Reuters 2023 injury investigation, with citation
+- [Wikipedia, "Twitter under Elon Musk"](https://en.wikipedia.org/wiki/Twitter_under_Elon_Musk): layoffs, the "extremely hardcore" email, headcount and valuation markdowns

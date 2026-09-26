@@ -1,0 +1,643 @@
+---
+title: Financial statements
+date: 2026-09-26
+order: 2
+---
+
+How to read, build and interrogate the income statement, balance sheet, cash flow statement and statement of
+shareholders' equity: anatomy line by line, how one transaction flows through all three, EBITDA and non-GAAP measures,
+free cash flow, ratio and DuPont analysis, quality-of-earnings red flags, and where to find it all in a 10-K. The
+worked example is the invented **Acme Analytics, Inc.** whose FY2026 books are built entry by entry in
+[accounting](/finance/business/accounting/); every number below ties out. Using the numbers for decisions and pricing
+a company is in [corporate finance](/finance/business/corporate-finance/) and [valuation](/finance/business/valuation/);
+burn, runway and SaaS unit economics are in [startup finance](/finance/business/startup-finance/).
+
+<Note kind="warning">General information, not investment, accounting or legal advice. US GAAP and SEC rules; IFRS differences flagged where they change what you read.</Note>
+
+## The statements at a glance
+
+| Statement | Question it answers | Time frame | Key identity |
+| :--- | :--- | :--- | :--- |
+| **Income statement** (statement of operations, P&L) | did the company make a profit? | a **period** (quarter, year) | revenue − expenses = net income |
+| **Balance sheet** (statement of financial position) | what does it own and owe? | a **point in time** | assets = liabilities + equity |
+| **Cash flow statement** | where did cash come from and go? | a period | operating + investing + financing = change in cash |
+| **Statement of shareholders' equity** | why did equity change? | a period | opening equity + net income + shares issued + SBC − dividends − buybacks ± OCI = closing equity |
+| **Notes** | what policies, estimates, commitments and risks sit behind the numbers? | both | often more informative than the statements |
+
+Around them in a public filing: **MD&A** (management's narrative of results, liquidity and known trends), the
+**auditor's report** (opinion, critical audit matters, any going-concern paragraph) and management's report on
+internal control.
+
+The three connect: net income starts the cash flow statement and flows into retained earnings; the cash flow
+statement explains the change in the balance sheet's cash line. Profit is an opinion (built on accrual estimates);
+cash is a fact. Read all three together.
+
+## Income statement
+
+| Line | What it is | Notes |
+| :--- | :--- | :--- |
+| **Revenue** (net sales) | value of goods and services delivered in the period, net of discounts, returns and credits | recognised under ASC 606; see [accounting](/finance/business/accounting/#revenue-recognition-asc-606) |
+| **Cost of revenue** (COGS) | direct cost of delivering what was sold | SaaS: hosting, support, payment fees, amortised capitalised software; hardware: product cost |
+| **Gross profit** | revenue − COGS | gross margin = gross profit ÷ revenue |
+| **Research and development** | engineering, product, design (net of capitalised software) | |
+| **Sales and marketing** | sales pay and commissions, advertising, events | |
+| **General and administrative** | finance, legal, HR, executives, office, depreciation of shared assets, bad debt | |
+| **Operating income** | gross profit − operating expenses | ≈ **EBIT** when there are no non-operating items above the line |
+| **Interest and other income (expense)** | interest earned on cash, interest paid on debt, FX, gains/losses on investments | |
+| **Pre-tax income** | operating income ± other items | |
+| **Provision for income taxes** | current + deferred tax expense | effective tax rate = provision ÷ pre-tax income |
+| **Net income** | the bottom line | flows to retained earnings |
+| **EPS** | net income per share, basic and diluted | required for public companies (ASC 260) |
+| **Other comprehensive income** (OCI) | unrealised gains/losses kept out of net income (FX translation, some securities, pension items) | shown in a statement of comprehensive income |
+
+```text
+ACME ANALYTICS, INC. (invented)
+STATEMENT OF OPERATIONS, YEARS ENDED 31 DECEMBER (US$)
+                                        FY2026        FY2025
+Revenue
+  Subscription                       3,000,000     2,150,000
+  Hardware                             200,000       150,000
+Total revenue                        3,200,000     2,300,000
+Cost of revenue                        700,000       540,000
+Gross profit                         2,500,000     1,760,000
+Operating expenses
+  Research and development             850,000       700,000
+  Sales and marketing                  600,000       450,000
+  General and administrative           500,000       380,000
+Total operating expenses             1,950,000     1,530,000
+Operating income                       550,000       230,000
+Interest income                         22,000        10,000
+Interest expense                       (12,000)            -
+Income before income taxes             560,000       240,000
+Provision for income taxes (25%)       140,000        60,000
+Net income                             420,000       180,000
+
+Earnings per share   basic               0.042         0.020
+                     diluted             0.040         0.019
+Weighted shares      basic          10,000,000     9,000,000
+                     diluted        10,480,000     9,480,000
+
+Included above (FY2026): depreciation 25,000 (G&A);
+amortisation of capitalised software 20,000 (cost of revenue);
+stock-based compensation 40,000 (R&D 20k, S&M 10k, G&A 10k).
+FY2025 diluted shares assume the same 480,000 incremental
+option shares as FY2026.
+```
+
+FY2026 cost of revenue is hosting \$380,000 + support salaries \$180,000 + hardware \$120,000 + software amortisation
+\$20,000. The full ledger is in [accounting](/finance/business/accounting/#journal-entries-for-common-transactions).
+
+### Earnings per share
+
+$$
+\text{Basic EPS} = \frac{\text{Net income} - \text{Preferred dividends}}{\text{Weighted-average common shares}}
+$$
+
+**Diluted EPS** adds shares that *would* exist if dilutive securities converted: options and warrants by the
+**treasury stock method** (assume exercise, and assume the proceeds buy back shares at the average price),
+convertibles by the **if-converted method**. Anti-dilutive securities (those that would *raise* EPS) are excluded, so
+a loss-making company's diluted EPS equals its basic EPS.
+
+Acme (private companies need not present EPS; shown for illustration): net income \$420,000; 10,000,000 shares
+(treating the 2 January issue as outstanding all year); 800,000 options with a \$0.20 strike; average share value
+\$0.50.
+
+$$
+\text{Incremental shares} = 800{,}000 - \frac{800{,}000 \times 0.20}{0.50} = 480{,}000
+\qquad
+\text{Diluted EPS} = \frac{420{,}000}{10{,}480{,}000} = 0.0401
+$$
+
+## Balance sheet
+
+| Section | Lines | Notes |
+| :--- | :--- | :--- |
+| **Current assets** (cash or used up within 12 months / the operating cycle) | cash and equivalents, short-term investments, accounts receivable (net of allowance), inventory, prepaid expenses | listed roughly in order of liquidity (US) |
+| **Non-current assets** | property and equipment (net), right-of-use assets, capitalised software, intangibles, goodwill, deferred tax assets, long-term investments | IFRS balance sheets often list non-current first |
+| **Current liabilities** (due within 12 months) | accounts payable, accrued expenses, **deferred revenue**, current portion of debt and leases, income tax payable | |
+| **Non-current liabilities** | long-term debt, lease liabilities, deferred tax liabilities, long-term deferred revenue | |
+| **Equity** | common and preferred stock at par, additional paid-in capital, retained earnings (accumulated deficit), accumulated OCI, treasury stock | book equity is not market value |
+
+**Working capital** = current assets − current liabilities. **Operating working capital** excludes cash and debt:
+(receivables + inventory + prepaids) − (payables + accruals + deferred revenue). Growth that consumes working capital
+consumes cash.
+
+```text
+ACME ANALYTICS, INC. -- BALANCE SHEETS, 31 DECEMBER (US$)
+                                          2026          2025
+ASSETS
+Cash and cash equivalents            1,776,000       600,000
+Accounts receivable, net of allowance
+  of 17,000 and 10,000                 363,000       240,000
+Inventory                               35,000        20,000
+Prepaid expenses                        30,000        24,000
+Total current assets                 2,204,000       884,000
+Property and equipment, net of
+  accum. depreciation 45,000/20,000     45,000        40,000
+Capitalised software, net of
+  accum. amortisation 20,000/0         100,000             -
+TOTAL ASSETS                         2,349,000       924,000
+
+LIABILITIES
+Accounts payable                        45,000        30,000
+Accrued expenses                        60,000        40,000
+Deferred revenue                       520,000       400,000
+Income tax payable                      30,000        20,000
+Total current liabilities              655,000       490,000
+Long-term debt (8%, due 2029)          300,000             -
+TOTAL LIABILITIES                      955,000       490,000
+
+SHAREHOLDERS' EQUITY
+Common stock and paid-in capital
+  (10,000,000 and 9,000,000 shares)    640,000       100,000
+Retained earnings                      754,000       334,000
+TOTAL EQUITY                         1,394,000       434,000
+TOTAL LIABILITIES AND EQUITY         2,349,000       924,000
+
+Working capital                      1,549,000       394,000
+Operating working capital             (227,000)     (156,000)
+```
+
+Acme's operating working capital is **negative**: customers prepay (deferred revenue of \$520,000) faster than Acme
+has to pay anyone. That is the SaaS "customer-funded growth" pattern, and it is why a growing subscription business can
+generate more operating cash than profit.
+
+## Cash flow statement
+
+| Section | Includes (US GAAP, ASC 230) | Acme FY2026 |
+| :--- | :--- | ---: |
+| **Operating** (CFO) | cash from customers, paid to suppliers and employees, **interest paid and received**, dividends received, income taxes | 526,000 |
+| **Investing** (CFI) | capex, capitalised software, acquisitions, buying and selling investments | (150,000) |
+| **Financing** (CFF) | issuing and buying back shares, borrowing and repaying debt, **dividends paid**, finance-lease principal | 800,000 |
+| **Net change in cash** | CFO + CFI + CFF | 1,176,000 |
+
+Under IFRS, interest and dividends have been a policy choice (IAS 7); the IFRS 18 amendments from 2027 put interest
+paid in financing and interest received in investing for most non-financial companies. Compare CFO across the two
+frameworks with care.
+
+### Indirect method
+
+Almost every company uses the **indirect method**: start from net income, remove non-cash items, then adjust for
+changes in working capital.
+
+| Adjustment | Sign | Why |
+| :--- | :--- | :--- |
+| depreciation, amortisation, impairment | + | expense with no cash out this period |
+| stock-based compensation | + | expense paid in shares |
+| gains on asset sales | − | the cash is in investing |
+| increase in an operating **asset** (AR, inventory, prepaids) | − | revenue booked or cost paid without matching cash |
+| increase in an operating **liability** (AP, accruals, deferred revenue, taxes payable) | + | expense booked but not paid, or cash received before revenue |
+
+```text
+ACME -- STATEMENT OF CASH FLOWS, FY2026 (US$, indirect method)
+OPERATING ACTIVITIES
+Net income                                          420,000
+Adjustments for non-cash items
+  Depreciation                                       25,000
+  Amortisation of capitalised software               20,000
+  Stock-based compensation                           40,000
+Changes in operating assets and liabilities
+  Accounts receivable, net                         (123,000)
+  Inventory                                         (15,000)
+  Prepaid expenses                                   (6,000)
+  Accounts payable                                   15,000
+  Accrued expenses                                   20,000
+  Deferred revenue                                  120,000
+  Income tax payable                                 10,000
+Net cash from operating activities                  526,000
+
+INVESTING ACTIVITIES
+Purchases of property and equipment                 (30,000)
+Capitalised software development                   (120,000)
+Net cash used in investing activities              (150,000)
+
+FINANCING ACTIVITIES
+Proceeds from issuance of common stock              500,000
+Proceeds from term loan                             300,000
+Net cash from financing activities                  800,000
+
+Net increase in cash                              1,176,000
+Cash at beginning of year                           600,000
+Cash at end of year                               1,776,000   = balance sheet
+
+Supplemental: interest paid 10,000; income taxes paid 130,000
+```
+
+Each working-capital line is the balance-sheet change with the sign flipped for assets: AR net went from \$240,000 to
+\$363,000 (+\$123,000), so cash is \$123,000 lower than net income implies. Bad-debt expense needs no separate
+add-back here because the change is taken on AR *net* of the allowance.
+
+### Direct method
+
+The **direct method** lists actual cash receipts and payments. The FASB encourages it but requires the indirect
+reconciliation as well, so few companies bother. For a founder it is the more intuitive view, and it is what a bank
+statement shows.
+
+```text
+ACME -- OPERATING CASH FLOWS, FY2026 (direct method)
+Cash received from customers  (3,188,000 - 6,000 refund)  3,182,000
+Interest received                                             22,000
+Cash paid to suppliers (AP 826,000 + rent 60,000
+  + prepaids 60,000)                                        (946,000)
+Cash paid to employees (1,712,000 total payroll
+  - 120,000 capitalised into software)                    (1,592,000)
+Interest paid                                                (10,000)
+Income taxes paid                                           (130,000)
+Net cash from operating activities                           526,000
+```
+
+Both methods give \$526,000. Note the \$120,000 of engineering payroll that appears in **investing**, not operating,
+because it was capitalised: an honest accounting choice here, and a classic lever for flattering CFO elsewhere.
+
+## Statement of shareholders' equity and the notes
+
+```text
+ACME -- STATEMENT OF SHAREHOLDERS' EQUITY, FY2026 (US$)
+                            Shares     Paid-in   Retained      Total
+                                       capital   earnings     equity
+Balance, 31 Dec 2025     9,000,000     100,000    334,000    434,000
+Issuance of common       1,000,000     500,000          -    500,000
+Stock-based compensation         -      40,000          -     40,000
+Net income                       -           -    420,000    420,000
+Balance, 31 Dec 2026    10,000,000     640,000    754,000  1,394,000
+```
+
+Notes to read first in any set of statements:
+
+| Note | Why |
+| :--- | :--- |
+| significant accounting policies | revenue recognition, capitalisation, useful lives: the choices behind every number |
+| revenue (disaggregation, contract balances, remaining performance obligations) | growth quality, backlog, deferred revenue movement |
+| debt | rates, maturities, **covenants**, security |
+| leases, commitments and contingencies | off-income-statement obligations, lawsuits |
+| stock-based compensation and equity | dilution, option overhang |
+| income taxes | effective rate, NOLs, valuation allowances, uncertain positions |
+| related-party transactions | deals with insiders |
+| segments and concentrations | reliance on a few customers or suppliers |
+| subsequent events | what happened after the balance-sheet date |
+| going concern (if present) | substantial doubt about surviving the next year |
+
+## One transaction through all three statements
+
+The classic finance-interview drill: change one line, then walk it through income statement → cash flow → balance
+sheet, and check the balance sheet still balances. Assume a **25% tax rate** and that tax is paid in cash in the
+period.
+
+**Depreciation rises by \$10.**
+
+| Statement | Effect |
+| :--- | :--- |
+| income statement | operating income −10; tax −2.5 (10 × 25%); **net income −7.5** |
+| cash flow | net income −7.5; add back depreciation +10; **CFO +2.5** (the tax saving is the only real cash) |
+| balance sheet | cash +2.5; PP&E (net) −10 → **assets −7.5**; retained earnings −7.5 → **equity −7.5**. Balances |
+
+**Acme buys \$100 of inventory for cash, then sells it for \$150 on credit.**
+
+| Statement | Effect |
+| :--- | :--- |
+| income statement | revenue +150; COGS −100; pre-tax +50; tax −12.5; **net income +37.5** |
+| cash flow | net income +37.5; AR increase −150; inventory unchanged (bought and sold in the period); **CFO −112.5**, which is simply the −100 paid for stock and −12.5 of tax |
+| balance sheet | cash −112.5; AR +150; inventory 0 net → **assets +37.5**; retained earnings **+37.5**. Balances |
+
+**Acme borrows \$100 at 10% and pays a year's interest.**
+
+| Statement | Effect |
+| :--- | :--- |
+| income statement | interest −10; tax +2.5; **net income −7.5** |
+| cash flow | CFO −7.5 (interest is operating under US GAAP); CFF +100; **cash +92.5** |
+| balance sheet | cash +92.5 = debt +100 and retained earnings −7.5. Balances |
+
+**Acme bills and collects a \$120,000 annual contract on 1 October** (ignore tax).
+
+| Statement | Effect by 31 December |
+| :--- | :--- |
+| income statement | revenue +30,000 (3 of 12 months) |
+| cash flow | net income +30,000; deferred revenue +90,000; **CFO +120,000** |
+| balance sheet | cash +120,000 = deferred revenue +90,000 + retained earnings +30,000 |
+
+If you can do these four in your head, you can read any statement.
+
+## EBITDA, adjusted EBITDA and non-GAAP measures
+
+$$
+\text{EBITDA} = \text{Net income} + \text{Interest} + \text{Taxes} + \text{Depreciation} + \text{Amortisation} = \text{EBIT} + \text{D\&A}
+$$
+
+Acme FY2026: EBIT \$550,000 + D&A \$45,000 = **EBITDA \$595,000** (18.6% margin). "Adjusted EBITDA" adding back
+stock-based compensation: \$635,000.
+
+| Measure | Why people use it | What it hides |
+| :--- | :--- | :--- |
+| **EBITDA** | rough proxy for operating cash before capital structure and taxes; comparable across financing choices; used in debt covenants and M&A multiples | capex (the cost of the assets being depreciated), working capital, taxes, interest; treats capitalised costs as free |
+| **Adjusted EBITDA** | "normalised" earnings excluding items management calls non-recurring | whatever management chooses: SBC, restructuring every year, "one-time" costs that recur |
+| **Non-GAAP net income / EPS** | excludes amortisation of acquired intangibles, SBC, one-offs | SBC is a real cost paid in dilution |
+| **Contribution margin, "community-adjusted EBITDA"** | segment or unit economics | can exclude core operating costs: WeWork's "community-adjusted EBITDA" in its April 2018 bond offering also stripped out sales and marketing, new-market development, pre-opening and G&A costs, and was widely derided |
+
+### SEC rules on non-GAAP measures
+
+| Rule | Applies to | Key requirements |
+| :--- | :--- | :--- |
+| **Regulation G** (2003) | any public disclosure of a non-GAAP measure by an SEC registrant (press releases, calls, websites) | present the **most directly comparable GAAP measure** and a **quantitative reconciliation**; the measure, with its surrounding context, must not be misleading |
+| **Item 10(e) of Regulation S-K** | non-GAAP measures in SEC filings (and earnings releases furnished on Form 8-K) | GAAP measure with **equal or greater prominence**; reconciliation; statement of why the measure is useful; no excluding charges requiring cash settlement from **liquidity** measures (EBIT and EBITDA excepted); no labelling an item non-recurring, infrequent or unusual if a similar item is reasonably likely within two years or occurred within the prior two years; no non-GAAP measures on the face of the GAAP statements |
+| **SEC staff C&DIs** (last updated December 2022) | interpretations | excluding **normal, recurring, cash operating expenses** can be misleading; "individually tailored" accounting (e.g. accelerating deferred revenue, cash-basis revenue) can be misleading; no per-share non-GAAP **liquidity** measures; a full non-GAAP income statement gives undue prominence |
+
+Under **IFRS 18** (from 2027), "management-defined performance measures" used in public communications must be
+reconciled and disclosed in an audited note.
+
+### The critique
+
+Warren Buffett, Berkshire Hathaway 2000 shareholder letter: "References to EBITDA make us shudder — does management
+think the tooth fairy pays for capital expenditures?" Charlie Munger went further at the 2003 Berkshire annual
+meeting; as widely reported, he said that whenever you see "EBITDA" you should substitute "bullshit earnings"
+(paraphrased; wording varies between accounts).
+
+The point: depreciation is the income statement's record of capital already spent and that must be spent again. For
+an asset-light SaaS company D&A is small and EBITDA is close to EBIT; for a telecom, airline or data-centre business
+EBITDA can be enormously larger than any cash the owners will ever see. Always reconcile adjusted numbers back to GAAP
+net income and CFO, and ask which "one-time" items appeared last year too.
+
+## Free cash flow
+
+| Measure | Formula | Acme FY2026 | Use |
+| :--- | :--- | ---: | :--- |
+| **Free cash flow (FCF)**, common definition | CFO − capital expenditures (include capitalised software) | 526,000 − 150,000 = **376,000** | cash the business generated after reinvestment; FCF margin 11.8% |
+| FCF excluding capitalised software | CFO − PP&E capex only | 496,000 | overstated: why you must check the investing section |
+| FCF after SBC | FCF − stock-based compensation | 336,000 | treats dilution as the cost it is |
+| **FCFF** (free cash flow to the firm, unlevered) | $\text{CFO} + \text{Int}(1-t) - \text{Capex}$, or $\text{EBIT}(1-t) + \text{D\&A} - \text{Capex} - \Delta\text{NWC}$ | 526,000 + 12,000 × 0.75 − 150,000 = **385,000** | cash available to all capital providers; discounted at WACC in a DCF |
+| **FCFE** (free cash flow to equity, levered) | $\text{CFO} - \text{Capex} + \text{Net borrowing}$, or $\text{FCFF} - \text{Int}(1-t) + \text{Net borrowing}$ | 526,000 − 150,000 + 300,000 = **676,000** | cash available to shareholders; discounted at the cost of equity |
+
+- "Free cash flow" has **no GAAP definition**; every company and data provider defines it slightly differently. Read the reconciliation. Under SEC rules it is a non-GAAP liquidity measure and may not be shown per share.
+- FCFE here is inflated by a one-off \$300,000 loan: borrowing is not a recurring source of value. Use normalised net borrowing when valuing.
+- The two FCFF formulas give different numbers on real statements (actual vs notional tax, interest income, non-cash items). Pick one and apply it consistently. DCF mechanics are in [valuation](/finance/business/valuation/); WACC in [corporate finance](/finance/business/corporate-finance/).
+
+## Ratio analysis
+
+Ratios make companies of different sizes comparable and turn statements into questions. None is "good" in the
+abstract: what is healthy depends on **industry, business model, growth stage, seasonality and accounting choices**.
+Compare a company with its own history and its closest peers, not a textbook threshold. Acme values use FY2026, with
+**averages** of opening and closing balances where a flow is divided by a stock.
+
+### Liquidity
+
+| Ratio | Formula | Acme | Reading |
+| :--- | :--- | ---: | :--- |
+| **Current ratio** | current assets ÷ current liabilities | 3.36 | above 1 means current assets cover near-term obligations; very high can mean idle cash. SaaS ratios look lower than they "should" because deferred revenue is a liability settled in service, not cash |
+| **Quick (acid-test) ratio** | (cash + short-term investments + receivables) ÷ current liabilities | 3.27 | excludes inventory and prepaids, which may not turn to cash quickly |
+| **Cash ratio** | cash and equivalents ÷ current liabilities | 2.71 | strictest test |
+
+### Solvency and leverage
+
+| Ratio | Formula | Acme | Reading |
+| :--- | :--- | ---: | :--- |
+| **Debt-to-equity** | total debt ÷ total equity | 0.22 | the SEC beginners' guide uses **total liabilities** ÷ equity (0.69 for Acme); say which you mean |
+| **Interest coverage** | EBIT ÷ interest expense | 45.8× | can the company service its debt? Lenders commonly set minimum coverage covenants; below ~1.5–2× is fragile |
+| **Net debt / EBITDA** | (debt − cash) ÷ EBITDA | −2.48 (net cash) | years of EBITDA to repay debt; a standard credit and covenant metric. Negative = more cash than debt |
+| **Debt-to-assets** | total debt ÷ total assets | 0.13 | share of assets financed by borrowing |
+
+### Profitability
+
+| Ratio | Formula | Acme | Reading |
+| :--- | :--- | ---: | :--- |
+| **Gross margin** | gross profit ÷ revenue | 78.1% | pricing power and delivery efficiency; software high, retail and hardware low |
+| **Operating margin** | operating income ÷ revenue | 17.2% | core business profitability |
+| **EBITDA margin** | EBITDA ÷ revenue | 18.6% | see critique above |
+| **Net margin** | net income ÷ revenue | 13.1% | after interest and tax |
+| **ROA** | net income ÷ average total assets | 25.7% | profit per dollar of assets (avg assets 1,636,500) |
+| **ROE** | net income ÷ average equity | 46.0% | return to shareholders on book equity (avg 914,000); inflated by leverage, buybacks or tiny book equity |
+| **ROIC** | NOPAT ÷ average invested capital; $\text{NOPAT} = \text{EBIT}(1-t)$ | 38.8% | NOPAT 412,500 ÷ average (debt + equity) 1,064,000. The best single measure of whether growth creates value: compare with the cost of capital |
+
+Definitions of invested capital vary. Acme's *operating* invested capital (operating working capital + net fixed and
+software assets) is **negative** (−\$82,000 at year-end) because customers prepay, so a "cash-excluded" ROIC is
+meaningless for it. Negative invested capital is a feature of prepaid subscription and marketplace models, not an
+error.
+
+### Efficiency
+
+| Ratio | Formula | Acme | Reading |
+| :--- | :--- | ---: | :--- |
+| **Asset turnover** | revenue ÷ average total assets | 1.96 | sales generated per dollar of assets |
+| **DSO** (days sales outstanding) | average AR ÷ revenue × 365 | 34.4 days | how fast customers pay; rising DSO is an early warning |
+| **DIO** (days inventory outstanding) | average inventory ÷ COGS × 365 | 14.3 days | how long stock sits (low here because COGS is mostly hosting) |
+| **DPO** (days payables outstanding) | average AP ÷ COGS × 365 | 19.6 days | how long the company takes to pay suppliers (some analysts use purchases instead of COGS) |
+| **Cash conversion cycle** | DSO + DIO − DPO | 29.2 days | days of cash tied up in operations; negative is excellent (Amazon, Dell in its heyday) |
+| **Inventory turnover** | COGS ÷ average inventory | 25.5× | = 365 ÷ DIO |
+
+The CCC ignores **deferred revenue**. For a subscription business that bills annually upfront, the real cash cycle is
+far better than 29 days suggests; look at deferred revenue growth and CFO alongside it.
+
+## DuPont analysis
+
+The three-step DuPont identity splits ROE into what drives it:
+
+$$
+\text{ROE} = \underbrace{\frac{\text{Net income}}{\text{Revenue}}}_{\text{net margin}} \times \underbrace{\frac{\text{Revenue}}{\text{Avg assets}}}_{\text{asset turnover}} \times \underbrace{\frac{\text{Avg assets}}{\text{Avg equity}}}_{\text{equity multiplier}}
+$$
+
+| Component | Acme FY2026 | Question it answers |
+| :--- | ---: | :--- |
+| net margin | 13.1% (420,000 ÷ 3,200,000) | how much of each sale is profit? |
+| asset turnover | 1.955 (3,200,000 ÷ 1,636,500) | how hard do the assets work? |
+| equity multiplier | 1.790 (1,636,500 ÷ 914,000) | how much is financed by liabilities rather than equity? |
+| **ROE** | 0.13125 × 1.9554 × 1.7905 = **45.95%** | matches NI ÷ average equity directly |
+
+Two companies with 20% ROE can be completely different: a luxury brand (high margin, low turnover, low leverage),
+a supermarket (thin margin, high turnover) or a bank (thin margin, low turnover, 10×+ leverage). DuPont tells you
+which. Acme's high ROE comes mostly from margin and turnover; its equity multiplier is modest, and much of its
+"leverage" is deferred revenue rather than debt. The 5-step version further splits net margin into tax burden
+(NI ÷ EBT), interest burden (EBT ÷ EBIT) and operating margin (EBIT ÷ revenue).
+
+## Common-size and trend analysis
+
+**Common-size** (vertical) analysis expresses every line as a percentage of revenue (income statement) or total assets
+(balance sheet), so you can compare across years and companies of different sizes. **Trend** (horizontal) analysis
+shows growth rates line by line.
+
+| Line | FY2026 % of revenue | FY2025 % of revenue | Growth FY25→26 |
+| :--- | ---: | ---: | ---: |
+| revenue | 100.0% | 100.0% | +39.1% |
+| cost of revenue | 21.9% | 23.5% | +29.6% |
+| gross profit | 78.1% | 76.5% | +42.0% |
+| R&D | 26.6% | 30.4% | +21.4% |
+| sales and marketing | 18.8% | 19.6% | +33.3% |
+| G&A | 15.6% | 16.5% | +31.6% |
+| operating income | 17.2% | 10.0% | +139.1% |
+| net income | 13.1% | 7.8% | +133.3% |
+
+Reading: every cost line grew slower than revenue, so operating margin rose 7 points: **operating leverage**.
+The questions it raises: is R&D growing only 21% sustainable, or is under-investment flattering margins? Did capitalising
+\$120,000 of engineering pay (instead of expensing it) help? It did: had it been expensed, FY2026 R&D would be \$970,000
+and net income about \$345,000, not \$420,000.
+
+Balance sheet trend: receivables (net) grew **51%** against revenue growth of 39%, and year-end DSO rose from 38 to 41
+days (\$240,000 ÷ \$2,300,000 × 365 → \$363,000 ÷ \$3,200,000 × 365). Small, but exactly the kind of drift to ask about.
+
+## Quality of earnings and red flags
+
+**Quality of earnings** is how well reported profit reflects sustainable cash-generating performance. A quick test is
+cash conversion (CFO ÷ net income; Acme 1.25) and the **accruals ratio**, $(\text{NI} - \text{CFO}) \div \text{avg assets}$
+(Acme −6.5%). Sloan (1996) found that earnings driven by large accruals persist less than earnings backed by cash.
+
+| Red flag | Why it matters | Where to look |
+| :--- | :--- | :--- |
+| revenue or net income growing much faster than CFO | profit that isn't turning into cash | cash flow statement vs income statement, several years |
+| rising DSO / receivables growing faster than revenue | aggressive terms, channel stuffing, fictitious sales, weak collections | AR, allowance note, DSO trend |
+| inventory growing faster than sales | obsolete stock, overproduction to absorb fixed costs | inventory note, DIO |
+| capitalising costs that peers expense; rising capitalised software, "other assets" | pushes expense into future periods and moves cash to investing | accounting policies, investing section, intangibles note |
+| frequent "one-time", "non-recurring" or restructuring charges | recurring costs relabelled to flatter adjusted earnings | non-GAAP reconciliations over several years |
+| big gap between GAAP and adjusted earnings, growing each year | adjustments doing the work | earnings releases vs 10-K |
+| reserve releases (bad debt, warranty, returns) boosting profit | cookie-jar accounting | reserve roll-forwards in the notes |
+| changes in estimates or policies (useful lives, revenue timing) | earnings management | policy note, auditor's critical audit matters |
+| related-party transactions | deals not at arm's length | related-party note, proxy statement |
+| off-balance-sheet entities, factoring, supplier finance | hidden debt | commitments, VIE and supplier-finance notes |
+| auditor change, late filing, material weakness, going-concern paragraph | control or solvency problems | 8-K Item 4.01, Item 9A, auditor's report |
+| cash that can't be independently verified | the ultimate red flag | auditor's report; unusual trustee or escrow arrangements |
+
+Cases worth knowing (briefly and accurately):
+
+| Case | What happened | Lesson |
+| :--- | :--- | :--- |
+| **Enron** (2001) | on 8 November 2001 restated 1997–2000 results, cutting reported net income by roughly \$0.6 billion and adding debt, after concluding that special-purpose entities (Chewco, JEDI, an LJM1 subsidiary) should have been consolidated; filed for Chapter 11 on 2 December 2001 | off-balance-sheet entities and related parties (the LJM partnerships were run by the CFO); earnings with no matching cash |
+| **WorldCom** (2002) | on 25 June 2002 announced that transfers of line costs (fees paid to other carriers) into capital accounts, \$3.055 billion in 2001 and \$797 million in Q1 2002 (about \$3.8 billion), did not comply with GAAP; later investigations found considerably more | capitalising operating expenses inflates both profit and CFO; watch capex vs peers |
+| **Wirecard** (2020) | on 22 June 2020 the German payments company said €1.9 billion of cash supposedly held in trustee accounts at two Philippine banks most likely did not exist, after EY refused to sign its 2019 accounts; it filed for insolvency on 25 June 2020 | cash confirmed through intermediaries is not cash; auditors must confirm directly with banks |
+
+The Sarbanes–Oxley Act of 2002 (CEO/CFO certification, auditor independence, the PCAOB, internal-control reporting)
+was the direct response to Enron and WorldCom.
+
+## SaaS metrics next to the statements
+
+SaaS companies report operating metrics alongside GAAP numbers. They are **not** GAAP, are defined by each company,
+and are unaudited. Definitions and benchmarks are in [startup finance](/finance/business/startup-finance/); the
+essentials for reading statements:
+
+| Metric | Definition | Ties to |
+| :--- | :--- | :--- |
+| **ARR** (annual recurring revenue) | annualised value of active recurring contracts at a date | subscription revenue; ARR ≠ revenue (it is a run-rate, excludes one-offs) |
+| **Billings** | revenue + change in deferred revenue | Acme: 3,000,000 + 120,000 = 3,120,000 of subscription billings (net of the 6,000 refund) |
+| **RPO** | contracted revenue not yet recognised (GAAP disclosure) | deferred revenue + unbilled contracted amounts |
+| **Net revenue retention** (NRR) | recurring revenue now from customers who existed a year ago ÷ their recurring revenue a year ago | expansion minus churn and contraction; above 100% means the base grows on its own |
+| **Gross revenue retention** (GRR) | as NRR but excluding expansion (capped at 100%) | pure churn |
+| **Subscription gross margin** | subscription revenue less its cost of revenue | commonly cited as 70–80%+ for mature SaaS; below that, question hosting costs or services mix |
+
+Rules when reading: reconcile ARR to subscription revenue (ARR at year-end should be above the year's revenue for a
+growing company); check deferred revenue moves with billings; watch for definition changes between years.
+
+## Reading a 10-K and 10-Q
+
+US public companies file with the SEC on **EDGAR** ([sec.gov/edgar/search](https://www.sec.gov/edgar/search/)):
+search by company name or ticker, filter by form type, or use full-text search. The annual **10-K** is audited; the
+quarterly **10-Q** contains condensed financial statements that are reviewed, not audited.
+
+| 10-K item | Content | Read it for |
+| :--- | :--- | :--- |
+| Item 1 **Business** | products, customers, competition, employees, regulation | what the company actually does and how it makes money |
+| Item 1A **Risk Factors** | the most significant risks, in the company's view | new or reworded risks year over year are signals |
+| Item 1B / 1C | unresolved SEC staff comments / **cybersecurity** risk management | |
+| Item 2–3 | properties / legal proceedings | material lawsuits |
+| Item 5 | market for the stock, buybacks | capital return |
+| Item 7 **MD&A** | management's explanation of results, segments, liquidity, capital resources, critical accounting estimates | *why* numbers moved; known trends and uncertainties |
+| Item 7A | quantitative and qualitative disclosures about market risk | interest-rate, FX, commodity exposure |
+| Item 8 **Financial Statements and Supplementary Data** | the audited statements, notes and auditor's report | everything on this sheet |
+| Item 9A | controls and procedures | **material weaknesses** |
+| Items 10–14 (often in the proxy, DEF 14A) | directors, executive compensation, ownership, related transactions, auditor fees | incentives and conflicts |
+| Item 15 | exhibits | debt agreements, material contracts |
+
+| Filing deadline after period end | 10-K | 10-Q |
+| :--- | :--- | :--- |
+| large accelerated filer | 60 days | 40 days |
+| accelerated filer | 75 days | 40 days |
+| non-accelerated filer | 90 days | 45 days |
+
+Other forms: **8-K** (material events, generally within four business days: results, acquisitions, auditor changes,
+executive departures), **DEF 14A** (proxy), **S-1** (IPO registration), **Form 4** (insider trades), **20-F** and
+**6-K** (foreign private issuers).
+
+A practical reading order: auditor's report (opinion, critical audit matters, going concern) → MD&A → the three
+statements (three to five years) → notes on revenue, debt, leases, SBC, taxes, related parties → Risk Factors diff
+against last year → earnings release non-GAAP reconciliation.
+
+## Templates and checklists
+
+```text
+STATEMENT-READING CHECKLIST
+FIRST PASS (15 min)
+[ ] Auditor's opinion unqualified? Any going-concern or
+    material-weakness language? Critical audit matters?
+[ ] Revenue growth, gross margin, operating margin: 3-5 years
+[ ] Net income vs CFO: 3-5 years (cash conversion)
+[ ] FCF = CFO - capex (incl. capitalised software)
+[ ] Cash, debt, maturities; runway if loss-making
+[ ] Share count trend (dilution); SBC as % of revenue
+INCOME STATEMENT
+[ ] Revenue mix (segments, recurring vs one-off)
+[ ] Cost lines as % of revenue; which are growing fastest?
+[ ] Non-operating items and "other income" doing heavy lifting?
+[ ] Effective tax rate and why it moved
+BALANCE SHEET
+[ ] AR vs revenue growth; DSO trend; allowance as % of AR
+[ ] Inventory vs sales; DIO trend
+[ ] Deferred revenue trend (leading indicator for SaaS)
+[ ] Goodwill and intangibles as % of assets; impairments
+[ ] Debt: rates, covenants, maturities; leases
+CASH FLOW
+[ ] Working capital swings explaining CFO
+[ ] Capex vs depreciation (under-investing? over-capitalising?)
+[ ] Acquisitions, buybacks, dividends vs FCF
+[ ] Financing reliance: is the company funding itself?
+NOTES AND NON-GAAP
+[ ] Revenue recognition and capitalisation policies
+[ ] Related parties, contingencies, commitments
+[ ] Non-GAAP adjustments: same items every year?
+[ ] Changes in estimates, policies, segments or KPIs
+```
+
+```text
+ONE-PAGE ANALYSIS TEMPLATE             Company: ________  FY: ____
+BUSINESS (3 lines): what it sells, to whom, how it charges
+_____________________________________________________________
+
+                         FY-2      FY-1      FY0     Comment
+Revenue               ________  ________  ________  ____________
+  growth %            ________  ________  ________
+Gross margin %        ________  ________  ________
+Operating margin %    ________  ________  ________
+Net income            ________  ________  ________
+CFO                   ________  ________  ________
+Capex (incl. cap. sw) ________  ________  ________
+FCF / FCF margin %    ________  ________  ________
+SBC % of revenue      ________  ________  ________
+Cash                  ________  ________  ________
+Debt / net debt       ________  ________  ________
+DSO / DIO / DPO       ________  ________  ________
+ROE / ROIC %          ________  ________  ________
+Diluted shares        ________  ________  ________
+
+DUPONT (FY0): margin ____ x turnover ____ x multiplier ____ = ROE ____
+QUALITY OF EARNINGS: CFO/NI ____  accruals ratio ____  flags: ____
+NON-GAAP GAP: adjusted EBITDA ____ vs GAAP operating income ____
+TOP 3 RISKS (from 1A + your own): 1.____ 2.____ 3.____
+WHAT WOULD CHANGE MY MIND: _______________________________________
+VERDICT (one sentence): __________________________________________
+```
+
+Acme filled in (FY2026): revenue \$3.2M (+39%), gross margin 78%, operating margin 17%, CFO \$526k, FCF \$376k (12%),
+SBC 1.3% of revenue, net cash \$1.48M, DSO 34 days (year-end 41 and rising), ROE 46% driven by margin and turnover.
+Verdict: profitable, customer-funded, cash-generative; watch receivables and whether capitalised R&D keeps growing.
+
+## References
+
+- [SEC, Beginners' Guide to Financial Statements](https://www.sec.gov/about/reports-publications/beginners-guide-financial-statements): the four statements, working capital, basic ratios
+- [Investor.gov, How to Read a 10-K/10-Q](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/how-read): the SEC's guide to annual and quarterly reports
+- [SEC EDGAR full-text and company search](https://www.sec.gov/edgar/search/): where filings live
+- [SEC, Conditions for Use of Non-GAAP Financial Measures (2003)](https://www.sec.gov/rules-regulations/2003/03/conditions-use-non-gaap-financial-measures): the release adopting Regulation G and amending Item 10(e)
+- [SEC, Non-GAAP Financial Measures: Compliance and Disclosure Interpretations](https://www.sec.gov/rules-regulations/staff-guidance/corporation-finance-interpretations/non-gaap-financial-measures): staff guidance, last updated December 2022
+- [Berkshire Hathaway, 2000 Chairman's Letter](https://www.berkshirehathaway.com/letters/2000pdf.pdf): source of the EBITDA "tooth fairy" quotation
+- [IFRS Foundation, IAS 7 Statement of Cash Flows](https://www.ifrs.org/issued-standards/list-of-standards/ias-7-statement-of-cash-flows/): IFRS classification of cash flows
+- [IFRS Foundation, IFRS 18 Presentation and Disclosure in Financial Statements](https://www.ifrs.org/issued-standards/list-of-standards/ifrs-18-presentation-and-disclosure-in-financial-statements/): operating-profit subtotal and management-defined performance measures from 2027
+- [Enron Corp., Form 8-K, 8 November 2001](https://www.sec.gov/Archives/edgar/data/1024401/000095012901503835/h91831e8-k.txt): the restatement table and SPE consolidation
+- [WorldCom, press release filed on Form 8-K, June 2002](https://www.sec.gov/Archives/edgar/data/0000723527/000091205702025338/a2083227zex-99_1.txt): the announcement of \$3.055 billion and \$797 million of improper line-cost transfers
+- [Al Jazeera, "What \$2.1bn? Wirecard says missing funds most likely do not exist" (22 June 2020)](https://www.aljazeera.com/economy/2020/6/22/what-2-1bn-wirecard-says-missing-funds-most-likely-do-not-exist): Wirecard's €1.9 billion admission
+- [Aswath Damodaran, NYU Stern](https://pages.stern.nyu.edu/~adamodar/): FCFF/FCFE definitions and free data on margins and ratios by industry
+- Richard G. Sloan, "Do stock prices fully reflect information in accruals and cash flows about future earnings?", *The Accounting Review* 71(3), 1996: the accruals anomaly
+- Howard M. Schilit, Jeremy Perler and Yoni Engelhart, *Financial Shenanigans* (McGraw-Hill, 4th ed., 2018): catalogue of earnings and cash-flow manipulation techniques
+- Benjamin Graham and David Dodd, *Security Analysis* (McGraw-Hill, 1934): the original case for reading statements sceptically
+- [Accounting](/finance/business/accounting/): how Acme's statements were built from journal entries

@@ -1,0 +1,563 @@
+---
+title: Thinking tools
+date: 2026-09-26
+order: 1
+---
+
+General-purpose mental models: maps and territory, circle of competence, inversion, second-order thinking, the
+razors, Chesterton's fence, falsifiability, steelmanning, robustness heuristics and learning by explaining. Each
+entry gives a definition, the question to ask, a worked example and where it misleads. Choosing between options
+is in [decision-making](/thinking/mental-models/decision-making/), uncertainty in
+[probability and risk](/thinking/mental-models/probability-risk/), the errors these tools guard against in
+[cognitive biases](/thinking/mental-models/cognitive-biases/), and borrowed ideas from physics, biology and
+economics in [models from other fields](/thinking/mental-models/cross-discipline/). Reasoning from fundamentals
+has its own sheet, [first principles](/thinking/first-principles/), as does
+[systems thinking](/thinking/systems-thinking/).
+
+## What a mental model is
+
+A **mental model** is a simplified representation of how something works that you can use to predict, explain
+or decide. Supply and demand, compounding, feedback loops and "incentives drive behaviour" are all models. Every
+model leaves things out; that is what makes it usable and also what makes it wrong at the edges.
+
+| Property | Good model | Bad model |
+| :--- | :--- | :--- |
+| Predictive | tells you something you didn't already know | only explains after the fact |
+| Portable | works across domains (compounding: money, skills, code quality) | tied to one narrow case |
+| Falsifiable | you can say what would prove it wrong | fits every outcome |
+| Cheap to run | you can apply it in a meeting, in your head | needs a spreadsheet every time |
+| Bounded | you know where it stops working | applied everywhere |
+
+### The latticework
+
+Charlie Munger's case for mental models comes from a talk to a class at the USC Business School in 1994,
+printed as "A Lesson on Elementary, Worldly Wisdom as It Relates to Investment Management and Business". His
+claim: isolated facts are useless unless they hang on a structure of theory. In the transcript: "You've got to
+have models in your head. And you've got to array your experience—both vicarious and direct—on this
+latticework of models."
+
+Two rules follow from the talk:
+
+- **Multiple models.** One or two models and you torture reality to fit them. Munger: "To the man with only a
+  hammer, every problem looks like a nail."
+- **From multiple disciplines.** The big ideas from maths, physics, biology, psychology, economics and
+  engineering carry most of the weight. You need the key ideas of each field, not mastery of any one. The
+  catalogue is in [models from other fields](/thinking/mental-models/cross-discipline/).
+
+| Use it to ask | Worked example | Where it misleads |
+| :--- | :--- | :--- |
+| "Which other discipline would see this problem differently?" | churn looks like a product problem (UX lens); an economist asks about switching costs, a biologist about fit to niche, an engineer about the bottleneck in onboarding | model-collecting becomes a hobby: knowing 100 names is not the same as using 10 fluently |
+
+<Note kind="tip">Depth beats breadth. Ten models you reach for automatically outperform a hundred you can list. Learn one, apply it deliberately for a month, then add the next.</Note>
+
+## The map is not the territory
+
+**Definition.** Every representation (a model, a metric, a plan, a spec, an org chart, a dashboard) omits
+detail; do not confuse it with the thing itself. Alfred Korzybski introduced the phrase in a paper presented in
+New Orleans in December 1931, reprinted in *Science and Sanity* (1933): "a map is not the territory it
+represents". His point was that a map is useful because its *structure* resembles the territory, not because
+it is the territory.
+
+**Question to ask.** "What is this map leaving out, who drew it, and when was it last checked against the
+ground?"
+
+**Worked example.** A SaaS dashboard shows weekly active users up 20%. The territory: a new notification email
+drives people to log in, click once and leave. The map (WAU) went up; the thing it was supposed to stand for
+(people getting value) did not. Fix: pair every metric with a counter-metric (WAU with retention at day 30) and
+talk to users.
+
+| Map | Territory it stands in for | Typical gap |
+| :--- | :--- | :--- |
+| financial model | future business | assumptions chosen to hit a target |
+| org chart | how work actually flows | informal networks, who people really ask |
+| API docs | the running system | undocumented behaviour, drift |
+| roadmap | what will ship | discovery, interruptions, re-prioritisation |
+| survey results | what customers do | stated vs revealed preferences |
+| KPI | the goal | [Goodhart's law](/thinking/mental-models/cross-discipline/): targeted measures get gamed |
+
+**Where it misleads.** Used as a blanket excuse ("all models are wrong") it can justify ignoring good maps.
+Maps compress experience; throwing them away and "going to the territory" every time is slow. The skill is
+knowing *when* the map has drifted.
+
+## Circle of competence
+
+**Definition.** The domain where you actually understand the cause-and-effect well enough to beat
+the average participant. Warren Buffett, 1996 Berkshire Hathaway letter: "You only have to be able to evaluate
+companies within your circle of competence. The size of that circle is not very important; knowing its
+boundaries, however, is vital." Munger's 1994 talk makes the same point: figure out where you have an edge and
+play within your own circle of competence.
+
+**Question to ask.** "Could I explain why the experts disagree here, and predict which one is right? If
+not, I'm outside the circle."
+
+| Zone | You can… | Behaviour |
+| :--- | :--- | :--- |
+| inside | predict outcomes, spot nonsense quickly, explain the failure modes | act with conviction; move fast |
+| edge | follow the arguments but not judge between them | act small, seek an insider, set tripwires |
+| outside | only repeat what you've read | don't bet big; buy expertise or pass |
+
+**Worked example.** A backend engineer founding a fintech knows payments infrastructure (inside) but not
+lending regulation (outside). Circle-aware plan: build the ledger themselves; hire compliance counsel before
+launch rather than "reading up"; don't make product decisions that hinge on regulatory interpretation alone.
+
+**Where it misleads.** It can become an excuse never to learn. Circles grow through deliberate, low-stakes
+expansion. And competence in one field breeds false confidence in adjacent ones: a great engineer is not
+automatically a great judge of pricing or hiring.
+
+## Inversion
+
+**Definition.** Solve a problem backwards: instead of asking how to achieve X, ask what would guarantee not-X,
+then avoid that. The mathematician Carl Jacobi is said to have told students *man muss immer umkehren* ("one
+must always invert"). Munger cited Jacobi in his 1986 commencement speech at the Harvard School (a Los Angeles
+prep school, not the university) and popularised the English form "Invert, always invert." In that speech he
+inverted the question of how to be happy into a list of prescriptions for guaranteed misery.
+
+**Question to ask.** "What would make this fail for certain? Am I doing any of that?"
+
+**Worked example: onboarding.**
+
+```text
+Forward:  how do we get new users to activation?
+Inverted: how would we guarantee nobody activates?
+  - require a credit card before showing anything
+  - ask 12 profile questions up front
+  - empty state with no sample data
+  - send the welcome email to spam (no SPF/DKIM)
+  - make the core action 3 clicks deep
+Check the product against the list. We do #2 and #3.
+```
+
+| Forward question | Inverted question |
+| :--- | :--- |
+| How do we ship faster? | What slows every release down? |
+| How do I become a better manager? | What would make my team quit? |
+| How do we build a great culture? | What would make the best people leave? |
+| How do I invest well? | How do people reliably lose money? |
+| How do we make this secure? | How would I break in? |
+
+**Where it misleads.** Avoiding failure is not the same as succeeding: a product with no fatal flaws can still
+have no reason to exist. Use inversion to clear the obvious mistakes, then think forward about what creates
+value. The group version is the [pre-mortem](/thinking/mental-models/decision-making/).
+
+## Second-order thinking
+
+**Definition.** First-order thinking asks what happens next; second-order thinking asks what happens after
+that, and who reacts. Garrett Hardin's "ecolate" filter in *Filters Against Folly* (1985) boils it down to one
+question: "And then what?" Howard Marks calls the investing version **second-level thinking** in *The Most
+Important Thing* (2011): the first-level thinker says "good company, buy"; the second-level thinker asks what
+everyone else already expects and what is priced in.
+
+**Question to ask.** "And then what? Who adapts, and how does their adaptation change the result?"
+
+**Worked example: a discount to hit a quarterly target.**
+
+| Order | Consequence |
+| :--- | :--- |
+| 1st | revenue up this quarter; target hit |
+| 2nd | customers learn to wait for the end-of-quarter discount; sales team learns to hold deals |
+| 3rd | pricing power erodes; next quarter starts lower and needs a bigger discount |
+
+Other examples: paying bug bounties per bug (people split bugs); a feature flag to skip code review "just this
+once" (it becomes the default path); hiring fast to hit a headcount plan (onboarding load slows the existing
+team first).
+
+**Where it misleads.** The chain gets less certain with every step; by the fourth order you are writing
+fiction. Stop when the consequences stop being likely or material. It can also freeze action: most two-way-door
+decisions deserve first-order speed. Loops and delays are covered in [systems thinking](/thinking/systems-thinking/).
+
+## Razors and laws
+
+A **razor** is a rule of thumb for cutting away unlikely explanations. The "laws" below are empirical
+regularities, jokes that turned out to be true, or both; none are laws of nature.
+
+| Name | Statement (paraphrased unless quoted) | Origin | Use it for |
+| :--- | :--- | :--- | :--- |
+| Occam's razor | among explanations that fit equally well, prefer the one with fewer assumptions | William of Ockham (c. 1287–1347); the "entities must not be multiplied beyond necessity" wording is from John Punch, 1639, not Ockham | debugging, diagnosis |
+| Hanlon's razor | "Never attribute to malice that which is adequately explained by stupidity." | Robert J. Hanlon, in Arthur Bloch's *Murphy's Law Book Two* (1980); similar lines are older | interpreting colleagues, customers, vendors |
+| Hitchens's razor | "What can be asserted without evidence can also be dismissed without evidence." | Christopher Hitchens, *God Is Not Great* (2007); echoes the Latin *quod gratis asseritur, gratis negatur* | unsupported claims in meetings and pitches |
+| Sagan standard | "Extraordinary claims require extraordinary evidence." | Carl Sagan, *Cosmos* episode 12 (1980); earlier forms from Marcello Truzzi (1975), Laplace (1810s) and Hume (1748) | "10× growth", "zero churn", miracle cures |
+| Alder's razor (Newton's flaming laser sword) | don't debate what can't be settled by observation or experiment | Mike Alder, *Philosophy Now* (2004) | ending unfalsifiable arguments |
+| Sturgeon's law | "ninety-percent of everything is crud" | Theodore Sturgeon; spoken early 1950s, in print in *Venture Science Fiction* (1957) | judging a category by its best, not its median |
+| Parkinson's law | "Work expands so as to fill the time available for its completion." | C. Northcote Parkinson, *The Economist*, 19 November 1955 | setting deadlines and timeboxes |
+| Brandolini's law | "The amount of energy needed to refute bullshit is an order of magnitude bigger than that needed to produce it." | Alberto Brandolini, tweet, January 2013 | picking which arguments to fight |
+| Hofstadter's law | "It always takes longer than you expect, even when you take into account Hofstadter's Law." | Douglas Hofstadter, *Gödel, Escher, Bach* (1979) | estimates |
+| Murphy's law | anything that can go wrong will go wrong | named after Capt. Edward A. Murphy, US Air Force rocket-sled tests, c. 1949; the idea is older (e.g. 1877) and the origin story is disputed | designing for failure: backups, idempotence, checklists |
+| Pareto principle | a minority of causes produce most of the effects (the "80/20" rule) | Vilfredo Pareto's work on Italian land and income distribution (1890s–1906); named and generalised by Joseph Juran (1940s) | prioritising bugs, customers, features |
+| Lindy effect | for non-perishable things (ideas, books, technologies), each year survived adds to expected remaining life | Albert Goldman, *The New Republic* (1964); Benoit Mandelbrot (1982); Nassim Taleb, *Antifragile* (2012) | choosing tools, books, practices |
+
+### Occam's razor
+
+**Question to ask.** "What is the simplest explanation that accounts for *all* the evidence, and have I
+checked it first?"
+
+**Worked example.** Production latency spikes every day at 02:00. Hypotheses: a subtle memory leak in the
+new release that only manifests under specific load, or the nightly backup job saturating disk I/O. Check the
+cron schedule before profiling the heap.
+
+**Where it misleads.** Simplicity is a search heuristic, not evidence of truth. Real systems often have
+compound causes (two small bugs plus a config change), and the simpler explanation may just be the one that
+matches your existing beliefs. "Fewer assumptions" must still explain every data point.
+
+### Hanlon's razor
+
+**Question to ask.** "What's the most plausible non-malicious explanation (missing information, competing
+priorities, a bad process) and have I ruled it out?"
+
+**Worked example.** Another team shipped a breaking API change without warning. Malice reading: they don't
+care about us. Likely reading: nobody told them you depend on that field, because there's no contract test and
+no consumer registry. The fix is a process, not a confrontation.
+
+**Where it misleads.** Incentives are not stupidity. A vendor that makes cancellation hard is not incompetent;
+a counterparty that "forgets" a clause twice has shown you a pattern. Apply the razor to individuals in good
+faith; don't apply it to systems that profit from the "mistake". Security is the obvious exception: assume
+adversaries exist.
+
+### Hitchens's razor and the Sagan standard
+
+Both put the **burden of proof** on the person making the claim, and scale the evidence required to the
+claim's size. **Question to ask:** "What would I expect to see if this were true, and have I seen it?"
+
+**Worked example.** A candidate says their previous startup "grew 40% month-on-month for a year". That is
+roughly 57× in 12 months ($1.4^{12} \approx 56.7$). Possible, but extraordinary: ask for the starting base, the
+absolute numbers and whether it was revenue, sign-ups or something else.
+
+**Where they mislead.** They're tools for *not believing yet*, not for proving the opposite. Absence of
+evidence you've looked for is weak evidence of absence; absence of evidence you haven't looked for is nothing.
+Also, "extraordinary" depends on your priors, which may themselves be wrong; see
+[probability and risk](/thinking/mental-models/probability-risk/).
+
+## Chesterton's fence
+
+**Definition.** Don't remove a rule, process or piece of code until you know why it was put there. From
+G. K. Chesterton's *The Thing* (1929), chapter "The Drift from Domesticity": a reformer who sees a fence across
+a road and says "I don't see the use of this; let us clear it away" should be told: "If you don't see the use of
+it, I certainly won't let you clear it away. Go away and think. Then, when you can come back and tell me that you
+do see the use of it, I may allow you to destroy it."
+
+**Question to ask.** "Why did someone build this? What was true then, and is it still true now?"
+
+**Worked example.** A new engineering lead finds that every deploy needs a manual sign-off from the data team
+and wants to remove it. Git blame and a Slack search show it was added after a schema change silently broke the
+finance reports for a month. The fence has a reason; the right move is to replace it with an automated
+schema-compatibility check, *then* remove the manual step.
+
+| Finding | Action |
+| :--- | :--- |
+| reason found, still valid | keep it, or replace it with something cheaper that does the same job |
+| reason found, no longer valid | remove it; write down why |
+| no reason found after a real search | remove it cautiously (flag, staged rollout, easy revert) and watch |
+| no reason found, change is irreversible | slow down; ask more people |
+
+**Where it misleads.** Taken literally it paralyses: some fences are cheap to test by removing them, and the
+search for the original reason can cost more than a reversible experiment. For
+[two-way doors](/thinking/mental-models/decision-making/), removing the fence and watching is a legitimate way
+to find out why it was there.
+
+## Falsifiability and disconfirming evidence
+
+**Definition.** A claim is scientific only if some possible observation could show it false. Karl Popper,
+*Logik der Forschung* (1934; English: *The Logic of Scientific Discovery*, 1959). Popper contrasted Einstein's
+relativity, which made risky predictions that could have failed, with theories that could explain any outcome
+after the fact.
+
+**Question to ask.** "What result would make me abandon this belief? If nothing could, it isn't a belief about
+the world; it's a preference."
+
+**Worked example.** "Our users want more integrations" is unfalsifiable as stated. Falsifiable version: "If we
+show an integrations page to 1,000 trial users, at least 10% will click 'request an integration' within the
+first week." Now it can fail.
+
+| Unfalsifiable | Falsifiable rewrite |
+| :--- | :--- |
+| "The market isn't ready yet." | "If we reach 50 qualified prospects and fewer than 3 agree to a paid pilot, we stop." |
+| "This rewrite will make us faster." | "Median PR cycle time drops from 3 days to 1.5 within a quarter." |
+| "Culture is the problem." | "Regretted attrition in team X is 2× the company average; exit interviews will cite the manager." |
+
+### Seek the disconfirming evidence
+
+Evidence against your view is harder to notice and easier to forget than evidence for it. Darwin describes, in
+his *Autobiography*, a "golden rule" of writing down any fact that contradicted his general results immediately,
+because he found such facts slipped from memory far faster than favourable ones (paraphrased). The operational
+version:
+
+- Before deciding, write down what you'd expect to see if you were **wrong**, then go and look for it.
+- Ask the person most likely to disagree, not the most likely to agree.
+- Keep a "reasons I might be wrong" list alongside every major plan.
+
+**Where it misleads.** Naive falsificationism throws out a good theory on one anomalous result; real science
+weighs anomalies against the theory's overall record. One angry customer doesn't falsify a product thesis.
+The biases this guards against, especially confirmation bias, are in
+[cognitive biases](/thinking/mental-models/cognitive-biases/).
+
+## Steelmanning
+
+**Definition.** Argue against the strongest version of the opposing view, not the weakest (the "straw man").
+Steelmanning is an informal extension of the philosopher's **principle of charity**: interpret others in the
+most reasonable way available. Daniel Dennett's *Intuition Pumps and Other Tools for Thinking* (2013) gives a
+procedure he calls **Rapoport's rules**, after the game theorist Anatol Rapoport (paraphrased):
+
+1. Restate the other position so clearly and fairly that its holder wishes they'd put it that way.
+2. List the points of agreement, especially uncommon ones.
+3. Say what you've learned from them.
+4. Only then offer rebuttal or criticism.
+
+**Question to ask.** "Could I pass this person's ideological Turing test: argue their side well enough that
+they'd accept it as their own?"
+
+**Worked example.** Debate: monolith vs microservices. Straw man of the monolith camp: "they don't understand
+scale". Steel man: "At our size (8 engineers), the dominant cost is coordination and operational overhead, not
+deploy contention; a modular monolith gets 80% of the isolation for 20% of the ops cost, and we can extract a
+service later when a module has a real scaling or ownership boundary." Now the argument is about the facts
+that matter (team size, deploy frequency, failure isolation needs).
+
+**Where it misleads.** Steelmanning a position no one actually holds wastes time; so does steelmanning bad-faith
+arguments. And an over-charitable reconstruction can hide real disagreement: sometimes the person really does
+mean the weak version.
+
+## Thought experiments
+
+**Definition.** Reason through an imagined scenario to test an idea when a real experiment is impossible,
+expensive or unethical. Classic examples: Galileo's argument that heavy and light bodies must fall at the same
+rate (tie them together and the "heavy falls faster" theory contradicts itself); Einstein imagining chasing a
+beam of light.
+
+**Question to ask.** "If I push this to its extreme, or change one variable, what must follow?"
+
+| Technique | How | Example |
+| :--- | :--- | :--- |
+| extremes | set a variable to zero or infinity | "If this feature were free to build, would we still want it?" |
+| remove a constraint | assume the constraint is gone | "If we had no legacy customers, what would the pricing be?" |
+| role swap | argue from another actor's position | "If I were our largest competitor, how would I attack this?" |
+| scale | multiply by 10 or 100 | "What breaks at 10× users? At 100×?" |
+| time travel | view from later | "In three years, which of these choices looks obviously wrong?" |
+
+**Where it misleads.** A thought experiment only tests the logic of your assumptions; smuggle in a false premise
+and you'll reason flawlessly to a wrong answer. Many intuitive thought experiments fail against data (people
+reliably mispredict their own future behaviour). Use them to generate hypotheses, not to settle empirical
+questions.
+
+## Robustness heuristics
+
+Three related models for acting when you can't predict well: prefer what has survived, subtract before adding,
+and leave room for error.
+
+### Lindy effect
+
+**Question to ask.** "How long has this been around, and is it the kind of thing that ages or the kind that
+proves itself by surviving?"
+
+**Worked example.** Picking a data store for a ten-year system: PostgreSQL (first released in the 1990s, lineage
+back to the 1980s) versus a database launched last year. Lindy doesn't say the new one is bad; it says the
+old one has already survived many failure modes you haven't thought of. Default to Lindy for the load-bearing
+parts; experiment at the edges.
+
+**Where it misleads.** It applies only to non-perishable things and only as a prior. It says nothing about
+people or physical objects (a 90-year-old does not have more life left than a 20-year-old). It also can't see
+technological discontinuities: horses had a very long track record in 1900.
+
+### Via negativa
+
+**Definition.** Improve by removing: subtract harmful things before adding helpful ones. The term comes from
+apophatic theology (describing God by what God is not); Taleb borrows it in *Antifragile* (2012) for the idea
+that knowledge of what doesn't work is more robust than knowledge of what does.
+
+**Question to ask.** "What can I stop doing, remove or delete that would improve this more than adding
+anything?"
+
+**Worked example.** A team's velocity is low. Additive fixes: new tooling, more process, a productivity
+dashboard. Subtractive fixes: cancel two recurring meetings, delete dead feature flags, drop support for a
+browser with 0.3% of traffic, stop the weekly status report nobody reads. Subtraction is usually cheaper,
+faster and has fewer side effects.
+
+**Where it misleads.** Some problems genuinely need addition (a missing test suite, a missing hire). Removal can
+also cut a Chesterton's fence; check what the thing does before deleting it.
+
+### Margin of safety
+
+**Definition.** Build in a buffer between what you expect and what would break you, so that being wrong isn't
+fatal. The term comes from Benjamin Graham: Graham and Dodd's *Security Analysis* (1934), and the final chapter
+of *The Intelligent Investor* (1949), which calls it the central concept of investment. The engineering
+equivalent is the **factor of safety**: design a bridge for several times the heaviest expected load.
+
+**Question to ask.** "If my estimate is off by 30–50% in the wrong direction, do I survive?"
+
+**Worked example.** Runway planning: the plan says 18 months of runway at forecast burn and revenue. With a
+margin of safety you ask what happens if revenue arrives six months late and hiring costs 20% more. If that
+case leaves 7 months, start fundraising now, not at month 12.
+
+| Domain | Margin of safety |
+| :--- | :--- |
+| investing | buy well below your estimate of value |
+| engineering | design loads × safety factor; capacity headroom |
+| startups | runway buffer; don't depend on one customer |
+| estimates | commit to a date you hit 80–90% of the time, not the median |
+| personal finance | emergency fund; see [money basics](/finance/personal/money-basics/) |
+
+**Where it misleads.** Buffers cost something: idle cash, spare capacity and padded estimates are all
+[opportunity cost](#opportunity-cost-as-a-thinking-tool). Too much margin and you never act; padded deadlines
+also invite [Parkinson's law](#razors-and-laws). Size the margin to the cost of being wrong.
+
+## Opportunity cost as a thinking tool
+
+**Definition.** The cost of anything is the value of the best alternative you give up. Frédéric Bastiat's essay
+"What Is Seen and What Is Not Seen" (1850) is the classic statement: judge a choice by its unseen effects as
+well as the visible ones. The economics is on [microeconomics](/economics/microeconomics/); this is the habit.
+
+**Question to ask.** "Compared to what? What is the best other use of this time, money or attention?"
+
+**Worked example.** A founder spends two weeks building an internal admin tool that would cost \$50/month to
+buy. The visible cost is zero cash. The real cost is two weeks of the one person who can close the next
+funding round or fix the activation funnel. The comparison is not "tool vs nothing" but "tool vs the best thing
+those two weeks could have produced".
+
+**Where it misleads.** Opportunity cost is always estimated against an imagined alternative, and imagined
+alternatives look better than real ones (no bugs, no delays). Constantly weighing every alternative is its own
+cost; see [satisficing](/thinking/mental-models/decision-making/). Pricing and sunk-cost traps are on the
+decision-making sheet.
+
+## Strong opinions, weakly held
+
+**Definition.** Paul Saffo's forecasting method, from a 2008 blog post of that name: let intuition take you to a
+definite, even premature, conclusion (the strong opinion), then deliberately try to prove it wrong and change it
+when the evidence says so (weakly held). The point is to reach a forecast through a series of bad ones rather
+than waiting for certainty.
+
+**Question to ask.** "What's my current best guess, stated specifically enough to be wrong, and what evidence
+would change it?"
+
+**The critique.** In practice the phrase often licenses loud people to state guesses as facts and quieter people
+to defer. Michael Natkin's 2019 essay "Strong Opinions Loosely Held Might be the Worst Idea in Tech" argues it
+rewards overconfidence and shuts down discussion. The fix is to attach a **confidence level** to the opinion
+("I'm about 60% sure we should drop the free tier") so everyone knows how firmly it's held.
+
+| Version | Sounds like | Effect |
+| :--- | :--- | :--- |
+| as intended | "Hypothesis: drop the free tier. Here's what would change my mind." | fast iteration, visible reasoning |
+| as practised | "We obviously need to drop the free tier." | anchors the room; dissent feels costly |
+| calibrated | "60% we should drop it; if trial-to-paid is under 3%, I'm wrong." | same speed, honest uncertainty |
+
+**Where it misleads.** Holding opinions weakly is hard: identity, sunk effort and public commitment all make
+opinions sticky. Without explicit update triggers "weakly held" is just a disclaimer. Calibration is covered in
+[probability and risk](/thinking/mental-models/probability-risk/).
+
+## Learning by explaining
+
+### The "Feynman technique"
+
+**Definition.** Test your understanding by explaining an idea in plain language, as if to a beginner; the
+places where you stall or reach for jargon are the gaps. Usual steps: pick a concept, explain it simply,
+find the gaps and go back to the source, simplify and use analogies.
+
+The name is a modern popularisation. Richard Feynman was famous for explaining physics simply and for
+distrusting knowledge that was only memorised labels, but he never codified or named a four-step method. The
+earliest known use of "the Feynman Technique" as a named method is a 2011 blog post by Scott Young.
+
+**Question to ask.** "Can I explain this without jargon to someone smart outside the field, and answer their
+first three 'why' questions?"
+
+**Worked example.** Explain database indexes without the word "B-tree": "An index is a sorted copy of one
+column with pointers back to the rows, so the database can binary-search it instead of reading every row.
+Writes get slower because the copy has to be kept sorted." If you can't say why a composite index on (a, b)
+doesn't help a query on b alone, that's the gap to study.
+
+**Where it misleads.** A fluent explanation can be fluent and wrong; simplifying past the point of accuracy
+teaches a myth. Check the explanation against the source or an expert, not only against your own sense of
+clarity.
+
+### Rubber-duck debugging
+
+**Definition.** Explain your code, line by line, to an inanimate object (the rubber duck), and the bug often
+becomes obvious before you finish. Named in Andrew Hunt and David Thomas's *The Pragmatic Programmer* (1999).
+It works because explaining forces you to state assumptions you had been skipping over.
+
+**Question to ask.** "What does each line actually do, not what did I intend it to do?"
+
+**Where it misleads.** It finds bugs in your reasoning, not bugs that need knowledge you don't have. If ten
+minutes with the duck doesn't help, ask a human.
+
+## Choosing the right tool
+
+| Situation | Reach for |
+| :--- | :--- |
+| about to change or delete something old | Chesterton's fence |
+| planning something that could fail | inversion, [pre-mortem](/thinking/mental-models/decision-making/), margin of safety |
+| a policy, incentive or price change | second-order thinking, [systems thinking](/thinking/systems-thinking/) |
+| someone makes a big claim | Hitchens's razor, Sagan standard |
+| a colleague or team seems to be acting against you | Hanlon's razor |
+| a strange bug or outage | Occam's razor, rubber duck |
+| a heated disagreement | steelmanning, falsifiability ("what would change your mind?") |
+| choosing a technology or practice for the long run | Lindy effect |
+| things feel too complicated | via negativa |
+| deciding what to work on | opportunity cost, circle of competence |
+| reasoning from a metric or a plan | map vs territory |
+| a problem everyone "knows" the answer to | [first principles](/thinking/first-principles/) |
+
+## Common mistakes
+
+| Mistake | What it looks like | Fix |
+| :--- | :--- | :--- |
+| model as decoration | naming the model after deciding ("classic second-order effect") | pick the model before the conclusion |
+| one-model thinking | every problem is incentives, or every problem is culture | run at least two models from different fields |
+| razor as proof | "Occam says it's the simple thing" and stopping there | razors order your checks; evidence decides |
+| unbounded models | Lindy for people, Hanlon for adversaries | know each model's domain |
+| fencing everything | never removing anything because "Chesterton" | reversible? try it and watch |
+| infinite regress | fifth-order consequences of a button colour | match depth to stakes and reversibility |
+| performative steelmanning | a strong restatement followed by ignoring it | let the steel man change your plan |
+
+## Daily practice
+
+```text
+DAILY (5 minutes, end of day)
+[ ] One decision today: which model did I use, and did it fit?
+[ ] One thing I believed that could be wrong: what would show it?
+[ ] One thing I added that could have been removed instead?
+
+BEFORE ANY SIGNIFICANT CHANGE
+[ ] Map vs territory: is my data current and measuring
+    the real thing?
+[ ] Chesterton: do I know why the current thing exists?
+[ ] Invert: what would guarantee failure? Am I doing it?
+[ ] And then what? (stop at the 2nd or 3rd order)
+[ ] Circle: inside, edge or outside my competence?
+[ ] Opportunity cost: compared to what?
+[ ] Margin: do I survive being 30-50% wrong?
+
+IN AN ARGUMENT
+[ ] Restate their view until they agree with the restatement
+[ ] Ask: "What would change your mind?" Answer it yourself
+[ ] Big claim? Ask for evidence proportional to its size
+[ ] Assume error or missing context before malice
+
+WEEKLY
+[ ] Pick one model; apply it deliberately to 3 situations
+[ ] Explain one thing you learned in plain language
+[ ] Review: where did a model mislead me this week?
+```
+
+## References
+
+- Charles T. Munger, "A Lesson on Elementary, Worldly Wisdom as It Relates to Investment Management and Business" (USC Business School, 1994; printed in *Outstanding Investors Digest* and *Poor Charlie's Almanack*, 2005): the latticework and man-with-a-hammer passages
+- [Stripe Press: Poor Charlie's Almanack](https://www.stripe.press/poor-charlies-almanack): collected Munger talks, including the 1986 Harvard School speech on inversion
+- [Warren Buffett, 1996 Berkshire Hathaway shareholder letter](https://www.berkshirehathaway.com/letters/1996.html): circle of competence passage
+- Alfred Korzybski, *Science and Sanity: An Introduction to Non-Aristotelian Systems and General Semantics* (1933): "a map is not the territory"
+- [Map–territory relation (Wikipedia)](https://en.wikipedia.org/wiki/Map%E2%80%93territory_relation): history of the phrase, 1931 paper
+- G. K. Chesterton, *The Thing* (1929), chapter "The Drift from Domesticity": the fence passage; [text via the Society of G. K. Chesterton](https://www.chesterton.org/taking-a-fence-down/)
+- Garrett Hardin, *Filters Against Folly* (Viking, 1985): the literate, numerate and ecolate filters; "And then what?"
+- Howard Marks, *The Most Important Thing* (Columbia University Press, 2011): second-level thinking
+- Karl Popper, *The Logic of Scientific Discovery* (1959; German original 1934) and *Conjectures and Refutations* (1963): falsifiability
+- Daniel C. Dennett, *Intuition Pumps and Other Tools for Thinking* (W. W. Norton, 2013): Rapoport's rules
+- [Occam's razor (Wikipedia)](https://en.wikipedia.org/wiki/Occam%27s_razor): what Ockham did and didn't write
+- [Hanlon's razor (Wikipedia)](https://en.wikipedia.org/wiki/Hanlon%27s_razor): origin in *Murphy's Law Book Two*
+- [Hitchens's razor (Wikipedia)](https://en.wikipedia.org/wiki/Hitchens%27s_razor): wording and Latin precursor
+- [Sagan standard (Wikipedia)](https://en.wikipedia.org/wiki/Sagan_standard): Sagan, Truzzi, Laplace and Hume
+- [Mike Alder (Wikipedia)](https://en.wikipedia.org/wiki/Mike_Alder): Newton's flaming laser sword, *Philosophy Now* 2004
+- [Sturgeon's law (Wikipedia)](https://en.wikipedia.org/wiki/Sturgeon%27s_law), [Parkinson's law](https://en.wikipedia.org/wiki/Parkinson%27s_law), [Brandolini's law](https://en.wikipedia.org/wiki/Brandolini%27s_law), [Hofstadter's law](https://en.wikipedia.org/wiki/Hofstadter%27s_law), [Murphy's law](https://en.wikipedia.org/wiki/Murphy%27s_law), [Pareto principle](https://en.wikipedia.org/wiki/Pareto_principle): origins and dates for the laws table
+- [Lindy effect (Wikipedia)](https://en.wikipedia.org/wiki/Lindy_effect): Goldman, Mandelbrot, Taleb; limits
+- Nassim Nicholas Taleb, *Antifragile: Things That Gain from Disorder* (Random House, 2012): Lindy effect, via negativa
+- Benjamin Graham, *The Intelligent Investor* (1949), chapter 20; Graham and David Dodd, *Security Analysis* (1934): margin of safety
+- Frédéric Bastiat, "What Is Seen and What Is Not Seen" (1850): the unseen alternative
+- [Paul Saffo, "Strong Opinions weakly held" (2008), archived copy](https://gist.github.com/edthrn/2cd70aec66e1b2eed86d71e4167d91a8): the original forecasting essay
+- [Michael Natkin, "Strong Opinions Loosely Held Might be the Worst Idea in Tech" (2019)](https://medium.com/swlh/strong-opinions-loosely-held-might-be-the-worst-idea-in-tech-c3e65cb512f1): the critique
+- [Scott H. Young, "The Feynman Technique Explained"](https://www.scotthyoung.com/blog/the-feynman-technique-explained/): the popular named method and its origin
+- Andrew Hunt and David Thomas, *The Pragmatic Programmer* (Addison-Wesley, 1999): rubber-duck debugging
+- Charles Darwin, *The Autobiography of Charles Darwin* (1887; unabridged edition 1958): the "golden rule" of recording contrary facts

@@ -1,0 +1,502 @@
+---
+title: Decision-making
+date: 2026-09-26
+order: 2
+---
+
+How to make better decisions faster: classify the decision first, match the process to the stakes, put numbers
+on the options, stress-test the favourite, decide as a group without the classic failure modes, and judge
+decisions by process rather than outcome. Uncertainty, base rates and bet sizing are in
+[probability and risk](/thinking/mental-models/probability-risk/); the biases that distort choices are in
+[cognitive biases](/thinking/mental-models/cognitive-biases/); general tools such as inversion and
+second-order thinking are in [thinking tools](/thinking/mental-models/general-thinking/). The fast
+observe–orient–decide–act cycle is on its own sheet, [the OODA loop](/leadership/ooda-loop/).
+
+## Classify the decision first
+
+The most common decision mistake is using the wrong process: agonising over reversible choices, or rushing
+irreversible ones. Before analysing anything, sort the decision.
+
+### One-way and two-way doors
+
+Jeff Bezos, 2015 Amazon letter to shareholders:
+
+- **Type 1**: "Some decisions are consequential and irreversible or nearly irreversible – one-way doors – and
+  these decisions must be made methodically, carefully, slowly, with great deliberation and consultation."
+- **Type 2**: "But most decisions aren't like that – they are changeable, reversible – they're two-way doors."
+  A suboptimal Type 2 decision can be undone: "You can reopen the door and go back through."
+
+His warning about scale: as organisations grow they tend to apply the heavyweight Type 1 process to Type 2
+decisions, and "the end result of this is slowness, unthoughtful risk aversion, failure to experiment
+sufficiently, and consequently diminished invention." The opposite failure (Type 2 speed on Type 1 decisions)
+is rarer but more expensive.
+
+| Dimension | Two-way door (Type 2) | One-way door (Type 1) |
+| :--- | :--- | :--- |
+| cost to reverse | low: a revert, a refund, a config change | high or impossible |
+| examples | pricing page copy, a feature flag, a vendor on a monthly plan, a hiring process tweak | raising a priced round, choosing a co-founder, public API contracts, deleting data, firing someone, a 5-year lease |
+| who decides | the person closest to the work | senior owner, with consultation |
+| process | decide in the meeting; set a review date | written options, pre-mortem, sleep on it |
+| information bar | ~70% (below) or less | as much as you can get in the time available |
+| biggest risk | being slow | being wrong |
+
+**Question to ask.** "If this turns out wrong, what does it cost to undo, and how long until we'd know?"
+
+<Note kind="tip">Many one-way doors can be converted into two-way doors: pilot before the multi-year contract, feature flag before the migration, contractor before the full-time hire, soft launch before the press release. Look for the conversion before deciding slowly.</Note>
+
+### Other ways to sort
+
+| Axis | Question | Implication |
+| :--- | :--- | :--- |
+| stakes | how much is at risk (money, people, reputation, time)? | effort proportional to downside, not to how interesting it is |
+| reversibility | can it be undone, and at what cost? | the door test above |
+| frequency | one-off or repeated? | repeated decisions deserve a policy or a rule, decided once |
+| time pressure | what does waiting cost? | the cost of delay is usually underestimated |
+| uncertainty type | risk (known odds) or uncertainty (unknown odds)? | EV maths for risk; robustness and small bets for uncertainty |
+| ownership | whose decision is it? | name one decider before discussing (see decision rights below) |
+
+### Reversibility-based delegation
+
+Use the door test to push decisions down. The more reversible and lower-stakes the decision, the closer to the
+work it should be made.
+
+| Decision type | Default owner | Check-in |
+| :--- | :--- | :--- |
+| reversible, low stakes | individual contributor | none; mention in the weekly update |
+| reversible, moderate stakes | team lead | inform manager after |
+| irreversible, low stakes | team lead | consult one peer before |
+| irreversible, high stakes | accountable exec or founder | written proposal, input from affected teams |
+
+Tell people which bucket a decision is in, explicitly. Uncertainty about ownership is the main reason
+reversible decisions get escalated.
+
+## Speed vs accuracy
+
+Bezos, 2016 letter to shareholders: "most decisions should probably be made with somewhere around 70% of the
+information you wish you had. If you wait for 90%, in most cases, you're probably being slow." And: "If you're
+good at course correcting, being wrong may be less costly than you think, whereas being slow is going to be
+expensive for sure."
+
+The 70% is a rule of thumb for Type 2 decisions, not a measured optimum. The real argument is about the
+**value of information** against the **cost of delay**:
+
+| Keep gathering information when | Decide now when |
+| :--- | :--- |
+| the decision is irreversible | the decision is reversible |
+| the next piece of information could change the answer | every plausible finding leads to the same choice |
+| information is cheap and fast to get | delay costs revenue, morale or a window |
+| you're outside your [circle of competence](/thinking/mental-models/general-thinking/) | you've made this kind of call many times |
+| the downside is ruin | the downside is bounded and small |
+
+**Worked test.** Before commissioning more research, write down what result would change your decision. If you
+can't name one, the research is procrastination.
+
+## Expected value and decision trees
+
+**Expected value** (EV) is the probability-weighted average of the outcomes:
+
+$$
+EV = \sum_i p_i \, v_i
+$$
+
+A **decision tree** lays out choices (squares), chance events (circles) and outcomes, then works backwards: at
+each chance node take the EV; at each choice node take the best branch. Probability foundations are on
+[probability and risk](/thinking/mental-models/probability-risk/).
+
+### Worked example: build for one big customer?
+
+A startup has \$80k of engineering time for the next quarter. Values below are in \$k of gross profit over two
+years, net of the \$80k spent.
+
+- **A: build the integration a large prospect asked for.** 50% they sign: \$300k. 50% they don't: the
+  integration still has some reuse value, \$40k.
+- **B: spend the quarter on self-serve onboarding.** 30% chance of a big lift: \$400k. 70% small lift: \$60k.
+- **C: run a two-week paid pilot first (cost \$10k)**, which reveals whether the prospect will sign. Then build
+  A if yes, B if no.
+
+```text
+A  build integration   -80
+   |- 0.5 signs         +300   -> 220
+   '- 0.5 no deal        +40   -> -40
+   EV(A) = 0.5(220) + 0.5(-40)            =  90
+
+B  self-serve          -80
+   |- 0.3 big lift      +400   -> 320
+   '- 0.7 small lift     +60   -> -20
+   EV(B) = 0.3(320) + 0.7(-20)            =  82
+
+C  pilot first         -10
+   |- 0.5 "will sign" -> build A: 300-80  = 220
+   '- 0.5 "won't"     -> do B:    EV      =  82
+   EV(C) = 0.5(220) + 0.5(82) - 10        = 141
+```
+
+Reading the tree:
+
+- **A beats B narrowly** (90 vs 82), well within the error of the estimates. Don't read much into it.
+- **C wins clearly** (141). The **expected value of perfect information** is $0.5(220) + 0.5(82) - 90 = 61$: the
+  most you should pay to know the answer first. The pilot costs 10, so it's worth it.
+- **Variance matters.** A ranges from −40 to 220; if the company dies on a −40 outcome, EV is the wrong
+  criterion. Survival first, then EV (see [probability and risk](/thinking/mental-models/probability-risk/)).
+
+| Where EV misleads | Why | What to do |
+| :--- | :--- | :--- |
+| ruin | a positive-EV bet with a small chance of ruin is still a bad bet if repeated | cap exposure; bet sizing (Kelly criterion, on [probability and risk](/thinking/mental-models/probability-risk/)) |
+| made-up numbers | probabilities are guesses, and false precision hides that | use ranges; run the tree at pessimistic values |
+| missing options | the best branch is often one not on the tree | ask "what else could we do?" before computing |
+| non-monetary values | reputation, team morale, optionality | score separately or add as a constraint |
+| one-shot decisions | EV is a long-run average | for single big bets, look at the distribution, not just the mean |
+
+## Costs that matter, costs that don't
+
+| Concept | Definition | Question to ask | Common trap |
+| :--- | :--- | :--- | :--- |
+| **opportunity cost** | value of the best alternative forgone | "Compared to what?" | comparing an option to doing nothing, instead of to the next-best use |
+| **sunk cost** | already spent and unrecoverable; irrelevant to the choice | "If I were starting today, would I choose this?" | "we've already put 9 months into it" |
+| **marginal thinking** | decide on the next unit: continue while marginal benefit ≥ marginal cost | "What does one more week, hire or feature get us, and cost?" | using averages ("each engineer ships X") for marginal decisions |
+| **cost of delay** | value lost per unit of time the decision or feature is late | "What does waiting a month cost?" | treating delay as free because it has no invoice |
+
+**Worked example: the nine-month project.** A team has spent nine months on a new data pipeline. Three months of
+work remain; a managed service now does 90% of what's needed for \$2k/month. Sunk cost says finish. The right
+comparison is only forward-looking: three more months of four engineers plus ongoing maintenance, versus
+migration effort plus \$24k a year. The nine months are gone either way. The emotional pull to justify them is the
+[sunk cost fallacy](/thinking/mental-models/cognitive-biases/).
+
+The economics behind opportunity cost and marginal analysis is on [microeconomics](/economics/microeconomics/).
+
+## Time-horizon tools
+
+### Regret minimisation
+
+Bezos's account of leaving his job at D. E. Shaw in 1994 to start Amazon (Academy of Achievement interview,
+2001, paraphrased): he imagined himself at 80 looking back and asked which choice would leave him with fewer
+regrets. He concluded he wouldn't regret trying and failing at the internet, but might regret never having
+tried.
+
+**Question to ask.** "At 80, which choice will I regret *not* having made?"
+
+**Where it misleads.** It is built for big, personal, identity-level choices, and it favours action: people
+tend to regret inactions more over the long run. It says nothing about whether you can afford the downside.
+Bezos had savings and a skill set that made failure survivable; check your
+[margin of safety](/thinking/mental-models/general-thinking/) before applying it.
+
+### 10/10/10
+
+Suzy Welch, *10-10-10: A Life-Transforming Idea* (Scribner, 2009). For a decision, ask how you'll feel about
+each option **10 minutes**, **10 months** and **10 years** from now.
+
+**Worked example.** Telling a well-liked but underperforming early employee that their role is changing.
+10 minutes: awful, awkward conversation. 10 months: the team is shipping and the employee is either in a role
+that fits or has moved on with a good reference. 10 years: nobody remembers the conversation; everybody remembers
+whether the company survived. The short-term discomfort is the only argument for waiting.
+
+**Where it misleads.** Long-horizon predictions of your own feelings are unreliable, and "it'll all look fine
+in 10 years" can rationalise anything. Use it to expose short-term bias, not to decide by itself.
+
+## Prioritisation: the Eisenhower matrix
+
+Sort tasks by **urgency** (time-sensitive) and **importance** (contributes to long-term goals).
+
+| | Urgent | Not urgent |
+| :--- | :--- | :--- |
+| **Important** | **Do**: incidents, a deadline that matters, a key customer at risk | **Schedule**: strategy, hiring, tech debt, relationships, learning |
+| **Not important** | **Delegate** (or decline): most interruptions, many meetings, other people's priorities | **Drop**: busywork, low-value reports, idle scrolling |
+
+**The quote.** Dwight D. Eisenhower, address to the Second Assembly of the World Council of Churches,
+Evanston, Illinois, 19 August 1954, quoting "a former college president": "I have two kinds of problems, the
+urgent and the important. The urgent are not important, and the important are never urgent." The line was
+not Eisenhower's own and he said so; accounts link it to J. Roscoe Miller, president of Northwestern University,
+who was present. The four-quadrant grid is a later construction, popularised by Stephen Covey's *The 7 Habits of
+Highly Effective People* (1989), whose "Quadrant II" is the important-but-not-urgent box.
+
+**Question to ask.** "What's in the schedule box, and is any of it actually on my calendar?"
+
+**Where it misleads.** "Important" is doing all the work and is rarely defined; without explicit goals the matrix
+just relabels your gut. The quote's absolutism is also wrong: plenty of things are both urgent and important
+(a security breach). Its value is in the bottom-right and top-right boxes: dropping and scheduling.
+
+## Weighted decision matrix
+
+For choices with several criteria and a handful of options: list criteria, weight them (weights sum to 1),
+score each option 1–5 on each criterion, multiply and sum.
+
+$$
+\text{score}_j = \sum_i w_i \, s_{ij}, \qquad \sum_i w_i = 1
+$$
+
+### Worked example: which first customer segment?
+
+| Criterion | Weight | Dental clinics | Law firms | Independent gyms |
+| :--- | ---: | ---: | ---: | ---: |
+| pain severity | 0.30 | 4 | 3 | 3 |
+| reachability (can we find and contact them?) | 0.25 | 3 | 2 | 5 |
+| willingness to pay | 0.25 | 4 | 5 | 2 |
+| our unfair advantage | 0.20 | 3 | 2 | 4 |
+| **weighted score** | 1.00 | **3.55** | **3.05** | **3.45** |
+
+Dental: $0.3(4) + 0.25(3) + 0.25(4) + 0.2(3) = 3.55$. Gyms: $0.3(3) + 0.25(5) + 0.25(2) + 0.2(4) = 3.45$.
+
+**Sensitivity check.** Move 0.10 of weight from pain severity to reachability (0.20 and 0.35): dental drops to
+3.45, gyms rise to 3.65. The winner flips on a small change of weights, so the matrix is really saying "dental
+and gyms are a toss-up; law firms are out." The right next step is a cheap test (ten customer calls in each
+segment), not more scoring.
+
+| Do | Don't |
+| :--- | :--- |
+| set weights before scoring options | tweak weights until your favourite wins |
+| define what a 1, 3 and 5 mean for each criterion | score on vibes |
+| score independently, then compare (avoid anchoring on the first scorer) | score together, loudest first |
+| run a sensitivity check on the weights | report a winner that a small weight change flips |
+| treat any knock-out criterion as a filter, not a weight | let a high score elsewhere compensate for a deal-breaker |
+
+**Where it misleads.** It gives false precision to subjective scores, and criteria are rarely independent
+(reachability and willingness to pay often correlate). If the result surprises you, treat that as data: either
+the weights are wrong or your gut is. Find out which.
+
+## Satisficing vs maximising
+
+**Satisficing** (satisfy + suffice): set an aspiration level and take the first option that meets it. Herbert
+Simon introduced the term in "Rational Choice and the Structure of the Environment" (*Psychological Review*,
+1956) as part of **bounded rationality**: real agents can't evaluate every option, so optimising over everything
+is not actually rational.
+
+**Maximising**: search for the best possible option. Barry Schwartz and colleagues (*Journal of Personality and
+Social Psychology*, 2002) found that people who habitually maximise report lower happiness and life satisfaction
+and more regret than satisficers. Iyengar, Wells and Schwartz (2006) followed graduating job seekers: maximisers
+landed starting salaries about 20% higher but felt worse about the search and the job. Schwartz's popular
+account is *The Paradox of Choice* (2004).
+
+| Satisfice when | Maximise when |
+| :--- | :--- |
+| the decision is reversible or repeated | the decision is irreversible and high-stakes |
+| options are similar in quality | outcomes vary enormously (power-law payoffs: co-founder, first market) |
+| search is costly relative to the gain | extra search is cheap relative to the gain |
+| most tooling, vendor and design-detail choices | key hires, fundraising terms, where to live |
+
+**Question to ask.** "What is 'good enough' here? Write the bar down before looking at options."
+
+Sequential search with no going back (hiring, flats) has a known mathematical answer, the optimal stopping or
+"37% rule", covered in [models from other fields](/thinking/mental-models/cross-discipline/).
+
+## Stress-testing a decision
+
+### Pre-mortem
+
+Gary Klein, "Performing a Project Premortem", *Harvard Business Review*, September 2007. Before committing,
+the team imagines the project has **already failed** and each person writes down, independently, why. Klein cites
+research (Mitchell, Russo and Pennington, 1989) finding that this **prospective hindsight**, imagining an event
+has already happened, increased the ability to correctly identify reasons for future outcomes by 30%.
+
+```text
+PRE-MORTEM (45 minutes)
+1. Brief the plan (5 min).
+2. "It's 12 months from now. This failed badly.
+   Write down every reason why." Silent, individual (5 min).
+3. Round-robin: one reason per person per turn, until
+   exhausted. The leader goes last. No debate yet (15 min).
+4. Cluster the reasons; vote on the 3-5 most likely or
+   most damaging (10 min).
+5. For each: mitigation, early-warning signal, owner
+   (10 min). Revisit the list at each milestone.
+```
+
+It works because it legitimises dissent: finding a failure mode becomes the task, not disloyalty.
+
+### Red teams and devil's advocates
+
+| Method | How | Strength | Weakness |
+| :--- | :--- | :--- | :--- |
+| devil's advocate | one person is assigned to argue against the plan | cheap, fast | everyone knows it's a role, so the objections are discounted |
+| red team | a separate group tries to defeat the plan (or break the system) with real effort | finds real flaws; standard in security and military planning | expensive; needs independence and a mandate |
+| pre-mortem | everyone looks for failure at once | surfaces private doubts | less adversarial depth than a red team |
+| "steel man the alternative" | the proposer argues the best case for the option they rejected | exposes weak comparisons | depends on honesty |
+
+Rotate the devil's advocate role, or better, find someone who genuinely disagrees. Steelmanning is covered in
+[thinking tools](/thinking/mental-models/general-thinking/).
+
+## Group decisions
+
+### Failure modes
+
+| Failure | Source | What happens | Counter |
+| :--- | :--- | :--- | :--- |
+| **groupthink** | Irving Janis, *Victims of Groupthink* (1972; revised as *Groupthink*, 1982); the term is William H. Whyte's (*Fortune*, 1952) | a cohesive group suppresses doubts to preserve agreement: illusions of invulnerability and unanimity, self-censorship, pressure on dissenters | leader speaks last; assign critical evaluators; bring in outsiders; split into independent subgroups |
+| **Abilene paradox** | Jerry B. Harvey, "The Abilene Paradox: The Management of Agreement", *Organizational Dynamics* (1974) | a group agrees to something nobody individually wants, because each person assumes the others want it | ask each person privately or in writing; "Is anyone actually for this?" |
+| **HiPPO** (highest paid person's opinion) | popularised by Avinash Kaushik, *Web Analytics: An Hour a Day* (2007), and Microsoft's experimentation team | the senior person's view wins regardless of evidence | seniors speak last; pre-register what data would decide it; A/B test when possible |
+| **consensus paralysis** | common | no decision until everyone agrees, so nothing is decided | name the decider up front; disagree and commit |
+| **anchoring on the first idea** | see [cognitive biases](/thinking/mental-models/cognitive-biases/) | the first proposal frames every later one | silent brainstorming before discussion; written proposals |
+| **information cascade** | common | people follow earlier speakers instead of using their own information | collect independent estimates before discussion |
+
+Janis's evidence came mainly from historical case studies (the Bay of Pigs, Pearl Harbor), and later research has
+had mixed success confirming the model; treat the symptoms list as a checklist, not a law.
+
+### Decision rights
+
+Most slow decisions are unclear-ownership problems. Two common frameworks:
+
+| Framework | Roles | Origin | Best for |
+| :--- | :--- | :--- | :--- |
+| **RAPID** | **R**ecommend, **A**gree (veto), **P**erform, **I**nput, **D**ecide | Paul Rogers and Marcia Blenko (Bain), "Who Has the D?", *HBR*, January 2006 | cross-functional decisions where people argue about who has the final say |
+| **DACI** | **D**river (runs the process), **A**pprover (decides), **C**ontributors, **I**nformed | commonly credited to Intuit; popularised by Atlassian's Team Playbook | product and project decisions |
+
+Rules that matter more than the acronym: exactly **one** decider per decision; input is not a vote; write the
+decision and the decider down; the decider is expected to decide by a date.
+
+### Disagree and commit
+
+Bezos, 2016 letter: "use the phrase 'disagree and commit.' This phrase will save a lot of time. If you have
+conviction on a particular direction even though there's no consensus, it's helpful to say, 'Look, I know we
+disagree on this but will you gamble with me on it? Disagree and commit?'" He stresses that it applies to the boss
+too: his example is green-lighting an Amazon Studios show he doubted.
+
+The phrase predates Amazon. It is associated with Scott McNealy at Sun Microsystems in the 1980s ("agree and
+commit, disagree and commit, or get out of the way") and is also widely attributed to Andy Grove at Intel.
+
+| Healthy | Unhealthy |
+| :--- | :--- |
+| real debate happened; dissent was heard and recorded | "disagree and commit" used to skip debate |
+| commitment is genuine: no sandbagging, no "I told you so" | passive resistance after the meeting |
+| the decision has a review point and a signal that would reopen it | never revisited, even when evidence changes |
+| used for reversible or time-critical calls | used to push through irreversible calls nobody believes in |
+
+## Decision quality vs outcome quality
+
+A good decision can have a bad outcome and a bad decision a good one. Annie Duke, *Thinking in Bets* (2018),
+borrows the poker term **resulting** for judging a decision by its result alone.
+
+| | Good outcome | Bad outcome |
+| :--- | :--- | :--- |
+| **Good decision** | deserved success | bad luck: keep the process |
+| **Bad decision** | dumb luck: fix the process anyway | deserved failure: fix the process |
+
+**Question to ask.** "Given what we knew and could reasonably have found out at the time, was this the right
+call?"
+
+The trap is **hindsight bias**: after the outcome, people believe it was more predictable than it was
+(Baruch Fischhoff's experiments from 1975 onwards). The defence is a record made *before* the outcome.
+
+### Decision journals
+
+Write down the reasoning at the time of the decision, then review it later against what happened. The practice
+is widely recommended in investing and was popularised for general readers by Shane Parrish's Farnam Street,
+which publishes a template. What to record:
+
+- the decision and the date; the alternatives considered and why they were rejected
+- what you expect to happen, with probabilities and a time frame
+- the key assumptions and what would show each is wrong
+- how you feel (tired, rushed, excited) and any time pressure
+- a review date
+
+Review in batches (quarterly), and score calibration and reasoning, not just hits. Calibration scoring is covered
+in [probability and risk](/thinking/mental-models/probability-risk/).
+
+## How to decide fast
+
+```text
+HOW TO DECIDE FAST
+[ ] Name the decider (one person) and the deadline.
+[ ] Door test: reversible? If yes, cap discussion at
+    one meeting or 30 minutes of async debate.
+[ ] Can a one-way door become a two-way door?
+    (pilot, flag, contractor, trial, staged rollout)
+[ ] Write "good enough" criteria before looking at options.
+[ ] Generate at least 3 options, including "do nothing"
+    and "do it smaller".
+[ ] Kill any option that fails a deal-breaker.
+[ ] For each remaining option: worst plausible case.
+    Survivable? If not, it's out.
+[ ] Ask: what information would change the answer?
+    Can we get it in a day? If not, decide without it.
+[ ] ~70% confident on a two-way door? Decide.
+[ ] Disagreement? Hear it once, record it, disagree and
+    commit.
+[ ] Set the review date and the signal that would make
+    you reverse.
+[ ] Announce: decision, decider, reasoning, review date.
+```
+
+## One-page decision template
+
+```text
+DECISION: _______________________  DATE: __________
+DECIDER: ________  INPUT FROM: ____________________
+DEADLINE: ________  REVIEW ON: ____________________
+
+1. TYPE
+   Reversible? (Y / N / partly)   Cost to undo: _______
+   Stakes: low / medium / high    Repeated? Y / N
+
+2. CONTEXT
+   Problem in one sentence:
+   Why decide now (cost of delay):
+
+3. GOOD ENOUGH
+   Must-haves (deal-breakers):
+   Nice-to-haves (weighted):
+
+4. OPTIONS (at least 3, incl. "do nothing")
+   | Option | Upside | Downside | Worst case | Reversible |
+   | A      |        |          |            |            |
+   | B      |        |          |            |            |
+   | C      |        |          |            |            |
+
+5. KEY UNCERTAINTIES
+   Assumption | Confidence % | How we'd know it's wrong
+
+6. EXPECTED VALUE / SCORING (if useful)
+   Estimates as ranges, not points.
+
+7. PRE-MORTEM
+   "It failed. Why?" Top 3 reasons + mitigations.
+
+8. SECOND-ORDER EFFECTS
+   And then what? Who reacts?
+
+9. DECISION AND REASONING
+   Chosen option:
+   Why this over the next best:
+   Dissent recorded:
+
+10. PREDICTION
+   What we expect by the review date (with %):
+   Tripwire that reopens the decision:
+
+11. STATE
+   Rushed? Tired? Emotional? Anyone with an incentive?
+```
+
+## Common mistakes
+
+| Mistake | Symptom | Fix |
+| :--- | :--- | :--- |
+| one process for everything | the same three-meeting cycle for a button colour and a pricing change | door test first |
+| unclear decider | "let's discuss again next week" | name one decider per decision |
+| false binary | "ship it or kill it" | generate a third option ("smaller", "later", "test it") |
+| sunk-cost continuation | "we've come too far to stop" | ask the "starting today" question |
+| analysis as avoidance | more data requested with no idea what it would change | write the result that would change your mind, first |
+| optimising reversible choices | days comparing SaaS vendors on monthly plans | satisfice; switch later if needed |
+| resulting | the hire who quit proves the process was bad | review the decision record, not only the outcome |
+| decision without a review date | bad calls persist for years | every decision gets a review date and a tripwire |
+
+## References
+
+- [Jeff Bezos, 2015 Letter to Shareholders (PDF)](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF): Type 1 and Type 2 decisions, one-way and two-way doors
+- [Jeff Bezos, 2016 Letter to Shareholders](https://www.aboutamazon.com/news/company-news/2016-letter-to-shareholders): high-velocity decisions, the 70% rule, disagree and commit
+- [Jeffrey P. Bezos, Academy of Achievement](https://achievement.org/achiever/jeffrey-p-bezos/): 2001 interview including the regret minimisation framework
+- [Dwight D. Eisenhower, Address at the Second Assembly of the World Council of Churches (1954), American Presidency Project](https://www.presidency.ucsb.edu/documents/address-the-second-assembly-the-world-council-churches-evanston-illinois): the urgent-vs-important quote in context
+- [Quote Investigator: "What Is Important Is Seldom Urgent…"](https://quoteinvestigator.com/2014/05/09/urgent/): tracing the quote's origin
+- Stephen R. Covey, *The 7 Habits of Highly Effective People* (Free Press, 1989): the four-quadrant time-management grid
+- Suzy Welch, *10-10-10: A Life-Transforming Idea* (Scribner, 2009)
+- [Herbert A. Simon, "Rational Choice and the Structure of the Environment", *Psychological Review* 63(2), 1956 (PDF)](https://pages.ucsd.edu/~mckenzie/Simon1956PsychReview.pdf): satisficing
+- Barry Schwartz et al., "Maximizing versus Satisficing: Happiness Is a Matter of Choice", *Journal of Personality and Social Psychology* 83(5), 2002; Barry Schwartz, *The Paradox of Choice* (Ecco, 2004)
+- Sheena Iyengar, Rachael Wells and Barry Schwartz, "Doing Better but Feeling Worse", *Psychological Science* 17(2), 2006: the job-seeker study
+- [Gary Klein, "Performing a Project Premortem", *Harvard Business Review*, September 2007](https://hbr.org/2007/09/performing-a-project-premortem)
+- Irving L. Janis, *Victims of Groupthink* (Houghton Mifflin, 1972); 2nd ed. *Groupthink* (1982)
+- [Jerry B. Harvey, "The Abilene Paradox: The Management of Agreement", *Organizational Dynamics*, 1974](https://www.sciencedirect.com/science/article/abs/pii/0090261674900059)
+- [Paul Rogers and Marcia Blenko, "Who Has the D? How Clear Decision Roles Enhance Organizational Performance", *HBR*, January 2006](https://hbr.org/2006/01/who-has-the-d-how-clear-decision-roles-enhance-organizational-performance): RAPID
+- [Atlassian Team Playbook: DACI](https://www.atlassian.com/team-playbook/plays/daci): DACI roles and template
+- [Ronny Kohavi, "The Origin of HiPPO"](https://www.linkedin.com/pulse/origin-hippo-highest-paid-persons-opinion-ronny-kohavi): history of the term
+- [Disagree and commit (Wikipedia)](https://en.wikipedia.org/wiki/Disagree_and_commit): Sun Microsystems and Intel origins
+- Annie Duke, *Thinking in Bets: Making Smarter Decisions When You Don't Have All the Facts* (Portfolio, 2018): resulting, decision quality vs outcome quality
+- Baruch Fischhoff, "Hindsight ≠ Foresight: The Effect of Outcome Knowledge on Judgment under Uncertainty", *Journal of Experimental Psychology: Human Perception and Performance* 1(3), 1975
+- [Farnam Street: Decision Journal](https://fs.blog/decision-journal/): a widely used template

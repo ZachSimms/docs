@@ -1,0 +1,843 @@
+---
+title: Interactive elements
+date: 2026-09-26
+order: 5
+---
+
+The interactive HTML you can use with little or no JavaScript as of September 2026: disclosure
+widgets, dialogs, popovers, invoker commands, `inert`, editable regions, templates and web
+components, with Baseline status from MDN and webstatus.dev. Styling hooks for these are in
+[CSS](/design/css/css/) and [Animation](/design/css/animation/), event handling in
+[Events](/typescript/frontend/events/), and the ARIA side in
+[Accessibility](/design/html/accessibility/).
+
+## Native first
+
+Every native control below ships its role, state, focus behaviour and keyboard support. The
+ARIA version from the [APG](https://www.w3.org/WAI/ARIA/apg/patterns/) is a spec for what
+you must rebuild by hand.
+
+| Need | Native | ARIA pattern you'd otherwise build | What you'd have to write |
+| :--- | :----- | :--------------------------------- | :----------------------- |
+| Show/hide a section | `<details>`/`<summary>` | Disclosure: `button[aria-expanded][aria-controls]` | state sync, toggle JS |
+| Accordion (one open) | `<details name="x">` | Accordion: headings wrapping buttons | state sync, closing siblings |
+| Modal dialog | `<dialog>` + `showModal()` | `role="dialog"` + `aria-modal` | focus trap, `inert` on the page, Esc, focus return, stacking |
+| Non-modal overlay, menu of links | `[popover]` + `popovertarget` | disclosure button + positioned panel | outside-click and Esc dismissal, z-index, focus return |
+| Tooltip | `popover="hint"` (limited) | `role="tooltip"` + `aria-describedby` | hover/focus timers, Esc, hoverable content |
+| Button | `<button>` | `role="button"` + `tabindex="0"` | Enter and Space handlers, disabled state |
+| Toggle | `<input type="checkbox">` | `button[aria-pressed]` or `role="switch"` | state, keyboard |
+| Select one of a few | radio group in a `<fieldset>` | `role="radiogroup"` | roving tabindex, arrow keys |
+| Select from a list | `<select>` | Listbox or select-only combobox | typeahead, arrow keys, popup |
+| Suggestions while typing | `<input list>` + `<datalist>` | Combobox with listbox popup | the hardest APG pattern to get right |
+| Slider | `<input type="range">` | `role="slider"` | arrows, Page Up/Down, Home/End, `aria-valuenow` |
+| Progress, gauge | `<progress>`, `<meter>` | `role="progressbar"`, `role="meter"` | value attributes |
+| Tabs | none | Tabs: `tablist`/`tab`/`tabpanel` | arrow keys, roving tabindex, panel wiring |
+
+Tabs, menus (`role="menu"`, application-style), trees and grids have no native element; those
+are the cases where ARIA plus JavaScript is the right tool.
+
+### Keyboard behaviour you get for free
+
+| Element | Keys |
+| :------ | :--- |
+| `<a href>` | Tab to focus, Enter to follow |
+| `<button>` | Enter activates; Space activates on key release; `disabled` removes it from the tab order |
+| `<summary>` | Enter or Space toggles its `<details>` |
+| `<dialog>` (modal) | focus moves inside; Tab stays in the dialog and the browser UI; Esc closes; focus returns to the opener |
+| `[popover]` (auto) | the popover follows its invoker in tab order; Esc closes and returns focus to the invoker |
+| Checkbox | Space toggles |
+| Radio group | one tab stop; arrow keys move and select |
+| `<select>` | arrows change, typing jumps to a match, Space or Alt+↓ opens (varies by OS) |
+| `<input type="range">` | arrows step, Page Up/Down jump, Home/End go to min/max |
+| `<input type="number">` | ↑/↓ step |
+| `contenteditable`, `<textarea>` | full text editing, undo, IME, spellcheck |
+
+## `<details>` & `<summary>`
+
+```html
+<details>
+  <summary>Shipping costs</summary>
+  <p>Free over €50; otherwise €4.90 in the EU.</p>
+</details>
+```
+
+| Feature | Detail | Support |
+| :------ | :----- | :------ |
+| `open` | present = expanded; toggle it from JS or let the user click | widely available |
+| `toggle` event | fires after the state changes (`event.newState`, `oldState`); not cancelable, and several quick changes coalesce into one | widely available |
+| `name="group"` | exclusive accordion: opening one closes the others with the same name | Baseline 2024 (September) |
+| `::details-content` | the panel wrapping everything except `<summary>`, so it can be styled and animated | Baseline 2025 (September) |
+| `:open` | matches open `details`, `dialog`, `select` and inputs with an open picker | Baseline 2026 (May) |
+| `summary::marker` | the disclosure triangle | older Safari also needs `::-webkit-details-marker` |
+| Find in page | Chromium opens a closed `<details>` when find-in-page matches its content | |
+
+```css
+summary { cursor: pointer; }
+summary::marker { color: var(--accent); }
+
+/* custom icon instead of the triangle */
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; margin-inline-start: 1ch; }
+details[open] > summary::after { content: "−"; }
+
+details::details-content { padding-block: 0.5rem; }
+```
+
+Animating the open and close height with `::details-content` and `interpolate-size` is in
+[Animation](/design/css/animation/).
+
+- `<summary>` must be the first child; without one the browser supplies "Details".
+- `<summary>` is exposed as a button-like disclosure control with an expanded state. Put only text (optionally a
+  heading) inside: no links, buttons or inputs.
+- A heading inside `<summary>` works in markup, but some screen readers flatten it into the
+  button, so it may not appear in the headings list. If heading navigation matters, put the
+  heading before the `<details>`.
+- Exclusive accordions stop users opening two answers to compare them. Use `name` only when
+  one-at-a-time genuinely helps.
+
+## `<dialog>`
+
+```html
+<button type="button" commandfor="del" command="show-modal">
+  Delete project
+</button>
+
+<dialog id="del" aria-labelledby="del-title">
+  <h2 id="del-title">Delete "Atlas"?</h2>
+  <p>This removes 14 files. It can't be undone.</p>
+  <form method="dialog">
+    <button value="cancel" autofocus>Cancel</button>
+    <button value="delete">Delete</button>
+  </form>
+</dialog>
+```
+
+| API | Does |
+| :-- | :--- |
+| `dialog.showModal()` | modal: top layer, `::backdrop`, the rest of the page inert, Esc closes, implicit `aria-modal="true"` |
+| `dialog.show()` | non-modal: stays in normal stacking, page stays interactive, Esc does nothing by default |
+| `dialog.close(value?)` | closes; sets `returnValue` if a value is given; fires `close` |
+| `dialog.requestClose(value?)` | fires a cancelable `cancel` first, then closes; Baseline 2025 (May) |
+| `dialog.returnValue` | the `value` of the button that submitted a `method="dialog"` form |
+| `open` attribute | reflects state; setting it by hand shows a **non-modal** dialog without the focus handling. Don't |
+| `cancel` event | on Esc or `requestClose()`; `preventDefault()` keeps it open, but browsers let a second Esc through if the user hasn't interacted in between |
+| `close` event | after any close; read `returnValue` here |
+| `<form method="dialog">` | submitting closes the dialog without a network request; form state is kept |
+| `formmethod="dialog"` | the same on one button of a normal form |
+| `closedby` | `any` (Esc, light dismiss and code), `closerequest` (Esc and code; the default for modals), `none` (code only; the default for `show()`) |
+
+<Callout type="warn" title="closedby is not Baseline">
+  `closedby` works in Chromium (134+) and Firefox (141+), not Safari, as of September 2026.
+  Where it's ignored, modals still close with Esc, so treat `closedby="any"` as an
+  enhancement and always include a visible close button.
+</Callout>
+
+### Focus
+
+| When | What happens | What you do |
+| :--- | :----------- | :---------- |
+| Opening | the browser focuses the element with `autofocus`, else the first focusable descendant | put `autofocus` on the least destructive action or the first field; for long text, on the dialog itself |
+| Inside | a modal's page behind it is inert; Tab cycles through the dialog and the browser chrome | nothing |
+| Closing | focus returns to the element that was focused before opening | make sure that element still exists; if not, move focus somewhere sensible yourself |
+
+- Never put `tabindex` on the `<dialog>` element (MDN); focus its contents.
+- Name it: `aria-labelledby` pointing at its heading.
+- Lock page scroll behind a modal with `html:has(dialog:modal) { overflow: hidden; }`.
+- Only one modal at a time where possible. Stacked modals work (each Esc closes the top one),
+  but they are rarely good UX.
+
+```html demo height=220 title="dialog.html"
+<style>
+  dialog { border: 0; border-radius: 10px; padding: 16px;
+    background: var(--bg); color: var(--fg);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 35%); }
+  dialog::backdrop { background: rgb(0 0 0 / 45%); }
+  .row { display: flex; gap: 8px; justify-content: end; }
+  button { font: inherit; padding: 6px 12px; }
+</style>
+<button commandfor="d1" command="show-modal">
+  Open modal (no JavaScript)
+</button>
+<dialog id="d1" aria-labelledby="d1-t">
+  <h3 id="d1-t" style="margin-top:0">Discard draft?</h3>
+  <p>Your changes will be lost.</p>
+  <div class="row">
+    <button commandfor="d1" command="close" autofocus>
+      Keep editing</button>
+    <button commandfor="d1" command="close">Discard</button>
+  </div>
+</dialog>
+```
+
+The demo frame has scripts disabled: the dialog opens and closes through invoker commands
+alone (Chrome 135+, Firefox 144+, Safari 26.2+).
+
+## Popover API
+
+```html
+<button popovertarget="share">Share</button>
+<div id="share" popover>
+  <a href="mailto:?body=…">Email</a>
+  <button type="button">Copy link</button>
+</div>
+```
+
+The Popover API is **Baseline 2025** (January, when iOS Safari 18.3 caught up; desktop
+engines had it by April 2024). Any element with `popover` is hidden until shown, then rendered
+in the **top layer** above everything, unaffected by ancestors' `overflow` or `z-index`.
+
+| Value | Light dismiss (outside click, Esc) | Closes others | Use | Support |
+| :---- | :--------------------------------- | :------------ | :-- | :------ |
+| `auto` (or empty) | yes | other `auto` popovers, except its ancestors (nesting works) | menus, pickers, share sheets, teaching bubbles | Baseline 2025 |
+| `manual` | no | none | toasts, persistent panels; you close them | Baseline 2025 |
+| `hint` | yes | other `hint` popovers; leaves `auto` popovers open | tooltips and previews shown on hover or focus | limited: Chromium and Firefox, not Safari |
+
+An unrecognised value falls back to `manual` (the spec's invalid-value default), so in
+Safari `popover="hint"` shows but never light-dismisses. Give it a close path of its own.
+
+| Attribute / API | Does |
+| :-------------- | :--- |
+| `popovertarget="id"` | on a `<button>` or `<input type="button">`: toggles that popover |
+| `popovertargetaction` | `toggle` (default), `show`, `hide` |
+| `el.showPopover({ source })`, `hidePopover()`, `togglePopover()` | the same from JS |
+| `beforetoggle` event | before the change; `preventDefault()` cancels **opening** only |
+| `toggle` event | after; `newState` and `oldState` are `"open"` / `"closed"`; `event.source` is the invoker (Baseline 2026) |
+| `:popover-open` | CSS for the open state |
+| `::backdrop` | also exists for popovers; transparent by default |
+
+What the invoker relationship gives you:
+
+- An implicit `aria-expanded` on the button and an `aria-details` link to the popover, when it
+  isn't the next element anyway.
+- Tab order continues from the invoker into the popover, wherever the popover sits in the DOM.
+- Esc returns focus to the invoker (a click outside leaves focus where the user clicked).
+- An **implicit anchor** for CSS anchor positioning, so `position-area` works with no
+  `anchor-name` (see [Anchor positioning](/design/css/css/)).
+
+A popover is **not** modal: nothing is inert, focus isn't trapped and there is no scroll
+lock. If users must answer before continuing, use `<dialog>` with `showModal()`. The two
+combine: `<dialog popover>` is a light-dismissable non-modal dialog.
+
+```html demo height=190 title="popover.html"
+<style>
+  [popover] { margin: 0; padding: 6px; border: 1px solid
+      var(--muted); border-radius: 8px;
+    background: var(--bg); color: var(--fg);
+    inset: auto; top: 48px; left: 12px; }
+  [popover] a { display: block; padding: 6px 12px;
+    color: inherit; border-radius: 4px; }
+  [popover] a:hover, [popover] a:focus-visible {
+    background: var(--chip); }
+  button { font: inherit; padding: 6px 12px; }
+</style>
+<button popovertarget="m1">Account ▾</button>
+<div id="m1" popover>
+  <a href="#profile">Profile</a>
+  <a href="#billing">Billing</a>
+  <a href="#out">Sign out</a>
+</div>
+<p style="margin-top:110px">Click outside or press Esc to
+  close.</p>
+```
+
+The demo pins the popover with `top`/`left` so it works everywhere; in production, position
+it against the button with anchor positioning (Chrome 125+, Firefox 147+, Safari 26+).
+
+## Invoker commands
+
+`commandfor` + `command` on a `<button>` wire it to another element declaratively: a more
+general `popovertarget`. **Baseline 2025** (December): Chrome 135, Firefox 144, Safari 26.2.
+
+| `command` | Target | Equivalent |
+| :-------- | :----- | :--------- |
+| `show-modal` | `<dialog>` | `showModal()` |
+| `close` | `<dialog>` | `close()`; the button's `value` becomes `returnValue` |
+| `request-close` | `<dialog>` | `requestClose()`: fires cancelable `cancel`, then closes |
+| `show-popover` | `[popover]` | `showPopover()` |
+| `hide-popover` | `[popover]` | `hidePopover()` |
+| `toggle-popover` | `[popover]` | `togglePopover()` |
+| `--anything` | any element | fires a `command` event on the target; you handle it |
+
+Custom commands must start with two hyphens. The target receives a `CommandEvent` with
+`command` and `source`:
+
+```html
+<button commandfor="player" command="--rewind">
+  Back 10 s
+</button>
+<button commandfor="player" command="--play">Play</button>
+<video id="player" src="talk.mp4"></video>
+```
+
+```ts
+const video = document.querySelector<HTMLVideoElement>(
+  "#player",
+)!;
+
+video.addEventListener("command", (event) => {
+  const { command } = event as CommandEvent;
+  if (command === "--play") void video.play();
+  if (command === "--rewind") video.currentTime -= 10;
+});
+```
+
+- One listener on the target, no per-button handlers, and it works for buttons added later
+  or inside other components' markup (not across shadow roots by id, though).
+- `commandfor` only works on `<button>`. Inside a `<form>`, always write `type="button"`:
+  under the current HTML spec an untyped command button in a form does nothing at all.
+- **Interest invokers** (`interestfor`, showing a popover on hover or focus) are Chromium only
+  (limited availability) as of September 2026.
+
+## `inert`
+
+`inert` on an element removes it and its subtree from the interaction model: no focus, no
+clicks, no find-in-page, no text selection, hidden from assistive tech. Baseline widely
+available (October 2025).
+
+```html
+<main inert>…</main>  <!-- behind a custom overlay -->
+<nav class="drawer" inert>…</nav>  <!-- closed off-canvas -->
+```
+
+| Use | Instead of |
+| :-- | :--------- |
+| Closed off-canvas menu that stays in the DOM for its slide animation | `tabindex="-1"` on every link |
+| Content behind a non-`<dialog>` overlay | a JS focus trap |
+| Off-screen carousel slides | `aria-hidden` plus tabindex juggling |
+| A form section that doesn't apply yet | `disabled` on each field, when you want it visible but dimmed |
+
+- `showModal()` makes the rest of the page inert for you; don't add it manually there.
+- Inert content still looks interactive. Dim it (`[inert] { opacity: 0.5; }`) or hide it, or
+  sighted keyboard users see controls they can't reach.
+- Never make the element that currently has focus inert without moving focus first.
+
+## `hidden="until-found"`
+
+Hides content that find-in-page and fragment links (`#id`) can still reach. On a match the
+browser fires `beforematch` on the element, removes `hidden`, then scrolls to it.
+
+```html
+<h3 id="q-refunds">
+  <button aria-expanded="false" aria-controls="a-refunds">
+    How do refunds work?
+  </button>
+</h3>
+<div id="a-refunds" hidden="until-found">…</div>
+```
+
+```ts
+const panel = document.getElementById("a-refunds")!;
+panel.addEventListener("beforematch", () => {
+  // keep the button's state in sync with the reveal
+  document.querySelector("[aria-controls=a-refunds]")
+    ?.setAttribute("aria-expanded", "true");
+});
+```
+
+| Point | Detail |
+| :---- | :----- |
+| Mechanism | `content-visibility: hidden`, not `display: none`: the box keeps its margins, border and padding |
+| Breaks with | `display: none`, `contents` or `inline` on the element: then it is never revealed |
+| Support | limited: Chromium 102+ and Firefox 148+, not Safari. Elsewhere it acts like plain `hidden` |
+| vs `<details>` | `<details>` gets similar find-in-page behaviour in Chromium with no JS; use `until-found` for custom accordions and tabs |
+
+## `contenteditable`
+
+| Value | Behaviour | Support |
+| :---- | :-------- | :------ |
+| `true` or empty | rich editing: paste keeps formatting, Ctrl+B bolds | widely available |
+| `plaintext-only` | editable text; pasted formatting is dropped, no rich shortcuts | Baseline 2025 (March) |
+| `false` | not editable, even inside an editable parent | widely available |
+| (absent) | inherits from the parent | |
+
+```html demo height=110 title="contenteditable.html"
+<style>
+  .edit { padding: 8px; border: 1px dashed var(--muted);
+    border-radius: 6px; min-block-size: 3lh; }
+  .edit:focus-visible { outline: 2px solid var(--graph-0); }
+</style>
+<p id="note-l">Note (plain text only):</p>
+<div class="edit" contenteditable="plaintext-only"
+  role="textbox" aria-multiline="true"
+  aria-labelledby="note-l">Click and type; paste loses
+  formatting.</div>
+```
+
+- An editable `div` has no role or name: add `role="textbox"`, `aria-multiline="true"` and a
+  label. For a form field, a `<textarea>` with `field-sizing: content` is usually the better
+  answer.
+- Its content is not submitted with a form; copy it into a hidden input on submit or use a
+  form-associated custom element.
+- Pasted rich HTML is untrusted: sanitise before saving or rendering elsewhere.
+- Rich-text editors (ProseMirror, Lexical and similar) exist because `contenteditable="true"`
+  behaves differently across browsers; don't build one from scratch.
+
+## `<template>`
+
+`<template>` holds inert markup: it is parsed but not rendered, scripts don't run and images
+don't load until you clone it.
+
+```html
+<template id="row-tpl">
+  <li class="row">
+    <span class="name"></span>
+    <button type="button" class="remove">Remove</button>
+  </li>
+</template>
+<ul id="list"></ul>
+```
+
+```ts
+const tpl = document.querySelector<HTMLTemplateElement>(
+  "#row-tpl",
+)!;
+
+function addRow(name: string): void {
+  const frag = tpl.content.cloneNode(
+    true,
+  ) as DocumentFragment;
+  // textContent, not innerHTML
+  frag.querySelector(".name")!.textContent = name;
+  document.querySelector("#list")!.append(frag);
+}
+```
+
+- `template.content` is a `DocumentFragment`; cloning is cheaper than building nodes one by
+  one and safer than `innerHTML` with interpolated strings.
+- Fill slots with `textContent`, never string-concatenated HTML.
+- `<template shadowrootmode>` is a different job: declarative shadow DOM, below.
+
+## Custom elements
+
+```ts
+class CopyButton extends HTMLElement {
+  static observedAttributes = ["text"];
+
+  connectedCallback(): void {
+    this.innerHTML = `<button type="button">Copy</button>`;
+    this.querySelector("button")!.addEventListener(
+      "click",
+      () => navigator.clipboard.writeText(this.text),
+    );
+  }
+
+  get text(): string {
+    return this.getAttribute("text") ?? "";
+  }
+}
+
+customElements.define("copy-button", CopyButton);
+```
+
+| Kind | Declared as | Used as | Support |
+| :--- | :---------- | :------ | :------ |
+| Autonomous | `class X extends HTMLElement` | `<copy-button>` | widely available |
+| Customised built-in | `class X extends HTMLButtonElement` + `define("fancy-btn", X, { extends: "button" })` | `<button is="fancy-btn">` | limited: Chromium and Firefox. MDN notes Safari does not plan to support them |
+
+Because of Safari, build autonomous elements. To keep native semantics, wrap a real
+`<button>` or `<input>` inside (light or shadow DOM) rather than extending it.
+
+| Lifecycle callback | Fires |
+| :----------------- | :---- |
+| `constructor()` | when an instance is created or upgraded; call `super()` first; don't read attributes or add children here |
+| `connectedCallback()` | each time the element is inserted into a document; do setup here |
+| `disconnectedCallback()` | each time it is removed; remove global listeners, observers, timers |
+| `connectedMoveCallback()` | instead of the two above when moved with `moveBefore()` (limited availability) |
+| `adoptedCallback()` | moved to a new document (e.g. into an iframe) |
+| `attributeChangedCallback(name, old, value)` | an attribute in `static observedAttributes` is added, changed or removed; also once for each initial value at parse time |
+
+| Rule | Detail |
+| :--- | :----- |
+| Names | lowercase first letter, at least one hyphen: `x-tabs`, `app-card` |
+| Register once | `define` throws on a duplicate name; check `customElements.get(name)` first |
+| Upgrade | elements in the HTML before `define` runs are upgraded later; `customElements.whenDefined(name)` resolves then |
+| Before upgrade | style with `:not(:defined)` to avoid a flash of unstyled content |
+| Attributes vs properties | attributes are strings in HTML; mirror the ones that matter as properties |
+| Custom states | `internals.states.add("loading")` then `:state(loading)` in CSS (Baseline 2024) |
+| Scoped registries | per-shadow-root registries are limited availability; name elements with a prefix to avoid clashes |
+
+## Shadow DOM
+
+Shadow DOM gives an element a private DOM subtree whose styles and ids don't leak in or out.
+
+```ts
+class UserCard extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <style>
+        :host { display: block; border: 1px solid; }
+        :host([compact]) { padding: 0.25rem; }
+        ::slotted(img) { border-radius: 50%; }
+      </style>
+      <slot name="avatar"></slot>
+      <h3 part="title">
+        <slot name="name">Anonymous</slot>
+      </h3>
+      <slot></slot>`;
+  }
+}
+customElements.define("user-card", UserCard);
+```
+
+| Concept | Detail |
+| :------ | :----- |
+| `mode: "open"` | `el.shadowRoot` exposes the root to page scripts; the normal choice |
+| `mode: "closed"` | `el.shadowRoot` is `null`, but it is not a security boundary; mostly just makes testing harder |
+| `delegatesFocus: true` | clicking the host focuses the first focusable element inside; `:focus` matches the host |
+| `<slot>` / `<slot name="x">` | where light-DOM children render; children with `slot="x"` go to the named slot, the rest to the default |
+| Slot fallback | content inside `<slot>` shows when nothing is slotted |
+| `::slotted(sel)` | styles slotted top-level children (compound selectors only) |
+| `:host`, `:host(.x)` | style the element itself from inside; outside styles on the host win |
+| `::part(name)` | styles an inner element marked `part="name"` from outside |
+| What crosses in | inherited properties (`color`, `font`) and custom properties; nothing else |
+| `adoptedStyleSheets` | share one `CSSStyleSheet` object across many roots |
+
+<Callout type="warn" title="ARIA references stop at the shadow boundary">
+  `aria-labelledby`, `aria-describedby`, `aria-controls` and `<label for>` take ids, and ids
+  resolve only inside one tree. A `<label>` in the page can't name an `<input>` inside a
+  shadow root. Keep label and control in the same tree, use `aria-label`, or use a
+  form-associated custom element (below), whose `labels` work from outside.
+</Callout>
+
+### Declarative shadow DOM
+
+`<template shadowrootmode="open">` makes the shadow root at parse time: server-rendered
+components paint before JS loads, and work with JS off. **Baseline widely available** since
+August 2026.
+
+```html demo height=150 title="declarative-shadow-dom.html"
+<article class="card">
+  <template shadowrootmode="open">
+    <style>
+      :host { display: block; max-inline-size: 300px;
+        padding: 12px; border-radius: 10px;
+        border: 1px solid var(--muted); }
+      h3 { margin: 0 0 4px; color: var(--graph-0); }
+      ::slotted(p) { margin: 0; }
+    </style>
+    <h3><slot name="title">Untitled</slot></h3>
+    <slot></slot>
+  </template>
+  <span slot="title">Declarative shadow DOM</span>
+  <p>Rendered by the HTML parser: this frame has no
+    JavaScript at all.</p>
+</article>
+```
+
+| Attribute | Equivalent |
+| :-------- | :--------- |
+| `shadowrootmode="open"` / `"closed"` | `attachShadow({ mode })` |
+| `shadowrootdelegatesfocus` | `delegatesFocus: true` |
+| `shadowrootclonable` | `clonable: true`: `cloneNode` copies the shadow root |
+| `shadowrootserializable` | `serializable: true`: `getHTML({ serializableShadowRoots: true })` includes it |
+
+- Only the HTML parser processes it. `innerHTML` doesn't; use `setHTMLUnsafe()` or
+  `Document.parseHTMLUnsafe()` to parse markup that contains it.
+- A custom element that may be server-rendered should check `this.shadowRoot` before calling
+  `attachShadow()`, or it throws.
+
+## Form-associated custom elements
+
+`static formAssociated = true` plus `attachInternals()` make a custom element a real form
+control: it submits a value, takes part in validation, reset and `disabled` fieldsets, and
+gets `<label>` support. Baseline widely available (September 2025).
+
+```ts
+class StarRating extends HTMLElement {
+  static formAssociated = true;
+  #internals = this.attachInternals();
+  #value = 0;
+
+  connectedCallback(): void {
+    this.#internals.role = "slider";
+    this.#internals.ariaValueMin = "0";
+    this.#internals.ariaValueMax = "5";
+    this.tabIndex = 0;
+    this.addEventListener("keydown", this.#onKey);
+    this.#update();
+  }
+
+  #onKey = (e: KeyboardEvent): void => {
+    if (e.key === "ArrowRight") this.value = this.#value + 1;
+    if (e.key === "ArrowLeft") this.value = this.#value - 1;
+  };
+
+  set value(v: number) {
+    this.#value = Math.min(5, Math.max(0, v));
+    this.#update();
+  }
+
+  #update(): void {
+    const v = String(this.#value);
+    this.#internals.setFormValue(v);
+    this.#internals.ariaValueNow = v;
+    if (this.hasAttribute("required") && !this.#value) {
+      this.#internals.setValidity(
+        { valueMissing: true }, "Pick a rating", this,
+      );
+    } else {
+      this.#internals.setValidity({});
+    }
+  }
+
+  formResetCallback(): void { this.value = 0; }
+}
+customElements.define("star-rating", StarRating);
+```
+
+| `ElementInternals` | Does |
+| :----------------- | :--- |
+| `setFormValue(value, state?)` | the submitted value (string, `File` or `FormData`) |
+| `setValidity(flags, message, anchor)` | constraint validation; `anchor` is where the browser's bubble points |
+| `form`, `labels`, `validity`, `checkValidity()`, `reportValidity()` | as on native controls |
+| `role`, `ariaLabel`, `ariaChecked`, … | default semantics without sprouting attributes on the host; page authors can still override with attributes |
+| `states` | custom states for `:state()` |
+
+| Callback | Fires |
+| :------- | :---- |
+| `formAssociatedCallback(form)` | the element joins or leaves a form |
+| `formDisabledCallback(disabled)` | it or an ancestor `<fieldset>` is disabled; mirror it (e.g. set `tabIndex = -1`) |
+| `formResetCallback()` | the form resets |
+| `formStateRestoreCallback(state, reason)` | the browser restores state (back/forward, autofill) |
+
+You still owe the keyboard support: `ElementInternals` exposes semantics, it doesn't
+implement behaviour.
+
+## Common mistakes
+
+| Mistake | Why it fails | Fix |
+| :------ | :----------- | :-- |
+| `<div onclick>` as a button | no focus, no Enter/Space, no role | `<button type="button">` |
+| `<a href="#">` or `<a>` without `href` as a button | links navigate; Space doesn't activate them | `<button>`; links are for URLs |
+| Nested interactive content (`<button>` in `<a>`, a link in `<summary>`, a button in a `<label>`) | invalid HTML; clicks and names become unpredictable | one interactive element per target |
+| Dialog without a visible close path | keyboard and touch users get stuck; `closedby="none"` removes Esc | a close or cancel button, always |
+| Toggling `dialog.open = true` for a modal | no top layer, no inert page, no Esc | `showModal()` or `command="show-modal"` |
+| `tabindex` on `<dialog>` | the dialog isn't meant to be focused; it confuses the initial focus | `autofocus` on the right child |
+| `autofocus` on a destructive button | Enter confirms by accident | autofocus Cancel or the first field |
+| Popover for a required decision | nothing is inert; users can ignore it | modal `<dialog>` |
+| Hover-only popover or tooltip | no keyboard or touch access | trigger with a button, or show on focus as well as hover |
+| `role="menu"` on a navigation dropdown | screen readers switch to application-menu mode and expect arrow keys | a list of links in a popover or `<details>` |
+| `aria-expanded` added to a `popovertarget` button | duplicates the implicit state | leave it off |
+| Customised built-ins (`is="…"`) | never works in Safari | autonomous element wrapping a native control |
+| Label in the page, input in a shadow root | ids don't cross the boundary | form-associated element or keep them together |
+| `hidden="until-found"` with `display: none` on the same element | never revealed | leave `display` alone |
+
+## Recipes
+
+### FAQ accordion
+
+Exclusive, keyboard-accessible, searchable in Chromium, zero JavaScript:
+
+```html demo height=230 title="faq.html"
+<style>
+  .faq details { border-block-end: 1px solid var(--chip); }
+  .faq summary { padding: 10px 4px; cursor: pointer;
+    font-weight: 600; list-style: none; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::before { content: "+"; display: inline-block;
+    inline-size: 1.5ch; color: var(--graph-0); }
+  .faq details[open] summary::before { content: "−"; }
+  .faq p { margin: 0 0 10px 1.5ch; }
+</style>
+<div class="faq">
+  <details name="faq" open>
+    <summary>Can I cancel anytime?</summary>
+    <p>Yes. Your plan runs to the end of the period.</p>
+  </details>
+  <details name="faq">
+    <summary>Do you offer refunds?</summary>
+    <p>Within 14 days of purchase, no questions asked.</p>
+  </details>
+  <details name="faq">
+    <summary>Is there a student discount?</summary>
+    <p>50% with a valid university email.</p>
+  </details>
+</div>
+```
+
+Put the question in a heading before each `<details>` if the page is long enough that people
+navigate FAQs by headings.
+
+### Confirm dialog with `form method="dialog"`
+
+```html
+<button type="button" commandfor="confirm"
+  command="show-modal">Delete account</button>
+
+<dialog id="confirm" aria-labelledby="confirm-t"
+  closedby="any">
+  <form method="dialog">
+    <h2 id="confirm-t">Delete your account?</h2>
+    <p>All projects are removed after 30 days.</p>
+    <button value="cancel" autofocus>Cancel</button>
+    <button value="delete" class="danger">Delete</button>
+  </form>
+</dialog>
+```
+
+```ts
+const dialog = document.querySelector<HTMLDialogElement>(
+  "#confirm",
+)!;
+
+dialog.addEventListener("close", () => {
+  // "" when closed by Esc or light dismiss
+  if (dialog.returnValue === "delete") void deleteAccount();
+  dialog.returnValue = "";
+});
+```
+
+Reset `returnValue` after reading it: it survives the next Esc close, which doesn't overwrite
+it.
+
+### Popover menu anchored to its button
+
+```html
+<button popovertarget="more" class="more-btn">
+  More actions
+</button>
+<div id="more" popover class="menu">
+  <a href="/export/">Export</a>
+  <a href="/archive/">Archive</a>
+  <a href="/settings/">Settings</a>
+</div>
+```
+
+```css
+.menu {
+  margin: 0;
+  inset: auto;
+  /* the invoker is the implicit anchor */
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin-block-start: 0.25rem;
+}
+.menu:popover-open { display: grid; }
+```
+
+### Tooltip with `popover="hint"`
+
+A hint popover doesn't close an open menu. Show it on hover and focus, hide it on leave, blur
+and Esc (Esc is built in where `hint` is supported):
+
+```html
+<button type="button" id="save" aria-label="Save"
+  aria-describedby="tip-save">
+  <svg aria-hidden="true" width="16" height="16">
+    <use href="/icons.svg#save" />
+  </svg>
+</button>
+<div id="tip-save" popover="hint" role="tooltip">
+  Save (Ctrl+S)
+</div>
+```
+
+```ts
+const btn = document.querySelector<HTMLElement>("#save")!;
+const tip = document.querySelector<HTMLElement>(
+  "#tip-save",
+)!;
+const show = () => tip.showPopover({ source: btn });
+const hide = () => tip.hidePopover();
+
+btn.addEventListener("pointerenter", show);
+btn.addEventListener("focus", show);
+btn.addEventListener("pointerleave", hide);
+btn.addEventListener("blur", hide);
+```
+
+- The button's accessible name must not depend on the tooltip: give an icon button an
+  `aria-label` and use the tooltip as the description.
+- WCAG 1.4.13 wants the tooltip hoverable (don't hide it when the pointer moves onto it),
+  dismissible without moving the pointer, and persistent until dismissed. Add a short hide
+  delay and cancel it on `pointerenter` of the tooltip.
+- Where `hint` is unsupported it falls back to `manual`, so the JS above still shows and hides
+  it; only Esc needs a fallback listener.
+- In Chromium, `interestfor="tip-save"` on the button does all of this declaratively; it is not
+  yet in other engines.
+
+### A tiny custom element with a slot
+
+```ts
+const sheet = new CSSStyleSheet();
+sheet.replaceSync(`
+  :host { display: flex; gap: .5rem; align-items: center;
+    padding: .5rem .75rem; border-radius: .5rem;
+    background: var(--callout-bg, #eef); }
+  ::slotted(strong) { color: var(--callout-fg, navy); }
+`);
+
+class NoteCallout extends HTMLElement {
+  connectedCallback(): void {
+    if (this.shadowRoot) return; // declaratively rendered
+    const root = this.attachShadow({ mode: "open" });
+    root.adoptedStyleSheets = [sheet];
+    root.innerHTML = `<span aria-hidden="true">i</span>
+      <div><slot>Nothing to say.</slot></div>`;
+  }
+}
+customElements.define("note-callout", NoteCallout);
+```
+
+```html
+<note-callout>
+  <strong>Heads up:</strong> maintenance on Sunday.
+</note-callout>
+```
+
+The text stays in the light DOM, so it is indexed, found by find-in-page and read by screen
+readers in place.
+
+### Declarative shadow DOM card
+
+Server-rendered markup that is already encapsulated when it arrives; a script can upgrade it
+later:
+
+```html
+<profile-card>
+  <template shadowrootmode="open">
+    <style>
+      :host { display: grid; grid-template-columns: auto 1fr;
+        gap: 0 1rem; align-items: center; }
+      ::slotted(img) { grid-row: span 2;
+        border-radius: 50%; }
+      ::slotted(h3) { margin: 0; }
+    </style>
+    <slot name="photo"></slot>
+    <slot name="name"></slot>
+    <slot></slot>
+  </template>
+  <img slot="photo" src="ana.jpg" alt="" width="64"
+    height="64">
+  <h3 slot="name">Ana Diaz</h3>
+  <p>Staff engineer, accessibility team</p>
+</profile-card>
+```
+
+The photo's alt is empty because the name follows it; the heading stays in the light DOM, so
+it appears in the page's heading outline.
+
+## References
+
+- [MDN: The Details disclosure element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/details): `open`, `name`, `toggle`
+- [MDN: ::details-content](https://developer.mozilla.org/en-US/docs/Web/CSS/::details-content): styling the panel
+- [MDN: The Dialog element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog): modal behaviour, `closedby`, focus and accessibility notes
+- [MDN: Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API): concepts, light dismiss, `auto`/`manual`/`hint`
+- [MDN: Using the Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using): implicit ARIA relationship and focus order
+- [MDN: Invoker Commands API](https://developer.mozilla.org/en-US/docs/Web/API/Invoker_Commands_API): `commandfor`, `command`, `CommandEvent`
+- [MDN: The button element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/button): the built-in `command` values
+- [MDN: inert](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/inert): what it disables
+- [MDN: hidden](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden): `until-found` and `beforematch`
+- [MDN: contenteditable](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/contenteditable): values including `plaintext-only`
+- [MDN: Using custom elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements): lifecycle callbacks, customised built-ins and Safari
+- [MDN: Using shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM): modes, slots, declarative shadow DOM
+- [MDN: ElementInternals](https://developer.mozilla.org/en-US/docs/Web/API/ElementInternals): form association, validity, default ARIA
+- [WHATWG HTML: Interactive elements](https://html.spec.whatwg.org/multipage/interactive-elements.html): `details`, `summary`, `dialog`, commands, dialog focusing steps
+- [WHATWG HTML: The popover attribute](https://html.spec.whatwg.org/multipage/popover.html): states, invalid-value default, light dismiss
+- [WHATWG HTML: Custom elements](https://html.spec.whatwg.org/multipage/custom-elements.html): valid names, reactions, form-associated elements
+- [WAI-ARIA Authoring Practices Guide: Patterns](https://www.w3.org/WAI/ARIA/apg/patterns/): disclosure, accordion, dialog, tooltip, tabs, menu
+- [web.dev: Building a dialog component](https://web.dev/articles/building/a-dialog-component): a full dialog walkthrough
+- [Web Platform Status](https://webstatus.dev/): Baseline dates quoted on this sheet

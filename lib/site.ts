@@ -8,4 +8,4 @@ export const SITE_TITLE = "Zach's Docs";
 
 /** One-line description for search engines and link previews. */
 export const SITE_DESCRIPTION =
-  "References and cheatsheets for physics, biology, economics, ML/AI, Python, C++, robotics, writing and design.";
+  "References and cheatsheets for physics, biology, economics, personal and business finance, thinking tools, leadership, startups, ML/AI, Python, C++, robotics, writing and design.";

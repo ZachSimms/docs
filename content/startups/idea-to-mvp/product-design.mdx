@@ -1,0 +1,631 @@
+---
+title: Product design
+date: 2026-09-26
+order: 4
+---
+
+Phase 2 of the pipeline: turning a validated problem into the smallest product that solves it, drawn, scoped, prototyped
+and tested before any production code. It takes the validated problem brief from [validation](/startups/idea-to-mvp/validation/)
+and hands a signed-off one-page spec, a story map with an MVP slice and a tested prototype to
+[building the MVP](/startups/idea-to-mvp/building-mvp/). The whole pipeline is on the [playbook](/startups/idea-to-mvp/playbook/);
+interface craft (heuristics, layout, forms, accessibility) is on [UX/UI design principles](/design/principles/ux-ui/).
+
+## Phase at a glance
+
+| Item | Phase 2: Solution design |
+| :--- | :--- |
+| Pipeline position | Ideation → Problem validation → **Solution design** → Build → Launch → Iterate |
+| Goal | decide *what* to build and *what not to*, and prove a stranger can use it, before writing production code |
+| Timebox | **1 week** for a solo or 2-person technical founder; 2 weeks only if the domain is unfamiliar |
+| Input | validated problem brief (from Phase 1) |
+| Artefacts | job stories, story map with MVP slice, one-page spec, user flows, clickable prototype, test notes, data model sketch, analytics event plan, "not now" list |
+| Output | a scope you can build in 2–4 weeks, and evidence that target users can complete the core loop on the prototype |
+| Main traps | polishing mockups, designing for scale, scope creep, testing with friends, confusing "they liked it" with "they'll use it" |
+
+### The week, day by day
+
+| Day | Work | Artefact at end of day |
+| :-- | :--- | :--- |
+| 1 | reread interview notes; write jobs, outcomes and job stories; draft the backbone | job stories, backbone |
+| 2 | fill the story map; cut the MVP slice; MoSCoW the rest; write the spec | story map, one-page spec v1, cut list |
+| 3 | user flows, breadboards, fat-marker sketches; data model sketch | flows, sketches, ERD sketch |
+| 4 | build the clickable prototype of the core loop only; book 5 test sessions | prototype, test script |
+| 5 | run 5 tests; fix the top problems; finalise spec, event plan and "not now" list | test notes, spec v2 (signed off) |
+
+<Note kind="tip">If Friday arrives and you have not tested with anyone, the design phase is not finished; it has stalled. Book the test sessions on Monday, before you have anything to show. The deadline forces the prototype into existence.</Note>
+
+## Entry criteria
+
+Do not start Phase 2 without the **validated problem brief** from [validation](/startups/idea-to-mvp/validation/). Designing
+without it means designing for an imagined user, which is how people end up polishing a product nobody asked for.
+
+| Brief field | What "good enough" looks like | Red flag (go back to Phase 1) |
+| :--- | :--- | :--- |
+| Who | a specific, findable segment: "owners of independent cafés with 5–20 staff" | "small businesses", "anyone who…" |
+| Problem in their words | verbatim quotes from ≥ 5 interviews that describe the same pain | your paraphrase; only one person said it |
+| Frequency | how often it bites: daily, weekly, per event | "sometimes", "it would be nice" |
+| Current workaround and its cost | what they do now (spreadsheet, WhatsApp, an intern) and hours or money lost | "nothing": no workaround usually means no real pain |
+| Willingness-to-pay evidence | pre-orders, deposits, letters of intent, a signed pilot, or a stated budget that already exists | compliments; "I'd definitely use that" |
+| Reachable channel | where you found them and can find 50 more (a forum, a trade group, your network) | "we'll run ads" |
+| 1–3 must-have outcomes | what must be true after using the product ("rota published and every shift covered") | a feature list |
+
+```text
+VALIDATED PROBLEM BRIEF (input to Phase 2)
+Who:            ___________________________________________
+Problem (their words, quoted): ____________________________
+Frequency:      ______________   Evidence: __ of __ interviews
+Workaround:     ______________   Cost: ____ hours/£ per ____
+Willingness to pay: _______________________________________
+Channel to reach 50 more: _________________________________
+Must-have outcomes:
+  1. ______________________________________________________
+  2. ______________________________________________________
+  3. ______________________________________________________
+```
+
+## From problem to solution
+
+Work top-down: a **job** is the progress someone is trying to make; an **outcome** is how they would measure it; a
+**story** is a unit of product behaviour that serves an outcome. Features come last.
+
+| Level | Question | Example (café rota tool) |
+| :--- | :--- | :--- |
+| Job | what progress is the user trying to make? | "keep every shift covered without living on my phone" |
+| Outcome | how would they know it worked? | rota published by Thursday; no uncovered shifts; under 30 min/week on rota admin |
+| Job story | in what situation, with what motivation? | "When a barista cancels the night before, I want to offer the shift to qualified staff at once, so I can open on time" |
+| User story | which user does what, for what benefit? | "As an owner, I want to post an open shift to eligible staff so that someone claims it" |
+| Task | what do we build? | open-shift model, notify eligible staff, claim endpoint |
+
+### User stories vs job stories
+
+| | User story | Job story |
+| :--- | :--- | :--- |
+| Template | As a [role], I want [capability] so that [benefit] | When [situation], I want to [motivation], so I can [expected outcome] |
+| Origin | agile/XP practice (the "role–goal–benefit" template is widely attributed to Connextra, 2001) | Intercom: first described by Paul Adams on the Intercom blog (2013), developed by Alan Klement ("Designing features using job stories", 2013) |
+| Anchors on | a persona or role | a situation and a motivation |
+| Strength | clear who; slots into backlogs and tickets | captures context and anxiety; avoids inventing personas |
+| Weakness | "As a user…" says nothing; encourages feature-first thinking | less obvious who is acting; harder to estimate |
+| Use it for | build tickets in Phase 3 | framing the problem in Phase 2 |
+
+Adams's later post ("How we accidentally invented job stories", 2016) argues that personas focus on demographic
+differences when people in very different circumstances often share the same motivation.
+
+**Rules for good stories**
+
+- One behaviour per story. "…and export and share" is three stories.
+- The benefit clause must be a real outcome from the brief, not a restatement ("so that I can post a shift" is circular).
+- Write stories in the user's words from the interviews. If no interviewee would recognise the situation, delete it.
+- Acceptance criteria as Given / When / Then for anything touching money, permissions or data loss.
+
+```text
+JOB STORY
+When  <situation, trigger, context>
+I want to  <motivation / what they're trying to do>
+So I can  <expected outcome>
+Evidence: interview #3, #5, #8 ("quote…")
+
+USER STORY
+As a  <role>
+I want  <capability>
+So that  <benefit tied to a must-have outcome>
+Acceptance:
+  Given <state>  When <action>  Then <observable result>
+```
+
+## User story mapping
+
+Jeff Patton's **story map** (*User Story Mapping*, O'Reilly, 2014; first described in his 2005 "It's all in how you
+slice it") replaces the flat backlog with a two-dimensional map, so you can see the whole journey and cut it
+horizontally.
+
+| Part | What it is | How to build it |
+| :--- | :--- | :--- |
+| Backbone | the user's activities left to right in narrative order | tell the story of one user's journey: "first they…, then…" |
+| User tasks / steps | the steps under each activity | one sticky per verb phrase |
+| Details / stories | variations and options stacked under each step, most essential at the top | the higher the sticky, the more necessary it is |
+| Walking skeleton | the smallest end-to-end slice that lets a user complete the journey (Patton borrows the term from Alistair Cockburn) | draw a line under the first sticky of every step |
+| Release slices | horizontal bands below the skeleton: MVP, next, later | each slice must produce a complete outcome, not a layer |
+
+Patton's warning (paraphrased): a flat backlog strips the stories of context, like pulling the leaves off a tree and then
+cutting the tree down. Prioritise *how well* each backbone step is done, not *whether* the backbone exists: an MVP that
+skips a backbone step does not work end to end.
+
+```text
+STORY MAP: café rota tool (MVP slice above the line)
+
+BACKBONE ►  Set up team   Build rota     Publish       Handle changes   Get paid*
+            ───────────   ────────────   ───────────   ──────────────   ─────────
+WALKING     add staff     copy last      send rota     post open shift  (manual
+SKELETON    by phone no.  week, edit     by SMS link   staff claims it  invoice)
+            ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+MVP         roles/skills  drag shifts    staff view    notify only      Stripe
+(slice 1)   per person    conflict warn  (no login)    qualified staff  checkout
+            ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+NEXT        import from   templates      calendar      swap requests    annual
+(slice 2)   spreadsheet   by season      sync          between staff    plans
+LATER       multi-site    labour-cost    printable     availability     payroll
+            support       forecasting    PDF           preferences      export
+
+* backbone steps may be manual in the MVP, but none may be missing
+```
+
+## Scoping the MVP
+
+The MVP is **the smallest product that delivers the must-have outcomes to the target user, end to end, well enough
+that they would be upset to lose it**. Not the smallest thing you can ship; the smallest thing that works.
+
+### Find the one core loop
+
+The **core loop** is the repeated sequence where the user gets value: trigger → action → value → reason to return.
+Everything in the MVP either serves the loop or gets a user into it for the first time.
+
+| Product type | Core loop |
+| :--- | :--- |
+| Rota tool | shift changes → owner posts open shift → staff claims → owner sees it covered |
+| Invoicing | job finished → create invoice → client pays → freelancer is notified |
+| Analytics | event happens → data arrives → user checks dashboard → user acts on it |
+| Marketplace | buyer searches → finds listing → transacts → both rate |
+| Dev tool | developer hits problem → runs tool → problem fixed in less time than before |
+
+Test: describe the loop in one sentence without "and also". If you can't, you have two products.
+
+### MoSCoW
+
+Dai Clegg's MoSCoW (Oracle UK, 1994, in Clegg and Barker's *Case Method Fast-Track*), later adopted by DSDM. It only
+works under a fixed timebox, which is exactly the MVP's situation.
+
+| Bucket | Meaning | MVP rule of thumb |
+| :--- | :--- | :--- |
+| **Must** have | without it the core loop fails or it's illegal/unsafe | the walking skeleton plus data integrity, auth, payments if charging |
+| **Should** have | painful to leave out, but a workaround exists | do it manually, by email or in SQL for now |
+| **Could** have | nice, small impact if absent | cut list |
+| **Won't** have (this time) | agreed and recorded as out | the "not now" list, written down so it stops coming back |
+
+A healthy MVP is mostly Musts. DSDM guidance is to keep Musts to no more than about 60% of effort so there is
+contingency; for a 2–4-week MVP, treat anything that isn't a Must as already cut.
+
+### Kano model
+
+Noriaki Kano and colleagues, "Attractive quality and must-be quality" (1984), classify features by how their presence
+and absence affect satisfaction.
+
+| Kano category | Common name | Present | Absent | MVP treatment |
+| :--- | :--- | :--- | :--- | :--- |
+| Must-be | basic | taken for granted | strong dissatisfaction | ship, but only to "adequate" (login works, data isn't lost) |
+| One-dimensional | performance | more is better, linearly | dissatisfaction | pick **one** performance axis tied to the core loop and be clearly better on it |
+| Attractive | delighter | disproportionate delight | not missed | at most one, and only if cheap and on the core loop |
+| Indifferent | — | no effect | no effect | cut |
+| Reverse | — | some users dislike it | some prefer it absent | cut or make it optional later |
+
+Categories drift over time: today's delighter becomes tomorrow's basic expectation. An MVP wins on one performance axis
+(faster, simpler, cheaper, more specific to a niche), meets the basics adequately, and ignores the rest.
+
+### The cut list
+
+Keep a literal list of everything you removed and why. It is the most useful artefact of the week because it lets you
+say "not now" without arguing, and it becomes the start of the iteration backlog in
+[launch & iterate](/startups/idea-to-mvp/launch-iterate/).
+
+| Commonly cut from MVPs | Do this instead |
+| :--- | :--- |
+| settings pages | pick defaults; change them for a user by hand in the database |
+| roles and permissions beyond owner/member | one role; add more when a paying customer asks |
+| team invites, SSO | invite by email link; SSO when an enterprise deal needs it |
+| admin dashboard | a database GUI and saved SQL queries |
+| notifications preferences | one sensible notification, with an unsubscribe link |
+| import/export | import their spreadsheet for them yourself |
+| search, filters, sorting | a single list sorted by date |
+| mobile app | responsive web |
+| dark mode, themes, i18n | one theme, one language |
+| onboarding tour | a good empty state and a sample record |
+| integrations | Zapier/webhooks later; manual now |
+
+## Appetite: fixed time, variable scope
+
+Ryan Singer's *Shape Up* (Basecamp, 2019) is the most useful framing for a founder who keeps overrunning. The key move is
+to set the **appetite** (how much time is this worth?) before designing, instead of estimating after. In Singer's words:
+"Estimates start with a design and end with a number. Appetites start with a number and end with a design."
+
+| Shape Up term | Meaning | MVP use |
+| :--- | :--- | :--- |
+| Appetite | a fixed time budget chosen up front; Basecamp uses a small batch (1–2 weeks) and a big batch (6 weeks) | the whole MVP is one big batch: 2–4 weeks, hard cap 6 |
+| Fixed time, variable scope | the deadline doesn't move; scope is cut to fit | when you slip, cut stories, never extend |
+| Shaping | defining the work at the right level of abstraction before committing to build it | this week (Phase 2) is the shaping phase |
+| Shaped work | **rough** (room for decisions), **solved** (main approach clear), **bounded** (appetite and no-gos set) | test your spec against all three |
+| Breadboarding | text-only flow: **places** (screens), **affordances** (buttons, fields), **connection lines** | sketch flows before any layout |
+| Fat-marker sketch | a sketch drawn with a thick pen so you can't add detail | layout ideas without pixel-pushing |
+| Rabbit holes | risky unknowns that could blow the appetite; resolved or removed before building | list them in the spec with the decision made |
+| No-gos | things explicitly excluded | your "not now" list |
+| Pitch | problem, appetite, solution, rabbit holes, no-gos (the five ingredients) | the one-page spec is a pitch to yourself |
+| Circuit breaker | work that misses its cycle is not extended by default | if the MVP isn't live at week 6, stop and reshape |
+| Cool-down | 2 weeks between 6-week cycles for fixes and deciding what's next | the week after launch |
+
+Singer also argues "good" is relative to the appetite: a hot dog is the right meal when you're hungry and in a hurry.
+For an MVP, "good" means the core loop works reliably, not that every edge case is handled.
+
+```text
+BREADBOARD: post an open shift
+
+ Rota (week view)          Open shift form           Shift posted
+ ────────────────          ───────────────           ────────────
+ [shift cell]  ─────────►  role (prefilled)          "Sent to 4 staff"
+ "Mark as open"            time (prefilled)   ─────► list: who was
+                           note (optional)           notified
+                           [Offer shift]             [Back to rota]
+
+ Staff SMS link            Claim page
+ ──────────────            ──────────
+ "Shift Sat 7am" ───────►  shift details
+                           [Claim]  ─────────► owner notified,
+                                               rota updated
+```
+
+## The one-page spec
+
+One page, written in plain language, that you (and any co-founder or contractor) can build from. If it runs to three
+pages, the scope is too big.
+
+```text
+ONE-PAGE SPEC (PRD-lite)                     v__  date: ________
+
+PROBLEM
+  In their words: "________________________________________"
+  Evidence: __ of __ interviews; workaround costs ____/week
+
+USER
+  Primary: _____________________ (who pays? who uses? same?)
+  Not for (yet): _______________________________________
+
+CORE JOB
+  When ______________, I want to ______________,
+  so I can ______________.
+
+SUCCESS METRIC (for the MVP)
+  Activation: % of sign-ups who ____________ within __ days
+  Core loop:  ____ completed per user per week
+  Target by week 4 after launch: ______________
+
+APPETITE
+  Build: __ weeks (hard cap 6). Circuit breaker on: ________
+
+SCOPE IN (walking skeleton + MVP slice)
+  1. ______________________________________________________
+  2. ______________________________________________________
+  3. ______________________________________________________
+
+SCOPE OUT (not now)
+  - ____________________  (manual workaround: ____________)
+  - ____________________
+
+KEY FLOWS
+  1. First run: sign up → ______ → first value ("aha") at ____
+  2. Core loop: ________ → ________ → ________
+  3. Payment:   ________ → ________
+
+RABBIT HOLES (and the decision taken)
+  - ______________________ → decided: ______________________
+
+OPEN QUESTIONS (owner, due date)
+  - ______________________  (_____, ____)
+
+RISKS
+  Value: will they use it?        test: ______________________
+  Usability: can they use it?     test: prototype, 5 users
+  Feasibility: can we build it?   spike: _____________________
+  Viability: will they pay?       test: ______________________
+```
+
+The four risks in the last block are Marty Cagan's framing (*Inspired*, 2nd edition, 2017): value, usability,
+feasibility, business viability. Each needs a named test, not a hope.
+
+## User flows and information architecture
+
+Map flows before screens. For an MVP you need exactly three: **first run** (sign-up to first value), **the core
+loop**, and **payment**. Everything else is a secondary flow and probably on the cut list.
+
+| Flow | Must answer | Common MVP mistake |
+| :--- | :--- | :--- |
+| First run | how fast does a new user reach first value? what do they see when there is no data? | asking for 10 fields before showing anything |
+| Core loop | what triggers a return visit? how many steps from trigger to value? | burying the core action behind navigation |
+| Payment | when do we ask? what happens on failure? | building billing management instead of linking to the payment provider's hosted portal |
+| Error/recovery | what if they get it wrong? | no undo, no way to delete |
+
+```text
+FIRST-RUN FLOW (target: first value in under 3 minutes)
+
+landing ─► sign up (email link) ─► "Add your team" (paste names
++ phone numbers) ─► rota pre-filled with a sample week ─► edit one
+shift ─► "Send rota" ─► staff receive SMS ─► AHA: owner sees
+"3 of 5 staff have viewed the rota"
+```
+
+Information architecture for an MVP is usually one navigation level with 3–5 items. Label with the words users used in
+interviews. Navigation patterns, IA rules and card sorting are covered in
+[UX/UI design principles](/design/principles/ux-ui/#navigation--ia).
+
+## From sketch to prototype
+
+| Fidelity | Tool | Time | Answers | Skip when |
+| :--- | :--- | :--- | :--- | :--- |
+| Sketch / fat-marker | paper, iPad | minutes | what goes on the screen and how screens connect | never skip; it's the cheapest thinking |
+| Breadboard | text | minutes | flow logic without layout | the flow is trivial (one screen) |
+| Wireframe | Figma, Excalidraw, Balsamiq | hours | layout, hierarchy, content | the screens follow a well-known pattern (list, form, settings) |
+| Clickable prototype | Figma prototype, or linked pages | 0.5–1 day | can a stranger complete the core loop? | never skip the *test*; you can skip the tool (see below) |
+| Code prototype | the real stack, fake data | 1–2 days | the same, plus feel, latency, real input | the design is uncertain and you'd resist throwing code away |
+| High-fidelity mockup | Figma | days | brand, polish | **skip for the MVP**; use a component library and a type scale |
+
+### When to skip Figma and prototype in code
+
+A fluent React/Next.js developer can often build a throwaway clickable version on the real stack as fast as a Figma
+prototype. Go straight to code when:
+
+- the UI is standard patterns (lists, forms, tables, a dashboard) and the risk is flow, not visuals;
+- realism matters for the test: real typing, real latency, real data shapes (a paste-your-CSV step, a drag interaction);
+- you commit in writing to deleting or heavily rewriting it. Keep it on a `prototype` branch with hard-coded data, no
+  auth and no database.
+
+Stay in Figma (or on paper) when the core concept is still in question, when you'd get attached to code, or when you
+need to show several alternative directions. The trap is spending the design week building infrastructure disguised as
+a prototype.
+
+## Prototype testing
+
+Test the prototype with **at least 5 people from the target segment**, ideally people who were not in your validation
+interviews, and never friends or other founders.
+
+### Nielsen's five users
+
+Jakob Nielsen ("Why you only need to test with 5 users", NN/g, March 2000), building on Nielsen and Landauer (1993),
+models the share of usability problems found with $n$ test users as
+
+$$
+\text{found}(n) = N\left(1 - (1 - L)^n\right)
+$$
+
+where $N$ is the total number of problems and $L$ the share one user reveals, **31%** on average in their data.
+
+| Users $n$ | 1 | 3 | 5 | 10 | 15 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Share found at $L = 0.31$ | 31% | 67% | 84% | 98% | 99.6% |
+
+Nielsen's recommendation was three rounds of 5 (fix between rounds), not one round of 15.
+
+| Caveat | Why it matters |
+| :--- | :--- |
+| $L$ varies a lot by product, task and tester | with a lower $L$ five users find far less; Faulkner (2003) found random sets of 5 from 60 users uncovered between 55% and 99% of problems |
+| it assumes one homogeneous user group | Nielsen: 3–4 users per group for two groups, 3 per group for three or more |
+| it finds problems in the tasks you test | untested flows have undiscovered problems regardless of $n$ |
+| it's for qualitative usability testing | not for measuring rates, preferences or demand; those need far larger samples |
+| usability ≠ desirability | a flawless prototype of a product nobody needs is still a product nobody needs |
+
+### Test script
+
+```text
+PROTOTYPE TEST (30–45 min, remote or in person, record with consent)
+
+1. Intro (3 min)
+   "We're testing the design, not you. Think aloud. Nothing
+   you say will hurt my feelings. I didn't design it alone."
+2. Context (5 min)
+   "Tell me about the last time <problem> happened."
+3. Tasks (20 min) — realistic scenarios, not instructions
+   T1 "You've just signed up. Get your team's rota for next
+       week out to your staff."
+   T2 "Sam just cancelled Saturday 7am. Sort it out."
+   T3 "You want to keep using this after the trial. Do that."
+   For each: success Y/N, time, where they hesitated, quotes.
+   Don't help. If stuck > 2 min, note it and move on.
+4. Debrief (5 min)
+   "What was hardest?" "What did you expect that wasn't
+   there?" "What would you do right now instead of this?"
+5. Value check (2 min)
+   "If this existed today, what would you stop doing?"
+   Ask for a commitment: pilot, pre-order, intro to a peer.
+
+SCORING
+  Task success: __/5 users   Median time: ____
+  Severity: 4 blocks the core loop · 3 major · 2 minor · 1 cosmetic
+  Fix all 4s and 3s before build; log the rest.
+```
+
+Signals that matter: task success and where people hesitate. Signals that don't: "I like it", "looks clean", feature
+requests from people who couldn't finish T1. Asking for a small commitment at the end (a pilot, a deposit, an
+introduction) is the only part of the session that says anything about demand.
+
+## Design sprints, full and compressed
+
+The **Design Sprint** was developed by Jake Knapp at Google and refined at GV (Google Ventures); it's described in
+Knapp, Zeratsky and Kowitz, *Sprint* (Simon & Schuster, 2016). A **Decider** makes the calls; a **Facilitator** runs the
+clock.
+
+| Day | GV sprint | Key activities | Output |
+| :--- | :--- | :--- | :--- |
+| Monday | **Map** | long-term goal, sprint questions, map of the customer journey, expert interviews, "How might we" notes, pick a target | a target moment on the map |
+| Tuesday | **Sketch** | lightning demos of existing solutions, then each person sketches alone (the four-step sketch, including Crazy 8s); recruit Friday's testers | individual solution sketches |
+| Wednesday | **Decide** | silent critique and voting on sketches, the Decider picks, storyboard the prototype | a storyboard |
+| Thursday | **Prototype** | build a realistic façade ("fake it") of just the storyboard | a prototype that looks real |
+| Friday | **Test** | five one-to-one customer interviews, the team watches and notes patterns | a learning: what works, what doesn't |
+
+### A 2–3-day solo version
+
+A full five-day sprint is built for a team in a room. Solo, the value is the forced sequence: map → diverge alone →
+decide → fake it → test with five.
+
+| Block | Solo work | Timebox |
+| :--- | :--- | :--- |
+| Day 1 AM: map | reread brief; draw the journey (5–15 steps); choose the one moment to test; write 3 "can we…?" sprint questions | 3 h |
+| Day 1 PM: sketch | 30 min looking at 3–5 competitors and analogues; Crazy 8s (8 ideas, 8 min) twice; one detailed 3-panel solution sketch | 3 h |
+| Day 2 AM: decide | pick one sketch (you are the Decider; no second-guessing after lunch); storyboard 6–10 frames | 2 h |
+| Day 2 PM: prototype | build only the storyboard frames; real copy, fake data | 4 h |
+| Day 3: test | 5 × 45-min remote tests, 30 min gaps; synthesise that evening | 1 day |
+
+Book the five tests on day 1. Recruiting is the step that slips.
+
+## Design principles for MVPs
+
+| Principle | Means | Violated when |
+| :--- | :--- | :--- |
+| Do one thing well | the core loop is obvious from the first screen | the home page is a dashboard of six features |
+| Defaults over settings | the product picks sensible values; power users can ask you | a settings page ships before the second customer |
+| Obvious over clever | conventional patterns, plain labels (Jakob's law) | custom gestures, clever names, mystery icons |
+| Empty states are onboarding | the no-data screen explains what to do and has one primary action (or sample data) | a blank table with "No results" |
+| Time to value | minimise the time and steps from sign-up to the first "aha" (the moment the user first gets the core value) | email verification, profile setup and a tour before anything useful |
+| Ask late | request information only when it's needed | a 10-field sign-up form |
+| Make the manual invisible | a human doing work behind the scenes is fine if the user sees a clean result | exposing "pending manual review" states everywhere |
+| Recoverable | undo, edit, delete; no irreversible action without confirmation | data loss on a mis-click; no way to delete an account |
+| Fast enough | core actions feel instant; see the Doherty threshold on [UX/UI](/design/principles/ux-ui/#laws-of-ux) | spinners on every click |
+| Copy is design | the words carry the product until the visuals catch up | lorem ipsum in the prototype you test |
+
+**Define the aha moment as an event**, not a feeling: "owner sends first rota and ≥ 1 staff member opens it", "user
+receives first payment through an invoice". It becomes the activation metric in the event plan below and in
+[launch & iterate](/startups/idea-to-mvp/launch-iterate/#metrics).
+
+## Pricing decisions at design time
+
+Keep this short; the experiments come later in [launch & iterate](/startups/idea-to-mvp/launch-iterate/#pricing-experiments).
+But three decisions shape the design, so make them now.
+
+| Decision | Default for a solo B2B/prosumer MVP | Why |
+| :--- | :--- | :--- |
+| Charge from day one? | **yes**, after a trial or for the first real use; free only for deliberate reasons (network effects, consumer virality) | payment is the strongest validation signal you'll get; free users give weak feedback |
+| How many plans? | one paid plan (maybe two); no free tier at launch | tiers are a design and support cost; you don't yet know what to meter |
+| What's the value metric? | the unit that grows with value: per location, per active staff member, per invoice | per-seat pricing punishes adoption in small teams |
+| Where is payment in the flow? | after first value, before sustained use | asking before the aha kills conversion; never asking hides whether anyone would pay |
+
+A **pricing page is itself a validation tool**: publish it in the prototype and during launch, and treat clicks on
+"Start trial" or "Buy" as a signal. Prototype testers who balk at the price are telling you about the value, not the
+number. Price anchoring and willingness-to-pay interviews belong in [validation](/startups/idea-to-mvp/validation/).
+
+## Data model sketch
+
+Sketch the data model as a design artefact, not an implementation detail. It exposes scope ("do shifts belong to a
+location or to a team?"), multi-tenancy and ownership questions that are expensive to change later.
+
+```text
+ERD SKETCH: café rota MVP
+
+ account (tenant) 1 ──< user (owner/manager)
+     │
+     1
+     └──< staff_member ──< skill (role: barista, kitchen…)
+     │         │
+     1         └──< shift_assignment >── shift
+     └──< rota_week ──< shift (start, end, role, status:
+                                 scheduled|open|claimed)
+ event (id, account_id, user_id, name, props jsonb, at)
+ subscription (account_id, provider_customer_id, status)
+```
+
+| Question to answer now | Default |
+| :--- | :--- |
+| Who is the tenant? | an `account` row; every business table gets `account_id` and every query filters on it |
+| What is the lifecycle of the core object? | a `status` column with an explicit, small set of states |
+| What must never be lost or duplicated? | money and the core object: constraints, foreign keys, unique keys |
+| What's derived vs stored? | derive (counts, totals) until it's slow |
+| What do we keep for analytics? | an append-only `event` table from day one |
+
+Table design, constraints and indexes are on [PostgreSQL](/databases/postgres/) and
+[database design](/databases/db-design/); the TypeScript schema is on [Drizzle](/databases/drizzle/). Phase 3 turns this
+sketch into a real schema ([recipe](/startups/idea-to-mvp/building-mvp/#recipes)).
+
+## Analytics event plan
+
+Decide what you'll measure **before** you build, so instrumentation lands with the feature rather than weeks later.
+Name events `object_action` in snake_case, past tense, and keep the MVP to 5–10.
+
+| Event | Fires when | Key properties | Answers |
+| :--- | :--- | :--- | :--- |
+| `account_created` | sign-up completes | `source`, `plan` | acquisition by channel |
+| `staff_added` | first and subsequent staff rows | `count` | setup progress |
+| `rota_published` | rota sent to staff | `shift_count` | first value (activation) |
+| `rota_viewed` | a staff member opens the link | `minutes_since_publish` | does the loop reach staff? |
+| `shift_opened` | owner marks a shift open | `hours_until_start` | core loop trigger |
+| `shift_claimed` | staff claims it | `minutes_to_claim` | core loop value |
+| `checkout_started` / `subscription_activated` | payment flow | `plan`, `price` | willingness to pay |
+| `feedback_submitted` | widget or email reply | `score`, `text` | qualitative signal |
+
+Write down now: **activation** = `rota_published` and ≥ 1 `rota_viewed` within 7 days of `account_created`;
+**core loop completed** = `shift_opened` followed by `shift_claimed`. How to implement the tracking is in
+[building the MVP](/startups/idea-to-mvp/building-mvp/#instrumentation-from-day-one).
+
+## Friction points and fixes
+
+Where people stall in Phase 2, and what to do about it.
+
+| Friction point | What it looks like | Fix |
+| :--- | :--- | :--- |
+| Polishing before users | days on colours, logo, icons, a design system | component library + one accent colour; logo is the product name in a nice font; the timebox forbids hi-fi |
+| Designing for scale | multi-tenant hierarchies, role matrices, sharding in the ERD | design for the first 50 customers; `account_id` column and nothing more |
+| Scope creep | "while we're at it…"; the MVP slice keeps growing | every addition must displace something above the line; maintain the cut list |
+| Can't cut | every feature feels essential | ask "would the first 10 customers refuse to use it without this?" If you can do it manually, it's not a Must |
+| Bikeshedding | long debates about names, stack, colour of the button | timebox decisions to 15 min; the Decider decides; reversible choices are cheap |
+| Persona theatre | fictional personas with stock photos and hobbies | use real interviewees' names (privately) and their quotes |
+| Testing with friends | "everyone loved it" | recruit from the validation channel; if you can't find 5 target users now, you can't find customers later |
+| No tests booked | the prototype is "almost ready" for a week | book 5 sessions on day 1; test what you have on day 5 |
+| Confusing usability with demand | "they completed the tasks, so they'll pay" | ask for a commitment at the end of each test; demand evidence comes from Phase 1 and payment |
+| Analysis paralysis between directions | three designs, no decision | pick one by Wednesday; the others go in a "later" folder; test beats debate |
+| Spec as novel | a 12-page PRD nobody reads | one page; if it doesn't fit, cut scope, not font size |
+| Premature code | building auth and a database "to prototype properly" | a code prototype has no auth, no DB, fake data, and a delete date |
+
+<Callout type="warn" title="The most expensive week">
+  The design week feels optional to engineers, so it gets skipped. The result is 4–6 weeks of building the wrong
+  shape. One week of drawing and five tests is the cheapest insurance in the pipeline.
+</Callout>
+
+## Exit criteria / handoff
+
+Phase 2 is done when every box below is ticked. The package goes to [building the MVP](/startups/idea-to-mvp/building-mvp/)
+as its entry criteria.
+
+```text
+PHASE 2 EXIT CHECKLIST (handoff to Phase 3: Build)
+
+[ ] One-page spec signed off (by you and any co-founder), with
+    success metric, appetite (build weeks, hard cap 6), scope
+    in/out, rabbit holes decided, open questions owned
+[ ] Story map with backbone, walking skeleton and a single MVP
+    slice drawn; nothing in the slice that isn't on the core
+    loop, first run or payment flow
+[ ] Clickable prototype of the core loop tested with >= 5 target
+    users (heuristic, not a law); all severity 3-4 issues fixed
+    in the design; >= 4 of 5 completed the core task
+[ ] At least some testers asked for a commitment (pilot,
+    pre-order, intro); responses recorded
+[ ] User flows: first run (with aha event and target time),
+    core loop, payment
+[ ] Data model sketch: tenant, core object lifecycle, event
+    table, what must never be lost
+[ ] Analytics event plan: 5-10 object_action events, activation
+    and core-loop definitions written down
+[ ] Pricing decision: charge from day one? one plan, value
+    metric, where payment sits in the flow
+[ ] "Not now" list (cut list) with the manual workaround for
+    each item a customer might ask for
+[ ] First 20-50 names for the launch list started (from
+    interviews and testers)
+```
+
+| If this is missing | Consequence in Phase 3 |
+| :--- | :--- |
+| signed-off spec | scope negotiates itself upward daily |
+| story map slice | you build horizontally (all the database, then all the API) and nothing works end to end until week 4 |
+| tested prototype | you discover usability problems after they're expensive, in code |
+| event plan | analytics gets bolted on after launch and you can't read the first cohort |
+| "not now" list | the cut features creep back in as "quick wins" |
+
+## References
+
+- Jeff Patton with Peter Economy, *User Story Mapping: Discover the Whole Story, Build the Right Product* (O'Reilly, 2014): backbone, walking skeleton, release slices
+- [Jeff Patton, "The new user story backlog is a map"](https://jpattonassociates.com/the-new-backlog/): the original 2008 post introducing story maps
+- [Alan Klement, "Designing features using job stories" (Intercom, 2013)](https://www.intercom.com/blog/using-job-stories-design-features-ui-ux/): the job story format, crediting Paul Adams
+- [Paul Adams, "How we accidentally invented job stories" (Intercom, 2016)](https://www.intercom.com/blog/accidentally-invented-job-stories/): why situations and motivations beat personas
+- [Ryan Singer, *Shape Up* (Basecamp, 2019)](https://basecamp.com/shapeup): appetite, shaping, breadboards, fat-marker sketches, rabbit holes, no-gos, pitches, circuit breaker; free online
+- Noriaki Kano, Nobuhiku Seraku, Fumio Takahashi, Shinichi Tsuji, "Attractive quality and must-be quality", *Journal of the Japanese Society for Quality Control* 14(2), 1984: the Kano model
+- Dai Clegg and Richard Barker, *Case Method Fast-Track: A RAD Approach* (Addison-Wesley, 1994): origin of MoSCoW
+- [Agile Business Consortium, "MoSCoW prioritisation" (DSDM)](https://www.agilebusiness.org/dsdm-project-framework/moscow-prioritisation.html): the no-more-than-60%-Must-effort guidance
+- [Jakob Nielsen, "Why you only need to test with 5 users" (NN/g, 2000)](https://www.nngroup.com/articles/why-you-only-need-to-test-with-5-users/): the 5-user curve and its assumptions
+- [Laura Faulkner, "Beyond the five-user assumption" (*Behavior Research Methods*, 2003)](https://link.springer.com/article/10.3758/BF03195514): the variance behind the 85% figure
+- Jake Knapp, John Zeratsky, Braden Kowitz, *Sprint: How to Solve Big Problems and Test New Ideas in Just Five Days* (Simon & Schuster, 2016): the design sprint
+- [GV, "The Design Sprint"](https://www.gv.com/sprint/): the five days as GV describes them
+- Marty Cagan, *Inspired: How to Create Tech Products Customers Love* (2nd ed., Wiley, 2017): value, usability, feasibility and viability risks
+- [Nielsen Norman Group, "10 usability heuristics"](https://www.nngroup.com/articles/ten-usability-heuristics/): the checklist for reviewing the prototype

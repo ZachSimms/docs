@@ -1,0 +1,638 @@
+---
+title: People management
+date: 2026-09-26
+order: 5
+---
+
+The practical craft of managing a small team: what a manager's output is, one-on-ones, delegation, feedback,
+coaching, goals, performance problems, hiring, meetings, decision rights, managing up and workload, with templates
+and scripts for the hard conversations. Team-level dysfunction is in [five dysfunctions](/leadership/five-dysfunctions/),
+intent-based delegation in [mission command](/leadership/mission-command/), owning outcomes in
+[extreme ownership](/leadership/extreme-ownership/), the theories behind all of this in
+[leadership models](/leadership/leadership-models/), and decision frameworks in
+[decision-making models](/thinking/mental-models/decision-making/).
+
+## The manager's job
+
+Andy Grove's *High Output Management* (1983) is still the best single definition. Paraphrased:
+
+$$
+\text{manager's output} = \text{output of their organisation} + \text{output of neighbouring organisations they influence}
+$$
+
+Your own tickets, code and deals count only as far as they raise the team's output. A founder-engineer who ships the
+most code while the team stalls has low managerial output.
+
+### Managerial leverage
+
+Grove treats every managerial activity as having a **leverage**: the output it produces per hour spent. Total output
+is the sum of activities times their leverage, so the job is to pick high-leverage activities.
+
+| High leverage when… | Example |
+| :--- | :--- |
+| one action affects many people | setting the quarter's priorities; writing an engineering principles doc |
+| a brief intervention changes someone's work for a long time | a one-hour one-on-one that unblocks a month of work; training |
+| you supply a unique piece of knowledge or information | the customer context only you have; the reason behind a decision |
+
+| Negative leverage (Grove's examples and their modern forms) | Why it hurts |
+| :--- | :--- |
+| **meddling**: doing a report's work for them, rewriting their PR | removes their ownership and learning; you become the bottleneck |
+| **indecision** or late decisions | the whole team waits |
+| cancelling one-on-ones "because we're busy" | problems surface late, when they're expensive |
+| being unavailable, then swooping in | teaches people to wait for you |
+
+### Task-relevant maturity
+
+Grove argues the right management style depends not on the person in general but on their **task-relevant maturity
+(TRM)**: their experience and skill with *this particular task*. The idea closely parallels situational
+leadership (below). A senior engineer starting in a new domain has low TRM there.
+
+| TRM | Effective style (Grove, paraphrased) | In practice |
+| :--- | :--- | :--- |
+| low | structured, task-oriented: what, when and how | clear specs, frequent check-ins, worked examples |
+| medium | individual-oriented: two-way communication, support, mutual reasoning | discuss approaches, let them choose, review together |
+| high | minimal involvement: agree objectives, then monitor | outcome goals, regular but light reporting |
+
+The failure modes: micromanaging a high-TRM person (they leave) and abandoning a low-TRM person with "you've got
+this" (they flounder quietly). **Monitoring is not the same as meddling**: even high-TRM work needs a check-in cadence.
+
+## One-on-ones
+
+A recurring private meeting between a manager and each direct report. Grove's view: it's the **report's meeting**, for
+their agenda, and it should be long enough to reach real issues. His point about leverage is that a short, regular
+investment of your time can raise the quality of their work for weeks.
+
+| Purpose | Not the purpose |
+| :--- | :--- |
+| surface problems early, while they're cheap | a status update you could read in a tracker |
+| coaching, feedback, career growth | the manager's to-do list |
+| trust and context in both directions | performance review ambush |
+| hear what they won't say in a group | cancelled whenever something else comes up |
+
+| Cadence | When | Length |
+| :--- | :--- | :--- |
+| weekly | the default; new reports; low TRM; a lot is changing | 30–45 min |
+| fortnightly | experienced, high-TRM reports in a stable period | 45–60 min |
+| monthly | skip-levels (your reports' reports); mentoring | 30–45 min |
+| ad hoc | never a substitute for the recurring slot | as needed |
+
+```text
+ONE-ON-ONE AGENDA (shared doc, newest at top)
+Date: ____
+
+Their items (first, and most of the time)
+- ...
+
+My items
+- context they need: decisions, changes, what's coming
+- feedback (one piece, specific)
+
+Standing questions (rotate; don't ask all every week)
+- What's taking more energy than it should?
+- Anything I should know before I hear it elsewhere?
+
+Career / growth (monthly)
+- Progress on the growth goal we agreed
+
+Actions
+- [ ] Owner - action - by when
+```
+
+### Question bank
+
+| Topic | Questions |
+| :--- | :--- |
+| opening | What's on your mind this week? What should we make sure we cover? |
+| blockers | What's slowing you down? If you could remove one obstacle, which? What are you waiting on? |
+| workload | On a scale of 1–10, how sustainable is your load? What would you drop if you had to? |
+| team | Who's been great to work with lately? Is there tension I should know about? What's one thing we should stop doing as a team? |
+| manager feedback | What's one thing I could do differently to help you more? What am I doing that I should stop? |
+| clarity | Are priorities clear? Is there anything you're doing that you're unsure matters? |
+| growth | What do you want to be doing in 1–2 years? What skill would make the biggest difference? What work would stretch you? |
+| engagement | What part of your work do you look forward to? What part do you dread? What would make you think about leaving? |
+| closing | What did we decide? What do you need from me by when? |
+
+## Delegation
+
+Delegation is not binary. Management 3.0 (Jurgen Appelo, *Management 3.0*, 2011) defines **seven levels of
+delegation**, used in the "delegation poker" exercise and a **delegation board** (a grid of decision areas × levels,
+visible to the team).
+
+| Level | Name | Who decides |
+| :--- | :--- | :--- |
+| 1 | **Tell** | I decide and tell you |
+| 2 | **Sell** | I decide and try to convince you |
+| 3 | **Consult** | I ask for your input, then decide |
+| 4 | **Agree** | we decide together |
+| 5 | **Advise** | I give advice; you decide |
+| 6 | **Inquire** | you decide; I ask about it afterwards |
+| 7 | **Delegate** | you decide; I don't need to know |
+
+```text
+DELEGATION BOARD (example: 5-person product team)
+Decision area              | Level | Notes
+Choice of library          |   7   | follow the tech radar
+Sprint scope               |   4   | agree in planning
+Hiring a new engineer      |   3   | team interviews, I decide
+Production database schema |   5   | ask the staff engineer
+Pricing changes            |   2   | founder decides, explains
+Customer refunds under 500 |   6   | support lead, weekly log
+```
+
+How to hand over a task well:
+
+- Define the **outcome and why it matters**, the constraints, and the deadline, not the method (see
+  [mission command](/leadership/mission-command/) for commander's intent).
+- Name the delegation level explicitly: "You decide; tell me afterwards."
+- Agree the check-in points and what "done" means before work starts.
+- Delegate whole problems where possible, including the interesting parts, not just the leftovers.
+- When it's done differently from how you'd have done it, ask whether it's *worse* or just *different*.
+
+### Situational leadership
+
+Paul Hersey and Ken Blanchard proposed the "life cycle theory of leadership" in 1969, renamed **Situational
+Leadership** in the 1970s. Style should match the follower's readiness for the specific task. Blanchard later
+produced his own version, **SLII** (1985, in *Leadership and the One Minute Manager*), with different labels, and the
+two versions are now sold by separate companies.
+
+| Style | Original (Hersey–Blanchard) | SLII (Blanchard) | Directive / supportive | Matches |
+| :--- | :--- | :--- | :--- | :--- |
+| S1 | **Telling** | **Directing** | high / low | R1: unable and unwilling or insecure · D1: enthusiastic beginner (low competence, high commitment) |
+| S2 | **Selling** | **Coaching** | high / high | R2: unable but willing or confident · D2: disillusioned learner (some competence, low commitment) |
+| S3 | **Participating** | **Supporting** | low / high | R3: able but unwilling or insecure · D3: capable but cautious performer |
+| S4 | **Delegating** | **Delegating** | low / low | R4: able and willing · D4: self-reliant achiever |
+
+Note the two versions order readiness differently: in SLII the beginner starts *enthusiastic* (D1) and dips in
+commitment at D2. Evidence quality: widely taught, weakly supported. Empirical tests, for example Thompson and Vecchio
+(2009, *Leadership Quarterly*), found little support for its specific prescriptions. Use it as a prompt ("am I
+over- or under-supervising this person on this task?"), not as a science.
+
+## Feedback
+
+### SBI and SBII
+
+The Center for Creative Leadership's **Situation–Behaviour–Impact** model keeps feedback specific and about
+behaviour, not character. The SBII variant adds **Intent**: ask what they were trying to do.
+
+| Step | Do | Example |
+| :--- | :--- | :--- |
+| **Situation** | when and where, specifically | "In this morning's planning meeting…" |
+| **Behaviour** | observable action, no judgement | "…you cut Priya off twice while she was presenting the estimate…" |
+| **Impact** | the effect on you, the team, the work | "…she stopped talking and we committed to a date she thinks is wrong." |
+| **Intent** (SBII) | ask, then listen | "What was going on for you?" |
+
+Bad: "You're rude in meetings." Good: the table above. For praise, the same structure makes it believable and
+repeatable: "In yesterday's incident, you posted updates every 15 minutes; support could answer customers without
+pinging us."
+
+### Radical Candor
+
+Kim Scott's *Radical Candor* (2017) crosses two axes: **care personally** and **challenge directly**.
+
+| | Low challenge | High challenge |
+| :--- | :--- | :--- |
+| **High care** | **ruinous empathy**: nice, vague, lets problems grow | **radical candor**: kind and clear |
+| **Low care** | **manipulative insincerity**: flattery to your face, criticism behind your back | **obnoxious aggression**: "brutal honesty" without care |
+
+- Most new managers fail into **ruinous empathy**: they like their reports and avoid the discomfort, so the person
+  finds out about the problem at review time or when they're let go.
+- Scott's framing is about behaviour in a given moment, not a personality label ("you did something obnoxiously
+  aggressive", not "you are an obnoxious aggressor").
+- Ask for criticism before you give it, and show you can take it.
+
+### Why not the feedback sandwich
+
+Praise, criticism, praise. It's discouraged because:
+
+- the criticism gets lost or softened, so the person remembers the praise and misses the point;
+- people learn the pattern and start discounting praise as a warm-up for bad news;
+- it feels manipulative to experienced recipients, which damages trust.
+
+Instead: give praise and criticism separately and often, each specific. The evidence base for any particular feedback
+format is thin; what's consistently supported is that feedback should be timely, specific, about behaviour and the
+task rather than the person.
+
+| Feedback rule | Why |
+| :--- | :--- |
+| soon: within a day or two | memory is fresh; it's clearly about this event |
+| private for criticism, public or private for praise | public criticism triggers defence, not learning |
+| one issue at a time | a list feels like an attack and none of it lands |
+| about behaviour, not traits | behaviour can change; "you're careless" can't be acted on |
+| ask, then listen | there's often context you don't have |
+| follow up | notice and say when the behaviour changes |
+
+## Coaching
+
+**GROW** was first published by John Whitmore in *Coaching for Performance* (1992); the name is credited to Max
+Landsberg and Graham Alexander, and the model was in use before it was named. Coaching means helping someone find
+their own answer; use it when they have the ability and need to build judgement. When someone lacks the knowledge,
+teach instead.
+
+| Stage | Aim | Questions |
+| :--- | :--- | :--- |
+| **Goal** | what they want from this conversation and beyond | What would a great outcome look like? What do you want to leave this conversation with? |
+| **Reality** | the current situation, facts not opinions | What's happening now? What have you tried? What's in your control? What's the evidence? |
+| **Options** | possible actions, widely | What could you do? What else? What would you do if you had no constraints? What would someone you admire do? |
+| **Will / way forward** | commitment | What will you do, by when? What might get in the way? How committed are you, 1–10? What would make it a 10? |
+
+Coaching habits that matter more than the model:
+
+- Ask one question at a time, then stay quiet.
+- Resist giving the answer; if you must, offer it as one option among several.
+- "What else?" is the most useful follow-up.
+- End with a specific commitment and a date.
+
+## Goals: OKRs and SMART
+
+### OKRs
+
+**Objectives and key results** came from Andy Grove at Intel in the 1970s (described in *High Output Management*).
+John Doerr learned them at Intel in 1975 and introduced them to Google in 1999; *Measure What Matters* (2018) is his
+book on them.
+
+- **Objective**: qualitative, inspiring, time-bound: *what* you want.
+- **Key results**: 3–5 measurable outcomes that show the objective was met: *how you'll know*.
+- Google distinguishes **committed** OKRs (expected to be fully met, scored 1.0) from **aspirational** or stretch OKRs
+  (expected to average around 0.7).
+
+```text
+OBJECTIVE: New customers get value on day one
+  KR1 Median time-to-first-report falls from 3 days to 4 hours
+  KR2 Onboarding completion rises from 42% to 70%
+  KR3 Day-7 retention of new accounts rises from 55% to 65%
+  (not KRs: "build new onboarding flow", "run 5 interviews";
+   those are tasks that serve the KRs)
+Type: aspirational. Score at quarter end 0.0-1.0 per KR.
+```
+
+| Common OKR failure | Fix |
+| :--- | :--- |
+| key results are tasks ("launch X") | measure the outcome the task is meant to change |
+| too many: 8 objectives × 5 KRs | 1–3 objectives per team per quarter |
+| individual OKRs used for performance review | keep OKRs at team level; people sandbag if pay depends on them |
+| set and forgotten | review weekly or fortnightly; update confidence |
+| all stretch, or all committed | label each; don't punish a 0.7 on a stretch goal |
+| business-as-usual work written as OKRs | keep "keep the lights on" as health metrics, not OKRs |
+| cascaded top-down only | teams propose; leaders align |
+
+### SMART
+
+From George T. Doran, "There's a S.M.A.R.T. way to write management's goals and objectives" (*Management Review*,
+November 1981). His original letters: **Specific, Measurable, Assignable, Realistic, Time-related**. Later versions
+swap in Achievable, Relevant and others. SMART suits individual development goals and committed deliverables; it is
+a poor fit for exploratory work where the target isn't knowable yet, and Doran himself noted not every objective can
+be quantified.
+
+## Performance management
+
+Most performance problems are expectation problems. Before concluding someone is underperforming, check:
+
+| Question | If "no" |
+| :--- | :--- |
+| Did they know, specifically, what good looks like? | write it down with them |
+| Have they had direct, specific feedback that there's a gap? | give it now (SBI) |
+| Do they have the skill, tools, information and time? | train, resource, or re-scope |
+| Is something outside work going on? | ask, adjust temporarily, point to support |
+| Is the role still the right fit? | consider a different role before an exit |
+
+### PIPs done honestly
+
+A **performance improvement plan** is a written, time-boxed set of expectations. Be honest about which kind you are
+running:
+
+- **A real improvement plan**: you believe they can succeed; goals are achievable; you'll invest coaching time.
+  Say so.
+- **A documented exit**: you've already decided. Then a PIP is cruel theatre. A direct conversation and a fair
+  severance are usually kinder and cleaner.
+
+```text
+PERFORMANCE PLAN (real improvement version)
+Role expectation: ______________________________
+Gap (specific, with examples and dates): ________
+What success looks like by [date] (measurable):
+  1. ...
+  2. ...
+Support I will provide: weekly 30-min check-in;
+  pairing with ____; training on ____
+Check-ins: [dates]
+If the goals are met: plan closes, noted as resolved.
+If not met: next step is ____ (be explicit).
+Signed/acknowledged: ____  Date: ____
+```
+
+### Firing well
+
+- **No surprises**: the person should already know from earlier conversations that their job was at risk.
+- Decide first, then have a short conversation; don't negotiate or relitigate in the meeting.
+- Do it early in the week, in private, with HR or a witness if needed, and with logistics ready (pay, equipment,
+  access, what the team will be told).
+- Be generous where you can: severance, a reference for what they did well, time to say goodbye if appropriate.
+- Tell the team promptly and briefly, without disparaging the person.
+- Employment law varies widely by country and state; get advice before any dismissal.
+
+## Hiring
+
+### What predicts job performance
+
+Schmidt and Hunter's 1998 meta-analysis (*Psychological Bulletin*) put structured interviews, work samples and
+general mental ability (GMA) tests at the top. Sackett, Zhang, Berry and Lievens (2022, *Journal of Applied
+Psychology*) showed that earlier corrections for range restriction were overdone: most validity estimates fall by
+about .10–.20, and **structured interviews became the top-ranked** procedure.
+
+| Method | Schmidt & Hunter 1998 | Sackett et al. 2022 |
+| :--- | :--- | :--- |
+| structured interview | .51 | **.42** |
+| work sample test | .54 | .33 |
+| general mental ability test | .51 | .31 |
+| unstructured interview | .38 | .19 |
+
+- Values are corrected correlations with job performance. Even .42 leaves most variance unexplained: the 80%
+  credibility interval for structured interviews runs from about .18 to .66.
+- Structured means: the same job-related questions for every candidate, anchored rating scales, scoring each answer
+  independently before discussing, and multiple interviewers.
+- Unstructured "chat and gut feel" interviews are half as predictive and let bias in.
+
+### Scorecards and the A method
+
+Geoff Smart and Randy Street's *Who: The A Method for Hiring* (2008) has four steps:
+
+1. **Scorecard**: the role's mission, 3–8 measurable outcomes, and the competencies required.
+2. **Source**: build a pipeline, mostly from referrals, before you need it.
+3. **Select**: a screening interview, a chronological career interview (their "Who interview"), focused interviews
+   on scorecard outcomes, and reference interviews.
+4. **Sell**: persuade the candidate you want.
+
+```text
+ROLE SCORECARD
+Mission (1 sentence): why this role exists
+Outcomes (measurable, 12 months):
+  1. Ship X so that Y improves from A to B by [date]
+  2. ...
+Competencies (5-8, each defined):
+  - Ownership: fixes problems outside their lane
+  - ...
+Interview plan: which interviewer probes which outcome
+  or competency, with which questions.
+Rating: 1-4 per competency, anchored examples for 1 and 4,
+  scored before the debrief.
+```
+
+| Hiring mistake | Fix |
+| :--- | :--- |
+| hiring for "culture fit", meaning "like us" | define the values and behaviours; assess those |
+| everyone asks the same easy questions | assign each interviewer specific competencies |
+| debrief where the most senior voice anchors everyone | written scores submitted before discussion |
+| hiring fast to relieve pain | a bad hire costs more than a gap; keep the bar |
+| no work sample for a skills role | a short, paid or time-boxed realistic task |
+
+## Meetings
+
+Grove splits meetings into **process-oriented** (regularly scheduled: one-on-ones, staff meetings, operations
+reviews) and **mission-oriented** (called to solve a specific problem or make a decision, often once).
+
+| Meeting | Purpose | Cadence | Keys |
+| :--- | :--- | :--- | :--- |
+| one-on-one | the report's issues, coaching | weekly | their agenda first |
+| team or staff meeting | cross-team issues, decisions, context | weekly | agenda sent in advance; decisions recorded |
+| standup | coordination and blockers | daily or async | under 15 min; problems taken offline |
+| decision meeting | make one decision | as needed | pre-read; named decider; options on paper |
+| retro | improve how the team works | per sprint or project | blameless; one or two changes, with owners |
+| all-hands | context, direction, recognition | monthly | Q&A, including anonymous questions |
+
+**Written pre-reads.** Amazon does no slide presentations: teams write narratively structured six-page memos, read
+silently at the start of the meeting in a kind of "study hall" (Bezos, 2017 shareholder letter). The memo forces
+complete thinking; the silent read ensures everyone has actually read it. See
+[persuasive writing](/writing/nonfiction/persuasive-writing/) for how to write one.
+
+```text
+DECISION MEMO (1-2 pages, sent 24h before)
+Decision needed: one sentence. Decider: name. By: date.
+Context: what's true now, with numbers.
+Options:
+  A. ... Pros / cons / cost / risk
+  B. ...
+  C. Do nothing: what happens
+Recommendation and why.
+What would change our mind.
+Reversibility: one-way door or two-way door?
+```
+
+Meeting hygiene: no agenda, no meeting; start with the decision needed; end with decisions, owners and dates;
+shortest default length the calendar allows; anyone may leave a meeting they're not contributing to.
+
+## Decision rights: RACI and DACI
+
+Most slow decisions have unclear decision rights, not hard trade-offs.
+
+| RACI | Meaning |
+| :--- | :--- |
+| **Responsible** | does the work (can be several) |
+| **Accountable** | owns the outcome and signs off; exactly one person |
+| **Consulted** | gives input before the decision (two-way) |
+| **Informed** | told after (one-way) |
+
+| DACI (Atlassian's version) | Meaning |
+| :--- | :--- |
+| **Driver** | runs the process: gathers stakeholders and information, gets a decision by the agreed date |
+| **Approver** | the one person who makes the decision |
+| **Contributors** | have expertise and a voice, but no vote |
+| **Informed** | told once it's made |
+
+RACI suits ongoing responsibilities; DACI suits one-off decisions. The rule that matters in both: **one** accountable
+person or approver. Two approvers means nobody is.
+
+## Managing up
+
+John Gabarro and John Kotter's "Managing Your Boss" (*Harvard Business Review*, 1980) argues the boss relationship is
+one of mutual dependence that you should manage deliberately. Their advice, paraphrased: understand your boss's
+goals, pressures, strengths, weaknesses and preferred working style; understand your own; and build a relationship
+that suits both, keeping them informed, being dependable and honest, and using their time selectively.
+
+| Do | Don't |
+| :--- | :--- |
+| learn how they like information: written or verbal, detail or summary | send the same format to every boss |
+| bring problems early, with a recommendation | surprise them, especially in public |
+| make their goals your team's priorities, or argue openly to change them | quietly work on a different agenda |
+| write a short weekly update: progress, risks, asks | make them chase you for status |
+| disagree in private, commit in public | undermine a decision to your team |
+| ask what they'd need from you to delegate more | wait to be given autonomy |
+
+```text
+WEEKLY UPDATE TO YOUR MANAGER (5 minutes to read)
+Headline: on track / at risk / off track, one line why
+Done this week: 3 bullets, outcomes not activity
+Next week: 3 bullets
+Risks: what might slip, what I'm doing about it
+Asks: decisions or help I need from you, by when
+People: anything about the team you should know
+```
+
+## Maker's schedule vs manager's schedule
+
+Paul Graham's essay "Maker's Schedule, Manager's Schedule" (July 2009): managers work in one-hour slots; makers
+(programmers, writers) need half-day blocks at least. "A meeting commonly blows at least half a day, by breaking up a
+morning or afternoon." His fix was office hours clustered at the end of the day.
+
+- As a founder-engineer you're on both schedules. Protect maker blocks deliberately (for example, mornings) and batch
+  meetings into the rest of the day.
+- Give your team the same protection: meeting-free days or blocks, async standups, and your own one-on-ones next to
+  their existing meetings rather than in the middle of a clear afternoon.
+- The more reports you have, the less maker time you'll get. A common rule of thumb: past about 5–8 reports, stop
+  owning critical-path work and keep coding on things nobody is blocked by.
+
+## Burnout and workload
+
+The WHO's ICD-11 describes **burn-out** as an occupational phenomenon (not a medical condition) resulting from
+chronic workplace stress that has not been successfully managed, with three dimensions: energy depletion or
+exhaustion; increased mental distance from, or cynicism about, one's job; and reduced professional efficacy.
+
+| Signal | What you might see |
+| :--- | :--- |
+| exhaustion | late-night messages, missed holidays, "just tired", more sick days |
+| cynicism | sarcasm about the product or leadership, "what's the point", withdrawal from discussions |
+| reduced efficacy | quality slipping in someone who used to be strong, decisions avoided, more errors |
+| changes | a talkative person goes quiet, or the reverse; camera off; shorter answers |
+
+Christina Maslach and Michael Leiter's work links burnout to mismatches in six areas of work life: **workload,
+control, reward, community, fairness and values**. Only the first is about hours; the others are about how the work
+is managed.
+
+What a manager can do:
+
+- Ask directly in one-on-ones: "How sustainable is your load, 1 to 10?" Act on anything under 6.
+- Cut scope, not quality or sleep. Say out loud what the team will stop doing.
+- Treat heroics as a process failure to fix, not a culture to celebrate.
+- Model it: take your holiday, don't send messages at midnight (schedule them).
+- Rotate on-call and unglamorous work fairly.
+- Know the support available (employee assistance programme, health cover) and point people to it; you're not a
+  therapist.
+
+## Scripts for hard conversations
+
+Keep them short, specific and kind. Say the headline in the first sentence.
+
+```text
+UNDERPERFORMANCE (first direct conversation)
+"I want to talk about the last two sprints. Three of your
+five tickets slipped, and the payment bug went to
+production without tests. That's below what the role
+needs, and I'm worried about it. What's going on from
+your side?"
+[listen]
+"Here's what I need to see over the next four weeks: ...
+What support would help? Let's check in every Friday."
+```
+
+```text
+BEHAVIOUR THAT AFFECTS THE TEAM
+"In Tuesday's design review you called Sam's proposal
+'junior-level thinking'. Sam didn't speak for the rest of
+the meeting, and two people mentioned it to me. I need
+disagreement to be about the idea, not the person. Can you
+tell me how you saw it?"
+```
+
+```text
+SAYING NO TO A PROMOTION (for now)
+"I'm not putting you forward this cycle. You're strong on
+X and Y. The gap for senior is Z: leading a project across
+teams end to end. Here's a project that would show it.
+If you deliver it, I expect to put you forward next cycle."
+```
+
+```text
+LAYING SOMEONE OFF (role eliminated)
+"I have difficult news. We're reducing the team and your
+role is one of those affected. Today is your last working
+day. This is a business decision, not a judgement of your
+work. [HR name] will take you through pay, notice and
+benefits. I'll gladly be a reference for you."
+```
+
+```text
+RECEIVING CRITICISM FROM A REPORT
+"Thank you for telling me. That can't have been easy.
+Can you give me an example so I understand it properly?"
+[listen, don't defend]
+"I'm going to think about this and try ___. Tell me
+if you don't see a difference in a couple of weeks."
+```
+
+## First 90 days as a new manager
+
+Michael Watkins' *The First 90 Days* (2003) is the standard book on leadership transitions. A checklist for a
+first-time manager of a small team:
+
+```text
+DAYS 1-30: LISTEN AND LEARN
+[ ] One-on-one with every report: goals, frustrations,
+    how they like feedback, what they'd change
+[ ] Meet your manager: their expectations, how they'll
+    judge success at 90 days and at a year
+[ ] Meet key peers and stakeholders: what they need from
+    your team, what's not working
+[ ] Read the last quarter's docs, metrics, incidents
+[ ] Set up weekly one-on-ones and a team meeting
+[ ] Don't change processes yet, unless something's on fire
+
+DAYS 31-60: CLARIFY AND DECIDE
+[ ] Write a one-page team charter: purpose, priorities,
+    how we work, what we won't do
+[ ] Agree team goals or OKRs with your manager
+[ ] Pick one or two early wins that matter to the team
+[ ] Make the delegation levels explicit (delegation board)
+[ ] Give your first specific feedback, positive and
+    corrective
+
+DAYS 61-90: IMPROVE AND BUILD
+[ ] Fix the biggest process pain the team named
+[ ] Address any performance issue you've confirmed
+[ ] Agree a growth goal with each report
+[ ] Ask the team and your manager for feedback on you
+[ ] Plan the next quarter
+```
+
+## Common new-manager mistakes
+
+Linda Hill's research on new managers (*Becoming a Manager*, 1992; "Becoming the Boss", HBR 2007) found they expect
+their authority to come from the position and to control their reports, then discover that authority has to be
+earned through credibility and that the job is building the team, not managing individuals one by one.
+
+| Mistake | Better |
+| :--- | :--- |
+| still acting as the best individual contributor | measure yourself by team output (Grove) |
+| taking over when things get hard | coach; delegate at the right level; accept "different" |
+| avoiding hard feedback to stay liked | radical candor: care and challenge |
+| treating everyone the same way | adjust to task-relevant maturity |
+| cancelling one-on-ones | protect them; move, don't cancel |
+| being a friend first | be friendly, fair and consistent; friendship with reports gets complicated |
+| hiding problems from your boss | bad news early, with a plan |
+| shielding the team from all context | share the why; people make better decisions with it |
+| changing everything in the first month | listen for 30 days first |
+| ignoring your own workload and learning | get a mentor or peer group of managers |
+
+## References
+
+- Andrew S. Grove, *High Output Management* (Random House, 1983; Vintage, 2015): managerial output, leverage, task-relevant maturity, one-on-ones, meetings, OKRs
+- Jurgen Appelo, *Management 3.0: Leading Agile Developers, Developing Agile Leaders* (Addison-Wesley, 2011) and [Management 3.0: Delegation Poker](https://management30.com/practice/delegation-poker/): the seven levels of delegation
+- Paul Hersey and Kenneth H. Blanchard, "Life Cycle Theory of Leadership", *Training and Development Journal* 23(5), 1969: the original situational leadership model
+- Ken Blanchard, Patricia Zigarmi and Drea Zigarmi, *Leadership and the One Minute Manager* (William Morrow, 1985): SLII
+- [Thompson and Vecchio (2009), Situational leadership theory: A test of three versions](https://doi.org/10.1016/j.leaqua.2009.06.014), *The Leadership Quarterly* 20(5): empirical test
+- [Center for Creative Leadership: Situation-Behavior-Impact and SBII](https://www.ccl.org/articles/leading-effectively-articles/closing-the-gap-between-intent-vs-impact-sbii/): the SBI feedback model
+- Kim Scott, *Radical Candor* (St. Martin's Press, 2017) and [Radical Candor: our approach](https://www.radicalcandor.com/our-approach/): the four quadrants
+- John Whitmore, *Coaching for Performance* (Nicholas Brealey, 1992): the GROW model
+- John Doerr, *Measure What Matters* (Portfolio, 2018): OKRs from Intel to Google
+- George T. Doran, "There's a S.M.A.R.T. way to write management's goals and objectives", *Management Review* 70(11), 1981
+- [Schmidt and Hunter (1998), The validity and utility of selection methods in personnel psychology](https://doi.org/10.1037/0033-2909.124.2.262), *Psychological Bulletin* 124(2): the classic validity estimates
+- [Sackett, Zhang, Berry and Lievens (2022), Revisiting meta-analytic estimates of validity in personnel selection](https://doi.org/10.1037/apl0000994), *Journal of Applied Psychology* 107(11): revised, lower estimates; structured interviews top
+- [Sackett et al. (2023), Revisiting the design of selection systems in light of new findings](https://doi.org/10.1017/iop.2023.24), *Industrial and Organizational Psychology* 16(3): practical implications
+- Geoff Smart and Randy Street, *Who: The A Method for Hiring* (Ballantine, 2008): scorecards and the four-step method
+- [Jeff Bezos, 2017 Letter to Shareholders](https://www.aboutamazon.com/news/company-news/2017-letter-to-shareholders): six-page memos and high standards
+- [Atlassian Team Playbook: DACI](https://www.atlassian.com/team-playbook/plays/daci): decision roles
+- John J. Gabarro and John P. Kotter, "Managing Your Boss", *Harvard Business Review*, January–February 1980
+- [Paul Graham, Maker's Schedule, Manager's Schedule](http://paulgraham.com/makersschedule.html) (2009)
+- [WHO: Burn-out an "occupational phenomenon"](https://www.who.int/news/item/28-05-2019-burn-out-an-occupational-phenomenon-international-classification-of-diseases) (2019): the ICD-11 definition
+- Christina Maslach and Michael P. Leiter, *The Truth About Burnout* (Jossey-Bass, 1997): six areas of work life
+- Michael D. Watkins, *The First 90 Days* (Harvard Business School Press, 2003): leadership transitions
+- Linda A. Hill, *Becoming a Manager* (Harvard Business School Press, 1992): research on first-time managers
+- Camille Fournier, *The Manager's Path* (O'Reilly, 2017): engineering management from tech lead to CTO

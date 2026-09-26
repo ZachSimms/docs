@@ -1,0 +1,367 @@
+---
+title: Models from other fields
+date: 2026-09-26
+order: 5
+---
+
+A catalogue of the big ideas from physics, engineering, chemistry, biology, economics, mathematics, military
+strategy, computer science and social life that transfer to business, engineering and everyday decisions. Each
+table gives the model, the idea, the question it prompts and an example; the most useful models get a worked
+section. General tools are in [thinking tools](/thinking/mental-models/general-thinking/), probability and
+statistics in [probability and risk](/thinking/mental-models/probability-risk/), psychology in depth in
+[cognitive biases](/thinking/mental-models/cognitive-biases/). Feedback loops, stocks and flows are in
+[systems thinking](/thinking/systems-thinking/).
+
+## How to use this catalogue
+
+The value of borrowing from another field is a **different question**. A product problem viewed through
+physics ("where is the friction?"), biology ("what niche does this fit?") and economics ("who is paid to do
+what?") produces three different diagnoses. Munger's argument for a multidisciplinary "latticework of models"
+is summarised in [thinking tools](/thinking/mental-models/general-thinking/).
+
+| Step | Do |
+| :--- | :--- |
+| 1 | state the problem in one sentence, without jargon |
+| 2 | run three models from three **different** fields; write the question each one asks |
+| 3 | note where they agree (probably true) and disagree (where to dig) |
+| 4 | check each model's domain: does the analogy actually hold here? |
+| 5 | act on the diagnosis that is cheapest to test |
+
+<Callout type="warn" title="Analogies are hypotheses">A model borrowed from another field is a hypothesis about your problem, not evidence. Physics metaphors in particular are easy to over-trust because they sound rigorous. The question is always whether the mechanism, not just the vocabulary, carries across.</Callout>
+
+## Physics and engineering
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **leverage** | a small force at the right point moves a large load | "Where does one unit of effort produce the most output?" | code, media and capital are leverage: one engineer's library used by 1,000 teams |
+| **inertia and momentum** | objects keep doing what they're doing; changing direction takes force proportional to mass | "How much force will it take to change this, and what's the cost of stopping what's already moving?" | a big company's roadmap; a habit; a growing product with word-of-mouth |
+| **friction** | resistance that wastes energy at every step | "What small obstacles stand between the user (or team) and the action?" | removing one sign-up field; a one-command dev setup |
+| **activation energy** | a reaction needs an initial push before it proceeds by itself | "What's the up-front hump that stops people starting?" | a new tool nobody tries because setup takes a day |
+| **critical mass** | below a threshold a chain reaction dies out; above it, it sustains itself | "How many participants before this is self-sustaining?" | a marketplace needs enough sellers per city before buyers stay |
+| **entropy** | closed systems drift towards disorder; order takes continuous energy | "What maintenance does this need, or it decays?" | docs rot, dependencies age, codebases and cultures degrade without upkeep |
+| **equilibrium** | systems settle where forces balance; disturbed, they tend back (Le Chatelier's principle in chemistry) | "What forces hold the current state in place?" | a price war ends at a new equilibrium; a reorg drifts back to old habits |
+| **redundancy and backups** | spare components so one failure doesn't stop the system | "What is the single point of failure?" | N+1 servers; two people who can deploy; a second supplier |
+| **margin of safety** | design for loads well above the expected maximum | "Do we survive being wrong by 30–50%?" | capacity headroom; runway buffer (see [thinking tools](/thinking/mental-models/general-thinking/)) |
+| **bottlenecks** | throughput is set by the slowest step | "Where does work queue up?" | see theory of constraints below |
+| **feedback and control** | measure output, compare to target, adjust input | "What's the sensor, what's the setpoint, how long is the delay?" | autoscaling; OKRs; see [systems thinking](/thinking/systems-thinking/) |
+| **breakpoints and non-linearity** | behaviour changes abruptly at thresholds (phase transitions: water at 0 °C and 100 °C) | "Where does more of the same stop working, or suddenly work?" | a database fine at 1M rows falls over at 100M; a team of 8 vs 15 |
+| **scale and the square-cube law** | scale a shape up and volume grows with the cube of size, area with the square (Galileo, *Two New Sciences*, 1638) | "What grows faster than what as we get bigger?" | why ants can't be elephant-sized; why coordination costs outrun headcount |
+
+### Bottlenecks and the theory of constraints
+
+Eliyahu Goldratt's business novel *The Goal* (1984, with Jeff Cox) argues that any system has one constraint
+that limits its output, and improving anything else is wasted effort. His **five focusing steps**:
+
+1. **Identify** the constraint.
+2. **Exploit** it: get the most out of it as it is (never let it sit idle).
+3. **Subordinate** everything else to it: other steps work at its pace, not their own.
+4. **Elevate** it: add capacity only after the steps above.
+5. **Repeat**: once it's no longer the constraint, find the new one.
+
+**Worked example.** A team's PRs wait on average two days for review and 20 minutes for CI. Buying faster CI
+runners (non-constraint) changes nothing. Exploit: reserve review blocks each day. Subordinate: cap work in
+progress so people review before starting new work. Elevate: train two more reviewers for the core module. The
+constraint then moves, perhaps to QA or product decisions.
+
+**Where it misleads.** Knowledge work has shifting, invisible constraints (attention, decisions, unclear
+requirements), not a fixed machine. And local utilisation targets ("keep every engineer 100% busy") create
+queues; see Little's law on [system design](/infrastructure/system-design/).
+
+### Scale: the square-cube law for organisations
+
+Communication channels in a group of $n$ people grow as $\frac{n(n-1)}{2}$: 10 channels for 5 people, 45 for 10,
+1,225 for 50. Output grows roughly linearly with headcount; coordination grows roughly quadratically. Fred Brooks
+made the software version famous in *The Mythical Man-Month* (1975): adding people to a late software project
+makes it later (Brooks's law, paraphrased). The fix at scale is structure: small teams, clear interfaces between
+them, fewer required channels.
+
+## Chemistry
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **catalysts** | a substance that lowers activation energy and speeds a reaction without being used up | "What person, tool or event would make this happen faster without being consumed?" | a respected engineer adopting a tool first; a deadline; a template that makes the first draft trivial |
+| **alloying** | combining elements gives properties neither has alone (steel: iron plus a little carbon is far stronger than iron) | "What combination produces a property no single element has?" | engineer + domain expert co-founders; design + data in one team |
+| **activation energy** | see physics above; chemistry's original model | "How do we lower the hump?" | free trial, sample data, one-click import |
+
+## Biology
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **evolution by natural selection** | variation + selection + inheritance → adaptation, without a designer | "What varies, what selects, and what gets copied forward?" | A/B testing; startups as variants selected by markets; practices that spread through a company |
+| **adaptation and the Red Queen effect** | competitors co-evolve, so you must keep improving just to hold position (Leigh Van Valen, "A New Evolutionary Law", 1973) | "If we stand still for a year, where do we end up relative to competitors?" | security arms races; ad-targeting vs ad-blocking; feature parity treadmills |
+| **ecosystems and niches** | species survive by fitting a niche; ecosystems have interdependencies | "What niche do we fill that nobody else fills as well? Who depends on whom?" | a vertical SaaS for dental clinics vs a generic CRM; platform partners |
+| **hormesis** | a low dose of a stressor triggers adaptation that makes the organism stronger; a high dose harms | "What small, controlled stress would make this system stronger?" | exercise; chaos engineering; game days; small code-review critiques early in a career |
+| **homeostasis** | organisms actively hold key variables (temperature, blood sugar) within a range | "What is this system defending, and how will it push back if I change it?" | a team re-creates the old process after a reorg; prices that snap back |
+| **incentives in biology** | behaviour follows payoffs; costly signals are credible because they're costly (Amotz Zahavi's handicap principle, 1975) | "What does this behaviour pay off for the actor? Is the signal costly enough to be honest?" | a free "commitment" is cheap talk; a signed LOI with a deposit is a costly signal |
+| **replication** | what copies itself with enough fidelity and selection spreads | "Does this idea or feature copy itself? What's its copying fidelity?" | viral loops; memes (Richard Dawkins coined the word in *The Selfish Gene*, 1976) |
+
+**Evolution, worked.** A growth team runs 40 experiments a quarter. Evolution suggests: maximise *variation*
+(many cheap, different tests, not 40 button colours), make *selection* honest (pre-registered metrics, adequate
+sample sizes), and ensure *inheritance* (winning changes get merged and documented, not lost when the
+experimenter leaves).
+
+**Where biology misleads.** Evolution optimises for survival and reproduction, not for anyone's goals, and it's
+slow and wasteful: most variants die. "Survival of the fittest" means fittest to the *current* environment,
+which can change overnight. And borrowing biology for social questions has an ugly history (social Darwinism);
+keep it to mechanisms, not moral conclusions.
+
+## Economics
+
+Theory and worked examples are on [microeconomics](/economics/microeconomics/) and
+[macroeconomics](/economics/macroeconomics/); this is the portable version.
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **supply and demand** | price moves to balance quantity wanted and quantity offered | "What happens to price if demand or supply shifts?" | senior ML engineers' salaries rising when every company wants AI features |
+| **incentives** | people respond to rewards and costs, including unintended ones | "Who gets rewarded for what? What would I do in their shoes?" | sales paid on bookings, not retention, sell to customers who churn |
+| **comparative advantage** | specialise in what you give up least to do, even if someone else is better at everything (David Ricardo, 1817) | "What is my opportunity cost of doing this myself?" | the CTO who codes best should still delegate code and do hiring |
+| **opportunity cost** | the cost of a choice is the best alternative forgone | "Compared to what?" | see [decision-making](/thinking/mental-models/decision-making/) |
+| **diminishing returns** | each extra unit of an input adds less output | "Is the next unit of effort worth as much as the last?" | the fifth round of design polish; the 12th engineer on one service |
+| **economies of scale** | average cost falls as volume grows | "Does unit cost fall with volume here, and do we have the volume?" | cloud providers; a startup can't win on cost against incumbents |
+| **network effects** | each user makes the product more valuable to others (Metcalfe's law says value grows with $n^2$; the exponent is disputed) | "Does one more user make it better for the others, and for whom exactly?" | messaging apps, marketplaces; a to-do app has none |
+| **switching costs** | the cost of moving to a competitor, in money, time, data or retraining | "What would it cost a customer to leave?" | data lock-in, integrations, trained staff |
+| **principal–agent problem** | an agent acting for a principal has different incentives and more information (formalised by Michael Jensen and William Meckling, 1976) | "Whose interests does this person actually serve?" | an agency paid by the hour; managers optimising their own metric; a founder vs investors |
+| **tragedy of the commons** | shared resources get overused when each user bears only a fraction of the cost (Garrett Hardin, *Science*, 1968; Elinor Ostrom's *Governing the Commons*, 1990, shows communities often manage commons well with the right rules) | "Who pays for the shared thing, and who uses it?" | a shared staging environment; a monorepo's CI minutes; everyone's calendar |
+| **creative destruction** | innovation destroys old industries and firms as it creates new ones (Joseph Schumpeter, *Capitalism, Socialism and Democracy*, 1942) | "What does our success destroy, and what will destroy us?" | streaming vs DVD rental; LLMs vs parts of search |
+| **Goodhart's law** | a measure turned into a target stops measuring well (Charles Goodhart, 1975; the popular wording is Marilyn Strathern's, 1997) | "How would a smart person game this metric?" | lines-of-code targets; tickets closed; test coverage % |
+
+### Incentives
+
+If you remember one model from economics, make it this. Munger's talk "The Psychology of Human Misjudgment"
+(1995; revised text 2005) puts reward and punishment first in its list of tendencies; the self-deception
+version, **incentive-caused
+bias** (people come to believe what they're paid to believe), is on
+[cognitive biases](/thinking/mental-models/cognitive-biases/).
+
+**Worked example.** A support team is measured on average handle time. First-order effect: shorter calls.
+Second-order: agents close tickets before the problem is solved; customers call back; total contacts rise and
+satisfaction falls. Better design: measure first-contact resolution with a counter-metric (repeat contacts
+within 7 days), and read a sample of tickets.
+
+```text
+INCENTIVE AUDIT
+For each actor (employee, team, customer, partner, investor):
+  What are they paid / praised / promoted for?
+  What are they punished for?
+  What do they know that I don't?
+  If I were them, what would I do - including gaming it?
+  Does that match what we want? If not, change the
+  incentive, not the speech.
+```
+
+## Mathematics
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **compounding** | growth on growth: $FV = PV(1+r)^n$ | "What small rate, sustained for years, beats a large one-off?" | skills, relationships, reputation, code quality, money |
+| **power laws** | a few items account for most of the total; no "typical" value | "Is this distribution dominated by its extremes?" | startup returns, book sales, customer revenue, bug impact |
+| **multiplicative systems** | when factors multiply, a zero anywhere zeroes the result | "Is this a product of factors? Which one is near zero?" | a conversion funnel; team × market × product |
+| **regression to the mean** | extreme results tend to be followed by more average ones | "Was the extreme result partly luck?" | see [probability and risk](/thinking/mental-models/probability-risk/) |
+| **permutations and combinatorics** | the number of combinations explodes with the number of parts | "How many states or paths are there really?" | feature flags ($2^{10} = 1{,}024$ combinations), test matrices, coordination channels |
+| **asymmetry and convexity** | a convex payoff gains more from upside than it loses from downside; Nassim Taleb's *Antifragile* (2012) builds a philosophy on seeking convex bets | "Is my downside capped and my upside open?" | cheap experiments with large possible payoffs; options; open-source side projects |
+
+### Compounding
+
+$$
+FV = PV(1 + r)^n, \qquad \text{doubling time} \approx \frac{72}{r\,(\%)}
+$$
+
+**Worked example.** \$10,000 at 7% a year for 30 years grows to about \$76,000 ($1.07^{30} \approx 7.61$). The rule of 72
+gives a doubling time of about 10 years ($72/7 \approx 10.3$), so roughly three doublings. The same shape applies
+to anything whose growth feeds on its current size: an audience, a codebase's tech debt interest, a team's
+reputation for shipping.
+
+**Where it misleads.** Real growth rates don't hold: compounding curves become S-curves when they hit a market
+size, a physical limit or competition. "Get 1% better every day" ($1.01^{365} \approx 37.8$) is arithmetic, not
+a finding about skills. And compounding works in both directions: small persistent losses (churn, a slow
+regression) compound too. Money specifics are on [investing](/finance/personal/investing/).
+
+### Multiplicative systems
+
+```text
+10,000 visitors
+ x 3%  sign up        =    300
+ x 40% activate       =    120
+ x 10% pay            =     12 customers
+
+Double any one step   ->  24 customers
+Any step at 0%        ->   0 customers
+```
+
+In an additive system you can compensate for a weak part; in a multiplicative one you can't. Early-stage
+companies are multiplicative (team × market × product × distribution), which is why fixing the worst factor
+beats polishing the best one.
+
+### Power laws
+
+In a power-law world the average is misleading and the outliers are everything. Venture returns are the classic
+case: a small fraction of investments return most of the fund. Consequences: in power-law domains, optimise for
+the size of the upside, not the hit rate; in normal-distribution domains (heights, most operational metrics),
+averages and consistency are fine. Peter Thiel's version of this argument is on
+[Peter Thiel's advice](/startups/advice/peter-thiel/).
+
+## Military and strategy
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **OODA loop** | observe, orient, decide, act, faster than the opponent (John Boyd) | "Whose loop is faster, and where is ours slow?" | see [the OODA loop](/leadership/ooda-loop/) |
+| **Schwerpunkt / concentration of force** | *Schwerpunkt* ("point of main effort", German doctrine): concentrate strength at the decisive point instead of spreading it evenly | "Where is our one main effort this quarter?" | one launch, one segment, one metric; not ten priorities at 10% each |
+| **asymmetric warfare** | a weaker side avoids the stronger side's strengths and attacks where it's weak | "Where can't the incumbent follow us without hurting itself?" | a startup targets a segment too small for the incumbent, or a model that cannibalises its revenue |
+| **seeing the front** | leaders who go to where the work happens see what reports and dashboards miss | "When did I last see this with my own eyes?" | founders doing support shifts; managers sitting in on sales calls; see [extreme ownership](/leadership/extreme-ownership/) |
+
+**Where military models mislead.** Business is mostly positive-sum; framing every customer as terrain and every
+competitor as an enemy produces paranoid, zero-sum decisions. Borrow the concepts about speed, focus and
+information; leave the rhetoric.
+
+## Psychology basics
+
+Human behaviour runs through every model on this page. The biases are catalogued in
+[cognitive biases](/thinking/mental-models/cognitive-biases/); the three that most often break borrowed models:
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **incentive-caused bias** | people sincerely come to believe what they're rewarded for believing | "What would this person believe if they were paid differently?" | a vendor's benchmark; a team defending its own project |
+| **confirmation bias** | we seek and remember evidence for what we already think | "Where's the evidence against?" | a founder who only hears the positive customer calls |
+| **man-with-a-hammer** | the tool you know best becomes the lens for everything | "Am I reaching for this model because it fits, or because it's mine?" | the engineer who sees every problem as a tooling problem |
+
+## Computer science
+
+Several of these are drawn from Brian Christian and Tom Griffiths, *Algorithms to Live By* (2016).
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **explore/exploit** | trade off trying new options (explore) against using the best known (exploit); the multi-armed bandit problem | "How much time is left? Explore more when the horizon is long." | try new restaurants when you've just moved; exploit favourites before you leave; early-stage vs late-stage product bets |
+| **optimal stopping (37% rule)** | with $n$ options seen one at a time and no going back, look at the first $n/e \approx 37\%$ without committing, then take the first one better than all so far; this picks the best about 37% of the time | "Am I in a sequential, no-recall search? Have I set my look-then-leap point?" | a 30-day flat search: look for ~11 days, then take the first flat better than everything seen |
+| **caching** | keep what you'll need soon close at hand; evict the least recently used | "What do I access most, and is it within reach?" | a desk with today's work; a CDN; a FAQ for the ten most common support questions |
+| **batching** | group similar tasks to amortise the switching cost | "What set-up cost am I paying repeatedly?" | email twice a day; deploy trains; batch invoice processing |
+| **sorting** | ordering costs work up front; only worth it if you'll search later | "Will I ever search this? If not, don't sort it." | inbox zero vs search; tagging every document nobody will look up |
+| **abstraction** | hide detail behind a simpler concept so you can reason at a higher level | "What level of detail does this decision need?" | a finance model at monthly granularity; an API that hides a vendor |
+| **interfaces** | agree on the contract between parts so each can change independently | "What's the contract between these teams or systems?" | team APIs, SLAs, a clear RACI; see [decision-making](/thinking/mental-models/decision-making/) |
+| **big-O intuition** | how cost grows with input size matters more than cost at today's size | "What happens to this process at 10× and 100×?" | a manual onboarding step that is O(customers); a meeting that is O(team²) |
+| **idempotence** | doing it twice has the same effect as doing it once | "Is it safe to retry?" | payment APIs with idempotency keys; runbooks you can re-run; a policy that's fine if applied twice |
+| **tech debt** | shortcuts are a loan: you ship sooner and pay interest until you repay the principal (Ward Cunningham, OOPSLA 1992) | "What's the interest rate on this shortcut, and when do we repay?" | a hard-coded config fine for one customer, painful at twenty |
+
+**Where CS models mislead.** Algorithms assume a well-defined problem: the 37% rule needs a known number of
+options, no recall and rank-only information, and real searches often let you go back or learn values. People
+are not caches, and a "batch" of one-to-ones delays feedback. The metaphors are useful because they are precise;
+check the preconditions.
+
+### Tech debt as a model
+
+Cunningham's framing (1992) is a financial metaphor: some debt is a sensible loan taken to learn faster, and the
+danger is not the borrowing but never repaying. It generalises beyond code:
+
+| Kind | Loan | Interest |
+| :--- | :--- | :--- |
+| code | copy-paste, missing tests, hard-coded values | slower changes, more bugs |
+| process | "just DM me" instead of a documented process | every new hire asks the same questions |
+| organisational | a reporting line that "works for now" | unclear ownership, slow decisions |
+| product | a one-off feature for one big customer | every later feature has to work around it |
+
+Take debt deliberately, write it down, and schedule repayment when the interest (measured in slowed work) exceeds
+the cost of paying it off.
+
+## Human nature and social
+
+| Model | Idea | Use it to ask | Example |
+| :--- | :--- | :--- | :--- |
+| **trust** | trust lowers transaction costs: fewer checks, contracts and approvals | "What would we stop doing if we trusted each other more? What earns it?" | high-trust teams skip approval layers; trust is built by keeping small promises |
+| **reciprocity** | people feel obliged to return favours (Robert Cialdini, *Influence*, 1984) | "What have I given before asking?" | open-source contributions before asking a maintainer for help; useful content before a sales call |
+| **social proof** | under uncertainty people copy what others do (Cialdini) | "What will people see others doing?" | logos and case studies; the first 10 users who make a community look alive |
+| **status** | people care intensely about relative standing, often more than absolute rewards | "How does this change who looks good or bad?" | a title change that costs nothing but causes resignations; public praise |
+| **reputation as a stock** | reputation accumulates slowly from many actions and can drain quickly from one (a stock, in [systems thinking](/thinking/systems-thinking/) terms) | "Is this action a deposit or a withdrawal, and how large?" | a data breach handled badly; years of reliable on-time delivery |
+
+**Reputation, worked.** Every on-time delivery, honest post-mortem and kept promise is a small inflow. A hidden
+outage or a broken commitment is a large outflow. Because the stock builds slowly and drains fast, the
+asymmetric move is to protect it: disclose problems early, under-promise and deliver.
+
+**Where social models mislead.** Influence techniques used cynically work until they're noticed, then destroy
+trust; reciprocity manufactured through small "gifts" is manipulation. Social proof also spreads mistakes
+(information cascades).
+
+## Building your own latticework
+
+<Steps>
+<Step title="Pick a small core">
+
+Start with about ten models from at least five fields: compounding, incentives, opportunity cost, bottlenecks,
+feedback loops, margin of safety, inversion, evolution, power laws, map vs territory.
+
+</Step>
+<Step title="One model a week, applied deliberately">
+
+Each week pick one model and apply it on purpose to three real situations: a work decision, a news story, a
+personal choice. Write two lines per application: what the model predicted and what it missed.
+
+</Step>
+<Step title="Learn the source, not the summary">
+
+Read one primary text per field (a textbook chapter, the original paper, the book that named the idea).
+Summaries flatten the conditions under which a model holds.
+
+</Step>
+<Step title="Collect failures">
+
+Keep a list of times a model misled you. The boundaries of a model are more valuable than its definition.
+
+</Step>
+<Step title="Cross-check with a second field">
+
+For any important decision, run at least two models from different disciplines. Agreement raises confidence;
+disagreement shows where to look.
+
+</Step>
+<Step title="Explain it to someone">
+
+If you can't explain a model plainly with a real example, you don't own it yet (see learning by explaining in
+[thinking tools](/thinking/mental-models/general-thinking/)).
+
+</Step>
+</Steps>
+
+```text
+MODEL CARD (one per model, keep them in a notes file)
+Name:
+Field of origin / source:
+One-line idea:
+Question it makes me ask:
+Preconditions (when it holds):
+Worked example from my own work:
+Where it misled me:
+Related models:
+```
+
+## Pitfalls
+
+| Pitfall | What it looks like | Fix |
+| :--- | :--- | :--- |
+| **model-hopping** | a different model for every meeting, none applied properly | depth over breadth; finish the analysis with one model before adding another |
+| **fitting the world to a favourite model** | everything is network effects; everything is incentives | name two alternative models and ask what each would predict |
+| **vocabulary without mechanism** | "we need more momentum" with no idea what mass or force means here | state the mechanism in plain words; if you can't, drop the metaphor |
+| **precision theatre** | physics equations applied to fuzzy social quantities | use models for direction and magnitude, not decimals |
+| **ignoring preconditions** | the 37% rule for a decision where you can go back | list a model's assumptions before using its conclusion |
+| **retrofitting** | picking the model after deciding, to justify the choice | write down which model you're using before the conclusion |
+| **collecting instead of using** | a list of 200 models, none habitual | fewer models, more reps |
+| **ignoring the local expert** | an outsider's analogy overrides someone who knows the domain | analogies generate questions; domain knowledge answers them |
+
+## References
+
+- [Charles Munger, "A Lesson on Elementary, Worldly Wisdom" (USC, 1994), Farnam Street transcript](https://fs.blog/great-talks/a-lesson-on-worldly-wisdom/): the case for multidisciplinary models
+- Eliyahu M. Goldratt and Jeff Cox, *The Goal: A Process of Ongoing Improvement* (North River Press, 1984): theory of constraints, five focusing steps
+- Galileo Galilei, *Dialogues Concerning Two New Sciences* (1638): the square-cube law
+- Frederick P. Brooks Jr., *The Mythical Man-Month* (Addison-Wesley, 1975): Brooks's law, communication overhead
+- Leigh Van Valen, "A New Evolutionary Law", *Evolutionary Theory* 1 (1973): the Red Queen hypothesis; [overview (Wikipedia)](https://en.wikipedia.org/wiki/Red_Queen_hypothesis)
+- Amotz Zahavi, "Mate Selection: A Selection for a Handicap", *Journal of Theoretical Biology* 53 (1975): the handicap principle
+- Richard Dawkins, *The Selfish Gene* (Oxford University Press, 1976): replicators and memes
+- David Ricardo, *On the Principles of Political Economy and Taxation* (1817): comparative advantage
+- Michael C. Jensen and William H. Meckling, "Theory of the Firm: Managerial Behavior, Agency Costs and Ownership Structure", *Journal of Financial Economics* 3(4), 1976: principal–agent costs
+- [Garrett Hardin, "The Tragedy of the Commons", *Science* 162 (1968)](https://doi.org/10.1126/science.162.3859.1243)
+- Elinor Ostrom, *Governing the Commons* (Cambridge University Press, 1990): how communities manage shared resources
+- Joseph A. Schumpeter, *Capitalism, Socialism and Democracy* (1942): creative destruction
+- [Goodhart's law (Wikipedia)](https://en.wikipedia.org/wiki/Goodhart%27s_law): Goodhart 1975, Strathern 1997, Campbell's law
+- Nassim Nicholas Taleb, *Antifragile: Things That Gain from Disorder* (Random House, 2012): convexity and asymmetric payoffs
+- Brian Christian and Tom Griffiths, *Algorithms to Live By: The Computer Science of Human Decisions* (Henry Holt, 2016): explore/exploit, optimal stopping, caching, sorting
+- [Secretary problem (Wikipedia)](https://en.wikipedia.org/wiki/Secretary_problem): the 37% rule and its assumptions
+- Ward Cunningham, "The WyCash Portfolio Management System", OOPSLA '92 experience report (1992): origin of the technical debt metaphor
+- Robert B. Cialdini, *Influence: The Psychology of Persuasion* (1984; revised 2021): reciprocity, social proof
+- [Microeconomics](/economics/microeconomics/): the full treatment of supply and demand, elasticity, market failure

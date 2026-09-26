@@ -1,0 +1,528 @@
+---
+title: Investing
+date: 2026-09-26
+order: 4
+---
+
+How to invest money you won't need for at least five years, written for a US-based reader: what each asset class
+has done historically, risk and drawdowns, diversification, why low-cost index funds beat most active managers,
+asset allocation, rebalancing, bonds and stocks from first principles, behavioural traps, and a written
+investment policy. Savings order and the emergency fund come first in [money basics](/finance/personal/money-basics/),
+cash, CDs and I bonds are in [banking](/finance/personal/banking/), paying off high-interest debt beats almost any
+investment ([credit and debt](/finance/personal/credit-debt/)), and account types, tax rules and contribution limits are
+in [retirement and taxes](/finance/personal/retirement-taxes/). Base rates and risk thinking in general are in
+[probability and risk](/thinking/mental-models/probability-risk/).
+
+<Note kind="warning">General information, not financial, tax or legal advice. US rules and 2026 figures; check the linked sources before acting.</Note>
+
+## The short version
+
+| Rule | Why |
+| :--- | :--- |
+| invest only money you won't need for 5+ years | stocks lost money in 26 of the 98 calendar years 1928–2025 and can take years to recover |
+| own the whole market through **broad, low-cost index funds** | most active funds trail their index after fees, and you can't reliably pick the winners in advance |
+| choose a **stock/bond mix** you can hold through a 50% stock crash | the allocation drives most of your risk and return; selling in a crash is the most expensive mistake |
+| keep **costs** (expense ratios, advice fees, taxes) as low as possible | costs are certain; outperformance isn't |
+| **automate** contributions and **rebalance** on a rule | removes timing decisions, which people are bad at |
+| use **tax-advantaged accounts** first | tax drag is a cost like any other |
+| write the plan down (an **investment policy statement**) and change it only when your life changes, not the market | stops panic and performance chasing |
+
+## Asset classes
+
+Historical US returns 1928–2025, **nominal** (before inflation), computed from Aswath Damodaran's annual
+dataset at NYU Stern (updated January 2026). **Geometric** = compound annual growth rate, what an investor
+actually earned; **arithmetic** = simple average of yearly returns, always higher when returns vary.
+
+| Asset | What you own | Geometric | Arithmetic | Std dev (yearly) | Worst year | Losing years |
+| :--- | :--- | ---: | ---: | ---: | :--- | ---: |
+| cash (3-month T-bills) | very short loans to the US government | 3.4% | 3.4% | 3.0% | 0.0% (2014) | 0 |
+| 10-year Treasury bonds | 10-year loans to the US government | 4.5% | 4.8% | 7.9% | −17.8% (2022) | 20 |
+| Baa corporate bonds | loans to lower-investment-grade companies | 6.6% | 6.9% | 7.7% | −15.7% (1931) | 16 |
+| US large stocks (S&P 500 incl. dividends) | part-ownership of ~500 large companies | 10.0% | 11.9% | 19.4% | −43.8% (1931) | 26 |
+| US small stocks (bottom decile) | the smallest listed companies | 12.0% | 17.8% | 37.9% | −53.9% (1937) | 34 |
+| US home prices | houses (price only, no rent, no costs) | 4.2% | 4.4% | 6.2% | −12.0% (2008) | 15 |
+| gold | a commodity with no cash flow | 5.6% (9.0% for 1971–2025) | 7.4% | 21.5% (27.1% for 1971–2025) | −32.6% (1981) | 34 |
+
+US consumer prices rose about 3% a year over the same period (BLS CPI-U), so **real** returns are roughly:
+cash ~0.4%, Treasuries ~1.5%, stocks ~7%.
+
+| Asset class | Long-run character | Role in a portfolio |
+| :--- | :--- | :--- |
+| **cash** | preserves nominal value, loses slowly to inflation after tax | emergency fund, money needed within ~2 years |
+| **bonds** | modest real return; fall when rates rise; high-quality bonds often (not always) rise when stocks crash | ballast, income, reduce drawdowns |
+| **stocks** | highest long-run return; deep, multi-year losses along the way | growth engine for long horizons |
+| **real estate / REITs** | a home is consumption plus a leveraged, undiversified bet; **REITs** are listed property companies that trade like stocks (equity-like volatility) and are already in total-market index funds | optional; you probably own enough through your home and index funds |
+| **commodities** (incl. gold) | no earnings or interest; return comes from price changes; long flat or falling stretches (gold's 1981 real peak took decades to regain) | small diversifier at most; not required |
+| **crypto** | no cash flows; extreme volatility; bitcoin fell more than 70% from peak in both 2018 and 2022 | speculation; size it so a total loss wouldn't change your life |
+
+<Callout type="info" title="Past returns are a sample, not a promise">
+Treat the table as one history of one country that turned out very well. Other markets (Japan after 1989,
+many in the early 20th century) did far worse for decades. The UBS Global Investment Returns Yearbook
+(Dimson, Marsh and Staunton) covers dozens of countries from 1900 and is the standard cross-country source.
+</Callout>
+
+## Risk, return and drawdowns
+
+**Risk** in everyday terms: the chance you don't have the money when you need it. The textbook proxies are
+**volatility** (standard deviation of returns) and **drawdown** (fall from a previous peak).
+
+| S&P 500 bear market | Peak-to-trough (price, closing) |
+| :--- | :--- |
+| 1929–1932 | about −86% |
+| 1973–1974 | about −48% |
+| 2000–2002 | about −49% |
+| 2007–2009 (9 Oct 2007 → 9 Mar 2009, 1,565 → 677) | −56.8% |
+| 2020 (19 Feb → 23 Mar) | −33.9% |
+| 2022 (3 Jan → 12 Oct) | −25.4% |
+
+Losses are asymmetric: after a fall of $d$, you need a gain of $\frac{1}{1-d} - 1$ to get back.
+
+| Fall | Gain needed to recover |
+| :--- | ---: |
+| −20% | +25% |
+| −34% | +52% |
+| −50% | +100% |
+| −57% | +133% |
+
+**Volatility drag**: the geometric return is roughly the arithmetic return minus half the variance,
+$g \approx a - \tfrac{\sigma^2}{2}$. For the S&P 500, $11.86\% - \tfrac{0.194^2}{2} \approx 10.0\%$, which
+matches the 10.02% actually compounded. Two portfolios with the same average return: the less volatile one ends
+up richer.
+
+**Risk premium**: stocks return more than bills *because* they can lose half their value when you most need
+the money. There is no reliable way to get the return without the risk. Anything claiming stock-like returns
+with bond-like risk is mispriced, leveraged, illiquid, hiding risk in the tails, or a fraud.
+
+| Risk | What it is | Defence |
+| :--- | :--- | :--- |
+| market risk | the whole market falls | allocation, time horizon |
+| single-company risk | one firm goes to zero (Enron, Lehman) | diversify: own thousands of companies |
+| inflation risk | cash and nominal bonds lose purchasing power | stocks, TIPS, I bonds |
+| interest-rate risk | bond prices fall when rates rise | match bond duration to when you need the money |
+| credit risk | the borrower defaults | Treasuries, investment-grade funds |
+| sequence risk | bad returns just as withdrawals start | bonds and cash buffer near retirement (see below) |
+| liquidity risk | can't sell quickly at a fair price | avoid illiquid products for money you might need |
+| behavioural risk | you sell at the bottom | written plan, automation, a stock share you can live with |
+
+## Diversification and correlation
+
+**Correlation** ($\rho$, from −1 to +1) measures how two assets move together. Portfolio volatility for two
+assets with weights $w_1, w_2$:
+
+$$
+\sigma_p = \sqrt{w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2w_1w_2\rho\,\sigma_1\sigma_2}
+$$
+
+When $\rho < 1$, the portfolio is less volatile than the weighted average of its parts: the "only free lunch"
+in investing (the phrase is usually attributed to Harry Markowitz, whose 1952 paper founded portfolio theory).
+
+**Worked example.** 60% stocks ($\sigma = 19.4\%$), 40% Treasuries ($\sigma = 7.9\%$), correlation 0 (in
+Damodaran's annual data the 1928–2025 stock/10-year Treasury correlation is about 0.02):
+
+$$
+\sigma_p = \sqrt{0.6^2(0.194)^2 + 0.4^2(0.079)^2} = \sqrt{0.01355 + 0.00100} \approx 12.1\%
+$$
+
+A weighted average would suggest $0.6(19.4) + 0.4(7.9) = 14.8\%$. The gap is the diversification benefit.
+
+| Diversify across | How |
+| :--- | :--- |
+| companies | total-market index fund (thousands of stocks) instead of a handful |
+| sectors | the index does this automatically |
+| countries | international index fund; the US was about 60% of world market value in recent years, but no country is guaranteed to lead |
+| asset classes | stocks + high-quality bonds |
+| time | invest regularly over a career |
+
+**Correlations are not constant.** From 2000 to 2025 US stocks and Treasuries were negatively correlated
+(about −0.36 in annual data), which made bonds an excellent hedge. In 2022 both fell together (S&P 500 −18.0%,
+10-year Treasury −17.8%) because rising inflation and interest rates hit both. In crashes, correlations between
+risky assets tend to rise towards 1. Diversification reduces risk; it doesn't remove it.
+
+## Market efficiency and active management
+
+**Efficient market hypothesis** (Fama, 1970): prices reflect available information, so beating the market
+consistently after costs is very hard. In practice markets are not perfectly efficient, but they are efficient
+enough that the mispricings left are small, fleeting, and eaten by fees.
+
+**The arithmetic of active management** (William Sharpe, 1991): before costs, the average actively managed
+dollar must earn the market return, because active and passive investors together *are* the market. After
+costs, the average active dollar must therefore trail the average passive dollar by the difference in fees.
+This is arithmetic, not a theory about efficiency.
+
+The evidence agrees:
+
+| Study | Finding |
+| :--- | :--- |
+| Morningstar Active/Passive Barometer, mid-year 2026 (data to 30 June 2026) | just over 40% of active US funds survived and beat their average passive peer over 12 months; picking an active fund at random gave about a 60% chance of trailing the passive alternative; only 5% of active **US large-growth** funds succeeded over 10 years |
+| same report | cheap active funds beat expensive ones: in 16 of 20 categories, the lowest-fee quintile had better odds of success |
+| S&P Dow Jones Indices, SPIVA U.S. scorecards (twice a year since 2002) | the share of active US large-cap funds that trail the S&P 500 rises with the horizon; over 10–20 years a large majority lag, and many funds are closed or merged away (survivorship bias flatters the survivors) |
+| SPIVA persistence scorecards | top-quartile funds rarely stay top-quartile; past winners are close to random draws |
+
+**Where active has better odds**: some bond, real-estate and small-cap categories in some periods (the same
+Morningstar report found stronger 10-year success rates in fixed income and real estate). Even there, pick the
+cheapest active funds and expect wide dispersion.
+
+**Blunt conclusion**: for your core money, own index funds. Paying someone 1% a year to try to beat the market
+is a bet that they are in the small minority that will, identified in advance, which the persistence data say
+you can't do.
+
+## Index funds, ETFs and mutual funds
+
+| Vehicle | How it trades | Pros | Cons |
+| :--- | :--- | :--- | :--- |
+| **index mutual fund** | once a day at net asset value (NAV) | automatic investment of exact dollar amounts; no bid-ask spread | some have minimums; can distribute capital gains (Vanguard's patented ETF share-class structure mostly avoided this, and the patent has now expired) |
+| **ETF** (exchange-traded fund) | all day on an exchange like a stock | usually very tax-efficient (in-kind redemptions); no minimums; available at any broker | bid-ask spread; fractional shares depend on broker; the ability to trade intraday tempts over-trading |
+| **active mutual fund** | once a day at NAV | a manager's judgement | higher fees, taxable distributions, usually underperforms |
+| **target-date fund** | mutual fund or collective trust | one fund, automatic glide path and rebalancing | fees vary widely (check), a one-size glide path, can be tax-inefficient in taxable accounts |
+
+**What to check before buying a fund**
+
+| Item | Good sign |
+| :--- | :--- |
+| expense ratio | broad US or world stock index: 0.03–0.10%; bond index: similar |
+| index tracked | broad (total US market, total world, total bond); not a narrow theme |
+| tracking difference | fund return close to index return minus the expense ratio |
+| loads / 12b-1 fees | none. Front loads (sales charges) of several % are pure cost |
+| turnover | low (index funds: single digits %) |
+| fund size and age | large and established; small niche ETFs close regularly |
+| structure | plain equity or bond fund; avoid leveraged, inverse, ETNs, options-overlay "income" wrappers for core money |
+
+## Fees compound too
+
+The **expense ratio** is taken from fund assets every year, so it compounds against you exactly as returns
+compound for you.
+
+**Worked example**: \$100,000 invested for 30 years at a 7% gross annual return.
+
+$$
+FV = PV(1 + r - f)^n
+$$
+
+| Fee | Net return | Value after 30 years |
+| :--- | ---: | ---: |
+| 0.03% (broad index fund) | 6.97% | $100{,}000 \times 1.0697^{30} \approx$ \$754,849 |
+| 0.50% | 6.50% | \$661,437 |
+| 1.00% (typical adviser fee or pricey active fund) | 6.00% | $100{,}000 \times 1.06^{30} \approx$ \$574,349 |
+
+The 1% fee costs \$180,500, **24% of the final value**, on a single deposit with no further contributions.
+Layer a 1% adviser fee on a 0.75% active fund and the drag is 1.75% a year. A good fee-only adviser can be
+worth it for complex situations or for stopping you from panicking; judge the fee in dollars, not percent.
+
+## Asset allocation
+
+**Asset allocation** (the split between stocks, bonds and cash) is the decision that matters most. Choose it
+from your **ability** to take risk (time horizon, job stability, other assets like a pension or Social Security)
+and your **willingness** (how you'll actually behave in a crash).
+
+| Rule of thumb | Stocks at 30 | Stocks at 60 | Critique |
+| :--- | ---: | ---: | :--- |
+| **age in bonds** (bonds % = age) | 70% | 40% | often too conservative for people with long careers and pensions/Social Security ahead; ignores other assets |
+| **age − 10 or age − 20 in bonds** | 80–90% | 50–60% | a common modern variant; still ignores circumstances |
+| **110 or 120 − age in stocks** | 80–90% | 50–60% | same thing, phrased differently |
+| **target-date fund glide path** | ~90% | ~50–60% | a professional default; glide paths differ a lot between providers |
+| lifecycle research (e.g. Ayres and Nalebuff, *Lifecycle Investing*, 2010) | 100%+ with leverage early | lower | theoretically sound (young people have lots of "human capital"), practically hard to stick with |
+
+**Test your willingness**: in 2007–09 a 60/40 portfolio fell roughly a third at its worst and a 100% stock
+portfolio more than half. If you would sell at −30%, you own too many stocks, whatever the rule of thumb says.
+
+### The three-fund portfolio
+
+Popularised on the Bogleheads forum by Taylor Larimore: own the whole world with three index funds.
+
+| Fund | Example allocation (moderate) |
+| :--- | ---: |
+| US total stock market index | 48% |
+| international total stock index (developed + emerging) | 32% |
+| US total bond market index (or Treasuries/TIPS) | 20% |
+
+Variants: a **two-fund** or **one-fund** version (a total-world stock fund plus a bond fund, or a single
+target-date or balanced fund). Home bias is common; somewhere between 20% and 40% of stocks in international
+funds is a typical Bogleheads range. Simplicity is the feature: fewer decisions, fewer mistakes.
+
+### Target-date funds
+
+A **target-date fund** (e.g. "2060") holds a mix of index funds and shifts from stocks to bonds as the date
+approaches. Good default for a 401(k) if the fees are low (index-based versions from the big providers charge
+about 0.1% or less; some plan versions charge far more). Hold it **alone**, not alongside other funds, or you
+undo its allocation. Less ideal in taxable accounts (bond income and rebalancing trades are taxed).
+
+## Rebalancing
+
+Markets drift your allocation: after a long bull market a 60/40 portfolio can become 75/25, with more risk than
+you chose. **Rebalancing** sells what has grown and buys what has shrunk.
+
+| Method | How | Notes |
+| :--- | :--- | :--- |
+| **calendar** | once a year (birthday, tax season) | simplest; enough for most people |
+| **threshold bands** | rebalance when an asset is more than 5 percentage points off target | fewer, better-timed trades; "5/25" variant (Larry Swedroe): 5 points for big allocations, 25% relative for small ones |
+| **cash-flow** | direct new contributions (or withdrawals) to the underweight asset | no selling, so no taxes; works while contributions are large relative to the portfolio |
+| **inside tax-advantaged accounts** | do the selling in 401(k)/IRA | no capital gains tax |
+| **target-date / balanced fund** | the fund does it | zero effort |
+
+Rebalancing is risk control, not a return booster: in a long bull market it lowers returns, and in choppy
+markets it can add a little. Don't rebalance more than necessary in taxable accounts.
+
+## Lump sum vs dollar-cost averaging
+
+**Dollar-cost averaging** (DCA, strictly "cost averaging" when you have the lump sum already) means investing a
+windfall in instalments instead of all at once. Investing each paycheque as it arrives is not really DCA; it is
+just investing when you have the money, which is correct.
+
+Vanguard research (Finlay and Zorn, *Cost averaging: Invest now or temporarily hold your cash?*, February 2023)
+compared lump-sum investing (LS) with cost averaging (CA) over one-year horizons, 1976–2022 across several markets:
+
+| Comparison | How often the first one won |
+| :--- | ---: |
+| lump sum vs cost averaging | 68% of the time |
+| cost averaging vs staying in cash | 69% |
+| lump sum vs staying in cash | 70% |
+
+Markets rise more often than they fall, so money waiting in cash usually misses gains. **Lump sum wins on
+expected value**; cost averaging reduces regret if a crash follows. If spreading it out is the only way you'll
+invest at all, do it over a short, fixed schedule (say 3–6 months), automated in advance, and never "wait for a
+dip".
+
+## Sequence-of-returns risk
+
+When you are adding money, the order of returns doesn't change your ending wealth for a given set of returns.
+When you are **withdrawing**, it does: losses early in retirement force you to sell more shares at low prices,
+and those shares never recover for you.
+
+**Worked example**: \$1,000,000, withdraw \$50,000 at the start of each year for 10 years. Same ten annual
+returns (−20%, −10%, 5%, 10%, 15%, 20%, 12%, 8%, 10%, 14%; geometric average 5.7%), in two orders:
+
+| Order | Value after 10 years | With no withdrawals |
+| :--- | ---: | ---: |
+| bad years first | \$849,961 | \$1,740,736 |
+| good years first (reversed) | \$1,183,100 | \$1,740,736 |
+
+Same average, a \$333,000 difference, entirely from the order. Defences: hold several years of spending in
+bonds/cash near and early in retirement, use flexible withdrawal rules (spend less after bad years), delay
+Social Security to raise guaranteed income, and consider a "bond tent" (more bonds around the retirement date,
+fewer later). Withdrawal rates are in [retirement and taxes](/finance/personal/retirement-taxes/).
+
+## Bonds
+
+A **bond** is a loan: you pay a price now, receive **coupons** (interest), and get the **face value** (par)
+back at **maturity**.
+
+| Term | Meaning |
+| :--- | :--- |
+| coupon rate | interest as a % of face value, fixed at issue |
+| current yield | annual coupon ÷ current price |
+| **yield to maturity** (YTM) | the single discount rate that equates price to all future cash flows; the return if held to maturity and nothing defaults |
+| SEC 30-day yield | standardised fund yield (net of expenses): the one to compare funds |
+| **duration** | weighted-average time to the cash flows; also the approximate % price change for a 1-point change in yield |
+| credit rating | AAA to BBB− is **investment grade**; below that is **high yield** ("junk") |
+| **spread** | extra yield over a Treasury of the same maturity, compensation for credit risk |
+
+### Price and yield move in opposite directions
+
+$$
+P = \sum_{t=1}^{n} \frac{C}{(1+y)^t} + \frac{F}{(1+y)^n}
+\qquad
+\frac{\Delta P}{P} \approx -D_{\text{mod}}\,\Delta y + \tfrac12\,\text{Conv}\,(\Delta y)^2
+$$
+
+where $D_{\text{mod}} = D_{\text{Mac}}/(1+y)$ is **modified duration**.
+
+**Worked example**: a 10-year bond, \$100 face, 4% annual coupon, bought at par (yield 4%). Macaulay duration
+is 8.44 years, so modified duration $= 8.44/1.04 = 8.11$ and convexity $\approx 80.8$.
+
+| Yield moves to | Exact new price | Duration estimate | Duration + convexity |
+| :--- | ---: | ---: | ---: |
+| 5% (+1 point) | \$92.28 (−7.7%) | −8.1% | −7.7% |
+| 3% (−1 point) | \$108.53 (+8.5%) | +8.1% | +8.5% |
+
+A 30-year bond with the same coupon would fall to \$84.63 (−15.4%) for the same 1-point rise. Rule of thumb: if
+the money is needed in $N$ years, hold bonds with duration of roughly $N$ or less. Over a holding period
+about equal to its duration, a bond fund's higher reinvestment yield roughly offsets the initial price loss.
+
+### Types of bonds
+
+| Type | Credit risk | Tax | Use |
+| :--- | :--- | :--- | :--- |
+| **Treasury bills, notes, bonds** | none in practice (US government) | federal tax; **exempt from state and local** tax | the purest safe asset and crash hedge |
+| **TIPS** (Treasury Inflation-Protected Securities) | none | principal is indexed to CPI; the inflation adjustment is taxed yearly ("phantom income"), so best in IRAs | real (inflation-proof) income, e.g. a TIPS ladder for retirement spending |
+| **I bonds** | none | tax-deferred until redeemed; state-exempt | inflation-protected savings, limited to \$10,000 per person per year; see [banking](/finance/personal/banking/) |
+| agency / mortgage-backed | very low | taxable | part of total-bond-market funds |
+| **investment-grade corporate** | low | taxable | a little extra yield |
+| **high-yield (junk)** | material; falls with stocks in crashes | taxable | behaves partly like equity; not a safe asset |
+| **municipal bonds** | low to moderate | federal-tax-free interest (often state-free in-state) | taxable accounts for high earners: compare the tax-equivalent yield $y_{\text{muni}}/(1 - t)$ |
+
+Individual Treasuries and CDs held to maturity have no price risk if you don't sell. Bond **funds** never
+mature, so their price moves with rates forever; their duration stays roughly constant.
+
+## Stocks
+
+A share is a **fractional claim on a company's future profits**, with a vote. Its value today is, in theory, the
+present value of all future cash returned to owners.
+
+| Concept | Meaning | Note |
+| :--- | :--- | :--- |
+| **dividends** | cash paid out of profits | taxed in the year paid (qualified dividends at capital-gains rates) |
+| **buybacks** | the company buys its own shares, raising each remaining share's claim | economically similar to a dividend but you choose when to realise the gain; a 1% federal excise tax on buybacks applies since 2023 |
+| total return | price change + dividends reinvested | always compare total return, never price return |
+| **P/E ratio** | price ÷ earnings per share (trailing or forward) | high P/E = the market expects growth or is optimistic |
+| **CAPE** (Shiller P/E) | price ÷ average 10-year inflation-adjusted earnings | a rough long-run valuation gauge, useless for timing next year |
+| earnings yield | E/P, the inverse of P/E | a crude comparison with bond yields |
+| market cap | shares outstanding × price | index funds weight by it |
+
+**Dividend obsession is a mistake**: a dividend is not free money; the share price falls by the amount paid. A
+"dividend income" portfolio is a less diversified, often less tax-efficient version of the total market.
+Spend from total return (sell shares as needed) rather than restricting yourself to dividend payers.
+
+**Factor tilts** (small-cap, value, momentum, quality) have academic backing (Fama and French) but long
+stretches of underperformance; value lagged growth for most of 2007–2020. Optional, never necessary.
+
+## Behavioural traps
+
+The biggest threat to returns is usually the investor, not the market. Morningstar's annual *Mind the Gap*
+study compares funds' reported (time-weighted) total returns with the dollar-weighted returns investors
+actually earned after their buying and selling; in recent editions the shortfall has averaged roughly
+1 percentage point a year over ten years, larger in volatile funds. (DALBAR's older "behaviour gap" figures are
+much larger but their method has been criticised as overstating it; Morningstar's approach is more defensible.)
+
+| Trap | What it looks like | Antidote |
+| :--- | :--- | :--- |
+| **market timing** | selling "until things calm down" | the best days cluster near the worst days; missing a few of them wrecks returns. Stay invested per the plan |
+| **performance chasing** | buying last year's top fund, sector or asset | past performance barely persists (SPIVA persistence data) |
+| **loss aversion** | selling after a fall to stop the pain | choose an allocation you can hold; look at the portfolio less often |
+| **overconfidence** | frequent trading, concentrated bets | trading more predicts earning less (Barber and Odean, 2000) |
+| **recency bias** | assuming the last 5 years will continue | read long-run data (the tables above) |
+| **home and familiarity bias** | owning mostly your employer or your country | cap employer stock at ~10% of net worth |
+| **FOMO / narrative** | crypto, meme stocks, AI themes after they've soared | an investment policy statement with a speculation limit |
+| **anchoring** | refusing to sell until "back to what I paid" | the market doesn't know your cost basis |
+| **mental accounting** | treating dividends or a bonus as different money | total return, whole-portfolio view |
+
+Cognitive biases in general are in [cognitive biases](/thinking/mental-models/cognitive-biases/).
+
+## Accounts and tax placement
+
+| Account | Tax treatment | Notes |
+| :--- | :--- | :--- |
+| **taxable brokerage** (individual, joint) | dividends and realised gains taxed yearly; losses deductible | full flexibility; cost basis steps up at death |
+| **401(k) / 403(b) / 457(b)** | pre-tax or Roth | employer plan; limited fund menu; capture the match first |
+| **traditional / Roth IRA** | deductible or Roth | any broker; widest fund choice |
+| **HSA** | deductible in, tax-free growth, tax-free out for medical costs | invest it if you can pay medical costs from cash |
+| **529** | tax-free for education | state plan choice matters for state deductions |
+| **custodial (UGMA/UTMA)** | child's tax rates (kiddie tax applies) | becomes the child's property at 18–21 |
+
+Details, limits and the traditional vs Roth choice are in [retirement and taxes](/finance/personal/retirement-taxes/).
+
+**Asset location** (which fund goes in which account), once your accounts are big enough for it to matter:
+
+| Put in… | Why |
+| :--- | :--- |
+| tax-advantaged (401(k), IRA) | taxable bonds, TIPS, REITs, actively managed or high-turnover funds: their income is taxed at ordinary rates |
+| Roth | highest-expected-growth assets (all growth is tax-free forever) |
+| taxable | broad stock index funds/ETFs (low dividends, qualified, few distributions), municipal bonds; international funds (foreign tax credit only usable here) |
+
+**Brokerage safety**: SIPC protects customers of a failed broker-dealer up to \$500,000 per customer
+(including \$250,000 cash) if securities are missing; it does **not** protect against market losses. Use a
+large, low-cost broker, turn on two-factor authentication, and name beneficiaries (TOD) on every account.
+
+## What to avoid
+
+| Avoid | Why |
+| :--- | :--- |
+| **loaded funds, high-fee active funds, wrap accounts at 1.5%+** | certain drag for uncertain benefit |
+| **whole life / indexed universal life sold as investments** | high commissions, surrender charges, opaque caps; see [insurance and estate](/finance/personal/insurance-estate/) |
+| **non-traded REITs, private placements, structured notes** for ordinary investors | illiquid, high fees, complex payoffs that favour the issuer |
+| **variable annuities** in general | layers of fees (often 2%+); rarely sensible except in narrow cases |
+| **leveraged and inverse ETFs** held long-term | they reset daily; over longer periods returns can diverge far from 2× or 3× the index, even losing money when the index is flat (FINRA Regulatory Notice 09-31) |
+| **stock picking with core money** | concentration risk; most professionals can't beat the index either. Keep any "fun money" under ~5% |
+| **employer stock concentration** | your job and savings depend on the same company (Enron employees lost both) |
+| **options, margin, day trading** | most retail day traders lose money; margin can force selling at the bottom |
+| **crypto beyond a small slice** | no cash flows, extreme drawdowns, frauds and exchange failures (FTX, 2022). If you hold any, keep it to a few % you can lose entirely |
+| **"guaranteed" high returns, unsolicited tips, pressure to act now** | classic fraud markers; check the seller on FINRA BrokerCheck and the SEC's Investment Adviser Public Disclosure site |
+| **market-timing newsletters and forecasts** | no reliable record of timing skill |
+
+## Investment policy statement
+
+Write it when calm; read it when markets are not. One page is enough.
+
+```text
+INVESTMENT POLICY STATEMENT            date: ________
+
+1. Goals
+   - Retirement at age __, target portfolio $______
+   - Other goals (house, education) and dates: ________
+
+2. Time horizon and constraints
+   - Money needed within 5 years stays in cash/short bonds
+   - Emergency fund: __ months of expenses (separate)
+   - Other income: pension/Social Security estimate $___/yr
+
+3. Target allocation (whole portfolio, all accounts)
+   US stocks ___%   International stocks ___%   Bonds ___%
+   Glide path: reduce stocks by __ points every __ years
+   from age __
+
+4. Funds (index, expense ratio <= 0.10%)
+   US stock: ______   Intl stock: ______   Bond: ______
+
+5. Contributions
+   - __% of gross pay, automated on payday
+   - Order: 401(k) to match -> HSA -> IRA -> 401(k) max
+     -> taxable
+
+6. Rebalancing
+   - Check every [birthday]; rebalance if any asset class is
+     more than 5 points off target
+   - Use new contributions first; sell inside tax-advantaged
+     accounts before taxable
+
+7. Rules I will follow
+   - No selling because of market news or a decline
+   - No individual stocks/crypto beyond __% (max 5%)
+   - No product I cannot explain in two sentences
+   - Harvest tax losses in taxable if a loss exceeds $____
+
+8. When to revise this document
+   - Marriage, divorce, children, job change, inheritance,
+     health change, within 10 years of retirement
+   - Never because of market performance alone
+
+Signed: ____________
+```
+
+### Investing checklist
+
+```text
+[ ] Emergency fund and high-interest debt handled first
+[ ] Employer 401(k) match captured in full
+[ ] Target allocation written down (IPS)
+[ ] Broad index funds or one target-date fund, ER <= 0.10%
+[ ] No loads, 12b-1 fees, or advisory fee above what it's worth
+[ ] Contributions automated
+[ ] Beneficiaries / TOD set on every account
+[ ] Asset location: bonds in tax-advantaged where possible
+[ ] Rebalancing rule set (annual or 5-point bands)
+[ ] Speculation capped (single stocks, crypto <= 5%)
+[ ] Two-factor authentication on every brokerage login
+[ ] Annual review: fees, allocation, contributions, IPS
+```
+
+## References
+
+- [Aswath Damodaran: Historical returns on stocks, bonds, bills, real estate and gold, 1928–2025](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html): annual US returns dataset (NYU Stern, updated January 2026) used for the return, volatility and correlation figures
+- Elroy Dimson, Paul Marsh and Mike Staunton, *UBS Global Investment Returns Yearbook* (UBS, annual): long-run returns for dozens of countries since 1900
+- [Morningstar: Active fund manager success rates ticked up in 2026, but passive funds still hold the advantage (Paoli, 6 August 2026)](https://www.morningstar.com/funds/active-fund-manager-success-rates-ticked-up-2026-passive-funds-still-hold-advantage): mid-year 2026 Active/Passive Barometer results
+- [S&P Dow Jones Indices: SPIVA scorecards](https://www.spglobal.com/spdji/en/research-insights/spiva/): active vs index performance and persistence reports, US and international
+- [Sharpe (1991), The Arithmetic of Active Management](https://doi.org/10.2469/faj.v47.n1.7), *Financial Analysts Journal* 47(1): why the average active dollar must lag after costs
+- [Fama (1970), Efficient Capital Markets: A Review of Theory and Empirical Work](https://doi.org/10.2307/2325486), *Journal of Finance* 25(2): the efficient market hypothesis
+- [Markowitz (1952), Portfolio Selection](https://doi.org/10.2307/2975974), *Journal of Finance* 7(1): diversification and mean-variance portfolios
+- [Barber and Odean (2000), Trading Is Hazardous to Your Wealth](https://doi.org/10.1111/0022-1082.00226), *Journal of Finance* 55(2): the most active traders earned the least
+- [Vanguard: Cost averaging: Invest now or temporarily hold your cash? (Finlay and Zorn, 2023)](https://corporate.vanguard.com/content/dam/corp/research/pdf/cost_averaging_invest_now_or_temporarily_hold_your_cash.pdf): lump sum beat cost averaging 68% of the time
+- [Bogleheads wiki: Three-fund portfolio](https://www.bogleheads.org/wiki/Three-fund_portfolio): Taylor Larimore's three-fund approach and variants
+- [Bogleheads wiki: Rebalancing](https://www.bogleheads.org/wiki/Rebalancing): calendar, threshold and 5/25 bands
+- [Investor.gov (SEC): Asset allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation): the SEC's plain-language introduction to allocation and diversification
+- [FINRA Regulatory Notice 09-31: Non-traditional ETFs](https://www.finra.org/rules-guidance/notices/09-31): why daily-reset leveraged and inverse ETFs are unsuitable for buy-and-hold investors
+- [FINRA BrokerCheck](https://brokercheck.finra.org/): check a broker's or firm's registration and disciplinary history
+- [SIPC: What SIPC protects](https://www.sipc.org/for-investors/what-sipc-protects): \$500,000 limit including \$250,000 cash, and what isn't covered
+- [Robert Shiller: Online data](http://www.econ.yale.edu/~shiller/data.htm): long-run S&P prices, earnings and CAPE
+- John C. Bogle, *The Little Book of Common Sense Investing*, 10th anniversary ed. (Wiley, 2017): the case for low-cost index funds from Vanguard's founder
+- William Bernstein, *The Four Pillars of Investing*, 2nd ed. (McGraw Hill, 2023): theory, history, psychology and business of investing
+- Ian Ayres and Barry Nalebuff, *Lifecycle Investing* (Basic Books, 2010): the case for more stock exposure early in life
+- Burton Malkiel, *A Random Walk Down Wall Street*, 50th anniversary ed. (W. W. Norton, 2023): efficient markets and indexing for general readers

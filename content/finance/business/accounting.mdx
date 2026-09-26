@@ -1,0 +1,827 @@
+---
+title: Accounting
+date: 2026-09-26
+order: 1
+---
+
+How a company records what happens to it and turns those records into financial statements: the accounting
+equation, double-entry bookkeeping, accrual accounting and its principles, depreciation, inventory, what to
+capitalise, leases and stock compensation, US GAAP vs IFRS, and how a founder should run the books. One invented
+company, **Acme Analytics, Inc.**, runs through this sheet and [financial statements](/finance/business/financial-statements/),
+and its numbers tie out. What to do with the numbers is in [corporate finance](/finance/business/corporate-finance/),
+[valuation](/finance/business/valuation/) and [startup finance](/finance/business/startup-finance/); household money is
+under [personal finance](/finance/personal/money-basics/).
+
+<Note kind="warning">General information, not accounting, tax or legal advice. US GAAP (the FASB Accounting Standards Codification, "ASC") is the primary standard here; IFRS differences are flagged. Tax figures are US federal for 2026.</Note>
+
+## What accounting is for
+
+Accounting is a measurement system: it turns thousands of transactions into a few numbers people can make decisions
+with. Three branches measure the same events for different audiences and under different rules.
+
+| Branch | Audience | Rules | Question it answers | Example output |
+| :--- | :--- | :--- | :--- | :--- |
+| **Financial accounting** | investors, lenders, acquirers, regulators | US GAAP (set by the **FASB**; the **SEC** enforces it for public companies) or IFRS (set by the **IASB**) | how did the company perform and what is its position? | income statement, balance sheet, cash flow statement |
+| **Managerial accounting** | founders, managers, the board | none: whatever helps decisions | which product, customer or channel makes money? what if we hire 5 more engineers? | unit economics, budgets, cohort margins, forecasts |
+| **Tax accounting** | IRS and state tax authorities | Internal Revenue Code and Treasury regulations | how much tax is owed? | Form 1120 (C corporation), 1065, 1120-S |
+
+- Book income and taxable income legitimately differ (depreciation methods, deferred revenue, stock compensation, R&D). Two sets of numbers is normal; two sets of *books* hiding facts is fraud.
+- GAAP is not the truth; it is a **convention** designed to be comparable and hard to manipulate. Managerial numbers can be better for decisions but are unaudited and easy to flatter yourself with.
+- For a startup, GAAP books matter the moment you raise a priced round, borrow from a bank, or get acquired: diligence will restate anything else.
+
+## The accounting equation
+
+$$
+\text{Assets} = \text{Liabilities} + \text{Equity} \qquad (A = L + E)
+$$
+
+| Element | Definition (plain English) | Examples |
+| :--- | :--- | :--- |
+| **Asset** | a resource the company controls that should bring future economic benefit | cash, receivables, inventory, laptops, capitalised software, prepaid rent |
+| **Liability** | an obligation to give up resources in future | supplier bills (payables), loans, wages owed, **deferred revenue** (service owed to customers who prepaid) |
+| **Equity** | the owners' residual claim: $E = A - L$ | paid-in capital from shareholders + retained earnings |
+| **Revenue** | increase in equity from delivering goods or services | subscription fees, hardware sales |
+| **Expense** | decrease in equity from using up resources to earn revenue | salaries, hosting, depreciation |
+
+It always balances because it is an **identity**, not a hypothesis. Every asset was financed by someone: either a
+creditor (liability) or an owner (equity). Equity is *defined* as whatever is left over. Expanded, with profit
+flowing into equity:
+
+$$
+A = L + \text{Paid-in capital} + \underbrace{\text{Opening retained earnings} + \text{Revenue} - \text{Expenses} - \text{Dividends}}_{\text{Retained earnings}}
+$$
+
+Every transaction changes at least two things so that the identity still holds:
+
+| Transaction | Assets | Liabilities | Equity |
+| :--- | :--- | :--- | :--- |
+| raise \$500,000 from investors | cash +500,000 | | paid-in capital +500,000 |
+| borrow \$300,000 | cash +300,000 | loan +300,000 | |
+| buy a \$2,400 laptop with cash | cash −2,400, equipment +2,400 | | |
+| customer prepays \$120,000 for a year | cash +120,000 | deferred revenue +120,000 | |
+| one month of that service delivered | | deferred revenue −10,000 | revenue +10,000 (→ retained earnings) |
+| pay \$60,000 rent | cash −60,000 | | expense −60,000 (→ retained earnings) |
+
+## Debits and credits
+
+**Double-entry bookkeeping** (described in print by Luca Pacioli in 1494) records every transaction as at least one
+**debit** (Dr, left side) and one **credit** (Cr, right side) of equal total. "Debit" and "credit" mean *left* and
+*right*, not good and bad. Total debits always equal total credits, which is the equation above in bookkeeping form.
+
+| Account type | Increase with | Decrease with | Normal balance | Mnemonic |
+| :--- | :--- | :--- | :--- | :--- |
+| **Assets** | debit | credit | debit | **DEA**: Dividends, Expenses, Assets rise with debits |
+| **Expenses** (and COGS, losses) | debit | credit | debit | |
+| **Dividends / distributions** | debit | credit | debit | |
+| **Liabilities** | credit | debit | credit | **LER**: Liabilities, Equity, Revenue rise with credits |
+| **Equity** (paid-in capital, retained earnings) | credit | debit | credit | |
+| **Revenue** (and gains) | credit | debit | credit | |
+| **Contra-assets** (accumulated depreciation, allowance for doubtful accounts) | credit | debit | credit | reduce an asset without touching its gross balance |
+
+Why expenses are debits: an expense reduces equity, and equity decreases with a debit. Why your bank "credits" your
+account when you deposit money: from the **bank's** books, your deposit is a liability it owes you.
+
+A **T-account** is a scratch ledger for one account: debits on the left, credits on the right. Two of Acme's
+FY2026 accounts, using the year's totals:
+
+```text
+        Accounts receivable (asset)            Deferred revenue (liability)
+   Dr                       Cr              Dr                       Cr
+  ---------------------------------       ---------------------------------
+  Open      250,000 | Collected 3,188,000   Recognised 3,000,000 | Open       400,000
+  Billed  3,326,000 | Written off   8,000   Refunded       6,000 | Billed   3,126,000
+  ---------------------------------       ---------------------------------
+  Close     380,000 |                                            | Close      520,000
+```
+
+Check: 250,000 + 3,326,000 − 3,188,000 − 8,000 = 380,000; 400,000 + 3,126,000 − 3,000,000 − 6,000 = 520,000.
+
+## The running example: Acme Analytics
+
+**Acme Analytics, Inc.** is invented: a Delaware C corporation selling a B2B analytics SaaS product (monthly and annual
+plans) plus a small line of plug-in data gateways (hardware, held as inventory). Calendar fiscal year, accrual basis,
+US GAAP. Simplifying assumptions: a flat 25% combined federal and state income-tax rate on pre-tax income, taxable
+income equal to book income (no deferred taxes), employer payroll taxes reported inside each salaries line, and one
+office on a month-to-month lease.
+
+Opening balance sheet, 31 December 2025:
+
+```text
+ACME ANALYTICS, INC. -- BALANCE SHEET, 31 DEC 2025 (US$)
+Cash                                  600,000
+Accounts receivable        250,000
+  less allowance           (10,000)   240,000
+Inventory                              20,000
+Prepaid expenses                       24,000
+Property and equipment      60,000
+  less accum. depreciation (20,000)    40,000
+TOTAL ASSETS                          924,000
+
+Accounts payable                       30,000
+Accrued expenses                       40,000
+Deferred revenue                      400,000
+Income tax payable                     20,000
+TOTAL LIABILITIES                     490,000
+Paid-in capital (9,000,000 shares)    100,000
+Retained earnings                     334,000
+TOTAL EQUITY                          434,000
+TOTAL LIABILITIES AND EQUITY          924,000
+```
+
+## Journal entries for common transactions
+
+A **journal entry** records one transaction: date, accounts, debit and credit amounts, and a memo. Debits are listed
+first; credits are indented. These are real entries from Acme's FY2026 books; each is one piece of the annual totals
+that appear in the statements.
+
+```text
+1. RAISE EQUITY -- 2 Jan: sell 1,000,000 common shares at $0.50 (par $0.0001)
+   Dr Cash                                      500,000
+      Cr Common stock (1,000,000 x $0.0001)                 100
+      Cr Additional paid-in capital                     499,900
+
+2. BUY EQUIPMENT -- 5 Jan: laptop for a new engineer, paid by card
+   Dr Property and equipment (computers)          2,400
+      Cr Cash                                             2,400
+
+3. PREPAY SOFTWARE -- 5 Jan: annual dev-tool licence paid upfront
+   Dr Prepaid expenses                           12,000
+      Cr Cash                                            12,000
+   31 Jan (and every month-end): use up one month
+   Dr R&D expense -- software tools               1,000
+      Cr Prepaid expenses                                 1,000
+
+4. MONTHLY SUBSCRIPTION -- 1 Jan: bill a monthly customer
+   Dr Accounts receivable                         5,000
+      Cr Deferred revenue                                 5,000
+   31 Jan: service delivered for the month
+   Dr Deferred revenue                            5,000
+      Cr Subscription revenue                             5,000
+
+5. COLLECT CASH -- 15 Feb: the customer pays the invoice
+   Dr Cash                                        5,000
+      Cr Accounts receivable                              5,000
+
+6. BUY INVENTORY -- 3 Mar: 50 gateways at $300, 30-day terms
+   Dr Inventory                                  15,000
+      Cr Accounts payable                                15,000
+
+7. SELL INVENTORY -- 20 Mar: 10 gateways at $500 (perpetual system)
+   Dr Accounts receivable                         5,000
+      Cr Hardware revenue                                 5,000
+   Dr Cost of revenue -- hardware                 3,000
+      Cr Inventory                                        3,000
+
+8. PAYROLL -- 15 Apr: semi-monthly run
+   Dr Salaries (by department)                   75,000
+      Cr Cash (net pay)                                  56,000
+      Cr Payroll liabilities (withholding,               19,000
+         employee + employer FICA, state)
+   Remit withholding to IRS/state a few days later
+   Dr Payroll liabilities                        19,000
+      Cr Cash                                            19,000
+
+9. LOAN -- 1 Jul: $300,000 term loan, 8%, interest-only, due 30 Jun 2029
+   Dr Cash                                      300,000
+      Cr Long-term debt                                 300,000
+
+10. INTEREST -- 1 Aug to 1 Dec: pay prior month's interest (x5)
+   Dr Interest expense ($300,000 x 8% / 12)       2,000
+      Cr Cash                                             2,000
+   31 Dec: December's interest is owed but unpaid (accrual)
+   Dr Interest expense                            2,000
+      Cr Accrued expenses -- interest                     2,000
+
+11. ANNUAL PLAN BILLED UPFRONT -- 1 Oct: $120,000 for 12 months
+   Dr Accounts receivable                       120,000
+      Cr Deferred revenue                               120,000
+   20 Oct: customer pays
+   Dr Cash                                      120,000
+      Cr Accounts receivable                            120,000
+   31 Oct, 30 Nov, 31 Dec: one month earned each time
+   Dr Deferred revenue                           10,000
+      Cr Subscription revenue                            10,000
+
+12. REFUND -- 12 Nov: annual customer cancels with 3 months left;
+    contract gives a pro-rata refund of the unearned $6,000
+   Dr Deferred revenue                            6,000
+      Cr Cash                                             6,000
+
+13. BAD DEBT -- 30 Sep: a customer goes bankrupt owing $8,000
+   Dr Allowance for doubtful accounts             8,000
+      Cr Accounts receivable                              8,000
+   31 Dec: ageing review says the allowance should be $17,000;
+   it stands at $2,000 (10,000 - 8,000), so top it up
+   Dr Bad debt expense (G&A)                     15,000
+      Cr Allowance for doubtful accounts                 15,000
+
+14. ACCRUED WAGES -- 31 Dec: wages for 22-31 Dec, paid 8 Jan 2027
+   Dr Salaries (by department)                   58,000
+      Cr Accrued expenses -- wages                       58,000
+
+15. DEPRECIATION -- 31 Dec: all computers, straight-line, 3 years
+   Dr Depreciation expense (G&A)                 25,000
+      Cr Accumulated depreciation                        25,000
+   (the laptop in entry 2 contributes 2,400 / 3 = 800 a year)
+
+16. CAPITALISED SOFTWARE -- engineering pay spent building a new
+    connectors module (internal-use software, ASC 350-40);
+    placed in service 1 Jul, 3-year life
+   Dr Capitalised software                      120,000
+      Cr R&D expense -- salaries                        120,000
+   31 Dec: six months' amortisation (120,000 / 36 x 6)
+   Dr Cost of revenue -- amortisation            20,000
+      Cr Accumulated amortisation                        20,000
+
+17. STOCK-BASED COMPENSATION -- vesting of employee options
+   Dr R&D / S&M / G&A expense (20k/10k/10k)      40,000
+      Cr Additional paid-in capital                      40,000
+
+18. INCOME TAX -- 31 Dec: 25% x 560,000 pre-tax income
+   Dr Income tax expense                        140,000
+      Cr Income tax payable                             140,000
+
+19. CLOSING ENTRY -- 31 Dec: zero the temporary accounts
+   Dr Revenue accounts (3,200,000 + 22,000)   3,222,000
+      Cr Expense accounts (incl. tax)                 2,802,000
+      Cr Retained earnings (net income)                 420,000
+```
+
+Patterns worth memorising:
+
+- **Cash moving is not the same as revenue or expense.** Entries 2, 3, 5, 9, 11 and 12 move cash without touching profit; entries 3 (month-end), 13–17 change profit without moving cash.
+- **Prepaid** (entry 3) is an asset you used cash to buy; **deferred revenue** (entry 11) is a liability you took cash to owe. They are mirror images.
+- **Refunds of unearned amounts** reduce deferred revenue, not revenue (entry 12). A refund of revenue already recognised would debit a contra-revenue account (refunds and credits).
+- **Allowance method** for bad debts (entry 13): estimate the loss when you can, write off specific accounts against the allowance later. The direct write-off method (expense only when a customer defaults) is not GAAP when losses are material, because it books the loss in the wrong period.
+- Estimates of expected credit losses fall under **ASC 326** (the "CECL" model), which applies to trade receivables too.
+
+### Trial balance
+
+After adjusting entries (before closing), the ledger's debits and credits must total the same:
+
+```text
+ACME -- ADJUSTED TRIAL BALANCE, 31 DEC 2026 (US$)
+Account                                   Debit        Credit
+Cash                                  1,776,000
+Accounts receivable                     380,000
+Allowance for doubtful accounts                        17,000
+Inventory                                35,000
+Prepaid expenses                         30,000
+Property and equipment                   90,000
+Accumulated depreciation                               45,000
+Capitalised software                    120,000
+Accumulated amortisation                               20,000
+Accounts payable                                       45,000
+Accrued expenses                                       60,000
+Deferred revenue                                      520,000
+Income tax payable                                     30,000
+Long-term debt                                        300,000
+Paid-in capital                                       640,000
+Retained earnings (opening)                           334,000
+Subscription revenue                                3,000,000
+Hardware revenue                                      200,000
+Interest income                                        22,000
+Cost of revenue (4 accounts)            700,000
+R&D (salaries, tools, SBC)              850,000
+Sales and marketing                     600,000
+General and administrative              500,000
+Interest expense                         12,000
+Income tax expense                      140,000
+TOTALS                                5,233,000     5,233,000
+```
+
+A balanced trial balance proves only that debits equal credits. It does **not** catch an entry posted to the wrong
+account, an entry omitted entirely, or the same error on both sides. Reconciliations catch those.
+
+## Chart of accounts
+
+The **chart of accounts** is the list of every account in the general ledger, numbered by type so reports sort
+themselves. Keep it short; add accounts when a decision needs the split, not before.
+
+```text
+CHART OF ACCOUNTS TEMPLATE (SaaS, US GAAP)
+1000-1999  ASSETS
+  1000 Operating bank account        1010 Payroll bank account
+  1050 Money market / T-bill sweep   1100 Accounts receivable
+  1110 Allowance for doubtful accts  1200 Inventory
+  1300 Prepaid expenses              1310 Deposits
+  1500 Computers and equipment       1510 Accum. depreciation
+  1600 Capitalised software          1610 Accum. amortisation
+  1700 Right-of-use assets (leases)
+2000-2999  LIABILITIES
+  2000 Accounts payable              2100 Credit cards
+  2200 Accrued expenses              2210 Accrued wages / bonus
+  2220 Payroll liabilities           2300 Sales tax payable
+  2400 Deferred revenue              2500 Income tax payable
+  2600 Lease liabilities             2700 Long-term debt
+  2800 SAFEs / convertible notes (see startup finance)
+3000-3999  EQUITY
+  3000 Common stock (par)            3100 Preferred stock
+  3200 Additional paid-in capital    3900 Retained earnings
+4000-4999  REVENUE
+  4000 Subscription revenue          4100 Services revenue
+  4200 Hardware revenue              4900 Refunds and credits (contra)
+5000-5999  COST OF REVENUE
+  5000 Hosting                       5100 Support salaries
+  5200 Hardware COGS                 5300 Payment processing fees
+  5400 Amortisation of capitalised software
+6000-6999  OPERATING EXPENSES (tag by department: R&D, S&M, G&A)
+  6000 Salaries and wages            6010 Payroll taxes
+  6020 Benefits                      6030 Stock-based compensation
+  6100 Contractors                   6200 Software subscriptions
+  6300 Advertising                   6400 Travel
+  6500 Rent                          6600 Professional fees
+  6700 Insurance                     6800 Depreciation
+  6850 Bad debt expense              6900 Other
+7000-7999  OTHER INCOME AND EXPENSE
+  7000 Interest income               7100 Interest expense
+  7200 FX gains/losses               7300 Gain/loss on disposal
+8000  INCOME TAX EXPENSE
+```
+
+Use **classes or departments** (R&D, S&M, G&A, cost of revenue) as a tag rather than duplicating every expense account
+four times. Investors read SaaS income statements by function, so tag from day one.
+
+## Cash vs accrual basis
+
+| | Cash basis | Accrual basis |
+| :--- | :--- | :--- |
+| revenue recorded when | cash is received | earned (performance obligation satisfied) |
+| expenses recorded when | cash is paid | incurred (matched to the revenue or period they relate to) |
+| balance sheet items | bank balance, little else | receivables, payables, prepaids, deferred revenue, accruals |
+| GAAP-compliant? | no (a "special purpose framework" at best) | yes: GAAP and IFRS require it |
+| effort | low | higher: month-end adjusting entries |
+| good for | a sole proprietor's tax return, very small businesses | anyone with investors, lenders, annual contracts or inventory |
+
+Acme's \$120,000 annual contract (entry 11) shows why accrual matters. Cash basis books \$120,000 of revenue in
+October and nothing for the next nine months, making Q4 look spectacular and Q1–Q3 2027 look like a collapse.
+Accrual basis books \$10,000 a month, which is what actually happened.
+
+### Who may use the cash method for tax
+
+Book basis and tax basis can differ; many small companies keep GAAP books and file taxes on the cash method.
+The IRS limits who may:
+
+| Rule | Detail (2026) |
+| :--- | :--- |
+| **§448 gross-receipts test** | a C corporation, or a partnership with a C corporation partner, may use the cash method only if average annual gross receipts for the **3 prior tax years** are **≤ \$32 million** for tax years beginning in 2026 (the \$25 million TCJA base, inflation-indexed; \$31 million for 2025) |
+| tax shelters | may never use the cash method, whatever their size |
+| other exceptions | qualified personal service corporations and farming businesses have their own carve-outs |
+| inventory | taxpayers meeting the same gross-receipts test may skip formal inventory accounting under §471(c) |
+| advance payments | an accrual-method taxpayer may defer prepaid revenue (such as annual subscriptions) only to the **next** tax year under §451(c), even if GAAP spreads it over longer |
+
+Acme's gross receipts (≈\$3.2 million) are far under the threshold, so it *could* file on the cash method while keeping
+accrual GAAP books. Changing method needs IRS consent (Form 3115). Ask a CPA.
+
+## The accounting cycle
+
+<Steps>
+<Step title="Capture source documents">
+
+Invoices, receipts, bills, bank and card feeds, payroll reports, contracts. No document, no entry.
+
+</Step>
+<Step title="Journalise">
+
+Record each transaction as a balanced journal entry (most software does this from bank feeds and invoices).
+
+</Step>
+<Step title="Post to the general ledger">
+
+Each account accumulates its entries; the ledger is the book of accounts.
+
+</Step>
+<Step title="Unadjusted trial balance">
+
+List every account balance; debits must equal credits.
+
+</Step>
+<Step title="Adjusting entries">
+
+Accruals (wages, interest, unbilled revenue), deferrals (prepaids used, deferred revenue earned), depreciation and
+amortisation, reserves (bad debt, inventory), stock compensation, tax.
+
+</Step>
+<Step title="Reconcile">
+
+Bank, card, AR, AP, payroll and every balance-sheet account to an external source or a supporting schedule.
+
+</Step>
+<Step title="Adjusted trial balance and statements">
+
+Produce the income statement, balance sheet, cash flow statement and statement of equity.
+
+</Step>
+<Step title="Close">
+
+Closing entries move revenue and expense balances into retained earnings; lock the period so nobody posts into it.
+
+</Step>
+</Steps>
+
+Monthly for a funded startup (a 5–10 business-day close is a reasonable target), annually at minimum for anyone.
+The full checklist is in [templates and checklists](#templates-and-checklists).
+
+## Key principles
+
+| Principle | What it says | Acme example | Watch out |
+| :--- | :--- | :--- | :--- |
+| **Accrual basis** | record effects in the period they occur, not when cash moves | December interest accrued (entry 10) | cash-basis "revenue" on annual plans |
+| **Revenue recognition** (ASC 606) | recognise revenue when control of goods/services passes to the customer | annual plan earned monthly | booking a signed contract as revenue |
+| **Expense recognition (matching)** | recognise costs in the period of the revenue they help earn, or when used up | prepaid tool expensed monthly | expensing a year of insurance in January |
+| **Historical cost** | most assets carried at what was paid, less depreciation/impairment | laptop at \$2,400 less depreciation | cost is objective but can be stale |
+| **Fair value** (ASC 820) | exit price in an orderly transaction; Level 1 (quoted prices), Level 2 (observable inputs), Level 3 (models) | T-bill sweep account | Level 3 values are management estimates |
+| **Conservatism / prudence** | when uncertain, don't overstate assets or income | allowance for doubtful accounts | FASB dropped conservatism from its conceptual framework in 2010 as inconsistent with **neutrality**; the IASB reinstated "prudence" (caution under uncertainty) in 2018. It survives in specific rules: impairments, lower of cost and NRV |
+| **Materiality** | an item matters if omitting or misstating it could change a reasonable user's decision | a \$50 mis-posted receipt doesn't matter | SEC SAB 99: a numeric rule of thumb (such as 5%) is only a starting point; small but deliberate or trend-flipping misstatements can be material |
+| **Going concern** | statements assume the company keeps operating; management must assess (ASC 205-40) whether there is **substantial doubt** about that within one year after the statements are issued | a startup with 8 months of runway may need a going-concern disclosure | IFRS looks at least 12 months from the reporting date |
+| **Consistency** | same methods period to period; changes are disclosed and usually applied retrospectively | straight-line depreciation every year | switching methods to hit a target |
+| **Entity concept** | the business is separate from its owners | founder's personal card is not Acme's card | commingling |
+| **Full disclosure** | notes explain policies, estimates, commitments, contingencies | lease, debt and stock option notes | burying bad news in note 14 |
+
+## Revenue recognition (ASC 606)
+
+ASC 606 (and its near-twin IFRS 15), *Revenue from Contracts with Customers*, replaced industry-specific rules for
+public companies from 2018. Its core principle: recognise revenue to depict the transfer of promised goods or services
+in an amount reflecting the consideration expected in exchange. Five steps:
+
+| Step | Question | SaaS answer |
+| :--- | :--- | :--- |
+| 1. **Identify the contract** | is there an enforceable agreement with commercial substance, identifiable rights and payment terms, and probable collection? | signed order form or accepted click-through terms |
+| 2. **Identify the performance obligations** | which promises are **distinct** (useful on their own and separately identifiable)? | subscription access; hardware; onboarding services if distinct |
+| 3. **Determine the transaction price** | how much consideration is expected, including variable amounts (usage fees, discounts, refunds, credits)? | contract price net of expected credits |
+| 4. **Allocate the price** | split the price across obligations by **relative standalone selling price** (SSP) | see below |
+| 5. **Recognise revenue when (or as) each obligation is satisfied** | at a point in time, or over time? | subscription: ratably over the term; hardware: on delivery |
+
+Worked example: a customer buys one gateway plus a 12-month subscription for \$11,000 as a bundle. Acme sells the
+gateway alone for \$500 and the subscription alone for \$12,000 (total SSP \$12,500).
+
+$$
+\text{Gateway} = 11{,}000 \times \frac{500}{12{,}500} = 440, \qquad
+\text{Subscription} = 11{,}000 \times \frac{12{,}000}{12{,}500} = 10{,}560
+$$
+
+Acme books \$440 of hardware revenue on delivery and \$880 a month of subscription revenue. The discount is spread
+across both obligations, not dumped on one.
+
+Related terms: **contract asset** (revenue earned before the right to bill is unconditional), **unbilled receivable**,
+**contract liability** (deferred revenue), **remaining performance obligations** (RPO: contracted revenue not yet
+recognised, including unbilled future years; public SaaS companies disclose it). Sales commissions on multi-year
+contracts are usually capitalised as **costs to obtain a contract** (ASC 340-40) and amortised, with a practical
+expedient to expense them when the amortisation period would be one year or less.
+
+## How the three statements connect
+
+| Link | From | To |
+| :--- | :--- | :--- |
+| net income | income statement | top line of the (indirect) cash flow statement |
+| net income − dividends | income statement | change in retained earnings on the balance sheet |
+| ending cash | cash flow statement | cash on the balance sheet |
+| depreciation and amortisation | income statement (expense) | cash flow add-back; accumulated depreciation on the balance sheet |
+| changes in working capital | balance sheet (two dates) | operating cash flow adjustments |
+| capex, capitalised software | cash flow (investing) | fixed and intangible assets on the balance sheet |
+| debt and equity raised | cash flow (financing) | liabilities and paid-in capital |
+
+Acme FY2026 in one line each: net income \$420,000 lifts retained earnings from \$334,000 to \$754,000; operating
+(\$526,000), investing (−\$150,000) and financing (\$800,000) cash flows sum to \$1,176,000, which is exactly cash of
+\$1,776,000 minus \$600,000. The full statements are in [financial statements](/finance/business/financial-statements/).
+
+## Depreciation
+
+**Depreciation** spreads the cost of a tangible long-lived asset (property, plant and equipment, "PP&E") over its useful
+life. It is **cost allocation, not valuation**: book value after depreciation is not what the asset would sell for.
+Land is not depreciated.
+
+Worked example: equipment costing $C$ = \$10,000 with salvage value $S$ = \$1,000 and useful life $n = 5$ years
+(depreciable base \$9,000).
+
+| Method | Formula | Year 1 | Pattern | Use when |
+| :--- | :--- | ---: | :--- | :--- |
+| **Straight-line** | $D = \dfrac{C - S}{n}$ | 1,800 | equal each year | benefits used evenly; the default for most companies |
+| **Double-declining balance** (DDB) | $D_t = \dfrac{2}{n} \times BV_{t-1}$, never below $S$ | 4,000 | front-loaded | assets that lose usefulness fast (tech) |
+| **Sum-of-the-years'-digits** | $D_t = (C - S)\dfrac{n - t + 1}{n(n+1)/2}$ | 3,000 | front-loaded, less steep | rare today |
+| **Units of production** | $D_t = \dfrac{C - S}{\text{total units}} \times \text{units}_t$ | 2,500 (25,000 of 90,000 hours) | follows usage | machines, vehicles, mines |
+
+```text
+YEAR      STRAIGHT-LINE        DOUBLE-DECLINING (rate 40%)
+          dep    book value    dep     book value
+0                  10,000                10,000
+1        1,800      8,200     4,000       6,000
+2        1,800      6,400     2,400       3,600
+3        1,800      4,600     1,440       2,160
+4        1,800      2,800       864       1,296
+5        1,800      1,000       296       1,000   <- capped at salvage
+total    9,000                9,000
+```
+
+- Both methods expense the same \$9,000 in total; only the **timing** differs. Accelerated methods lower early profit and raise later profit.
+- Salvage value is ignored in the DDB rate but still acts as a floor. Many companies switch from DDB to straight-line when straight-line on the remaining base gives a larger charge.
+- **Tax depreciation is separate.** US tax uses **MACRS** (computers are 5-year property), plus **bonus depreciation** (100% for qualifying property acquired after 19 January 2025, made permanent by the 2025 One Big Beautiful Bill Act) and **§179 expensing** (up to \$2,560,000 for tax years beginning in 2026, phased out above \$4,090,000 of purchases). The book–tax gap creates deferred tax liabilities.
+- **Impairment**: if an asset's carrying amount is not recoverable (US GAAP) or exceeds its recoverable amount (IFRS), write it down. US GAAP forbids reversing impairment losses on assets held and used; IFRS allows reversals (except for goodwill).
+- **Disposal**: remove cost and accumulated depreciation; the difference from sale proceeds is a gain or loss.
+
+## Amortisation and intangibles
+
+**Amortisation** is depreciation for intangible assets: software, patents, customer lists, trademarks, licences.
+
+| Intangible | US GAAP treatment | IFRS |
+| :--- | :--- | :--- |
+| purchased, finite life (acquired customer list, patent) | capitalise at cost; amortise straight-line over useful life; test for impairment | same, with a revaluation option only where an active market exists (rare) |
+| indefinite life (some trademarks, broadcast licences) | not amortised; test for impairment at least annually | same |
+| **goodwill** (purchase price above fair value of identifiable net assets in an acquisition) | not amortised for public companies; annual impairment test. **Private companies** may elect (ASU 2014-02) to amortise it straight-line over 10 years or less | not amortised; annual impairment test |
+| internally generated brand, customer base, workforce | never capitalised; expensed as incurred | same |
+| internally developed software | see [capitalise or expense](#capitalise-or-expense) | capitalise development costs once IAS 38 criteria are met |
+
+Acme's capitalised connectors module (entry 16): \$120,000 over 36 months = \$3,333 a month, starting when placed in
+service. SaaS companies usually present this amortisation within cost of revenue, since the software delivers the
+service.
+
+## Inventory costing
+
+Inventory is carried at cost and expensed as **cost of goods sold (COGS)** when sold. When identical units were bought
+at different prices, a **cost-flow assumption** decides which costs go to COGS and which stay on the balance sheet.
+
+Illustrative quarter for Acme's gateways: 40 units on hand at \$250, bought 100 at \$300 then 60 at \$320, sold 150
+at \$500 (periodic system). Goods available: 200 units costing \$59,200.
+
+| Method | COGS (150 units) | Ending inventory (50 units) | Gross profit on \$75,000 | Notes |
+| :--- | ---: | ---: | ---: | :--- |
+| **FIFO** (first in, first out) | 40×250 + 100×300 + 10×320 = **43,200** | 50×320 = 16,000 | **31,800** | balance sheet near current cost; COGS stale when prices rise |
+| **LIFO** (last in, first out) | 60×320 + 90×300 = **46,200** | 10×300 + 40×250 = 13,000 | **28,800** | lower profit and tax when prices rise; **US GAAP only**, prohibited by IFRS (IAS 2) |
+| **Weighted average** | 150 × (59,200 ÷ 200 = 296) = **44,400** | 50×296 = 14,800 | **30,600** | smooths prices; allowed by both |
+| **Specific identification** | actual cost of each unit sold | actual | depends | serial-numbered, high-value items |
+
+- With **rising** prices: LIFO gives the highest COGS, lowest profit, lowest tax (here \$3,000 more COGS than FIFO, about \$750 less tax at 25%) and the most outdated balance sheet. With falling prices, the reverse.
+- **LIFO conformity rule**: a US company that uses LIFO for its tax return must also use it in its financial statements (IRC §472(c)). A LIFO company discloses a **LIFO reserve** (FIFO cost minus LIFO cost); add it back to compare with FIFO/IFRS companies.
+- **Write-downs**: under US GAAP, inventory measured with FIFO or average cost is carried at the **lower of cost and net realisable value** (ASU 2015-11); LIFO and retail-method inventory still use lower of cost or market. IFRS uses lower of cost and NRV for all and allows reversals of write-downs; US GAAP does not.
+- Perpetual systems update inventory with every sale (entry 7); periodic systems count at period end and back into COGS as beginning + purchases − ending. LIFO and average give different answers under perpetual vs periodic; FIFO gives the same.
+
+## Capitalise or expense
+
+**Capitalise** = record the cost as an asset and expense it gradually (depreciation/amortisation). **Expense** =
+hit the income statement now. Capitalise when the spend creates a future benefit beyond the current period and meets
+the specific rules; otherwise expense.
+
+| Spend | Treatment | Why |
+| :--- | :--- | :--- |
+| laptops, servers, furniture above your policy threshold | capitalise, depreciate | multi-year benefit |
+| items below the threshold | expense | set a written **capitalisation policy** (e.g. \$2,500); for tax, the IRS **de minimis safe harbor** lets you deduct items up to \$2,500 per invoice or item (\$5,000 with an audited or other applicable financial statement) if you expense them in your books too |
+| repairs and maintenance | expense | restores, doesn't improve |
+| improvements that extend life or add capacity | capitalise | new benefit |
+| research | expense (ASC 730) | uncertain benefit |
+| internal-use software (a SaaS platform customers access but don't take possession of) | ASC 350-40: capitalise qualifying development costs, amortise over useful life | see below |
+| software to be sold, leased or otherwise marketed | ASC 985-20: expense until **technological feasibility**, capitalise after until general release | in practice feasibility comes so late that little is capitalised |
+| cloud-computing (SaaS) implementation costs as a customer | capitalise implementation costs like internal-use software, amortise over the hosting term, presented as a prepaid-type asset (ASU 2018-15) | the subscription fee itself is expensed |
+| advertising, training, start-up and organisation costs | expense | GAAP forbids capitalising them |
+| costs to obtain a contract (commissions) | capitalise if incremental and expected to be recovered (ASC 340-40) | practical expedient for 1 year or less |
+| legal fees to acquire an asset, shipping and installation | capitalise as part of the asset's cost | cost to get it ready for use |
+
+### Internal-use software: current rules and ASU 2025-06
+
+Current ASC 350-40 uses three **project stages**: preliminary project (expense), application development (capitalise
+payroll and direct costs of coding, configuration, testing), and post-implementation/operation (expense, including
+training and maintenance). Upgrades that add functionality are capitalised.
+
+In **September 2025** the FASB issued **ASU 2025-06**, *Targeted Improvements to the Accounting for Internal-Use
+Software*. It removes the project-stage model. Capitalisation starts when both (1) management has authorised and
+committed to funding the project and (2) it is **probable the project will be completed** and the software used as
+intended, which requires that any **significant development uncertainty** (novel, unproven functions or unresolved
+performance requirements) has been resolved. It is effective for annual periods beginning after **15 December 2027**
+(early adoption permitted). The aim is to fit agile development, where "stages" never existed. Expect somewhat less
+capitalisation at startups doing genuinely novel work.
+
+**IFRS (IAS 38)** splits projects into research (expense) and development (capitalise once six criteria are shown:
+technical feasibility, intention to complete, ability to use or sell, probable future benefits, adequate resources,
+and reliable measurement). IFRS therefore capitalises more development spend than US GAAP.
+
+### Tax is different again
+
+For tax years beginning after 31 December 2024, new **IRC §174A** (One Big Beautiful Bill Act, July 2025) again lets
+companies deduct **domestic** research and experimental expenditure, including software development, immediately;
+**foreign** research must still be amortised over 15 years under §174. Small businesses meeting the \$31 million
+gross-receipts test could also elect to apply the change retroactively to 2022–2024. This reversed the 2022–2024 rule
+that forced 5-year amortisation of domestic R&D and hit software startups with surprise tax bills.
+
+<Callout type="warn" title="Capitalising is a lever; auditors know it">
+Capitalising costs raises current profit and moves cash outflows from operating to investing activities, which flatters
+both EBITDA and operating cash flow. WorldCom's 2002 collapse started with ordinary operating costs booked as capital
+assets. Write a capitalisation policy, apply it consistently, and document each project's start date and rationale.
+</Callout>
+
+## Accruals, deferrals and reserves
+
+Adjusting entries exist to move revenue and expense into the right period. Four types plus reserves:
+
+| Type | Cash | Recognition | Balance-sheet account | Acme entry |
+| :--- | :--- | :--- | :--- | :--- |
+| **Accrued expense** | paid later | expense now | liability: accrued expenses | December wages and interest (10, 14) |
+| **Accrued revenue** | received later | revenue now | asset: unbilled receivable / contract asset | usage fees earned but billed next month |
+| **Prepaid expense** (deferral) | paid first | expense later | asset: prepaid expenses | dev-tool licence (3) |
+| **Deferred revenue** (deferral) | received first | revenue later | liability: deferred revenue | annual plan (11) |
+| **Reserve / allowance** | none | estimated loss now | contra-asset or liability | allowance for doubtful accounts (13) |
+
+Common reserves and estimates: doubtful accounts, inventory obsolescence, warranty provisions, sales returns and
+credits, accrued bonuses, accrued vacation (where it vests), legal contingencies (ASC 450: accrue if a loss is
+**probable** and **reasonably estimable**; disclose if reasonably possible), and income tax. Reserves are where
+earnings get managed: "cookie-jar" reserves over-accrued in good years and released in bad ones are a classic abuse.
+
+## Leases (ASC 842)
+
+Since ASC 842 (effective 2019 for public companies, 2022 for private), lessees put almost every lease on the balance
+sheet: a **right-of-use (ROU) asset** and a **lease liability** equal to the present value of lease payments.
+
+| | Operating lease | Finance lease |
+| :--- | :--- | :--- |
+| classification | none of the five criteria met | **any** of: ownership transfers; purchase option reasonably certain to be exercised; term is a major part of the asset's economic life; PV of payments is substantially all of its fair value; asset is so specialised it has no alternative use to the lessor |
+| balance sheet | ROU asset + lease liability | ROU asset + lease liability |
+| income statement | single **straight-line lease cost** in operating expenses | amortisation of ROU asset + interest on liability (front-loaded total) |
+| cash flow statement | payments in operating activities | principal in financing, interest in operating |
+| effect on EBITDA | reduces EBITDA | does not reduce EBITDA |
+
+- **Short-term leases** (12 months or less, no purchase option reasonably certain) can stay off the balance sheet by policy election. Acme's month-to-month office is one: rent is simply expensed (\$60,000 in FY2026).
+- **IFRS 16** has a **single lessee model**: every on-balance-sheet lease is accounted for like a finance lease, so IFRS companies report higher EBITDA than otherwise identical US GAAP companies with operating leases. IFRS also exempts **low-value assets** (the IASB had in mind items such as laptops and phones); US GAAP has no low-value exemption.
+
+## Stock-based compensation (ASC 718)
+
+Options, RSUs and restricted stock given to employees are an expense, measured at **grant-date fair value** and
+recognised over the **requisite service period** (usually the vesting period).
+
+| Point | Detail |
+| :--- | :--- |
+| valuation | options: an option-pricing model (Black–Scholes or lattice) using share price, strike, expected term, volatility, risk-free rate, dividends; RSUs: share fair value at grant |
+| private companies | share value usually from an independent **409A valuation**; may use peer-group volatility and simplified expected-term methods |
+| forfeitures | policy election: estimate them upfront or account for them as they occur (ASU 2016-09) |
+| entry | Dr compensation expense (by department) / Cr additional paid-in capital (entry 17) |
+| cash effect | none at grant or vest; it is a non-cash add-back in operating cash flow |
+| tax | book expense and tax deduction differ in timing and amount (deduction generally at exercise for NSOs, not at all for qualifying ISO exercises) |
+
+SBC is a real cost: it is paid in dilution instead of cash. Many companies exclude it from "adjusted" metrics; a
+reader should put it back (see [financial statements](/finance/business/financial-statements/)). Mechanics of option
+pools and 409A are in [startup finance](/finance/business/startup-finance/).
+
+## US GAAP vs IFRS
+
+IFRS is required or permitted for listed companies in most of the world outside the US; the SEC accepts IFRS (as issued
+by the IASB) from foreign private issuers without reconciliation, but US domestic registrants must use US GAAP.
+
+| Topic | US GAAP | IFRS |
+| :--- | :--- | :--- |
+| style | more detailed rules and industry guidance | more principles-based |
+| LIFO inventory | allowed | **prohibited** (IAS 2) |
+| inventory write-down reversals | prohibited | required when value recovers (up to original cost) |
+| development costs | expensed (ASC 730), except software rules in ASC 350-40 / 985-20 | capitalised once the six IAS 38 criteria are met |
+| PP&E after acquisition | cost model only | cost **or revaluation model** (IAS 16) |
+| investment property | cost | fair value or cost (IAS 40) |
+| component depreciation | permitted, rarely used | required for significant parts |
+| impairment reversals | prohibited for assets held and used | allowed, except goodwill |
+| goodwill | not amortised (private-company election to amortise ≤10 years) | not amortised |
+| lessee accounting | operating vs finance (ASC 842) | single model (IFRS 16); low-value exemption |
+| contingent liabilities | accrue when "probable" (likely); low end of range if no best estimate | provision when "probable" (more likely than not); expected value or midpoint of a range |
+| interest paid in the cash flow statement | operating | policy choice (operating or financing) until IFRS 18's IAS 7 amendments (from 2027) put it in financing for most non-financial companies |
+| income statement format | no required subtotals beyond SEC rules for public companies | from 2027 **IFRS 18** requires operating, investing and financing categories, an operating-profit subtotal, and audited disclosure of management-defined performance measures |
+| revenue | ASC 606 | IFRS 15 (converged; small differences) |
+| extraordinary items | prohibited (removed 2015) | prohibited |
+
+## Audits, reviews and compilations
+
+| Service | Assurance | What the accountant does | Independence required | Typical trigger |
+| :--- | :--- | :--- | :--- | :--- |
+| **Preparation** (SSARS, AR-C 70) | none | prepares statements from your records; no report | no | tidy statements for internal use |
+| **Compilation** (AR-C 80) | none | presents your data in statement form; reads for obvious errors; issues a report | no, but lack of it must be disclosed | small bank loans, landlords |
+| **Review** (AR-C 90) | **limited** ("not aware of material modifications needed") | inquiry and analytical procedures; no testing of controls or confirmations | yes | larger loans with covenants, some investors |
+| **Audit** (AICPA GAAS for private companies; **PCAOB** standards for public) | **reasonable** (opinion that statements are fairly presented) | tests transactions and balances, confirms cash and receivables, observes inventory, assesses controls | yes | Series B+ investors, acquisitions, lenders, IPO |
+
+- Public companies need a PCAOB audit and (for accelerated filers) an auditor's attestation on internal control over financial reporting under SOX §404(b). An IPO registration statement needs audited statements; emerging growth companies may present two years instead of three.
+- A first audit is painful if the books were not kept on GAAP accrual: revenue recognition, capitalised software, stock comp and deferred revenue are the usual restatements. Keep books audit-ready from the first priced round.
+- A **qualified** opinion, an **adverse** opinion, a disclaimer, or a **going-concern** paragraph in an audit report are red flags a reader must not skip.
+
+## Who does the books
+
+| Stage | Books | People | Notes |
+| :--- | :--- | :--- | :--- |
+| pre-revenue, founders only | cloud accounting software, separate business bank account and card from day one | founder, plus a CPA for the annual tax return and Delaware franchise tax | accrual not yet critical; clean records are |
+| first revenue, first hires | same software, payroll provider, expense-management tool | **part-time bookkeeper** (monthly reconciliations and close); outsourced CPA firm for taxes | switch to accrual once you sell annual plans |
+| priced round, ~\$1–10M revenue | GAAP accrual books, revenue schedule, deferred revenue waterfall, monthly close | **outsourced accounting firm** (bookkeeper + controller review); **fractional CFO** for board reporting, fundraising, forecasting | first review or audit often requested |
+| scaling toward Series B+ | ERP or advanced accounting system, billing system integrated with the ledger | in-house controller, then full-time CFO | audit annually; SOX-readiness before IPO |
+
+- **Bookkeeper**: records and reconciles. **CPA / accounting firm**: tax returns, technical accounting, reviews and audits (an auditor cannot also keep your books). **Controller**: owns the close and controls. **CFO**: capital, planning, investors.
+- Choose tools by fit: native bank feeds, your payroll provider's integration, multi-currency if needed, department/class tracking, a revenue-recognition module or schedule for annual plans, and an export your future auditor can use. No tool fixes bad habits.
+- Keep records at least as long as the IRS can look back: generally 3 years after filing, 6 if income was under-reported by more than 25%, 7 for bad-debt or worthless-securities deductions, at least 4 for employment-tax records, and property records until 3+ years after you dispose of the asset. Many companies simply keep everything 7 years.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+| :--- | :--- | :--- |
+| **commingling** personal and business money | weakens the corporate veil, messy tax, diligence pain | separate bank and card from day one; reimburse expenses via documented expense reports |
+| cash-basis revenue for annual plans | revenue spikes when billed, ARR and margins misstated, restatement at diligence | deferred revenue and ratable recognition |
+| not reconciling bank, card and balance-sheet accounts monthly | errors and fraud go unnoticed for months | reconcile every account every close |
+| **misclassifying employees as contractors** | back payroll taxes, penalties, benefits claims; the IRS looks at behavioural control, financial control and the relationship | apply the IRS common-law test; state tests (e.g. California's ABC test) can be stricter |
+| treating SAFEs or convertible notes as equity or ignoring them | wrong balance sheet and cap table | follow the instrument's accounting (often a liability until conversion); see [startup finance](/finance/business/startup-finance/) |
+| expensing everything or capitalising aggressively | misstated profit either way | written capitalisation policy |
+| no accruals at month-end | profit swings with payment timing | accrue payroll, bonuses, interest, big bills |
+| ignoring sales tax / VAT on SaaS | uncollected tax becomes your liability | nexus review once you sell across states or abroad |
+| not recording stock comp | understated expense, audit adjustment | record grants monthly from the equity management system |
+| founders paying company bills personally without records | lost deductions, unclear loans vs equity | expense reports or documented founder loans |
+| books a quarter behind | decisions made on stale numbers | close monthly within 10 business days |
+
+## Templates and checklists
+
+```text
+MONTH-END CLOSE CHECKLIST                     Period: ________
+DAY 1-2  CUT-OFF AND CAPTURE
+[ ] All bank, card and payment-processor feeds imported
+[ ] Customer invoices issued for the month; credit notes posted
+[ ] Vendor bills entered (chase missing ones); receipts attached
+[ ] Payroll journals posted (salaries, taxes, benefits)
+DAY 2-4  RECONCILE
+[ ] Every bank and card account reconciled to statements
+[ ] Payment processor payouts matched to invoices, fees booked
+[ ] AR ageing ties to ledger; follow up > 30 days past due
+[ ] AP ageing ties to ledger
+[ ] Payroll liabilities tie to payroll provider reports
+DAY 3-6  ADJUST
+[ ] Revenue: deferred revenue roll-forward (open + billed
+    - recognised - refunded = close); ties to billing system
+[ ] Accrued expenses: wages, bonus, interest, unbilled vendors
+[ ] Prepaids amortised per schedule
+[ ] Depreciation and amortisation per fixed-asset register
+[ ] Capitalised software: hours/costs for qualifying projects
+[ ] Allowance for doubtful accounts reviewed vs ageing
+[ ] Inventory count or roll-forward; obsolescence reserve
+[ ] Stock-based compensation per equity-plan report
+[ ] Lease entries (if any on balance sheet)
+[ ] Income tax provision / estimated payments
+DAY 5-8  REVIEW AND REPORT
+[ ] Balance sheet: every account has a supporting schedule
+[ ] Flux analysis: explain any line moving > 10% or > $X
+[ ] Cash flow statement ties to change in cash
+[ ] KPIs updated: revenue, gross margin, burn, runway, ARR
+[ ] Controller/founder review and sign-off
+[ ] Lock the period in the accounting system
+```
+
+```text
+JOURNAL ENTRY TEMPLATE
+Entry #: ____  Date: ________  Period: ______  Prepared by: ___
+Memo (what and why): ___________________________________________
+Support attached (invoice/contract/schedule): _________________
+Account (number and name)          Dept/class      Dr        Cr
+______________________________     ________   ________  ________
+______________________________     ________   ________  ________
+TOTALS (must be equal)                        ________  ________
+Recurring? [ ] monthly [ ] reversing on ______  Approved by: ___
+```
+
+```text
+CAPITALISATION POLICY (one page)
+1. Threshold: items >= $2,500 per unit (or invoice) with a
+   useful life > 1 year are capitalised; below it, expensed.
+2. Useful lives: computers 3 yrs; furniture 5 yrs; leasehold
+   improvements shorter of lease term or life; capitalised
+   software 3 yrs. Straight-line, no salvage unless material.
+3. Internal-use software (ASC 350-40): capitalise payroll and
+   direct costs from the date criteria are met (document it);
+   stop when substantially complete and ready for use.
+   Maintenance, bug fixes, training, data conversion: expense.
+4. Review for impairment when a project is abandoned or an
+   asset is idle.
+5. Fixed-asset register kept with tag, cost, date, life, owner.
+6. Approved by: ________  Effective: ________
+```
+
+```text
+ANNUAL / YEAR-END CHECKLIST
+[ ] 1099-NEC forms to contractors paid >= threshold (IRS rules)
+[ ] W-2s via payroll provider
+[ ] Delaware franchise tax and annual report (due 1 March)
+[ ] Federal and state income-tax returns or extensions
+[ ] Sales-tax filings by state; nexus review
+[ ] Fixed-asset register physically verified
+[ ] Inventory physical count
+[ ] 409A valuation current (usually annual or after a round)
+[ ] Cap table reconciled to equity accounts
+[ ] Review or audit scheduled if lenders/investors require it
+[ ] Books closed and locked for the year
+```
+
+## References
+
+- [FASB Accounting Standards Codification](https://asc.fasb.org/): the authoritative source of US GAAP (ASC 205-40, 230, 326, 340-40, 350-40, 450, 606, 718, 730, 820, 842, 985-20)
+- [FASB, ASU 2025-06, Intangibles—Goodwill and Other—Internal-Use Software (Subtopic 350-40): Targeted Improvements](https://storage.fasb.org/ASU%202025-06.pdf): removes the project-stage model; effective for annual periods beginning after 15 December 2027
+- [FASB, Concepts Statement No. 8, Conceptual Framework for Financial Reporting](https://storage.fasb.org/Concepts_Statement_No._8_(As_Amended).pdf): qualitative characteristics; neutrality over conservatism
+- [FASB, ASU 2014-02, Accounting for Goodwill (private company alternative)](https://storage.fasb.org/ASU%202014-02_2.pdf): 10-year goodwill amortisation election
+- [IFRS Foundation, IAS 2 Inventories](https://www.ifrs.org/issued-standards/list-of-standards/ias-2-inventories/): no LIFO; lower of cost and NRV with reversals
+- [IFRS Foundation, IAS 38 Intangible Assets](https://www.ifrs.org/issued-standards/list-of-standards/ias-38-intangible-assets/): research vs development criteria
+- [IFRS Foundation, IFRS 16 Leases](https://www.ifrs.org/issued-standards/list-of-standards/ifrs-16-leases/): single lessee model
+- [IFRS Foundation, IFRS 18 Presentation and Disclosure in Financial Statements](https://www.ifrs.org/issued-standards/list-of-standards/ifrs-18-presentation-and-disclosure-in-financial-statements/): replaces IAS 1 from 2027
+- [IRS, Rev. Proc. 2025-32](https://www.irs.gov/pub/irs-drop/rp-25-32.pdf): 2026 inflation adjustments, including the \$32 million §448(c) gross-receipts test and §179 limits
+- [IRS, Publication 538, Accounting Periods and Methods](https://www.irs.gov/publications/p538): cash vs accrual rules and changing methods
+- [IRS, Rev. Proc. 2025-28](https://www.irs.gov/pub/irs-drop/rp-25-28.pdf): procedures for the new §174A domestic R&E deduction and the small-business retroactive election
+- [IRS, How long should I keep records?](https://www.irs.gov/businesses/small-businesses-self-employed/how-long-should-i-keep-records): retention periods
+- [IRS, Tangible property final regulations](https://www.irs.gov/businesses/small-businesses-self-employed/tangible-property-final-regulations): de minimis safe harbor (\$2,500 / \$5,000)
+- [IRS, Independent contractor (self-employed) or employee?](https://www.irs.gov/businesses/small-businesses-self-employed/independent-contractor-self-employed-or-employee): common-law classification tests
+- [SEC, Staff Accounting Bulletin No. 99: Materiality](https://www.sec.gov/interps/account/sab99.htm): qualitative materiality and the limits of the 5% rule of thumb
+- [SEC, Beginners' Guide to Financial Statements](https://www.sec.gov/about/reports-publications/beginners-guide-financial-statements): plain-English introduction to the statements
+- [AICPA, Statements on Standards for Accounting and Review Services](https://www.aicpa-cima.com/resources/landing/statements-on-standards-for-accounting-and-review-services): preparation, compilation and review engagements (AR-C 70, 80, 90)
+- Luca Pacioli, *Summa de arithmetica, geometria, proportioni et proportionalita* (Venice, 1494): first printed description of double-entry bookkeeping
+- Kieso, Weygandt and Warfield, *Intermediate Accounting* (Wiley, many editions): the standard US GAAP textbook
+- [Financial statements](/finance/business/financial-statements/): Acme's full statements, ratio analysis and how to read a 10-K
