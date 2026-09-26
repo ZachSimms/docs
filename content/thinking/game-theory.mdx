@@ -1,0 +1,1048 @@
+---
+title: Game theory
+date: 2026-09-26
+order: 3
+---
+
+The mathematics of strategic interaction: situations where your best move depends on what other people do,
+and theirs on yours. This sheet covers how to model a game, the solution concepts with worked examples, the
+canonical games and where they appear in business, startups, teams and politics, and the most useful practical
+lesson of all: when the equilibrium is bad, change the game. The oligopoly models (Cournot, Bertrand,
+Stackelberg) are in [microeconomics](/economics/microeconomics/#game-theory-and-oligopoly); decisions against
+nature rather than against people are in [decision-making](/thinking/mental-models/decision-making/) and
+[probability and risk](/thinking/mental-models/probability-risk/); the feedback-loop view of the same traps
+(escalation, tragedy of the commons) is in [systems thinking](/thinking/systems-thinking/).
+
+## What a game is
+
+A **game** is any situation where at least two decision makers affect each other's outcomes and know it.
+Chess, a price war, a salary negotiation, a nuclear stand-off and deciding who cleans the kitchen are all games.
+
+| Element | Meaning | Example (two cafés on one street) |
+| :--- | :--- | :--- |
+| **players** | the decision makers whose choices matter | café A, café B |
+| **actions** | what each player can do at a decision point | price high, price low |
+| **strategies** | a *complete contingent plan*: an action for every situation the player could face | "price high; if B cuts, cut next week" |
+| **payoffs** | how much each player values each outcome, in utility, not necessarily money | weekly profit, plus pride, plus reputation |
+| **information** | what each player knows when choosing: others' moves so far, others' payoffs | A can see B's chalkboard; A does not know B's costs |
+| **timing** | simultaneous (neither sees the other's choice) or sequential (moves observed) | prices posted each morning at the same time |
+| **outcome** | the profile of strategies played and the resulting payoffs | both high: 5, 5 |
+
+Payoffs are **von Neumann–Morgenstern utilities**: numbers whose expected values rank risky prospects. That is what
+lets a player compare a 50% chance of 10 with a sure 4, and it is why mixed strategies make sense. They must
+include everything the player cares about (fairness, face, the future), or the analysis answers the wrong question.
+
+### The standard assumptions, and when they fail
+
+| Assumption | Means | Fails when | What to do instead |
+| :--- | :--- | :--- | :--- |
+| rationality | each player maximizes expected payoff given beliefs | emotions, fatigue, rules of thumb, anger at unfairness | model bounded rationality; see [behavioral game theory](#behavioral-game-theory) |
+| common knowledge of rationality | I know you are rational, you know I know, and so on forever | long chains of reasoning (beauty contests, centipede) | assume a few levels of reasoning (level-k) |
+| common knowledge of the game | everyone knows the players, moves and payoffs | costs, resolve or valuations are private | Harsanyi's types: games of incomplete information |
+| equilibrium beliefs | everyone correctly predicts everyone else | novel, one-shot situations with no history | expect learning over repeated play; look for focal points |
+| payoffs capture everything | the numbers are the whole story | reputation, fairness, identity, relationships | re-specify payoffs; most "irrational" play is a mis-specified game |
+
+<Note kind="tip">When a model predicts something absurd, suspect the payoffs or the game boundary before you conclude that people are irrational.</Note>
+
+## A short history
+
+| Year | Who | Contribution |
+| :--- | :--- | :--- |
+| 1838 | Augustin Cournot | duopoly model: the first equilibrium analysis of strategic interaction (see [microeconomics](/economics/microeconomics/#game-theory-and-oligopoly)) |
+| 1928 | John von Neumann | minimax theorem for two-person zero-sum games |
+| 1944 | von Neumann and Oskar Morgenstern | *Theory of Games and Economic Behavior*: founds game theory as a tool for economics, including expected utility |
+| 1950 | Merrill Flood and Melvin Dresher (RAND) | run the prisoner's dilemma experiment: two colleagues play 100 rounds |
+| 1950 | Albert Tucker | adds the story of two prisoners for a talk to Stanford psychologists; the name "prisoner's dilemma" first appears in print in Luce and Raiffa's *Games and Decisions* (1957) |
+| 1950–51 | John Nash | equilibrium for any finite game with any number of players (PNAS 1950, *Annals of Mathematics* 1951); the Nash bargaining solution (*Econometrica* 1950) |
+| 1960 | Thomas Schelling | *The Strategy of Conflict*: commitment, credibility, focal points, deterrence |
+| 1962 | David Gale and Lloyd Shapley | stable matching and the deferred-acceptance algorithm |
+| 1965, 1975 | Reinhard Selten | subgame perfection (1965), trembling-hand perfection (1975) |
+| 1967–68 | John Harsanyi | games of incomplete information played by "Bayesian players" |
+| 1973 | John Maynard Smith and George Price | evolutionarily stable strategies: game theory without rationality |
+| 1980–84 | Robert Axelrod | iterated prisoner's dilemma tournaments; *The Evolution of Cooperation* (1984) |
+| 1982 | Ariel Rubinstein | alternating-offers bargaining |
+
+| Economics prize (Sveriges Riksbank Prize in Memory of Alfred Nobel) | Laureates | Cited for |
+| :--- | :--- | :--- |
+| 1994 | Nash, Harsanyi, Selten | "pioneering analysis of equilibria in the theory of non-cooperative games" |
+| 1996 | Vickrey, Mirrlees | incentives under asymmetric information (Vickrey's second-price auction) |
+| 2001 | Akerlof, Spence, Stiglitz | markets with asymmetric information |
+| 2005 | Aumann, Schelling | "for having enhanced our understanding of conflict and cooperation through game-theory analysis" |
+| 2007 | Hurwicz, Maskin, Myerson | "for having laid the foundations of mechanism design theory" |
+| 2009 | Ostrom (with Williamson) | economic governance, including the commons |
+| 2012 | Roth, Shapley | "for the theory of stable allocations and the practice of market design" |
+| 2020 | Milgrom, Wilson | "for improvements to auction theory and inventions of new auction formats" |
+
+## Classifying games
+
+| Dimension | One end | Other end | Why it matters |
+| :--- | :--- | :--- | :--- |
+| binding agreements | **cooperative**: players can sign enforceable contracts; analyze coalitions and how to split value | **non-cooperative**: no enforcement; analyze individual strategies | most real strategy is non-cooperative; contracts are a way to change the game |
+| sum of payoffs | **zero-sum** (constant-sum): my gain is your loss; poker, penalty kicks, market share in a fixed market | **non-zero-sum**: joint gains or joint losses possible; trade, alliances, price wars | zero-sum thinking in a non-zero-sum game leaves value on the table |
+| timing | **simultaneous**: choose without seeing the other's move; sealed bids | **sequential**: moves observed; chess, negotiation offers | sequential games are solved backwards; order of moves can be a weapon |
+| observation of past moves | **perfect information**: every move so far is seen; chess | **imperfect information**: some moves hidden; poker cards, simultaneous moves | imperfect information needs beliefs about what happened |
+| knowledge of the game | **complete information**: payoffs are common knowledge | **incomplete information**: private types (costs, valuations, resolve) | leads to signaling, screening, bluffing, reputation |
+| repetition | **one-shot**: meet once | **repeated**: same players again, finitely or indefinitely | repetition is the main route to cooperation |
+| symmetry | **symmetric**: same strategies and payoffs for every player | **asymmetric**: different roles; incumbent vs entrant | asymmetric games often have a natural leader or focal outcome |
+| number of players | two-player | n-player | n-player games add free riding and coalitions |
+
+## Solution concepts
+
+A **solution concept** is a rule for predicting what rational players will do. Stronger concepts make fewer
+predictions but rely on fewer assumptions.
+
+### Dominant strategies
+
+Strategy $s$ **strictly dominates** $s'$ if it gives a strictly higher payoff whatever the others do. A rational
+player never plays a strictly dominated strategy, and if one strategy dominates all others, plays it without
+needing to predict anyone. The prisoner's dilemma is the famous case: defecting is dominant, yet both defecting
+is worse for both than both cooperating. **Weak** dominance (never worse, sometimes better) is a weaker argument:
+eliminating weakly dominated strategies can depend on the order of elimination.
+
+### Iterated elimination of strictly dominated strategies
+
+If players know each other is rational, delete dominated strategies, then look again: new strategies may now be
+dominated. A game is **dominance solvable** if this leaves one outcome.
+
+| | Column: L | Column: C | Column: R |
+| :--- | :---: | :---: | :---: |
+| **Row: U** | 4, 3 | 5, 1 | 6, 2 |
+| **Row: M** | 2, 1 | 8, 4 | 3, 6 |
+| **Row: D** | 3, 0 | 9, 6 | 2, 8 |
+
+| Step | Reasoning | Left |
+| :--- | :--- | :--- |
+| 1 | no row is dominated yet; for Column, R beats C in every row (2 > 1, 6 > 4, 8 > 6): delete C | rows U, M, D; columns L, R |
+| 2 | with C gone, U beats M (4 > 2, 6 > 3) and D (4 > 3, 6 > 2): delete M and D | row U; columns L, R |
+| 3 | against U, L gives Column 3 and R gives 2: delete R | (U, L) with payoffs 4, 3 |
+
+Row's best-looking payoffs (8 and 9) are in the column Column will never play. Each step needs one more layer
+of "I know that you know", which is why long elimination chains predict real behavior poorly.
+
+### Best responses and Nash equilibrium
+
+A **best response** is a strategy that maximizes your payoff given the others' strategies. A **Nash equilibrium**
+is a profile where everyone is playing a best response to everyone else: nobody can gain by changing strategy
+alone.
+
+$$
+u_i(s_i^*, s_{-i}^*) \ge u_i(s_i, s_{-i}^*) \quad \text{for every player } i \text{ and every strategy } s_i
+$$
+
+**Underline method** (here: bold). For each column, mark Row's best payoff; for each row, mark Column's best
+payoff. Cells with both marked are pure-strategy Nash equilibria. Two firms choose a platform (standard A,
+standard B, or build their own):
+
+| | Column: A | Column: B | Column: own |
+| :--- | :---: | :---: | :---: |
+| **Row: A** | **4**, **4** | 1, 1 | **2**, 3 |
+| **Row: B** | 1, 1 | **3**, **3** | 1, 2 |
+| **Row: own** | 3, **2** | 2, 1 | 1, 1 |
+
+Two equilibria, (A, A) and (B, B). The theory says the firms will coordinate on one standard; it does not say
+which. That selection problem is where focal points, history, commitment and first moves come in.
+
+| Property | Nash equilibrium |
+| :--- | :--- |
+| existence | every finite game has at least one, possibly in mixed strategies (Nash 1950) |
+| uniqueness | often several; the concept alone may not predict |
+| efficiency | not guaranteed: the prisoner's dilemma equilibrium is the worst joint outcome |
+| stability interpretation | a self-enforcing agreement: if everyone expects it, nobody wants to deviate |
+| how you get there | reasoning, pre-play talk, learning from repetition, convention, evolution |
+
+### Mixed strategies and the indifference principle
+
+A **mixed strategy** randomizes over actions. In a mixed equilibrium each player's mix makes the *opponent*
+indifferent between the actions the opponent uses; otherwise the opponent would play only the better one.
+
+**Matching pennies**: both show heads or tails; Row wins 1 if they match, Column wins 1 if not.
+
+| | Column: heads | Column: tails |
+| :--- | :---: | :---: |
+| **Row: heads** | 1, −1 | −1, 1 |
+| **Row: tails** | −1, 1 | 1, −1 |
+
+No pure equilibrium: whoever is predictable loses. If Column plays heads with probability $q$, Row's expected
+payoff is $q - (1-q) = 2q - 1$ from heads and $1 - 2q$ from tails. Indifference gives $q = \tfrac12$; by symmetry
+Row also mixes 50/50, and the game's value is 0.
+
+**Penalty kicks.** Chiappori, Levitt and Groseclose (2002) studied 459 penalties in the French and Italian top
+divisions. A simplified 2 × 2 version of their scoring rates (kicker's "natural" side is L, the left for a
+right-footer; "wrong side" lumps a goalkeeper staying in the middle with diving the wrong way):
+
+| | Goalie dives L | Goalie dives R |
+| :--- | :---: | :---: |
+| **Kick L (natural)** | 0.636 | 0.944 |
+| **Kick R** | 0.893 | 0.437 |
+
+Entries are the kicker's scoring probability; the goalie gets 1 minus it (constant-sum). With the goalie diving L
+with probability $g$, the kicker is indifferent when
+
+$$
+0.636g + 0.944(1-g) = 0.893g + 0.437(1-g) \;\Rightarrow\; g = \frac{0.507}{0.764} \approx 0.66
+$$
+
+With the kicker going L with probability $k$, the goalie is indifferent when
+$0.636k + 0.893(1-k) = 0.944k + 0.437(1-k)$, so $k = 0.456/0.764 \approx 0.60$. Goals are scored about 74% of
+the time. The counterintuitive prediction, confirmed in their data, is that goalies go to the kicker's natural
+side *more* often than kickers do (56.6% of goalie dives vs 44.9% of kicks, counting all kicks). They could not
+reject that scoring rates were equal across directions, as equilibrium requires, and found no evidence that
+players' choices depended on the opponent's move in the same kick.
+
+<Note kind="info">In a mixed equilibrium your own probabilities are pinned down by the other player's payoffs, not yours. Get better at your strong side and, in equilibrium, it is the opponent who changes: they defend it more.</Note>
+
+### Minimax and zero-sum games
+
+In a two-person zero-sum game with mixed strategies, von Neumann's **minimax theorem** (1928) says
+
+$$
+\max_{p}\,\min_{q}\; p^{\top} A\, q \;=\; \min_{q}\,\max_{p}\; p^{\top} A\, q = v
+$$
+
+where $A$ is Row's payoff matrix. Maximizing your guaranteed payoff (maximin) and minimizing the opponent's best
+payoff (minimax) give the same value $v$ and the same strategies as Nash equilibrium. In the penalty game
+$v \approx 0.74$: the kicker can guarantee roughly 74% whatever the goalie does, and the goalie can hold it
+there. Zero-sum games are the one class where equilibrium play is also the *safe* play: being predictable is the
+only way to lose, so the practical rule is to randomize genuinely (use a die, not your gut, because people are
+bad at producing random sequences).
+
+### Efficiency versus equilibrium
+
+| Concept | Question it answers | Prisoner's dilemma answer |
+| :--- | :--- | :--- |
+| Nash equilibrium | what is self-enforcing? | (defect, defect) |
+| Pareto efficient | can anyone gain without someone losing? | (cooperate, cooperate) and the two mixed outcomes are efficient; (defect, defect) is not |
+| dominant-strategy equilibrium | what does each do regardless? | (defect, defect) |
+| social optimum | what maximizes total payoff? | (cooperate, cooperate) |
+
+The gap between the equilibrium and the efficient outcome is the **cost of the game**. Much of strategy,
+management and policy is closing it by changing the game, not by exhorting players to be nicer.
+
+### Focal points
+
+When a game has several equilibria, people often coordinate on the one that stands out for cultural, historical or
+geometric reasons: a **focal point** or Schelling point. In *The Strategy of Conflict* (1960) Schelling asked
+people where and when they would try to meet a stranger in New York with no way to communicate; most of his
+informal sample chose noon, and a majority chose Grand Central Station (paraphrased from the book's report).
+
+| Focal-point source | Example |
+| :--- | :--- |
+| convention | drive on the left or right; round-number prices |
+| salience | the obvious landmark; the first option in a list |
+| fairness | 50/50 splits; splitting the difference |
+| precedent | last year's terms; the industry-standard contract |
+| prominence of a boundary | a river as a ceasefire line; "no first use" |
+
+Use it: in negotiation, **propose the focal point first** (a clean number, an existing standard, a precedent that
+favors you). In coordination, make your preferred equilibrium the obvious one before others think about it.
+
+### Evolutionarily stable strategies
+
+Maynard Smith and Price (1973) applied game theory to animals that do not reason at all: strategies spread when
+they earn more fitness. A strategy $s^*$ is an **evolutionarily stable strategy** (ESS) if a population playing it
+cannot be invaded by a small group of mutants playing $m$:
+
+$$
+u(s^*, s^*) > u(m, s^*) \quad \text{or} \quad \bigl[\,u(s^*, s^*) = u(m, s^*) \text{ and } u(s^*, m) > u(m, m)\,\bigr]
+$$
+
+**Hawk–dove.** Contestants fight over a resource worth $V$; fighting costs the loser $C$. Hawks escalate; doves
+display and retreat.
+
+| | Opponent: hawk | Opponent: dove |
+| :--- | :---: | :---: |
+| **Hawk** | $\tfrac{V-C}{2}$, $\tfrac{V-C}{2}$ | $V$, 0 |
+| **Dove** | 0, $V$ | $\tfrac{V}{2}$, $\tfrac{V}{2}$ |
+
+If $V \ge C$, hawk is the ESS. If $V \lt C$, neither pure strategy is stable. With a share $p$ of hawks,
+
+$$
+E[\text{hawk}] = p\,\tfrac{V-C}{2} + (1-p)V, \qquad E[\text{dove}] = (1-p)\,\tfrac{V}{2}
+$$
+
+and setting them equal gives $p^* = V/C$. With $V = 4$ and $C = 10$: 40% hawks, and everyone averages
+$0.6 \times 2 = 1.2$, less than the 2 an all-dove population would get. Evolution, like rationality, does not
+guarantee efficiency. The same logic explains ritualised fights, costly territorial displays and why "limited war"
+conventions persist.
+
+## The canonical games
+
+| Game | Structure | Pure equilibria | Core lesson |
+| :--- | :--- | :--- | :--- |
+| prisoner's dilemma | individual incentive vs joint interest | (defect, defect) | rational individuals, bad collective outcome |
+| stag hunt | coordination with a risky high-payoff option | (stag, stag), (hare, hare) | trust and assurance, not incentives, are the problem |
+| chicken / hawk–dove | anti-coordination; disaster if both are tough | (swerve, straight), (straight, swerve) | commitment wins; mutual commitment is catastrophic |
+| battle of the sexes | coordinate, but disagree on where | both of the two meeting points | who moves first or sets the focal point wins |
+| matching pennies | pure conflict | none (mixed only) | be unpredictable |
+| ultimatum | take it or leave it | proposer offers the minimum (subgame perfect) | people punish unfairness |
+| public goods / commons | n-player dilemma | nobody contributes; everyone over-uses | institutions, not exhortation |
+| traveler's dilemma, centipede | long chains of backward reasoning | the worst outcome | theory fails when stakes of deviating are small |
+| dollar auction | escalation in an all-pay contest | no sensible stopping point | decide your limit before you start |
+| beauty contest | guess what others guess | everyone picks 0 | win by predicting *actual* depth of reasoning |
+| volunteer's dilemma | one person must pay for everyone | exactly one volunteer (several equilibria) | bigger groups help less; name an owner |
+
+Payoffs below are (row, column), higher is better.
+
+### Prisoner's dilemma
+
+| | Column: cooperate | Column: defect |
+| :--- | :---: | :---: |
+| **Row: cooperate** | $R$, $R$ = 3, 3 | $S$, $T$ = 0, 5 |
+| **Row: defect** | $T$, $S$ = 5, 0 | $P$, $P$ = 1, 1 |
+
+The defining ordering is $T > R > P > S$ (temptation, reward, punishment, sucker); for repeated play one also
+requires $2R > T + S$, so taking turns exploiting each other is worse than steady cooperation. Defect is
+dominant; (defect, defect) is the unique equilibrium and is Pareto-dominated.
+
+| Real instances | How to escape it |
+| :--- | :--- |
+| price wars, discount spirals, cartel cheating | repeat the game with visible prices; long-term contracts; differentiate so you are not in the same game |
+| advertising arms races, feature bloat, "who works latest" cultures | agree and verify limits; change what is measured and rewarded |
+| doping in sport, arms races | independent monitoring and sanctions (changes $T$) |
+| over-fishing, shared-resource overuse | quotas, property rights, community rules (see [Ostrom](#public-goods-and-the-tragedy-of-the-commons)) |
+| teammates hoarding credit | reward the team outcome; make contributions visible |
+
+### Stag hunt
+
+After Rousseau's parable (*Discourse on Inequality*, 1755): hunt the stag together (big payoff, needs both) or a
+hare alone (small, safe).
+
+| | Column: stag | Column: hare |
+| :--- | :---: | :---: |
+| **Row: stag** | 4, 4 | 0, 3 |
+| **Row: hare** | 3, 0 | 3, 3 |
+
+Both (stag, stag) and (hare, hare) are equilibria. Stag is **payoff dominant**; hare is **risk dominant** (safe
+whatever the other does). Hunting stag pays only if you believe the other will with probability at least $p$,
+where $4p = 3$, so $p \ge 0.75$. Unlike the prisoner's dilemma, nobody is tempted to betray a cooperator: the
+only problem is doubt. Instances: adopting a new tool or process as a team, a coordinated rewrite, joining a
+new network, founders all quitting their jobs together. Escape: **assurance**: visible commitments, small
+reversible first steps, deposits, a credible leader who goes first.
+
+### Chicken and hawk–dove
+
+Two drivers speed at each other; whoever swerves is "chicken".
+
+| | Column: swerve | Column: straight |
+| :--- | :---: | :---: |
+| **Row: swerve** | 0, 0 | −1, 1 |
+| **Row: straight** | 1, −1 | −10, −10 |
+
+Pure equilibria: one swerves, the other does not. In the symmetric mixed equilibrium each goes straight with
+probability $p$ where $-p = 1 - 11p$, so $p = 0.1$, and the crash happens 1% of the time. Chicken and hawk–dove
+are the same game. Instances: brinkmanship over deadlines and budgets, two companies both refusing to exit a
+market, standoffs in negotiations. The winning move is **visible, irreversible commitment** to straight before
+the other commits; the losing scenario is both committing.
+
+### Battle of the sexes (coordination with conflict)
+
+| | Column: opera | Column: football |
+| :--- | :---: | :---: |
+| **Row: opera** | 2, 1 | 0, 0 |
+| **Row: football** | 0, 0 | 1, 2 |
+
+Both want to be together but prefer different venues. Two pure equilibria; the mixed one (each goes to their own
+favorite with probability ⅔) gives each an expected ⅔, worse than *either* pure equilibrium. Instances: which
+standard two firms adopt (format wars), which language a merged codebase uses, whose process a merged team keeps.
+Resolution: move first and commit, set the focal point, alternate over time, or pay a side payment.
+
+### Ultimatum and dictator games
+
+**Ultimatum**: the proposer offers a split of a sum; the responder accepts (split happens) or rejects (both get
+nothing). Backward induction: a money-maximizing responder accepts any positive amount, so the proposer offers the
+smallest unit. **Evidence**: Güth, Schmittberger and Schwarze (1982) ran the first experiment, and thousands of
+replications since show the same pattern: typical offers are 40–50%, the modal offer is an equal split, and
+acceptance falls quickly for offers below about 20% (Güth and Kocher's 2013 survey). Responders pay to punish
+what they see as unfair.
+
+**Dictator**: the responder cannot reject. Self-interest predicts giving nothing; many people still give
+something (Kahneman, Knetsch and Thaler 1986), but Forsythe et al. (1994) found lower offers in the dictator
+game than in the ultimatum game, so part of ultimatum generosity is fear of rejection, not pure fairness. Giving varies a lot with framing, anonymity
+and social distance (Engel's 2011 meta-study of more than a hundred experiments).
+
+Lesson for negotiators: a take-it-or-leave-it offer that looks exploitative gets rejected even when accepting is
+"rational". Leave the other side a split they can defend to themselves.
+
+### Public goods and the tragedy of the commons
+
+**Public goods game.** Each of $n$ players has endowment $e$ and contributes $c_i$; the pot is multiplied by
+$m$ (with $1 \lt m \lt n$) and shared equally:
+
+$$
+\pi_i = e - c_i + \frac{m}{n}\sum_{j=1}^{n} c_j
+$$
+
+Each unit you contribute returns only $m/n \lt 1$ to you, so contributing nothing is dominant, yet everyone
+contributing everything is best for all. With $n = 4$, $e = 20$, $m = 1.6$: full contribution pays each 32; none
+pays 20. In experiments people contribute a fair amount at first and contributions decline with repetition;
+Fehr and Gächter (2000) found that with a costly option to punish free riders, near-complete cooperation can be
+reached and maintained.
+
+**Tragedy of the commons** (Hardin, *Science*, 1968): each herder adds animals to a shared pasture because they
+get the full benefit of an extra animal but bear only a fraction of the damage. With value per animal $a - N$
+(where $N$ is the total herd), cost $c$ per animal and $n$ herders, each choosing their own herd size gives
+
+$$
+N_{\text{Nash}} = \frac{n}{n+1}(a - c) \qquad \text{vs} \qquad N_{\text{optimal}} = \frac{a-c}{2}
+$$
+
+| Herders $n$ | 1 | 2 | 5 | 10 | many |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| total herd ($a = 100$, $c = 4$) | 48 (optimal) | 64 | 80 | 87.3 | → 96: the resource's whole surplus is dissipated |
+
+Hardin concluded that only privatisation or state control could save a commons. **Elinor Ostrom** (*Governing
+the Commons*, 1990) documented communities that had managed fisheries, forests and irrigation for centuries
+without either, and distilled eight design principles of long-enduring institutions:
+
+| # | Principle | In a team or company |
+| :--- | :--- | :--- |
+| 1 | clearly defined boundaries: who may use the resource, and the resource itself | who owns the shared service, budget or codebase |
+| 2 | rules for use and upkeep fit local conditions | rules written by people who know the system, not generic policy |
+| 3 | collective-choice arrangements: those affected can change the rules | users of the platform help set its rules |
+| 4 | monitoring by people accountable to the users (or the users themselves) | visible dashboards of usage and cost |
+| 5 | graduated sanctions: small first, escalating for repeat or serious violations | a nudge, then a review, then removal of access |
+| 6 | cheap, fast conflict-resolution mechanisms | an owner who arbitrates quickly |
+| 7 | the right to organize is recognized by outside authorities | leadership does not override local agreements |
+| 8 | nested enterprises: governance in layers for larger systems | team rules within org rules within company rules |
+
+Ostrom shared the 2009 economics prize. Hardin's "commons" was really an **open-access** resource; a commons with
+a defined community, rules and monitoring is a repeated game, not a one-shot dilemma.
+
+### Traveler's dilemma and the centipede game
+
+**Traveler's dilemma** (Basu, *American Economic Review*, 1994). Two travelers each claim between 2 and 100 for
+identical lost antiques. Both receive the lower claim; the lower claimant gets 2 extra and the higher claimant
+2 less. Undercutting the other by 1 always pays, so the unique equilibrium is (2, 2). Capra, Goeree, Gomez and
+Holt (1999) found claims near the top when the bonus and penalty were small and closer to 2 when they were
+large: the equilibrium predicts well only when deviating from it is costly.
+
+**Centipede** (Rosenthal 1981). Two players alternately either *take* the larger share of a growing pot (ending
+the game) or *pass* (the pot grows). Backward induction from the last node says take at the first move, which
+gives both almost nothing. McKelvey and Palfrey (1992) found subjects rarely do; most pass several times.
+Lesson: long chains of backward induction require every player to trust every other player's rationality at every
+step. One doubt, and cooperating for a while becomes sensible.
+
+### Dollar auction
+
+Shubik (1971): a dollar is auctioned to the highest bidder, but the **second-highest bidder also pays** their bid.
+Once two people have bid, each is always better off topping the other: at 95¢ vs 90¢ the trailer should bid
+\$1.00 (losing 0 instead of 90¢); at \$1.00 vs 95¢ the other should bid \$1.05 (losing 5¢ instead of 95¢), and
+so on without limit. Each step is rational given sunk bids; the whole path is ruinous.
+
+Instances: wars of attrition, bidding wars for acquisitions or talent, patent races, litigation, "we've invested
+too much to stop" projects. Defenses: set a walk-away limit before entering, treat sunk costs as sunk, and avoid
+all-pay contests unless you have a decisive advantage (see
+[cognitive biases](/thinking/mental-models/cognitive-biases/) on sunk cost and escalation of commitment).
+
+### Keynesian beauty contest (guess ⅔ of the average)
+
+Keynes (*The General Theory*, 1936, chapter 12) compared stock picking to a newspaper contest where you win by
+picking the faces *others* will pick. The **p-beauty contest**: everyone picks a number from 0 to 100; the winner
+is closest to $p$ times the average. With $p = \tfrac23$, iterated dominance drives the only equilibrium to 0:
+
+| Reasoning level | Assumes others are | Picks |
+| :--- | :--- | :--- |
+| level 0 | random, average 50 | around 50 |
+| level 1 | level 0 | 33 |
+| level 2 | level 1 | 22 |
+| level 3 | level 2 | 15 |
+| equilibrium | fully rational, infinitely deep | 0 |
+
+Nagel (1995) found a first-round mean of about 37 with $p = \tfrac23$, consistent with most people doing one or two
+steps, and choices falling toward 0 over four rounds as players learned. Picking 0 in round one *loses*: the
+winning strategy is to be exactly one step deeper than the crowd. Markets, product launches and hype cycles often
+reward predicting beliefs about beliefs, not fundamentals.
+
+### Volunteer's dilemma
+
+Diekmann (1985): someone must pay cost $c$ to produce a benefit $b$ for everyone (call the ambulance, fix the
+flaky test, report the bug). If nobody volunteers, everyone gets 0. In the symmetric mixed equilibrium each of $n$
+players declines with probability $q$ that makes them indifferent:
+
+$$
+b - c = b\,(1 - q^{\,n-1}) \;\Rightarrow\; q = \left(\frac{c}{b}\right)^{1/(n-1)}, \qquad
+P(\text{nobody volunteers}) = \left(\frac{c}{b}\right)^{n/(n-1)}
+$$
+
+| Group size $n$ ($c/b = 0.2$) | 2 | 5 | 20 | → ∞ |
+| :--- | :--- | :--- | :--- | :--- |
+| each person volunteers | 80% | 33% | 8% | → 0 |
+| nobody volunteers | 4% | 13% | 18% | → 20% |
+
+Bigger groups make each person less likely to act *and* make total failure more likely. The Kitty Genovese murder
+(1964) is often cited as the example, but later investigations found the original account of dozens of passive
+witnesses was inaccurate. Fix: **assign one named owner** (on-call rotas, "you, call an ambulance", a directly responsible
+individual).
+
+## Sequential games and commitment
+
+A **game tree** (extensive form) shows who moves when, what they know, and payoffs at each end. **Backward
+induction**: start at the last decisions, pick each mover's best action, replace that node with its payoff, and
+work back to the root. A strategy profile is a **subgame-perfect equilibrium** (Selten) if it is a Nash
+equilibrium in every subgame, including those never reached. That rules out threats nobody would carry out.
+
+<Diagram src="/images/diagrams/thinking-game-tree.svg" label="Entry deterrence game tree. The entrant moves first and chooses Stay out, which ends the game with payoffs 0 for the entrant and 10 for the incumbent, or Enter. After entry the incumbent chooses Fight, giving payoffs minus 2 for the entrant and 2 for the incumbent, or Accommodate, giving 3 and 5. The Enter then Accommodate path is highlighted: the incumbent prefers 5 to 2 so accommodates, and anticipating that the entrant prefers 3 to 0 so enters. The Fight branch is dashed and labeled an empty threat." caption="Entry deterrence solved by backward induction: the threat to fight is not credible" />
+
+The same game in normal form (payoffs: entrant, incumbent):
+
+| | Incumbent: fight if entry | Incumbent: accommodate if entry |
+| :--- | :---: | :---: |
+| **Entrant: enter** | −2, 2 | 3, 5 |
+| **Entrant: stay out** | 0, 10 | 0, 10 |
+
+There are two Nash equilibria. (Stay out, fight) is sustained by a threat that costs the incumbent nothing because
+it is never tested; but if entry happened, fighting would earn 2 instead of 5, so the threat is **not credible**.
+The subgame-perfect equilibrium is (enter, accommodate). The 1994 prize press release uses exactly this example to
+explain Selten's refinement.
+
+### Making threats and promises credible
+
+| Mechanism | How it changes the tree | Example |
+| :--- | :--- | :--- |
+| sunk investment | makes fighting cheaper or accommodation costlier later | building excess capacity before entry (Dixit 1980) |
+| contracts and clauses | removes your option to back down | most-favored-customer and price-matching clauses |
+| reputation | the payoff from fighting now includes deterring future entrants | a chain store fighting in its first markets |
+| delegation | hands the decision to someone with different payoffs or no authority to concede | "my board won't approve more than that"; an agent with a mandate |
+| burning bridges | deletes your own retreat option | Cortés at Veracruz in 1519 |
+| automaticity | removes discretion altogether | tripwire forces, automatic penalty clauses |
+
+Schelling's central insight, in the 2005 prize summary's words: "a party can strengthen its position by overtly
+worsening its own options". Commitment works only if it is **visible, irreversible and understood** by the other
+side, and it costs flexibility: if the world changes, you are stuck with it.
+
+<Note kind="warning">Cortés is usually said to have burned his ships. Most accounts describe him scuttling them (sinking or running them aground) so his men could not go back to Cuba; the burning version is the popular retelling.</Note>
+
+**Chain-store paradox** (Selten 1978). A chain faces a potential entrant in each of 20 towns in turn. In the last
+town, fighting cannot deter anyone, so the chain accommodates; knowing that, fighting in town 19 cannot deter
+either, and so on back to town 1: backward induction says accommodate everywhere. Yet intuitively a chain should
+fight early to build a reputation. Kreps and Wilson (1982) and Milgrom and Roberts (1982) resolved it: if
+entrants think there is even a small chance the incumbent is a "tough type" who likes fighting, a rational
+incumbent fights early to mimic that type. Reputation needs **uncertainty about your type**.
+
+### First mover or second mover?
+
+| Moving first wins when | Moving second wins when |
+| :--- | :--- |
+| you can commit and others must adapt (Stackelberg leadership: see [microeconomics](/economics/microeconomics/#game-theory-and-oligopoly)) | the game rewards reacting: matching pennies, rock-paper-scissors, penalty kicks |
+| network effects or switching costs lock customers in | the pioneer pays to educate the market and prove demand |
+| scarce resources can be pre-empted (locations, spectrum, talent) | technology or customer needs are still changing fast |
+| setting the focal point or standard decides a coordination game | imitation is cheap and the leader's R&D spills over |
+
+The **first-mover advantage is weaker than folklore suggests**. Lieberman and Montgomery (1988) reviewed the
+mechanisms and their limits; Golder and Tellis (1993) argued that much apparent pioneer advantage is survivor bias,
+because failed pioneers are forgotten and later entrants get labeled pioneers. Peter Thiel argues in *Zero to One*
+(2014) for being the *last* mover: the one who dominates a market for the long term (see
+[Peter Thiel](/startups/advice/peter-thiel/)).
+
+## Repeated games and cooperation
+
+A one-shot prisoner's dilemma ends in mutual defection. Repeat it indefinitely and cooperation can be an
+equilibrium, because defecting today triggers punishment tomorrow. Axelrod called this **the shadow of the
+future**.
+
+**Grim trigger**: cooperate until the other defects once, then defect forever. Let $\delta$ be the weight on the
+next round (discount factor times the probability the game continues). Against a grim-trigger partner:
+
+$$
+\underbrace{\frac{R}{1-\delta}}_{\text{cooperate forever}} \;\ge\; \underbrace{T + \frac{\delta P}{1-\delta}}_{\text{defect now, punished after}}
+\;\iff\; R \ge (1-\delta)T + \delta P \;\iff\; \delta \ge \frac{T-R}{T-P}
+$$
+
+With $T = 5$, $R = 3$, $P = 1$: cooperation is sustainable if $\delta \ge 0.5$. If there is no discounting but a 10%
+chance each round is the last, $\delta = 0.9$ and cooperation holds comfortably. Against tit-for-tat, a deviator
+can also alternate defect and cooperate; blocking that needs $\delta \ge \frac{T-R}{R-S} = \frac{2}{3}$ here.
+
+| What makes cooperation easier | Why |
+| :--- | :--- |
+| high $\delta$: frequent interaction, long horizon, patient players | future losses outweigh today's temptation |
+| small temptation $T - R$ | less to gain from cheating |
+| harsh, reliable punishment (low $P$ for the cheater) | cheating costs more |
+| observable actions | cheating is detected and punished |
+| few players | easier to monitor and to target punishment |
+
+The 2005 prize summary lists the flip side: cooperation is harder with many participants, infrequent interaction,
+a likely break-up, a short horizon, or actions others cannot clearly observe.
+
+**Finite horizon.** If everyone knows the game ends after exactly $N$ rounds, backward induction unravels
+cooperation from the last round back to the first. In practice people cooperate until near the end, and Kreps,
+Milgrom, Roberts and Wilson (1982) showed that a small doubt about the other's rationality or type is enough to
+make cooperation rational for most of a finite game. End-game effects are real, though: expect behavior to
+change when a relationship's end becomes visible (the last months of a contract, a departing employee, a company
+being sold).
+
+**Folk theorem** (informal). In an infinitely repeated game with patient enough players, *any* outcome that gives
+each player more than they could guarantee alone can be sustained as an equilibrium, cooperation included (formal
+versions include Friedman 1971 and Fudenberg and Maskin 1986; Aumann's work on repeated games was part of his
+2005 prize). The name reflects that the result was widely known before anyone published it. The upside:
+cooperation is possible. The downside: so is almost everything else, so repetition alone does not predict which
+outcome you get.
+
+### Axelrod's tournaments
+
+Axelrod invited game theorists and others to submit programs for an iterated prisoner's dilemma. The first
+tournament (reported 1980) had 14 entries playing 200-move matches in a round robin; the second had 62 entrants
+who had seen the first results. **Tit for tat** (TFT: cooperate first, then copy the opponent's last move),
+submitted by Anatol Rapoport, won both. Axelrod attributed its success to four properties:
+
+| Property | Meaning | Why it helps |
+| :--- | :--- | :--- |
+| nice | never the first to defect | in Axelrod's analysis the eight nice entries were the eight highest ranked |
+| retaliatory | punishes defection immediately | exploiters stop exploiting |
+| forgiving | returns to cooperation once the other does | avoids endless feuds |
+| clear | simple enough for others to read | others learn quickly that cooperating pays |
+
+His advice to players, paraphrased from *The Evolution of Cooperation* (1984): do not be envious of your
+partner's score, do not be the first to defect, reciprocate both cooperation and defection, and do not be too
+clever.
+
+| Strategy | Rule | Strength | Weakness |
+| :--- | :--- | :--- | :--- |
+| always cooperate | C every round | great with other cooperators | exploited by any defector |
+| always defect | D every round | cannot be exploited | never earns $R$; loses to a population of reciprocators |
+| grim trigger | C until the first D, then D forever | strongest deterrent | one mistake ends cooperation for ever |
+| tit for tat | C first, then copy | simple, robust, hard to exploit | a single mistake causes an endless echo of alternating retaliation |
+| generous TFT | like TFT, but forgives a fraction of defections | recovers from noise (Nowak and Sigmund 1992) | can be exploited if too generous |
+| win-stay, lose-shift (Pavlov) | repeat your move after $T$ or $R$, switch after $S$ or $P$ | corrects mistakes quickly; beat TFT in Nowak and Sigmund's (1993) simulations | alternately exploited by always-defect |
+
+Caveats: TFT's victories depended partly on Axelrod's setup and the other entries. In the 2004–05 twentieth-anniversary
+tournaments, in the one closest to his design, TFT finished fourteenth out of fifty (Stanford Encyclopedia of Philosophy,
+"Prisoner's Dilemma"). The robust lessons are the qualitative ones: be nice, reciprocate, forgive, and be
+legible, with more generosity when **noise** (misread emails, honest mistakes) is common.
+
+**Reputation** generalizes repetition: when strangers can see how you treated others (reviews, references, a
+track record), each interaction borrows the shadow of the future from all the others. Guard it accordingly:
+reputation is slow to build and fast to lose.
+
+## Information: signaling, screening, bluffing
+
+| Problem | Hidden | Timing | Example | Remedies |
+| :--- | :--- | :--- | :--- | :--- |
+| **adverse selection** | a type (quality, risk) | before the deal | used-car "lemons" (Akerlof 1970; see [microeconomics](/economics/microeconomics/#market-failure)) | signaling, screening, warranties, certification |
+| **moral hazard** | an action (effort, care) | after the deal | insured drivers take more risks; managers shirk | monitoring, deductibles, incentive pay, equity |
+| **principal–agent** | the agent's actions and information | ongoing | employees, contractors, fund managers, CEOs | align payoffs; measure outcomes you actually want |
+
+### Signaling
+
+A **signal** is an action that is cheaper for good types than for bad types, so only good types find it worth
+sending. In Spence's job-market model (1973), education may add nothing to productivity yet still separate
+workers: if it is costlier for less able workers, there is an equilibrium where able workers get the credential,
+others do not, and employers pay by credential. The condition for a **separating equilibrium** is that the wage
+premium exceeds the high type's cost of the signal but not the low type's.
+
+In biology Zahavi's **handicap principle** (1975) argues that signals are honest because they are costly: a
+peacock's tail is credible because a weak bird could not afford it (formalised by Grafen 1990).
+
+| Signal | Credible because |
+| :--- | :--- |
+| a long warranty or money-back guarantee | costly only if the product is bad |
+| founders investing their own money; vesting | costly if they lack conviction |
+| free trials, open-sourcing, public benchmarks | costly if the product does not hold up |
+| a respected lead investor's check | costly to the investor's reputation if wrong |
+| a demanding portfolio, shipped work | hard to fake |
+
+**Cheap talk** (costless, unverifiable messages) can still carry information when interests are aligned; the more
+they diverge, the less a message can convey (Crawford and Sobel 1982). "Our price is final" is cheap talk unless
+something makes it costly to back down.
+
+### Screening
+
+The uninformed side designs a menu so that types **self-select** (Rothschild and Stiglitz 1976 for insurance).
+Examples: insurance deductibles (low-risk buyers choose high deductibles), take-home tests and work samples in
+hiring, a cheap self-serve tier and a pricey enterprise tier, "pay less for a longer commitment" plans that
+attract loyal customers.
+
+### Bluffing
+
+In games of incomplete information, playing only strong hands strongly is predictable and exploitable, so
+equilibrium play mixes in bluffs. Poker is the canonical case (von Neumann and Morgenstern analyzed simplified
+poker in 1944). A bettor wagers $B$ into a pot of $P$. If a fraction $b$ of their bets are bluffs, the caller is
+indifferent when $b(P + B) = (1 - b)B$, so
+
+$$
+b^* = \frac{B}{P + 2B}, \qquad \text{and the caller should call with frequency } \frac{P}{P + B}
+$$
+
+A pot-sized bet ($B = P$) should be a bluff one time in three, and the defender should call half the time. The
+same logic applies to negotiation: if you only ever threaten to walk away when you mean it, your threats are
+informative and your bluffs are worthless; if you never follow through, neither are your threats.
+
+## Bargaining and negotiation
+
+**Nash bargaining solution** (Nash 1950). Two parties split a surplus; if they fail to agree, they get
+disagreement payoffs $d_1, d_2$. Under axioms of efficiency, symmetry, independence of irrelevant alternatives and
+invariance to rescaling utility, the solution maximizes the product of gains:
+
+$$
+\max_{u_1, u_2}\; (u_1 - d_1)(u_2 - d_2)
+$$
+
+With money and linear utility, each gets their outside option plus half the surplus above both outside options:
+$x_i = d_i + \tfrac12(S - d_1 - d_2)$. Splitting \$100 when A can get \$30 elsewhere and B \$10: A gets
+$30 + 30 = 60$, B gets $10 + 30 = 40$. **Improving your outside option is worth half its value in the deal.**
+
+**Rubinstein alternating offers** (1982). Players take turns proposing; each round of delay shrinks the pie by
+discount factors $\delta_1, \delta_2$. The unique subgame-perfect outcome is immediate agreement, with the first
+proposer getting
+
+$$
+x_1 = \frac{1 - \delta_2}{1 - \delta_1 \delta_2}
+$$
+
+| $\delta_1$ (proposer) | $\delta_2$ (responder) | Proposer's share |
+| :--- | :--- | :--- |
+| 0.9 | 0.9 | 52.6% (as $\delta \to 1$, → 50%) |
+| 0.9 | 0.8 | 71.4% |
+| 0.8 | 0.9 | 35.7% |
+
+**Patience is power**: the side that loses less from delay gets more, and moving first matters less than being
+able to wait. Runway, a strong alternative and a lack of deadline pressure all raise your effective $\delta$.
+
+### BATNA and ZOPA
+
+Fisher and Ury's *Getting to Yes* (1981) introduced the **BATNA**, the best alternative to a negotiated
+agreement: what you will do if this deal fails. Your **reservation price** follows from it. The **ZOPA** (zone of
+possible agreement) is the overlap between the two reservation prices; if there is none, no deal should happen.
+
+| Worked example: a senior hire | Value |
+| :--- | :--- |
+| candidate's BATNA: a competing offer, adjusted for the preferred role | worth \$150,000 to them |
+| candidate's reservation price | \$150,000 |
+| company's BATNA: the next-best candidate, plus three more months of recruiting | equivalent to \$170,000 |
+| company's reservation price | \$170,000 |
+| ZOPA | \$150,000–\$170,000 |
+| equal-power split (Nash) | \$160,000 |
+
+What moves the result: improving your BATNA (another offer; another candidate), learning theirs, expanding the
+pie with non-salary terms (equity, start date, title, remote work), and **anchoring**: first offers pull final
+agreements toward them (Galinsky and Mussweiler 2001; see
+[cognitive biases](/thinking/mental-models/cognitive-biases/)). Their four principles (separate the people from
+the problem, focus on interests not positions, invent options for mutual gain, insist on objective criteria) are
+ways to turn a fixed-pie split into a larger-pie game.
+
+| Tactic | Game-theoretic reading |
+| :--- | :--- |
+| make the first offer when you know the ZOPA | anchoring and focal points |
+| let them go first when you don't | information revelation |
+| deadlines ("offer expires Friday") | commitment; shifts $\delta$; credible only if enforced |
+| "I need to check with my board" | delegation as commitment |
+| bundle issues and trade across them | creates joint gains where valuations differ |
+| walk away | only a threat if your BATNA makes it credible |
+
+## Auctions, mechanism design and matching
+
+| Format | How it works | Equilibrium bidding (independent private values) |
+| :--- | :--- | :--- |
+| English (ascending, open) | price rises until one bidder remains | stay in until the price reaches your value (dominant) |
+| Dutch (descending, open) | price falls until someone takes it | strategically the same as first-price sealed |
+| first-price sealed bid | highest bid wins and pays its bid | shade below value; with $n$ bidders and values uniform on [0, 1], bid $\frac{n-1}{n}v$ |
+| second-price sealed bid (Vickrey 1961) | highest bid wins, pays the second-highest bid | bid your true value (weakly dominant) |
+| all-pay | everyone pays their bid | shade heavily; models lobbying, contests, the dollar auction |
+
+**Why truthful bidding is dominant in a Vickrey auction.** Your bid only decides *whether* you win, never what you
+pay. Bidding above your value $v$ changes the outcome only when the highest rival bid lies between $v$ and your
+bid: you then win and pay more than $v$, a loss. Bidding below $v$ changes the outcome only when the highest rival
+bid lies between your bid and $v$: you then lose an auction you would have won at a profit. So bidding $v$ is
+never worse and sometimes better.
+
+**Revenue equivalence** (informal; Vickrey 1961, generalized by Myerson 1981 and Riley and Samuelson 1981). With risk-neutral bidders whose
+private values are independent draws from the same distribution, any format in which the highest-value bidder wins
+and a zero-value bidder pays nothing yields the same expected revenue. Example: 3 bidders, values uniform on
+[0, 1]. Second price: expected second-highest value $= \frac{n-1}{n+1} = 0.5$. First price: expected highest
+value $\frac34$ times shading $\frac23 = 0.5$. Formats differ once those assumptions break (risk aversion,
+correlated values, collusion, asymmetric bidders).
+
+**Winner's curse.** When the item has a **common value** (oil in a tract, a startup's true worth, a spectrum
+license), the winner is the bidder whose estimate was most optimistic, so naive winners overpay. Capen, Clapp and
+Campbell (1971) used it to explain oil companies' low returns on offshore lease bids; Wilson formalised it, showing why rational
+bidders bid below their own estimates. Rule: bid as if your estimate is the highest, because conditional on
+winning, it is. The correction grows with the number of rival bidders.
+
+**Mechanism design** is game theory in reverse: choose the rules so that self-interested players with private
+information produce the outcome you want. Key ideas: **incentive compatibility** (telling the truth is in each
+player's interest); the **revelation principle** (any outcome achievable by some mechanism is achievable by one
+where players simply report their types truthfully); and hard limits such as Myerson and Satterthwaite (1983):
+with private valuations there is generally no mechanism that guarantees efficient bilateral trade, voluntary
+participation and budget balance at once. Hurwicz, Maskin and Myerson shared the 2007 prize. In practice:
+Milgrom and Wilson (with Preston McAfee) designed the **simultaneous multiple round auction**, first used by the
+US Federal Communications Commission in July 1994, when it sold 10 licenses in 47 rounds for \$617 million
+(2020 prize materials).
+
+### Matching markets
+
+Some markets have no prices: doctors and hospitals, students and schools, kidney donors and patients. A matching is
+**stable** if no pair would rather be with each other than with their assigned partners. Gale and Shapley (1962)
+proved a stable matching always exists and gave the **deferred acceptance** algorithm:
+
+```text
+1. Each proposer applies to their favorite remaining choice.
+2. Each receiver holds the best application so far
+   (tentatively) and rejects the rest.
+3. Rejected proposers apply to their next choice.
+4. Repeat until no one is rejected; then make holds final.
+```
+
+| Property | Detail |
+| :--- | :--- |
+| stable | always |
+| proposer-optimal | every proposer gets the best partner they could have in *any* stable matching |
+| strategy-proof for proposers | proposers cannot gain by misreporting preferences; receivers sometimes can |
+| design choice | who proposes decides who the algorithm favors |
+
+Roth applied it to the matching of new doctors to hospitals, school choice and kidney exchange; Roth and Shapley
+shared the 2012 prize. Lesson for designers: if a clearinghouse is unstable, participants go around it (early
+exploding offers, side deals) and it unravels.
+
+## Voting and social choice
+
+| Result | Statement | Consequence |
+| :--- | :--- | :--- |
+| **Condorcet paradox** (1785) | majority preferences can cycle even when each voter is consistent | whoever sets the agenda (order of votes) can pick the winner |
+| **Arrow's impossibility theorem** (1950 paper, 1951 book) | no ranked voting rule with 3+ options satisfies unrestricted domain, Pareto, independence of irrelevant alternatives and non-dictatorship at once | every ranked system has flaws; choose which flaw to accept (Arrow's theorem does not cover rated systems such as approval or score voting) |
+| **Gibbard–Satterthwaite** (1973, 1975) | every non-dictatorial rule choosing among 3+ options can be manipulated by strategic voting | expect tactical votes; design for it |
+| **median voter theorem** (Black 1948; Downs 1957) | with one policy dimension and single-peaked preferences, the median voter's ideal beats any alternative | candidates and products converge to the middle (Hotelling's 1929 model of location) |
+
+A Condorcet cycle with three voters:
+
+| Voter | 1st | 2nd | 3rd |
+| :--- | :--- | :--- | :--- |
+| 1 | A | B | C |
+| 2 | B | C | A |
+| 3 | C | A | B |
+
+A beats B 2–1, B beats C 2–1, and C beats A 2–1. Vote A vs B first and the winner then faces C: C wins. Put C vs A
+first: B wins. **Strategic voting** is voting against your sincere ranking to avoid a worse outcome (the "wasted
+vote" logic behind two-party systems under plurality rule). In meetings, the practical lesson is that the order in
+which options are put to a vote, and which options are on the list, often decide the result.
+
+## Behavioral game theory
+
+| Game | Standard prediction | What people do | Source |
+| :--- | :--- | :--- | :--- |
+| ultimatum | offer the minimum; accept anything | offers of 40–50%; low offers rejected | Güth et al. 1982; Güth and Kocher 2013 |
+| dictator | give nothing | many give something, less than in ultimatum | Kahneman, Knetsch and Thaler 1986; Forsythe et al. 1994 |
+| public goods | contribute nothing | contribute, then decline; punishment sustains cooperation | Fehr and Gächter 2000 |
+| centipede | take immediately | pass several times | McKelvey and Palfrey 1992 |
+| traveler's dilemma | claim the minimum | claim high when penalties are small | Capra et al. 1999 |
+| ⅔ beauty contest | 0 | mean about 37 in round one, then falling | Nagel 1995 |
+| penalty kicks | mixed equilibrium | professionals are close to it | Chiappori, Levitt and Groseclose 2002 |
+
+Models that fit better:
+
+| Model | Idea | Use |
+| :--- | :--- | :--- |
+| **level-k** (Stahl and Wilson 1994–95; Nagel 1995) | level-0 players act naively; level-k best-responds to level k−1; most people are level 1–2 | predict first-time play; aim one level above your audience |
+| **cognitive hierarchy** (Camerer, Ho and Chong 2004) | each level best-responds to a mix of all lower levels | the same, with a smoother fit |
+| **quantal response equilibrium** (McKelvey and Palfrey 1995) | players choose better options more often, not always: $P(s) \propto e^{\lambda u(s)}$, where $\lambda$ measures precision | costly mistakes are rarer than cheap ones; explains the traveler's dilemma pattern |
+| **social preferences** (e.g. Fehr and Schmidt 1999, inequity aversion) | people care about others' payoffs and fairness, not only their own | re-specify payoffs, then apply standard theory |
+
+Practical reading: **equilibrium analysis is most reliable** when stakes are high, players are experienced, the
+game is simple and repeated, and mistakes are costly (professional penalty takers, spectrum auctions). It is least
+reliable in novel one-shot situations requiring many steps of reasoning. In between, predict what the actual
+people will do, not what a perfectly rational stranger would.
+
+## Applying it
+
+| Situation | Game | Equilibrium trap | How to change the game |
+| :--- | :--- | :--- | :--- |
+| two competitors cutting prices | prisoner's dilemma (repeated) | margin-destroying price war | differentiate; compete on something else; publicly visible pricing that makes retaliation automatic; loyalty programs |
+| platform or standards war | coordination / battle of the sexes | fragmented market, or locked into the worse standard | move first and commit; subsidise early adopters; open the standard; make yours the focal point |
+| suppliers and complementors | co-opetition (Brandenburger and Nalebuff 1996) | treating every player as a rival | map the value net: customers, suppliers, competitors, complementors; grow the pie before splitting it |
+| startup vs incumbent | entry deterrence | incumbent threatens to crush entrants | enter where fighting you is costly for them (cannibalisation, small market, different business model), so their threat is not credible |
+| "we must be first" | first-mover race | spending to be first rather than best | ask which mechanism (network effects, lock-in, pre-emption) makes first matter; if none, learn from pioneers |
+| fundraising | coordination / stag hunt among investors | everyone waits for someone else to commit | a credible lead as focal point; a real deadline; parallel process to create competition |
+| exploding job offer | ultimatum with a deadline | pressure to accept before comparing | ask for an extension; improve your BATNA; test whether the deadline is enforced |
+| salary or acquisition negotiation | bargaining | splitting a fixed pie badly | improve BATNA; anchor with a justified first offer; add issues to trade |
+| team free-riding on shared work | public goods / volunteer's dilemma | chores nobody owns (flaky tests, docs, on-call) | name an owner; make contributions visible; reward team outcomes (see [five dysfunctions](/leadership/five-dysfunctions/)) |
+| incentive schemes | principal–agent | people optimize the metric, not the goal (Kerr 1975, *On the Folly of Rewarding A, While Hoping for B*) | measure outcomes; balance metrics; use judgment (see [management](/leadership/management/)) |
+| shared infrastructure budget | tragedy of the commons | everyone over-uses the free shared resource | chargeback or quotas; Ostrom's principles; visible usage |
+| nuclear deterrence | chicken and repeated deterrence | escalation to catastrophe | second-strike capability (MAD); hotlines; arms-control verification |
+| brinkmanship | chicken | both commit, crash | Schelling's "threat that leaves something to chance"; face-saving exits |
+| splitting a restaurant bill evenly | public goods | everyone orders more | separate bills, or accept it as a fair price for convenience |
+| merging traffic | coordination | jams from last-second pushing | a rule everyone follows (zipper merge) as a focal point |
+
+### Business: co-opetition and PARTS
+
+Brandenburger and Nalebuff's HBR article "The Right Game" (1995) and book *Co-opetition* (1996) argued that
+business, unlike war and sport, is not only about winning and losing: firms can succeed without others failing.
+Their **value net** maps customers, suppliers, competitors and **complementors** (players whose products make
+yours more valuable). Their **PARTS** checklist lists the elements of a game you can change:
+
+| Element | Question | Move |
+| :--- | :--- | :--- |
+| **players** | who is in the game? | bring in another buyer or supplier; create a competitor to your supplier |
+| **added values** | what does each player bring that would be lost without them? | raise yours (unique product, loyalty); lower others' |
+| **rules** | what contracts, laws and customs govern play? | meet-the-competition clauses, long-term contracts, auction formats |
+| **tactics** | how do perceptions and information shape play? | clarify or obscure; signal commitment |
+| **scope** | where does this game end and others begin? | link games (bundles) or separate them |
+
+### Startups
+
+| Situation | Game-theoretic advice |
+| :--- | :--- |
+| competing with incumbents | pick markets where the incumbent's best response is to ignore or accommodate you; an incumbent protecting a large margin often will not match a low-price entrant |
+| the first-mover myth | being first matters only through a specific mechanism; otherwise the fast follower learns from your mistakes |
+| competition vs monopoly | head-on competition drifts toward Bertrand-style price wars; Thiel's advice is to find a market you can dominate (see [Peter Thiel](/startups/advice/peter-thiel/)) |
+| fundraising | investors watch each other (beauty contest); momentum is a signal; a strong lead creates a focal point |
+| hiring offers | your offer competes with the candidate's BATNA; exploding offers work only if credible and damage trust |
+| co-founder equity | a repeated game with incomplete information; vesting makes commitment credible |
+
+### Geopolitics
+
+Deterrence theory is where Schelling's work began. **Mutual assured destruction** is stable if each side has a
+secure second-strike capability, so striking first cannot prevent retaliation. **Brinkmanship** deliberately
+raises the shared risk of disaster so the other side backs down; Schelling called this "the threat that leaves
+something to chance", and the 2005 prize summary credits him with showing that "uncertain retaliation is more
+credible and more efficient than certain retaliation". The **Cuban Missile Crisis** (October 1962) is commonly
+framed as chicken, with both sides steering away from nuclear war; historians also stress that it ended in a
+bargain, including a private US undertaking to remove Jupiter missiles from Turkey, so it was not a pure test of
+nerve. Treat the framing as a lens, not a history. For tempo and decision cycles in conflict, see the
+[OODA loop](/leadership/ooda-loop/).
+
+## Changing the game
+
+The single most useful practical lesson: **if the equilibrium is bad, stop trying to play it better and change
+the game** so a better outcome becomes the equilibrium.
+
+| Lever | Move | Turns which game into which | Example |
+| :--- | :--- | :--- | :--- |
+| payoffs | add penalties for defection or rewards for cooperation | prisoner's dilemma → harmony | contracts, fines, bonuses tied to team results |
+| players | add, remove or merge players | changes who can defect | a second supplier; a merger; bringing in a neutral arbiter |
+| information | reveal, verify, certify or conceal | adverse selection → separating equilibrium | audits, references, open metrics, sealed bids |
+| timing | move first to commit, or wait to learn | simultaneous → sequential | announce capacity; ship first; let the rival reveal a price |
+| commitment | burn bridges, sign clauses, delegate | removes non-credible options | price-matching guarantees, public promises, escrow |
+| repetition | turn a one-shot deal into a relationship | one-shot dilemma → repeated cooperation | long-term contracts, subscriptions, staying in the same community |
+| reputation | make behavior visible to future partners | strangers → repeated game | reviews, track records, public commitments |
+| scope | link or unlink issues | fixed-pie → trades across issues | bundle price with payment terms, start date, scope |
+| rules | change the format of play | the whole equilibrium shifts | switch auction format; change voting order; deferred acceptance |
+| focal points | make your preferred equilibrium the obvious one | multiple equilibria → one | propose the standard, the round number, the precedent first |
+
+## Common mistakes and critiques
+
+| Mistake | Why it's wrong | Instead |
+| :--- | :--- | :--- |
+| assuming everyone is a perfectly rational money-maximizer | people care about fairness, status, identity and relationships, and reason only a few steps ahead | model the actual players; check against behavioral evidence |
+| treating a repeated game as one-shot | defecting "because it's rational" destroys a valuable relationship | ask how many more times you will deal with them, and who else is watching |
+| treating a one-shot game as repeated | trusting where there is no future to protect you | verify, escrow, contract |
+| mis-specifying payoffs | the analysis solves a game nobody is playing | list what each player actually values, including non-money costs |
+| drawing the game boundary too tight | missing players (regulators, complementors, future entrants) and linked games | map the whole value net |
+| ignoring the other side's alternatives | overestimating your leverage | estimate their BATNA as carefully as yours |
+| empty threats | once tested and not carried out, all future threats lose value | threaten only what you would do; build commitment first |
+| believing one equilibrium is inevitable | many games have several; history and focal points select | work on selection: go first, set the focal point |
+| reading lab results on one-shot games as universal | behavior changes with stakes, culture, experience and framing | treat experiments as evidence about specific conditions |
+| zero-sum thinking | most business and personal games have joint gains | look for trades on differently valued issues |
+| over-formalising | a precise model of the wrong game beats nothing only if you remember it is a model | use game theory to structure thinking, not to generate false precision |
+
+Broader critiques worth knowing: equilibrium concepts often predict many outcomes (the folk theorem is the extreme
+case); rational-choice assumptions are empirically shaky in novel situations; payoffs are hard to observe, so
+models can be fitted to any behavior after the fact; and strategic framing can itself erode trust if applied to
+relationships that were not adversarial.
+
+## Strategic analysis template
+
+```text
+SITUATION: ______________________________________
+
+1. PLAYERS
+   Who decides? Who else affects payoffs (regulators,
+   complementors, future entrants, the public)?
+
+2. ACTIONS AND STRATEGIES
+   What can each player do? What is the order of moves?
+   Simultaneous or sequential? Can anyone commit first?
+
+3. PAYOFFS
+   What does each player really value (money, status,
+   fairness, reputation, the future)? Rank outcomes for
+   each player, not just for me.
+
+4. INFORMATION
+   What does each know? What is private (costs, resolve,
+   alternatives)? What could be signaled or screened?
+
+5. REPETITION
+   One-shot or repeated? How long is the horizon? Who is
+   watching (reputation)? Is the end visible?
+
+6. SOLVE
+   Dominant strategies? Dominated ones to delete?
+   Best responses and Nash equilibria? For sequential
+   games, backward induction: which threats are credible?
+
+7. DIAGNOSE
+   Is the equilibrium efficient? If not, which game is
+   it (dilemma, coordination, chicken, commons)?
+
+8. CHANGE THE GAME
+   Payoffs / players / information / timing /
+   commitment / repetition / reputation / scope / rules.
+   Which lever is cheapest and most credible?
+
+9. ALTERNATIVES
+   My BATNA: ______   Their BATNA: ______   ZOPA: ______
+
+10. CHECK
+   How would a real (not perfectly rational) opponent
+   play? What if I'm wrong about their payoffs?
+```
+
+### Checklist
+
+- [ ] I have listed every player whose choices change the outcome, not just the obvious rival
+- [ ] I have written payoffs from each player's point of view, including non-financial ones
+- [ ] I know whether the game is one-shot or repeated, and how visible my behavior is to others
+- [ ] I have checked for dominant and dominated strategies before anything more complex
+- [ ] I have found the equilibria, and asked which one is likely and why (focal point, history, first move)
+- [ ] Every threat or promise I rely on is credible: I would carry it out when the time comes
+- [ ] I know my BATNA and have estimated theirs
+- [ ] If the equilibrium is bad, I have looked for a lever to change the game rather than playing harder
+- [ ] I have sanity-checked the prediction against how real people behave in similar games
+- [ ] I have a walk-away limit for any escalation or all-pay contest
+
+## References
+
+- [Stanford Encyclopedia of Philosophy: Game Theory](https://plato.stanford.edu/entries/game-theory/): rigorous, readable survey of concepts and foundations
+- [Stanford Encyclopedia of Philosophy: Prisoner's Dilemma](https://plato.stanford.edu/entries/prisoner-dilemma/): history (Flood, Dresher, Tucker), iterated play, Axelrod and later tournaments
+- [Yale Open Courses: ECON 159 Game Theory (Ben Polak, 2007)](https://oyc.yale.edu/economics/econ-159): free lecture course, the best video introduction
+- John von Neumann and Oskar Morgenstern, *Theory of Games and Economic Behavior* (Princeton University Press, 1944): the founding text
+- Thomas C. Schelling, *The Strategy of Conflict* (Harvard University Press, 1960): commitment, credibility, focal points, deterrence
+- Avinash Dixit and Barry Nalebuff, *Thinking Strategically* (W. W. Norton, 1991) and *The Art of Strategy* (W. W. Norton, 2008): the best non-technical books on applied game theory
+- Martin J. Osborne, *An Introduction to Game Theory* (Oxford University Press, 2004): rigorous undergraduate textbook
+- Robert Axelrod, *The Evolution of Cooperation* (Basic Books, 1984): the iterated prisoner's dilemma tournaments and tit for tat
+- [Axelrod (1980), Effective Choice in the Prisoner's Dilemma](https://doi.org/10.1177/002200278002400101), *Journal of Conflict Resolution* 24(1): the first tournament
+- R. Duncan Luce and Howard Raiffa, *Games and Decisions* (Wiley, 1957): classic text; first printed use of "prisoner's dilemma"
+- Elinor Ostrom, *Governing the Commons* (Cambridge University Press, 1990): the eight design principles
+- Roger Fisher and William Ury, *Getting to Yes* (Houghton Mifflin, 1981): principled negotiation and BATNA
+- Adam Brandenburger and Barry Nalebuff, *Co-opetition* (1996): value net and PARTS
+- [Brandenburger and Nalebuff (1995), The Right Game: Use Game Theory to Shape Strategy](https://hbr.org/1995/07/the-right-game-use-game-theory-to-shape-strategy), *Harvard Business Review*: the PARTS framework
+- [Nobel Prize 1994 press release](https://www.nobelprize.org/prizes/economic-sciences/1994/press-release/): Nash, Harsanyi, Selten; history and the entry-deterrence example
+- [Nobel Prize 1996 press release](https://www.nobelprize.org/prizes/economic-sciences/1996/press-release/): Vickrey auctions and the revelation principle
+- [Nobel Prize 2005 press release](https://www.nobelprize.org/prizes/economic-sciences/2005/press-release/): Schelling on commitment, Aumann on repeated games
+- [Nobel Prize 2007 press release](https://www.nobelprize.org/prizes/economic-sciences/2007/press-release/): mechanism design
+- [Nobel Prize 2012 press release](https://www.nobelprize.org/prizes/economic-sciences/2012/press-release/): stable matching and market design
+- [Nobel Prize 2020 popular information](https://www.nobelprize.org/prizes/economic-sciences/2020/popular-information/): auction formats, the winner's curse, the 1994 FCC auction
+- [Nash (1951), Non-Cooperative Games](https://doi.org/10.2307/1969529), *Annals of Mathematics* 54: existence of equilibrium
+- [Nash (1950), The Bargaining Problem](https://doi.org/10.2307/1907266), *Econometrica* 18: the Nash bargaining solution
+- [Rubinstein (1982), Perfect Equilibrium in a Bargaining Model](https://doi.org/10.2307/1912531), *Econometrica* 50: alternating offers
+- [Maynard Smith and Price (1973), The Logic of Animal Conflict](https://www.nature.com/articles/246015a0), *Nature* 246: evolutionarily stable strategies
+- [Hardin (1968), The Tragedy of the Commons](https://doi.org/10.1126/science.162.3859.1243), *Science* 162
+- [Chiappori, Levitt and Groseclose (2002), Testing Mixed-Strategy Equilibria: Penalty Kicks in Soccer](https://www.aeaweb.org/articles?id=10.1257/00028280260344678), *American Economic Review* 92(4)
+- [Nagel (1995), Unraveling in Guessing Games](https://ideas.repec.org/a/aea/aecrev/v85y1995i5p1313-26.html), *American Economic Review* 85(5): the ⅔ beauty contest
+- [Güth, Schmittberger and Schwarze (1982), An Experimental Analysis of Ultimatum Bargaining](https://econpapers.repec.org/RePEc:eee:jeborg:v:3:y:1982:i:4:p:367-388), *Journal of Economic Behavior and Organization* 3
+- [Güth and Kocher (2013), More than Thirty Years of Ultimatum Bargaining Experiments](https://epub.ub.uni-muenchen.de/18175/1/Kocher_More_than_thirty_18175.pdf): survey of the evidence
+- [Fehr and Gächter (2000), Cooperation and Punishment in Public Goods Experiments](https://doi.org/10.1257/aer.90.4.980), *American Economic Review* 90(4)
+- [Shubik (1971), The Dollar Auction Game](https://doi.org/10.1177/002200277101500111), *Journal of Conflict Resolution* 15(1)
+- [Selten (1978), The Chain Store Paradox](https://doi.org/10.1007/BF00131770), *Theory and Decision* 9
+- [Diekmann (1985), Volunteer's Dilemma](https://doi.org/10.1177/0022002785029004003), *Journal of Conflict Resolution* 29(4)
+- [Capra, Goeree, Gomez and Holt (1999), Anomalous Behavior in a Traveler's Dilemma?](https://doi.org/10.1257/aer.89.3.678), *American Economic Review* 89(3)
+- [McKelvey and Palfrey (1992), An Experimental Study of the Centipede Game](https://doi.org/10.2307/2951567), *Econometrica* 60
+- [Nowak and Sigmund (1993), A Strategy of Win-Stay, Lose-Shift that Outperforms Tit-for-Tat](https://doi.org/10.1038/364056a0), *Nature* 364
+- [Spence (1973), Job Market Signaling](https://doi.org/10.2307/1882010), *Quarterly Journal of Economics* 87(3)
+- [Crawford and Sobel (1982), Strategic Information Transmission](https://doi.org/10.2307/1913390), *Econometrica* 50: cheap talk
+- [Vickrey (1961), Counterspeculation, Auctions, and Competitive Sealed Tenders](https://doi.org/10.1111/j.1540-6261.1961.tb02789.x), *Journal of Finance* 16
+- [Capen, Clapp and Campbell (1971), Competitive Bidding in High-Risk Situations](https://doi.org/10.2118/2993-PA), *Journal of Petroleum Technology* 23: the winner's curse
+- [Gale and Shapley (1962), College Admissions and the Stability of Marriage](https://doi.org/10.1080/00029890.1962.11989827), *American Mathematical Monthly* 69
+- [Camerer, Ho and Chong (2004), A Cognitive Hierarchy Model of Games](https://doi.org/10.1162/0033553041502225), *Quarterly Journal of Economics* 119(3)
+- [McKelvey and Palfrey (1995), Quantal Response Equilibria for Normal Form Games](https://doi.org/10.1006/game.1995.1023), *Games and Economic Behavior* 10
+- [Galinsky and Mussweiler (2001), First Offers as Anchors](https://doi.org/10.1037/0022-3514.81.4.657), *Journal of Personality and Social Psychology* 81(4)
+- [Golder and Tellis (1993), Pioneer Advantage: Marketing Logic or Marketing Legend?](https://doi.org/10.2307/3172825), *Journal of Marketing Research* 30
+- [Microeconomics](/economics/microeconomics/): oligopoly models, market failure, adverse selection

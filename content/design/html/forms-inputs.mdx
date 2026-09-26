@@ -1,0 +1,718 @@
+---
+title: Forms & inputs
+date: 2026-09-26
+order: 3
+---
+
+The markup side of forms: the `<form>` element and how submission works, every input type and
+attribute, labels and groups, buttons, `select`, `textarea` and friends, autofill tokens, mobile
+keyboards, built-in validation, file uploads and the accessibility rules. Reading values,
+`FormData`, the constraint validation API and `fetch` submission are in
+[Forms (TypeScript)](/typescript/frontend/forms/); styling controls is in
+[CSS](/design/css/css/#forms-popover--dialog); form layout and copy advice is in
+[UX & UI](/design/principles/ux-ui/#forms).
+
+## The form element
+
+```html
+<form action="/signup" method="post">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email"
+    autocomplete="email" required>
+  <button>Create account</button>
+</form>
+```
+
+| Attribute | Values | Notes |
+| :-------- | :----- | :---- |
+| `action` | URL | where to send; defaults to the current URL |
+| `method` | `get` (default), `post`, `dialog` | `get` appends the data to the URL as a query string: use for searches and filters (bookmarkable, cacheable, back-button friendly). `post` sends it in the body: use for anything that changes state, and for passwords. `dialog` closes the enclosing `<dialog>` without submitting and sets its `returnValue` to the submit button's `value` |
+| `enctype` | `application/x-www-form-urlencoded` (default), `multipart/form-data`, `text/plain` | `multipart` is required for file uploads; `text/plain` is for debugging only; ignored with `get` |
+| `novalidate` | boolean | skip built-in validation on submit (the API and `:invalid` still work) |
+| `autocomplete` | `on` (default), `off` | default for every control; per-field tokens are better (see [Autofill](#autocomplete-tokens)) |
+| `target` | `_self`, `_blank`, a frame name | where the response loads |
+| `name` | string | `document.forms.name` access |
+| `rel` | `noopener`, `noreferrer`… | like links, for `target="_blank"` submissions |
+| `accept-charset` | `UTF-8` | the only valid value; leave it out |
+
+Controls outside the form join it with `form="form-id"`, and a submit button can override the
+form's settings for its own click with `formaction`, `formmethod`, `formenctype`,
+`formnovalidate` and `formtarget` (for example a "Save draft" button that skips validation).
+
+### Implicit submission
+
+Pressing <kbd>Enter</kbd> in a text-like field submits the form by "clicking" its **default
+button**: the first submit button in tree order.
+
+| Situation | What Enter does |
+| :-------- | :-------------- |
+| Form has a submit button | activates it (fires its `click`, sends its `name=value`) |
+| Default button is disabled | nothing |
+| No submit button, one text-like field | submits the form |
+| No submit button, two or more text-like fields | nothing |
+| Focus in a `textarea` | inserts a newline |
+
+Text-like here means `text`, `search`, `url`, `tel`, `email`, `password`, `number` and the date
+and time types. So a form with only an icon-less "Next" `<div>` can't be submitted from the
+keyboard: always include a real submit button, even if it's visually hidden.
+
+## What gets submitted
+
+The browser builds a list of **name/value pairs** from the form's controls, in tree order:
+
+| Control | Sent as | Not sent when |
+| :------ | :------ | :------------ |
+| Text-like input, `textarea` | `name=value` (even when empty) | no `name`; `disabled` |
+| Checkbox | `name=value` (`value` defaults to `"on"`) | **unchecked**: nothing at all, not `false` |
+| Radio group | `name=value` of the checked one | none checked |
+| `select` | `name=value` for each selected option | no option selected |
+| `select multiple`, several checkboxes with one name | the pair repeated: `tag=a&tag=b` | |
+| Submit button | its `name=value`, only if it was the one pressed | any other button |
+| `input type="image"` | `name.x=12&name.y=7` (click coordinates) | not the submitter |
+| File input | the file (multipart), or only the file name (urlencoded) | no `name` |
+| `input type="hidden"` | `name=value`; `name="_charset_"` is filled with the encoding | |
+| `dirname="comment.dir"` | an extra pair with the text direction, `ltr` or `rtl` | |
+| `output`, `fieldset`, `button type="button"` | never | |
+| Anything `disabled` (or in a disabled `fieldset`) | never | |
+
+```text
+<form method="get" action="/search">   →   GET /search?q=red+shoes&size=9&size=10&sort=price
+
+POST, application/x-www-form-urlencoded:
+  email=sam%40acme.example&plan=pro&tags=ci&tags=perf
+  (UTF-8, percent-encoded; spaces become +; newlines become %0D%0A)
+
+POST, multipart/form-data:
+  ------boundary
+  Content-Disposition: form-data; name="title"
+
+  Holiday
+  ------boundary
+  Content-Disposition: form-data; name="photo"; filename="beach.jpg"
+  Content-Type: image/jpeg
+
+  (binary bytes)
+  ------boundary--
+```
+
+<Note kind="tip">An unchecked checkbox sends nothing, so the server must treat "missing" as false. A common trick is a hidden input with the same name before the checkbox (`<input type="hidden" name="news" value="0">`): both are sent when checked, and many frameworks (Rails, PHP) keep the last value. Reading them with `FormData` is covered in [Forms (TypeScript)](/typescript/frontend/forms/#checkboxes).</Note>
+
+## Input types
+
+| `type` | Value format | Mobile keyboard | Built-in validation | Browser UI and notes |
+| :----- | :----------- | :-------------- | :------------------ | :------------------- |
+| `text` | any string (newlines stripped) | standard | `minlength`, `maxlength`, `pattern` | the default for an unknown `type` |
+| `search` | any string | standard, Enter labeled "Search"/"Go" | as `text` | some browsers add a clear button and clear on <kbd>Esc</kbd>; role `searchbox` |
+| `email` | `a@b.co`; comma list with `multiple` | adds `@` and `.` | **typeMismatch** unless it looks like an address (`a@b` passes: no TLD needed) | leading and trailing spaces trimmed |
+| `url` | absolute URL | adds `/` and `.com` | **typeMismatch** unless absolute: `example.com` fails, `https://example.com` passes | tell users to include `https://`, or use `text` and normalize on the server |
+| `tel` | any string | phone keypad | none (formats vary worldwide); add `pattern` if you must | autofill fills it with `autocomplete="tel"` |
+| `password` | any string (newlines stripped) | standard, masked | as `text` | password managers key on it; add a show-password toggle |
+| `number` | decimal string; `""` if unparsable | numeric (varies by platform) | `min`, `max`, `step` (default `1`), badInput | spinner; the mouse wheel (while focused) and arrow keys change the value; big values turn into exponents. Only for **quantities**: not card numbers, postcodes, phone numbers or IDs |
+| `range` | number; never empty | none | always valid: out-of-range values are clamped | slider; default range `0`–`100`, default value the midpoint; imprecise, pair it with an `output` |
+| `date` | `2026-09-26` | native date picker | `min`, `max`, `step` (days) | shown in the user's locale format, value always ISO |
+| `time` | `14:30` or `14:30:15.250` | time picker | `min`, `max`, `step` (seconds, default 60) | 12- or 24-hour display follows the locale |
+| `datetime-local` | `2026-09-26T14:30` | date and time picker | `min`, `max`, `step` | **no time zone**: send the zone separately if it matters |
+| `month` | `2026-09` | month picker | `min`, `max` | **no desktop Firefox or Safari support**: falls back to a plain text box |
+| `week` | `2026-W39` | week picker | `min`, `max` | same gaps as `month` |
+| `color` | `#rrggbb`, lowercase | color picker | always valid | default `#000000`; `alpha` and `colorspace` attributes are Safari-only |
+| `checkbox` | its `value` (default `"on"`) when checked | | `required` = must be checked | `indeterminate` only settable from script; the `switch` attribute (toggle look) is Safari 17.4+ only |
+| `radio` | `value` of the checked one | | `required` on any radio makes the group required | same `name` = one group; arrow keys move and select within it |
+| `file` | a file list | file, camera or photo picker | `required` | needs `multipart/form-data`; `accept`, `multiple`, `capture`, `webkitdirectory` (Baseline 2025) |
+| `hidden` | any string | | never validated | not secret: users can read and change it |
+| `submit`, `reset`, `button`, `image` | `value` is the label (`image` uses `alt` and `src`) | | | prefer `<button>`: it can contain markup |
+
+The date and time types are Baseline widely available; `month` and `week` are not. Where a
+type isn't supported the browser falls back to `type="text"`, so server-side validation is
+required anyway.
+
+```html demo height=250 title="input-types.html"
+<style>
+  form { display: grid; gap: 6px 12px;
+    grid-template-columns: max-content 1fr; }
+  input { font: inherit; justify-self: start; }
+</style>
+<form>
+  <label for="d">date</label>
+  <input id="d" type="date" value="2026-09-26">
+  <label for="t">time</label>
+  <input id="t" type="time" value="14:30">
+  <label for="dl">datetime-local</label>
+  <input id="dl" type="datetime-local"
+    value="2026-09-26T14:30">
+  <label for="c">color</label>
+  <input id="c" type="color" value="#1f6feb">
+  <label for="r">range</label>
+  <input id="r" type="range" min="0" max="10" value="7">
+  <label for="n">number</label>
+  <input id="n" type="number" min="0" max="9" value="3">
+  <label for="s">search</label>
+  <input id="s" type="search" value="red shoes">
+</form>
+```
+
+## Input attributes
+
+| Attribute | Applies to | Notes |
+| :-------- | :--------- | :---- |
+| `name` | all controls | the key in the submitted pairs; no `name`, not submitted |
+| `value` | most | the **initial** value; the live value is a property (`reset` restores the attribute) |
+| `required` | text-like, `select`, `textarea`, checkbox, radio, file, date types | empty → `valueMissing`; also sets `:required` |
+| `min`, `max` | `number`, `range`, date and time types | `rangeUnderflow` / `rangeOverflow`; for dates use the value format (`min="2026-01-01"`) |
+| `step` | same | valid values are `min + n × step`; `step="any"` allows any decimal; `step="0.01"` for money |
+| `minlength`, `maxlength` | text-like, `textarea` | counted in UTF-16 code units (an emoji can count 2); `maxlength` stops typing and truncates pastes; `minlength` doesn't apply to an empty field |
+| `pattern` | `text`, `search`, `url`, `tel`, `email`, `password` | a regular expression; see below |
+| `placeholder` | text-like, `textarea` | example format only; disappears on typing and is not a label |
+| `readonly` | text-like, date types, `textarea` | focusable, selectable, **submitted**, not validated; not valid on checkboxes, radios, `select` |
+| `disabled` | every control, `fieldset`, `optgroup`, `option` | not focusable, grayed out, **not submitted**, not validated |
+| `multiple` | `email`, `file`, `select` | several values |
+| `accept` | `file` | `image/*`, `.pdf`, `image/png,image/jpeg`; a hint for the picker, not a security check |
+| `capture` | `file` | `user` (front camera) or `environment` (back); mobile only, ignored on desktop |
+| `list` | text-like, `range`, `color`, date types | id of a `<datalist>` of suggestions |
+| `form` | every control | id of the form it belongs to, if it sits outside it |
+| `formaction`, `formmethod`, `formenctype`, `formnovalidate`, `formtarget` | submit buttons | override the form's attributes for that button |
+| `autocomplete` | text-like, `select`, `textarea` | autofill token; see below |
+| `autofocus` | any | one per page; skip on pages with content above the form |
+| `size` | text-like | visible width in characters; CSS `inline-size` is usually better |
+| `dirname` | text-like, `textarea` | also submits the text direction under this name |
+| `checked` | checkbox, radio | initial state |
+| `inputmode`, `enterkeyhint` | text-like, `contenteditable` | virtual keyboard layout and Enter-key label |
+| `spellcheck`, `autocapitalize`, `autocorrect` | text-like | switch off for usernames, emails, codes |
+
+### `pattern`
+
+```html
+<input name="postcode" pattern="[A-Za-z0-9 ]{5,8}"
+  title="5 to 8 letters, digits or spaces">
+<input name="slug" pattern="[a-z0-9\-]+">
+```
+
+- **Implicitly anchored**: the browser wraps it as `^(?:pattern)$`, so it must match the whole
+  value. Don't add `^` and `$`.
+- **Compiled with the `v` flag** since mid-2023 (MDN; previously `u`). In `v` mode, `-`, `(`,
+  `)`, `[`, `]`, `{`, `}`, `/` and `|` must be escaped inside a character class: `[\w-]` is now a
+  syntax error. An invalid pattern is **silently ignored** (a console warning only), so every
+  value passes.
+- Empty values pass `pattern`; add `required` to forbid them.
+- Some browsers show the `title` in the validation bubble. Put the rule in visible hint text too.
+
+### `readonly` vs `disabled`
+
+| | `readonly` | `disabled` |
+| :- | :--------- | :--------- |
+| Focusable, in tab order | yes | no |
+| Selectable and copyable | yes | often not |
+| Submitted | **yes** | **no** |
+| Validated | no | no |
+| Announced | "read only" | "dimmed"/"unavailable" |
+| Use for | values the user needs to see and copy (an order ID) | options that don't apply right now; explain why nearby |
+
+## Labels, fieldsets & groups
+
+```html
+<!-- explicit: for + id (works anywhere in the document) -->
+<label for="name">Full name</label>
+<input id="name" name="name" autocomplete="name">
+
+<!-- implicit: wrap the control -->
+<label>
+  <input type="checkbox" name="terms" required>
+  I accept the <a href="/terms/">terms</a>
+</label>
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Every control needs a label | it gives the accessible name, and clicking it focuses or toggles the control (a bigger target) |
+| Explicit or implicit | both are valid; explicit (`for`) is the most robust and lets the label sit anywhere; you can combine them |
+| Multiple labels are allowed | `input.labels` lists them; all are read, which can be verbose |
+| Label content | phrasing content; no other controls or nested labels; a link inside works but steals the click |
+| Hints and errors | not in the label: separate elements referenced by `aria-describedby` |
+| Name priority | `aria-labelledby` > `aria-label` > `label` > `title` > `placeholder` (a last resort, not a label) |
+| Keep visible text in the name | WCAG 2.5.3: voice users say what they see ("click Email") |
+
+**`fieldset` + `legend`** group related controls: the legend is announced as the group's name
+when a screen-reader user enters it. Use them for radio groups, checkbox groups, and composite
+fields such as an address or a date of birth.
+
+- `legend` must be the first child of `fieldset`.
+- `<fieldset disabled>` disables every control inside except those in its legend.
+- Keep legends short (they may be repeated for every field in some screen readers); put long
+  instructions in a paragraph referenced with `aria-describedby` on the fieldset.
+
+```html demo height=170 title="radio-group.html"
+<style>
+  fieldset { border: 1px solid var(--chip);
+    border-radius: 6px; padding: 8px 12px; }
+  label { display: block; padding: 3px 0; }
+  .hint { color: var(--muted); margin: 0 0 4px; }
+</style>
+<fieldset aria-describedby="plan-hint">
+  <legend>Plan</legend>
+  <p id="plan-hint" class="hint">Change it any time.</p>
+  <label><input type="radio" name="plan" value="free"
+    checked> Free</label>
+  <label><input type="radio" name="plan" value="pro">
+    Pro, £8 a month</label>
+  <label><input type="radio" name="plan" value="team"
+    disabled> Team (coming soon)</label>
+</fieldset>
+```
+
+Tab moves into the group (to the checked radio) and the arrow keys move between options. A
+group of checkboxes, by contrast, is one tab stop per box.
+
+## Buttons
+
+| Markup | Does | Notes |
+| :----- | :--- | :---- |
+| `<button>` in a form | **submits** | the default type is submit: every "Show password", "Add row" or icon button in a form must be `type="button"` |
+| `<button type="submit">` | submits | say it explicitly; `name`/`value` are sent for the pressed one |
+| `<button type="button">` | nothing by default | for script actions |
+| `<button type="reset">` | restores initial values | almost never wanted; users hit it by mistake |
+| `<button commandfor="dlg" command="show-modal">` | opens a dialog or popover declaratively | with `commandfor`/`command` a typeless button no longer submits; Baseline 2025 |
+| `<input type="submit" value="Send">` | submits | text-only label; fine but less flexible |
+
+- Label buttons with the action: "Create account", "Save changes", not "Submit" or "OK".
+- A button that only shows an icon needs a text alternative: visually hidden text or
+  `aria-label`.
+- Don't disable the submit button until the form is valid; users can't discover what's missing.
+  Disable it (or ignore repeat clicks) only while a submission is in flight.
+
+## `select`, `datalist` & `textarea`
+
+### `select`
+
+```html
+<label for="country">Country</label>
+<select id="country" name="country" required
+  autocomplete="country">
+  <option value="">Choose a country…</option>
+  <optgroup label="Europe">
+    <option value="GB">United Kingdom</option>
+    <option value="IE">Ireland</option>
+  </optgroup>
+  <hr>
+  <option value="other">Other</option>
+</select>
+```
+
+| Feature | Notes |
+| :------ | :---- |
+| `option value` | submitted value; defaults to the option's text |
+| Placeholder option | `value=""` + `required` makes "Choose…" fail validation |
+| `optgroup label` | non-selectable group heading; `disabled` disables the whole group |
+| `hr` inside `select` | a separator line in every current engine except Chrome on Android, which ignores it |
+| `multiple` | Ctrl/Cmd-click to select several: poor discoverability; prefer checkboxes |
+| `size="5"` | shows a list box instead of a drop-down; iOS ignores it |
+| Long lists | typing a letter jumps to matching options, which keeps a country list usable; for hundreds of options or fuzzy matching, a searchable combobox is better |
+
+**Customizable select.** `appearance: base-select` on the `select` and on `::picker(select)`
+opts into a fully stylable control: options can hold rich markup (icons, descriptions), a
+`<button>` child replaces the trigger, `<selectedcontent>` mirrors the chosen option, and the
+picker is positioned in the top layer with anchor positioning. As of September 2026 it ships in
+**Chrome and Edge 135+** and **Safari 27** (released September 2026); Firefox has it only
+behind a flag, so it is **not Baseline**. It is a progressive enhancement: browsers without it
+render a normal native select, so it is safe to use today.
+
+```css
+select, ::picker(select) {
+  appearance: base-select;
+}
+select::picker-icon { transition: rotate 0.2s; }
+select:open::picker-icon { rotate: 180deg; }
+option:checked { font-weight: 600; }
+```
+
+### `datalist`
+
+Suggestions, not constraints: the user can still type anything.
+
+```html
+<label for="browser">Browser</label>
+<input id="browser" name="browser" list="browsers">
+<datalist id="browsers">
+  <option value="Chrome"></option>
+  <option value="Firefox"></option>
+  <option value="Safari"></option>
+</datalist>
+```
+
+Support is patchy for non-text types (no Firefox for `date`, `time` or `color`), the popup
+can't be styled, and it is only partly supported in Firefox for Android. Fine for low-stakes
+hints; use a real combobox when choosing from the list matters.
+
+### `textarea`
+
+```html
+<label for="msg">Message</label>
+<textarea id="msg" name="msg" rows="4" maxlength="2000"
+  aria-describedby="msg-hint"></textarea>
+<p id="msg-hint">Up to 2,000 characters.</p>
+```
+
+| Feature | Notes |
+| :------ | :---- |
+| Initial value | the element's content, not a `value` attribute; a newline straight after `<textarea>` is dropped |
+| `rows`, `cols` | initial size in lines and characters |
+| `wrap` | `soft` (default: visual wrapping only), `hard` (inserts newlines at the wrap points on submit; needs `cols`) |
+| Line breaks | submitted as CRLF (`%0D%0A`) |
+| `field-sizing: content` | CSS that makes it grow with its content; Baseline 2026 (June 2026). Add `min-block-size` and `max-block-size` |
+| `resize` | CSS: `vertical` is usually right; `none` removes the handle |
+
+```html demo height=140 title="field-sizing.html"
+<style>
+  textarea { font: inherit; inline-size: 100%;
+    field-sizing: content; min-block-size: 2lh;
+    max-block-size: 6lh; resize: vertical; }
+</style>
+<label for="note">Note (grows as you type, up to 6
+  lines, where supported)</label>
+<textarea id="note">Type a few more lines here…</textarea>
+```
+
+## `output`, `progress` & `meter`
+
+| Element | Means | Attributes | Role |
+| :------ | :---- | :--------- | :--- |
+| `output` | the result of a calculation or user action | `for="a b"` (ids of the inputs), `name`; **not submitted** | `status` (a polite live region in most screen readers) |
+| `progress` | completion of a task | `value`, `max` (default 1); no `value` = indeterminate (spinner-like) | `progressbar` |
+| `meter` | a scalar measurement in a known range | `value`, `min`, `max`, `low`, `high`, `optimum` | `meter` |
+
+Use `progress` for "uploading 40 %" and `meter` for "disk 90 % full" or a score. The browser
+colors a `meter` by which region `value` falls in relative to `optimum`. Both need a label and
+the value in text: their visual state alone isn't reliable for everyone.
+
+```html demo height=120 title="progress-meter.html"
+<style>
+  p { display: flex; align-items: center; gap: 8px;
+    margin: 6px 0; }
+  label { inline-size: 9ch; }
+</style>
+<p><label for="up">Upload</label>
+  <progress id="up" value="40" max="100"></progress> 40 %</p>
+<p><label for="wait">Loading</label>
+  <progress id="wait"></progress> indeterminate</p>
+<p><label for="disk">Disk</label>
+  <meter id="disk" value="0.9" low="0.6" high="0.8"
+    optimum="0.2"></meter> 90 % full</p>
+```
+
+## Autocomplete tokens
+
+The `autocomplete` attribute tells browsers and password managers exactly what a field holds.
+It makes autofill fill the right fields, lets password managers save and suggest correctly, lets
+iOS offer SMS codes, and satisfies **WCAG 1.3.5 Identify Input Purpose** (AA). Browsers largely
+ignore `autocomplete="off"` on login fields, so fighting autofill fails; label fields properly
+instead.
+
+| Group | Tokens |
+| :---- | :----- |
+| Name | `name`, `honorific-prefix`, `given-name`, `additional-name`, `family-name`, `honorific-suffix`, `nickname` |
+| Account | `username`, `current-password` (sign-in), `new-password` (sign-up, change: managers suggest a strong one), `one-time-code` (SMS/app codes) |
+| Contact | `email`, `tel`, `tel-country-code`, `tel-national`, `tel-extension`, `impp` |
+| Address | `street-address` (multi-line, for a `textarea`), `address-line1`–`address-line3`, `address-level2` (town or city), `address-level1` (county, state, province), `postal-code`, `country` (ISO code), `country-name` |
+| Card | `cc-name`, `cc-number`, `cc-exp`, `cc-exp-month`, `cc-exp-year`, `cc-csc`, `cc-type` |
+| Other | `organization`, `organization-title`, `bday`, `bday-day`, `bday-month`, `bday-year`, `sex`, `language`, `url`, `photo`, `transaction-amount`, `transaction-currency` |
+| Prefixes | `shipping` / `billing` before an address or contact token; `section-name` first, to keep two groups apart (`section-guest2 email`) |
+| Suffix | `webauthn` last, to offer passkeys in the username field's autofill (`username webauthn`) |
+| Switches | `on`, `off` |
+
+```html
+<input name="ship-zip"
+  autocomplete="shipping postal-code">
+<input name="user"
+  autocomplete="username webauthn">
+```
+
+## Keyboards: `inputmode` & `enterkeyhint`
+
+`inputmode` changes the on-screen keyboard without changing validation or value handling, which
+makes `type="text" inputmode="numeric"` the right choice for codes, card numbers and postcodes.
+
+| `inputmode` | Keyboard | Use for |
+| :---------- | :------- | :------ |
+| `text` | standard | default |
+| `numeric` | digits 0–9 | PINs, OTPs, card numbers, account numbers |
+| `decimal` | digits and the locale's decimal separator | prices, measurements |
+| `tel` | phone keypad with `*` and `#` | phone numbers (or just `type="tel"`) |
+| `email` | with `@` and `.` | emails in a `text` field |
+| `url` | with `/` and `.` | URLs in a `text` field |
+| `search` | search-optimized; Enter becomes "Search" | search boxes |
+| `none` | no virtual keyboard | only when the page provides its own keyboard |
+
+`enterkeyhint` sets the Enter key's label: `enter`, `done`, `go`, `next`, `previous`, `search`,
+`send`. It changes only the label, not the behavior; use `next` on fields that are not last and
+`send` on a chat box. Both attributes are Baseline widely available.
+
+## Built-in validation
+
+On submit (unless the form has `novalidate` or the button `formnovalidate`), the browser checks
+each control's constraints, cancels the submission if any fail, focuses the first invalid one and
+shows a message bubble. The bubble can't be styled, its wording varies by browser and language,
+it disappears after a few seconds, and only one error shows at a time.
+
+| Pseudo-class | Matches | Use |
+| :----------- | :------ | :-- |
+| `:invalid` / `:valid` | constraint state **right now**, from page load | not for error styling: empty required fields are red before the user starts |
+| `:user-invalid` / `:user-valid` | only after the user has changed and left the field, or tried to submit | error styling; Baseline widely available (since May 2026) |
+| `:required` / `:optional` | presence of `required` | "(optional)" labels |
+| `:in-range` / `:out-of-range` | `min`/`max` checks | |
+| `:placeholder-shown` | empty field showing a placeholder | |
+
+Type an invalid value, then leave the field. The left column uses `:invalid` (red from the
+start), the right `:user-invalid`:
+
+```html demo height=130 title="user-invalid.html"
+<style>
+  .cols { display: flex; gap: 16px; flex-wrap: wrap; }
+  label { display: grid; gap: 4px; }
+  input { font: inherit; border: 2px solid var(--chip);
+    border-radius: 4px; padding: 4px; }
+  .now input:invalid,
+  .user input:user-invalid {
+    border-color: var(--graph-1); }
+</style>
+<div class="cols">
+  <label class="now">Email (:invalid)
+    <input type="email" required></label>
+  <label class="user">Email (:user-invalid)
+    <input type="email" required></label>
+</div>
+```
+
+Two workable strategies:
+
+1. **Native**: keep browser validation, style with `:user-invalid`, set `title` on `pattern`
+   fields, write hints next to the fields. No JavaScript, rough UX.
+2. **Custom**: `novalidate` on the form, then use the constraint API (`checkValidity()`,
+   `validity`, `setCustomValidity()`) to show your own inline messages and an error summary. The
+   markup stays the same; the script is in
+   [Forms (TypeScript)](/typescript/frontend/forms/#constraint-validation).
+
+Either way, validate again on the server: attributes are trivially bypassed.
+
+## File uploads
+
+```html
+<form action="/upload" method="post"
+  enctype="multipart/form-data">
+  <label for="photos">Photos (JPEG or PNG, max 10 MB)</label>
+  <input id="photos" name="photos" type="file"
+    accept="image/jpeg,image/png" multiple required>
+  <button>Upload</button>
+</form>
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| `method="post"` + `enctype="multipart/form-data"` | otherwise only the file name is sent |
+| `accept` | filters the picker; users can still pick "All files" |
+| `capture="environment"` | opens the rear camera directly on mobile; omit it to let users choose camera or library |
+| `webkitdirectory` | pick a whole folder (Baseline 2025) |
+| Limits | state the size and type limits in the label or hint; enforce them on the server (and in the proxy: nginx rejects bodies over 1 MB by default) |
+| `value` | reads `C:\fakepath\name.jpg`; can only be set to `""` |
+
+Reading, previewing and uploading files with progress from script is in
+[Forms (TypeScript)](/typescript/frontend/forms/#file-inputs).
+
+## Accessibility & UX rules
+
+| Rule | Why |
+| :--- | :-- |
+| Visible label on every field | placeholders vanish, fail contrast and aren't reliable names (WCAG 3.3.2) |
+| Hints and errors linked with `aria-describedby` | read after the label; list several ids: `aria-describedby="pw-hint pw-error"` |
+| Error text says what's wrong and how to fix it | "Enter a date in the past", not "Invalid" (WCAG 3.3.1, 3.3.3) |
+| `aria-invalid="true"` only after validation | set it with the error, clear it with the fix |
+| Error summary at the top on submit, linked to each field | long forms: users see everything at once (GOV.UK pattern) |
+| Don't block paste | password managers and people with memory or motor impairments rely on it; WCAG 3.3.8 treats copy-paste as an acceptable aid for authentication |
+| Don't split fields needlessly | one field for a phone number, card number or OTP; splitting breaks paste, autofill and screen readers. Exception: day/month/year for memorable dates (GOV.UK's date input) |
+| Don't ask twice | no "confirm email"; offer show-password instead of "confirm password"; don't re-ask for data already given (WCAG 3.3.7) |
+| Mark optional or required | whichever is rarer; use words, not only `*` |
+| One column | eyes and focus move down a single line |
+| 16 px or larger text in inputs | iOS Safari zooms into inputs with smaller text on focus |
+| Don't auto-advance focus | surprises users and breaks corrections |
+| Targets at least 24×24 CSS px | WCAG 2.5.8; 44×44 is the comfortable touch target |
+| Keep the submit button enabled | disable only while submitting |
+
+## Common mistakes
+
+| Mistake | Effect | Fix |
+| :------ | :----- | :-- |
+| Button inside a form without `type` | "Show password" or "Add" submits the form | `type="button"` |
+| Control without `name` | silently missing from the submission | add `name` |
+| Placeholder as the only label | no name for screen readers; hint gone once typing starts | a `label` |
+| `type="number"` for card numbers, postcodes, phone numbers | leading zeros lost, spinners, wheel changes the value, exponent notation | `type="text" inputmode="numeric"` (GOV.UK, 2020) |
+| `pattern="[\w-]+"` | invalid under the `v` flag, so silently ignored | escape: `[\w\-]+` |
+| `disabled` on a field you need submitted | value missing on the server | `readonly`, or a hidden input |
+| Server expects `false` for unchecked checkboxes | the key is missing, not false | default on the server, or the hidden-input trick |
+| `autocomplete="off"` everywhere | autofill and password managers break; ignored for logins anyway | proper tokens |
+| Radios without `fieldset`/`legend` | options read without their question | group them |
+| Paste blocked on password or email confirm | frustration, weaker passwords, WCAG failure | allow paste |
+| `method="get"` for sign-in | password in the URL, history and server logs | `post` |
+| Relying on `accept`, `maxlength` or `pattern` for security | trivially bypassed | validate on the server |
+| Nested forms | the inner `<form>` tag is dropped by the parser | the `form` attribute on controls |
+| `select` with a disabled selected placeholder | can't return to empty; screen readers confused | `value=""` placeholder + `required` |
+
+## Recipes
+
+### Login form
+
+```html
+<form action="/login" method="post">
+  <label for="username">Email</label>
+  <input id="username" name="username" type="email"
+    autocomplete="username webauthn" required
+    spellcheck="false" autocapitalize="off">
+
+  <label for="current-password">Password</label>
+  <input id="current-password" name="password"
+    type="password" autocomplete="current-password"
+    required>
+  <button type="button" aria-controls="current-password"
+    aria-pressed="false">Show password</button>
+
+  <button type="submit">Sign in</button>
+  <a href="/forgot/">Forgot password?</a>
+</form>
+```
+
+The toggle switches the field's `type` between `password` and `text` (and `aria-pressed`) in
+script. Keep `id`s stable; password managers use them as a signal. The `webauthn` token only
+does something once your script starts a conditional passkey request; without it the field
+behaves as a plain `username` field.
+
+### Sign-up with password rules
+
+```html
+<form action="/signup" method="post">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email"
+    autocomplete="email" required>
+
+  <label for="new-password">Password</label>
+  <input id="new-password" name="password"
+    type="password" autocomplete="new-password"
+    minlength="15" required
+    aria-describedby="pw-hint pw-error">
+  <p id="pw-hint">At least 15 characters. A passphrase
+    of a few random words works well.</p>
+  <p id="pw-error" hidden></p>
+
+  <label>
+    <input type="checkbox" name="news" value="yes">
+    Send me product updates (optional)
+  </label>
+
+  <button type="submit">Create account</button>
+</form>
+```
+
+Length beats composition rules: NIST SP 800-63B (revision 4, 2025) requires at least 15
+characters for passwords used on their own (8 with multi-factor), forbids composition rules
+such as "one symbol, one capital", requires checking new passwords against a blocklist of
+common and breached values, and says verifiers should allow paste. Note that `minlength` counts
+UTF-16 code units, while NIST counts Unicode code points.
+
+### Address form
+
+```html
+<fieldset>
+  <legend>Delivery address</legend>
+  <label for="a1">Address line 1</label>
+  <input id="a1" name="line1" required
+    autocomplete="shipping address-line1">
+  <label for="a2">Address line 2 (optional)</label>
+  <input id="a2" name="line2"
+    autocomplete="shipping address-line2">
+  <label for="town">Town or city</label>
+  <input id="town" name="town" required
+    autocomplete="shipping address-level2">
+  <label for="county">County (optional)</label>
+  <input id="county" name="county"
+    autocomplete="shipping address-level1">
+  <label for="pc">Postcode</label>
+  <input id="pc" name="postcode" required size="8"
+    autocomplete="shipping postal-code"
+    autocapitalize="characters" spellcheck="false">
+  <label for="ctry">Country</label>
+  <select id="ctry" name="country" required
+    autocomplete="shipping country">
+    <option value="GB" selected>United Kingdom</option>
+    <option value="IE">Ireland</option>
+  </select>
+</fieldset>
+```
+
+Don't validate postcode formats too strictly on the client; international formats vary, and a
+typeahead or lookup service is kinder than a rejected pattern.
+
+### Search form
+
+```html
+<search>
+  <form action="/search" method="get">
+    <label for="q">Search the docs</label>
+    <input id="q" name="q" type="search"
+      enterkeyhint="search" autocomplete="off"
+      spellcheck="false">
+    <button type="submit">Search</button>
+  </form>
+</search>
+```
+
+`method="get"` makes results shareable and bookmarkable. `autocomplete="off"` is reasonable here:
+the browser's history of past queries is rarely useful in a site search.
+
+### Radio group in a fieldset
+
+```html
+<fieldset>
+  <legend>Delivery speed</legend>
+  <label>
+    <input type="radio" name="speed" value="std" checked>
+    Standard, 3–5 days (free)
+  </label>
+  <label>
+    <input type="radio" name="speed" value="next">
+    Next day (£4.99)
+  </label>
+</fieldset>
+```
+
+Pre-select the most common safe option; a required radio group with nothing checked forces an
+extra click and an error.
+
+### One-time code
+
+```html
+<label for="otp">Verification code</label>
+<input id="otp" name="otp" type="text"
+  inputmode="numeric" autocomplete="one-time-code"
+  pattern="\d{6}" maxlength="6" required
+  aria-describedby="otp-hint">
+<p id="otp-hint">6 digits, sent to your phone.</p>
+```
+
+One field, not six boxes: paste and autofill just work. End the SMS with the origin-bound line
+`@acme.example #123456` so Safari's autofill and Chrome's WebOTP API only offer the code on your
+domain.
+
+## References
+
+- [MDN: `<form>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form) and [`<input>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input): attributes and every input type
+- [MDN: `pattern`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/pattern): anchoring and the `v` flag
+- [MDN: `autocomplete`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete): the full token list, sections and `webauthn`
+- [MDN: `<button>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/button), [`<select>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/select), [`<textarea>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/textarea), [`<meter>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meter): element references
+- [MDN: Customizable select elements](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Customizable_select): `appearance: base-select` step by step
+- [MDN: `:user-invalid`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/:user-invalid): when it starts matching
+- [WHATWG HTML: Forms](https://html.spec.whatwg.org/multipage/forms.html) and [Form submission](https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#form-submission-2): implicit submission and the entry list
+- [WebKit: Features for Safari 27.0](https://webkit.org/blog/18325/webkit-features-for-safari-27-0/): customizable select shipping in Safari
+- [Chrome for Developers: The select element can now be customized with CSS](https://developer.chrome.com/blog/a-customizable-select): the Chrome 135 launch
+- [web.dev: Sign-in form best practices](https://web.dev/articles/sign-in-form-best-practices) and [Sign-up form best practices](https://web.dev/articles/sign-up-form-best-practices): autocomplete, ids and password fields
+- [web.dev: SMS OTP form best practices](https://web.dev/articles/sms-otp-form): the one-time-code field and SMS format
+- [GOV.UK: Why we changed the input type for numbers](https://technology.blog.gov.uk/2020/02/24/why-the-gov-uk-design-system-team-changed-the-input-type-for-numbers/): Hanna Laakso on `type="number"` (2020)
+- [GOV.UK Design System: Date input](https://design-system.service.gov.uk/components/date-input/) and [Error summary](https://design-system.service.gov.uk/components/error-summary/): tested patterns
+- [WAI: Forms tutorial](https://www.w3.org/WAI/tutorials/forms/): labels, grouping, instructions and notifications
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/): 1.3.5, 2.5.3, 2.5.8, 3.3.1–3.3.3, 3.3.7, 3.3.8
+- [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html): password length and composition guidance
+- [Web Platform Status](https://webstatus.dev/): Baseline data for input types, `:user-invalid`, `field-sizing` and customizable select

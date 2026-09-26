@@ -99,6 +99,7 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     credit: "Live preview in a sandbox; console output shows beside it.",
     template: TEMPLATES.web,
     refs: [
+      sheet("/design/html/semantic-elements/"),
       sheet("/design/css/css/"),
       sheet("/design/css/tailwind/"),
       sheet("/typescript/frontend/dom/"),
@@ -116,6 +117,7 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     refs: [
       sheet("/typescript/frontend/dom/"),
       sheet("/typescript/language/fundamentals/"),
+      sheet("/design/html/semantic-elements/"),
       sheet("/design/css/css/"),
     ],
   },
@@ -265,7 +267,11 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     stdin: false,
     credit: "Nothing runs: the preview renders your Markdown (raw HTML is shown as text).",
     template: TEMPLATES.markdown,
-    refs: [sheet("/writing/overview/"), sheet("/design/overview/")],
+    refs: [
+      sheet("/writing/nonfiction/technical-writing/"),
+      sheet("/writing/nonfiction/clear-writing/"),
+      sheet("/design/overview/"),
+    ],
   },
 ];
 

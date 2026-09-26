@@ -1,0 +1,742 @@
+---
+title: Probability & risk
+date: 2026-09-26
+order: 3
+---
+
+How to reason when outcomes are uncertain: probabilities as beliefs, base rates and Bayes, expected value and its
+limits, regression and selection effects, fat tails, ruin, position sizing, optionality, compounding and
+forecasting. The general toolkit is in [general thinking](/thinking/mental-models/general-thinking/), how to turn
+these numbers into choices is in [decision-making](/thinking/mental-models/decision-making/), and the mental
+errors that distort probability judgments are in [cognitive biases](/thinking/mental-models/cognitive-biases/).
+Algebra and logarithms are on [math fundamentals](/math/math-fundamentals/).
+
+## Probabilistic thinking basics
+
+A **probability** is a number from 0 to 1 that says how strongly you expect something. For one-off events
+("will this launch hit 1,000 sign-ups in a month?") it can only be a **degree of belief**, not a long-run
+frequency. That is fine: beliefs can still be scored, compared and improved.
+
+| Idea | Meaning | Practical rule |
+| :--- | :------ | :------------- |
+| degree of belief | probability as confidence, conditioned on what you know | always ask "given what information?" |
+| calibration | of all the things you call 70%, about 70% happen | keep score; see [forecasting](#forecasting-and-scoring) |
+| resolution | your forecasts vary and separate what happens from what doesn't | saying 50% on everything is calibrated but useless |
+| ranges over points | give an interval with a confidence level, not a single number | "4–9 weeks, 80% confident" beats "6 weeks" |
+| complements | $P(\text{not } A) = 1 - P(A)$ | if success is 30%, failure is 70%: plan for it |
+| conjunction | $P(A \text{ and } B) = P(A)\,P(B \mid A) \le P(A)$ | every added detail makes a story **less** likely |
+| disjunction | $P(A \text{ or } B) = P(A) + P(B) - P(A \text{ and } B)$ | many small risks add up to a big one |
+| independence | $P(A \text{ and } B) = P(A)\,P(B)$ only if unrelated | shared causes (one cloud region, one founder) break it |
+| never 0 or 1 | a prior of exactly 0 or 1 can never be updated | reserve them for logic and definitions |
+
+**Conjunctions shrink fast.** A plan with 8 independent steps, each 90% likely, succeeds with probability
+$0.9^8 \approx 0.43$. **Disjunctions grow fast.** Ten independent risks at 5% each give a
+$1- 0.95^{10} \approx 40\%$ chance that at least one bites.
+
+### Ranges and confidence intervals
+
+- A **90% interval** should contain the true value 9 times in 10. Most people's "90%" intervals are far too
+  narrow: in Alpert and Raiffa's classic studies the true answer fell outside people's supposedly wide
+  intervals far more often than the stated confidence allowed. Overconfidence is one of the most robust
+  findings in judgment research.
+- Widen until you would be genuinely surprised by a value outside the range, on either side.
+- Anchor the ends separately: "what low value would surprise me?" then "what high value would?".
+- For quantities that multiply (market sizes, timelines, returns), think in **ratios**: "×2 either side" rather
+  than "± 10".
+
+### Words vs numbers
+
+Vague words hide disagreement. Sherman Kent (CIA, 1964, "Words of Estimative Probability") proposed a mapping:
+
+| Term | Probability | Give or take |
+| :--- | ----------: | -----------: |
+| certain | 100% | 0 |
+| almost certain | 93% | about 6% |
+| probable | 75% | about 12% |
+| chances about even | 50% | about 10% |
+| probably not | 30% | about 10% |
+| almost certainly not | 7% | about 5% |
+| impossible | 0% | 0 |
+
+Better still: say the number. Words like "likely" or "a real possibility" mean very different things to
+different listeners, so two people can agree on the wording and disagree widely on the odds.
+
+**Fermi estimates** (decompose an unknown into factors you can bound, multiply, and check) are the fastest way
+to get a prior when you have no data. Method and examples are on [first principles](/thinking/first-principles/).
+
+## Base rates and Bayes' theorem
+
+The **base rate** (prior) is how common something is before you look at the specific case. The **base-rate
+fallacy** is judging by how well the evidence fits the story while ignoring how rare the story is.
+
+$$
+P(H \mid E) = \frac{P(E \mid H)\,P(H)}{P(E \mid H)\,P(H) + P(E \mid \neg H)\,P(\neg H)}
+$$
+
+| Symbol | Name | Medical test reading |
+| :----- | :--- | :------------------- |
+| $P(H)$ | prior, base rate | prevalence of the disease |
+| $P(E \mid H)$ | likelihood, true positive rate | **sensitivity** |
+| $P(E \mid \neg H)$ | false positive rate | $1-$ **specificity** |
+| $P(H \mid E)$ | posterior | **positive predictive value** (PPV) |
+
+### Worked example: a positive screening test
+
+A disease affects 1% of people screened. The test catches 90% of real cases (sensitivity 90%) and wrongly flags
+9% of healthy people (specificity 91%). You test positive. What is the chance you have it?
+
+$$
+P(D \mid +) = \frac{0.90 \times 0.01}{0.90 \times 0.01 + 0.09 \times 0.99}
+= \frac{0.009}{0.009 + 0.0891} \approx 9.2\%
+$$
+
+Most people, including many doctors, answer "about 90%". The error is confusing $P(+ \mid D)$ with $P(D \mid +)$.
+
+### The same problem in natural frequencies
+
+Gigerenzer and Hoffrage (1995) showed that counts of people are far easier to reason with than conditional
+probabilities. Imagine 1,000 people:
+
+```text
+1,000 people screened
+├── 10 have the disease (1%)
+│   ├──  9 test positive   (90% sensitivity)
+│   └──  1 tests negative
+└── 990 are healthy
+    ├── 89 test positive   (9% false positives)
+    └── 901 test negative
+
+Positives: 9 + 89 = 98. Sick among them: 9.
+P(disease | positive) = 9 / 98 ≈ 9%
+```
+
+In Gigerenzer et al. (2007), only 21% of 160 gynaecologists picked the right answer to a mammography version
+of this problem when it was stated as probabilities; after training in natural frequencies, 87% did.
+
+| Lesson | Why |
+| :----- | :-- |
+| rare conditions produce mostly false positives | healthy people vastly outnumber sick ones |
+| a negative result is very reassuring here | $P(D \mid -) = 1/902 \approx 0.1\%$ |
+| a second, independent positive changes a lot | see the odds form below: about 50% |
+| screen high-risk groups, not everyone | a higher prior raises the PPV |
+
+The same structure governs fraud alerts, intrusion detection, "this candidate interviewed brilliantly", and
+flaky test failures: when the thing you are hunting is rare, most alarms are false.
+
+## Bayesian updating as a habit
+
+Bayes is easiest in **odds form**. Odds are $p/(1-p)$: 1% is 1:99, 50% is 1:1, 75% is 3:1.
+
+$$
+\underbrace{\frac{P(H \mid E)}{P(\neg H \mid E)}}_{\text{posterior odds}}
+= \underbrace{\frac{P(H)}{P(\neg H)}}_{\text{prior odds}}
+\times \underbrace{\frac{P(E \mid H)}{P(E \mid \neg H)}}_{\text{likelihood ratio}}
+$$
+
+The **likelihood ratio** (LR) asks one question: how much more likely is this evidence if the hypothesis is true
+than if it is false? Evidence that is equally likely either way (LR = 1) is worthless, however vivid.
+
+**Test example again.** Prior odds 1:99. LR of a positive result $= 0.90 / 0.09 = 10$. Posterior odds 10:99,
+which is $10/109 \approx 9.2\%$. A second independent positive multiplies by 10 again: 100:99, about 50%.
+
+| Likelihood ratio | Strength of evidence | Effect on 50% prior | Effect on 10% prior |
+| :--------------- | :------------------- | :------------------ | :------------------ |
+| 1 | none | 50% | 10% |
+| 2 | weak | 67% | 18% |
+| 5 | moderate | 83% | 36% |
+| 10 | strong | 91% | 53% |
+| 100 | very strong | 99% | 92% |
+| 0.5 / 0.1 | evidence against | 33% / 9% | 5% / 1% |
+
+### The habit
+
+<Steps>
+<Step title="Start from a base rate">
+
+Pick a reference class ("seed-stage B2B startups", "migrations of this size in our codebase") and write down
+its frequency. This is the **outside view**.
+
+</Step>
+<Step title="Ask what the evidence is diagnostic of">
+
+For each new fact, estimate how likely you would see it if you were right and if you were wrong. Ignore evidence
+with a likelihood ratio near 1.
+
+</Step>
+<Step title="Update in proportion">
+
+Multiply the odds. Move a little on weak evidence and a lot on strong evidence. Many small updates beat rare
+lurches.
+
+</Step>
+<Step title="Write it down and revisit">
+
+Record the prior, the evidence and the posterior. Without a record, hindsight rewrites what you believed.
+
+</Step>
+</Steps>
+
+**Worked example: will a pilot convert?** Of your last 20 enterprise pilots, 6 converted to paid (prior 30%,
+odds 3:7). The new pilot's champion has budget authority. Looking back, 5 of the 6 converters (83%) had such a
+champion, as did 4 of the 14 non-converters (29%). LR $= 0.83/0.29 \approx 2.9$. Posterior odds
+$3/7 \times 2.9 \approx 1.24$, so about 55%. Better than the base rate, still close to a coin flip: do not
+book the revenue.
+
+| Failure mode | What it looks like |
+| :----------- | :----------------- |
+| base-rate neglect | judging only by how well the case fits the story |
+| conservatism | updating too little on strong evidence (Edwards, 1968) |
+| overreaction | lurching on one vivid anecdote |
+| double counting | treating correlated evidence (three articles quoting one source) as independent |
+| non-falsifiable priors | a hypothesis that fits every outcome has learned nothing from any of them |
+
+## Expected value, utility and variance
+
+**Expected value** is the probability-weighted average outcome:
+
+$$
+E[X] = \sum_i p_i\,x_i
+$$
+
+It is the right yardstick when the bet is **small relative to your wealth** and **repeated many times**
+(pricing insurance across a portfolio, choosing between A/B-test variants, spending engineering hours on bugs).
+It is the wrong yardstick when one outcome can wipe you out. Decision trees built on expected value are on
+[decision-making](/thinking/mental-models/decision-making/#expected-value-and-decision-trees).
+
+**Expected utility** replaces money with how much the money matters to you. Daniel Bernoulli (1738) proposed
+logarithmic utility, $u(w) = \ln w$, to resolve the St Petersburg paradox: a coin game with infinite expected
+value that nobody would pay much to play.
+
+### Worked example: a positive-EV bet you should refuse
+
+You have \$100,000. A bet pays +\$100,000 or −\$80,000 on a fair coin.
+
+| Measure | Calculation | Result |
+| :------ | :---------- | :----- |
+| expected value | $0.5(100{,}000) + 0.5(-80{,}000)$ | +\$10,000: looks good |
+| expected log utility | $0.5\ln 200{,}000 + 0.5 \ln 20{,}000$ | lower than $\ln 100{,}000$ |
+| certainty equivalent | $\sqrt{200{,}000 \times 20{,}000}$ | about \$63,000: worse than keeping \$100,000 |
+
+A log-utility investor treats this +EV bet as equivalent to *losing* \$37,000 for sure. The downside cuts
+deeper than the upside helps because each dollar matters more when you have fewer.
+
+| Concept | Formula | Meaning |
+| :------ | :------ | :------ |
+| variance | $\operatorname{Var}(X) = E[(X - \mu)^2]$ | how spread out outcomes are |
+| standard deviation | $\sigma = \sqrt{\operatorname{Var}(X)}$ | spread in the same units as $X$ |
+| certainty equivalent | $u(CE) = E[u(X)]$ | the sure amount you would swap the gamble for |
+| risk premium | $E[X] - CE$ | what you would pay to remove the risk |
+| risk aversion | concave $u$: $E[u(X)] \lt u(E[X])$ | why insurance exists |
+| diversification | $\sigma_{\text{avg}} = \sigma / \sqrt{n}$ for $n$ independent bets | the average of many small bets is stable; one big bet is not |
+
+### Why the average isn't enough
+
+| Plan | Outcomes | EV | Spread | Verdict |
+| :--- | :------- | :- | :----- | :------ |
+| A | \$1m for sure | \$1m | none | safe |
+| B | 50%: \$0, 50%: \$2.2m | \$1.1m | huge | better EV, but half the time you have nothing |
+| C | 99%: \$1.2m, 1%: −\$10m (personal liability) | \$1.09m | fat left tail | the tail is the whole story |
+
+Always ask for the **distribution**, not just the mean: the median, the 10th and 90th percentiles, and the
+worst case. A 1% annual chance of ruin sounds small; over 30 years it is $1- 0.99^{30} \approx 26\%$.
+
+## Small samples and regression to the mean
+
+The **law of large numbers**: as the sample grows, the sample average converges on the true average. Its
+error shrinks like $1/\sqrt{n}$, so 4× the data only halves the noise.
+
+The **"law of small numbers"** (Tversky and Kahneman, 1971, *Psychological Bulletin*) is the mistaken belief
+that small samples are as representative as large ones. They found that even trained research psychologists
+expected small studies to replicate far more reliably than the math allows.
+
+| Symptom | Example | Correction |
+| :------ | :------ | :--------- |
+| extremes come from small samples | the counties with the highest *and* lowest cancer rates are both mostly small and rural | expect small groups at both ends of every league table |
+| early results look decisive | an A/B test "wins" on day 2 with 40 conversions | fix sample size in advance; don't peek and stop |
+| five interviews = a market | "every user we spoke to wanted it" | treat as hypothesis generation, not evidence of demand |
+| a hot month = a trend | one strong sales month | compare with the month-to-month noise first |
+
+The hospital problem (Kahneman and Tversky, 1972): a large hospital has about 45 births a day, a small one about
+15. Which records more days when over 60% of babies are boys? The small one, by a wide margin, because small
+samples swing further. Most people say "about the same".
+
+### Regression to the mean
+
+When a measurement is part skill and part luck, an extreme result is likely to be followed by a less extreme
+one, because the luck does not repeat. Francis Galton described it in 1886 ("Regression toward mediocrity in
+hereditary stature"): the children of very tall parents were tall, but on average less tall than their parents.
+
+In standardized units, if two measurements correlate with coefficient $r$:
+
+$$
+\hat z_{\text{next}} = r \cdot z_{\text{now}}
+$$
+
+With $r = 0.5$, someone two standard deviations above average this time is expected to be one above next time.
+With $r = 0$ (pure luck), expect average. With $r = 1$ (pure skill), no regression.
+
+| Story people tell | What is really happening |
+| :---------------- | :----------------------- |
+| praise makes people worse, criticism makes them better | Kahneman's Israeli Air Force flight instructors (recounted in *Thinking, Fast and Slow*, ch. 17): cadets praised after an unusually good maneuver did worse next time, those shouted at after a bad one did better. Regression, not feedback. |
+| the Sports Illustrated cover jinx | athletes make the cover after an exceptional streak; an ordinary stretch follows |
+| the new manager turned the team round | managers are fired after the worst runs, which tend to end anyway |
+| the treatment worked | patients enroll when symptoms peak; many improve without treatment. Only a control group separates the two. |
+| last year's top fund manager is a genius | top-quartile funds mostly fail to stay top quartile |
+| our fix cut incidents by half | fixes are made after the worst weeks |
+
+**Rule:** whenever you select on an extreme and then measure again, you need a **control group** that was
+selected the same way and not treated.
+
+## Selection effects
+
+A sample is only evidence about the population it was drawn from **by the process that drew it**. If the
+process filters on the outcome, the sample lies.
+
+### Survivorship bias
+
+In the Second World War, Abraham Wald of Columbia's Statistical Research Group wrote memoranda (around 1943) on
+estimating how vulnerable each part of an aircraft was from the damage on planes that **returned**. The insight:
+hits on returning planes mark places a plane can be hit and survive; the planes hit elsewhere never came back to
+be counted. The memoranda were published by the Center for Naval Analyses in 1980 and explained by Mangel and
+Samaniego (*JASA*, 1984).
+
+<Note kind="info">The popular version (officers want armor where the holes are; Wald says "put it where they aren't") is a simplification. Wald's actual work was a mathematical method for estimating vulnerability from survivor data, and the much-shared red-dotted plane diagram is a modern illustration drawn in the 2000s, not wartime data. The principle is sound; the anecdote is embellished.</Note>
+
+| Domain | Survivor sample | What is missing |
+| :----- | :-------------- | :-------------- |
+| startup advice | founders of successful companies explaining what worked | the thousands who did the same and failed ([YC advice](/startups/advice/y-combinator/) is useful partly because YC sees the failures too) |
+| investing | funds and stocks that still exist in the index | closed funds and delisted companies |
+| architecture | "old buildings were built better" | the badly built ones fell down |
+| hiring | "our best engineers all came from X" | how many from X you hired who didn't work out |
+| products | "users love feature Y" in a survey of current users | everyone who churned because of it |
+| tech | "we ran without backups for years and it was fine" | the teams whose disks died |
+
+### Other selection effects
+
+| Effect | Mechanism | Example |
+| :----- | :-------- | :------ |
+| **Berkson's paradox** | selecting on A **or** B makes A and B look negatively correlated | Berkson (1946) on hospital patients: two diseases look anticorrelated among in-patients because either one gets you admitted. Among startups you've heard of, great tech and great distribution seem anticorrelated because either gets you noticed. |
+| self-selection | people choose whether to be in the sample | customers who answer an NPS survey are the keen ones |
+| non-response / attrition | dropouts differ from stayers | a trial where the sickest patients leave |
+| collider bias | conditioning on a common effect | among admitted students, test scores and grades look unrelated |
+| publication bias | significant results get published, null results don't | the published literature overstates effects |
+| the Lindy question | what has survived a long time tends to be robust | old ideas have passed a filter; new ones haven't yet |
+
+**Test:** "What would the data look like if my hypothesis were false, and would I have seen it?"
+
+## Correlation, causation and Simpson's paradox
+
+Correlation between A and B has at least five explanations. Causation is only one of them.
+
+| Explanation | Pattern | Example |
+| :---------- | :------ | :------ |
+| A causes B | A → B | exercise lowers resting heart rate |
+| B causes A (reverse) | B → A | successful companies spend more on brand, not only the other way round |
+| confounder | C → A and C → B | ice-cream sales and drownings both rise with summer heat |
+| selection / collider | conditioning on a result of A and B | Berkson's paradox, above |
+| chance | many comparisons, small samples | spurious correlations between unrelated time series |
+
+Ways to get closer to causation: a **randomized experiment** (A/B test) where possible; a **natural experiment**
+or discontinuity; a **dose–response** relationship; a plausible **mechanism**; **consistency** across settings
+and methods; the cause **preceding** the effect. These echo Bradford Hill's 1965 considerations for inferring
+causation in epidemiology.
+
+### Simpson's paradox
+
+A trend in every subgroup can reverse when the groups are combined, because the groups are different sizes and
+the grouping variable is related to both the "treatment" and the outcome.
+
+Kidney stones (Charig et al., *BMJ*, 1986):
+
+| Stone size | Treatment A (open surgery) | Treatment B (PCNL) |
+| :--------- | :------------------------- | :----------------- |
+| small | **93%** (81/87) | 87% (234/270) |
+| large | **73%** (192/263) | 69% (55/80) |
+| all | 78% (273/350) | **83%** (289/350) |
+
+A is better for small stones and for large stones, yet worse overall, because A was given mostly to the harder,
+large-stone cases.
+
+**UC Berkeley, 1973.** Graduate admissions looked biased against women in aggregate: about 44% of 8,442 men were
+admitted versus about 35% of 4,321 women. Bickel, Hammel and O'Connell (*Science*, 1975) looked department by
+department and found no pattern of discrimination against women by admissions committees (if anything, a small
+bias in their favor). Women had applied disproportionately to the more competitive departments with low
+admission rates for everyone.
+
+**Rule:** before trusting an aggregate comparison, ask what the groups differ on, and look within strata. Then
+ask which is the causally right comparison: stratifying on a confounder helps; stratifying on a consequence of
+the treatment can mislead.
+
+## Thin tails, fat tails and power laws
+
+| | Mediocristan | Extremistan |
+| :--- | :--- | :--- |
+| coined by | Nassim Nicholas Taleb, *The Black Swan* (2007) | same |
+| typical distribution | normal (Gaussian), thin-tailed | power law, fat-tailed |
+| examples | height, weight, reaction times, manufacturing error | wealth, book sales, city sizes, startup outcomes, casualties in wars, cyber losses |
+| one observation | cannot move the total much | can dominate the total |
+| averages | stable, informative | unstable; the sample mean understates the true mean |
+| past maximum | good guide to future maximum | poor guide: records keep being broken |
+| strategy | optimize the typical case | survive the worst case, position for the best |
+
+A **normal distribution** puts about 68% of values within 1 standard deviation, 95% within 2 and 99.7% within 3.
+Its tails fall off so fast that a 5σ event is essentially impossible. Real markets do not behave like that: on
+19 October 1987 the Dow Jones fell 22.6% in one day, a move of more than 20 standard deviations by normal
+daily-volatility standards.
+
+A **power law** (Pareto) tail has
+
+$$
+P(X > x) \propto x^{-\alpha}
+$$
+
+| Tail exponent $\alpha$ | Consequence |
+| :--------------------- | :---------- |
+| $\alpha > 2$ | mean and variance exist, but tails are still much heavier than normal |
+| $1\lt \alpha \le 2$ | mean exists, **variance is infinite**: sample standard deviations are meaningless |
+| $\alpha \le 1$ | even the **mean is infinite**: the sum is dominated by the largest item |
+| $\alpha \approx 1.16$ | gives the classic 80/20 split |
+
+| Name | Observation |
+| :--- | :---------- |
+| **Pareto principle** | Vilfredo Pareto observed that about 80% of the land in Italy was owned by about 20% of the people; Joseph Juran later generalized it as "the vital few" |
+| **Zipf's law** | the $k$-th most common word appears with frequency roughly $\propto 1/k$ (George Kingsley Zipf, 1930s–1949); city sizes behave similarly |
+| **venture returns** | in Horsley Bridge data reported by Chris Dixon (a16z, 2015), about 6% of investments, 4.5% of dollars invested, produced about 60% of total returns |
+| **software** | a few bugs cause most crashes; a few customers produce most revenue and most support load |
+
+### Black swans
+
+Taleb's **black swan** is an event that (1) lies outside regular expectations, (2) has an extreme impact, and
+(3) is explained after the fact as if it had been predictable. You cannot forecast specific black swans. You
+can decide in advance how exposed you are to them.
+
+| Do | Don't |
+| :- | :---- |
+| cap downside exposure: limits, insurance, redundancy | use standard deviation or VaR as "the risk" in fat-tailed domains |
+| keep slack: cash, spare capacity, time | optimize for the average day with no buffer |
+| keep many small positive-tail bets open | assume the largest past loss is the largest possible loss |
+| stress-test with scenarios, not just statistics | treat "it has never happened" as "it can't happen" |
+
+## Ergodicity and the ruin problem
+
+A process is **ergodic** when the average over many people at one moment (the **ensemble average**) equals the
+average for one person over a long time (the **time average**). Most risky choices you make are not ergodic:
+you live one path, and you cannot average across parallel versions of yourself.
+
+**Russian roulette** (a favorite example of Taleb's): six people each playing once for \$1m have a five in six
+chance each of winning. One person playing six times has a $(5/6)^6 \approx 33\%$ chance of surviving, and
+someone who keeps playing is eventually certain to die. Same expected value per round; entirely different fate.
+
+**Peters's coin** (Ole Peters, "The ergodicity problem in economics", *Nature Physics* 15, 2019): each round,
+wealth rises 50% on heads or falls 40% on tails.
+
+| Average | Calculation | Per round |
+| :------ | :---------- | :-------- |
+| ensemble (expected value) | $0.5\times 1.5 + 0.5 \times 0.6 = 1.05$ | +5%: looks attractive |
+| time average (typical path) | $\sqrt{1.5 \times 0.6} = \sqrt{0.9} \approx 0.949$ | about −5%: you go broke |
+
+After 50 rounds the expected wealth is $1.05^{50} \approx 11.5\times$ the start, yet the typical player has
+$0.9^{25} \approx 0.07\times$. A tiny minority of lucky paths holds nearly all the ensemble's wealth. For
+multiplicative bets, maximize the **growth rate** (the expected log), not the expected value.
+
+<Note kind="warning">Ergodicity economics is contested. Economists such as Doctor, Wakker and Wang (*Nature Physics*, 2020) reply that expected-utility theory with log or other concave utility already handles these cases and never assumed ergodicity. The practical lesson (don't take bets that can ruin you, however good the average) is not in dispute.</Note>
+
+### Rules for ruin
+
+| Rule | Why |
+| :--- | :-- |
+| survive first; optimize second | a return of −100% ends the game; no later return compounds from zero |
+| ruin includes non-financial ruin | reputation, health, trust, legal standing, a key relationship |
+| small risks repeated are large risks | per-event risk × number of exposures |
+| losses need larger gains to recover | a 50% loss needs a 100% gain; see [compounding](#compounding-and-the-rule-of-72) |
+| don't borrow to raise a bet you can already afford | leverage turns volatility into ruin |
+| never risk what you need for what you merely want | Buffett's verdict on Long-Term Capital Management (1998, paraphrased): they risked money they had and needed to make money they didn't have and didn't need |
+
+## Position sizing: the Kelly criterion
+
+John Kelly (Bell Labs, 1956, "A New Interpretation of Information Rate") found the fraction of your bankroll
+to stake on a favorable repeated bet that maximizes the long-run growth rate. For a bet that pays $b$ to 1,
+with win probability $p$ and loss probability $q = 1 - p$:
+
+$$
+f^* = p - \frac{q}{b} = \frac{bp - q}{b}
+$$
+
+It comes from maximizing the expected log of wealth after one bet:
+
+$$
+g(f) = p \ln(1 + bf) + q \ln(1 - f), \qquad g'(f) = 0 \;\Rightarrow\; f^* = \frac{bp - q}{b}
+$$
+
+If $f^* \le 0$ there is no edge: don't bet.
+
+### Worked example
+
+A repeated even-money bet ($b = 1$) that you win 60% of the time: $f^* = 0.6 - 0.4/1 = 0.2$. Stake 20% of
+current wealth each round.
+
+| Fraction of Kelly | Stake | Growth per round $g(f)$ | Share of max growth |
+| :---------------- | ----: | ----------------------: | ------------------: |
+| ¼ Kelly | 5% | 0.88% | 44% |
+| ½ Kelly | 10% | 1.50% | 75% |
+| full Kelly | 20% | 2.01% | 100% |
+| 1.5× Kelly | 30% | 1.47% | 73% |
+| 2× Kelly | 40% | −0.25% | negative: long-run ruin |
+
+Another example: a 2-to-1 payout won 40% of the time: $f^* = 0.4 - 0.6/2 = 0.1$.
+
+### Why practitioners use fractional Kelly
+
+- **Half Kelly keeps about 75% of the growth with half the volatility.** The growth curve is flat near the top
+  and falls off a cliff past it, so undershooting is cheap and overshooting is expensive.
+- **Your edge is estimated, not known.** If you overestimate $p$, full Kelly is really over-Kelly. At 2× the
+  true Kelly fraction, long-run growth is roughly zero or negative.
+- **Full Kelly is a rough ride.** Deep drawdowns are routine: in the standard continuous approximation, a
+  full-Kelly bettor has a 50% chance of seeing their bankroll halve at some point.
+- **Real bets are not independent coin flips.** Correlated positions, fat tails and illiquidity all argue for
+  smaller sizes.
+
+For a founder, Kelly is a way of thinking rather than a formula: size each bet (a hire, a market, a personal
+guarantee) so that being wrong is survivable and being right still matters.
+
+## Risk, uncertainty and margin of safety
+
+Frank Knight (*Risk, Uncertainty and Profit*, 1921) distinguished **risk** (outcomes unknown, but the
+probabilities are measurable, as in dice or actuarial tables) from **uncertainty** (the probabilities
+themselves are unknown). He argued that profit is the reward for bearing uncertainty that cannot be insured.
+
+| | Risk | Uncertainty |
+| :--- | :--- | :--- |
+| probabilities | known or estimable from data | unknown; no good reference class |
+| examples | card games, car insurance, server failure rates | a new market, a regulatory change, a pandemic's second-order effects |
+| tools | expected value, Kelly, statistics | scenarios, robustness, optionality, margin of safety |
+| failure mode | none, if the model is right | treating uncertainty as risk: false precision |
+
+### Margin of safety
+
+Benjamin Graham titled the last chapter of *The Intelligent Investor* (1949) "Margin of Safety as the Central
+Concept of Investment": buy only well below your estimate of value, so that errors in the estimate and bad luck
+still leave you whole. Engineers call it a **safety factor**; founders call it runway. It is the practical
+answer to Knightian uncertainty: when you cannot trust the probabilities, make sure the plan survives being
+wrong. Size the margin to the **uncertainty** of the estimate and the **cost** of being wrong. Domain-by-domain
+examples and where it misleads are on [general thinking](/thinking/mental-models/general-thinking/#margin-of-safety).
+
+## Asymmetry, optionality and convexity
+
+An **asymmetric bet** has limited downside and large upside. **Optionality** is the right, but not the
+obligation, to act later when you know more. A payoff is **convex** when it gains more from good surprises
+than it loses from bad ones.
+
+| Position | Bad outcome | Normal | Great outcome | Shape |
+| :------- | :---------- | :----- | :------------ | :---- |
+| owning a share | lose proportionally | small gain | gain proportionally | linear |
+| holding a call option | lose the premium only | lose the premium | large gain | **convex** (likes volatility) |
+| selling insurance / options | large loss | collect premium | collect premium | **concave** (hates volatility) |
+| startup equity (for a founder) | lose time and salary | modest | enormous | convex |
+| taking on leverage | wiped out | amplified gain | amplified gain | concave near ruin |
+| a two-week prototype | lose two weeks | learn something | find a product | convex |
+
+**Jensen's inequality** is the math behind it. For a convex payoff $f$, $E[f(X)] \ge f(E[X])$, so more
+variability in $X$ raises the average payoff. For a concave payoff the inequality flips and variability hurts.
+
+How to use it:
+
+- **Seek convex exposures**: cheap experiments, small early bets on many ideas, options on future choices
+  (an MVP before a platform, a contractor before a hire).
+- **Avoid concave ones you don't get paid enough for**: picking up pennies in front of a steamroller,
+  guarantees, uncapped liabilities, single points of failure.
+- **Value reversibility**: a reversible decision is a cheap option; decide fast. An irreversible one deserves
+  the slow process in [decision-making](/thinking/mental-models/decision-making/).
+- **The barbell** (Taleb): most resources very safe, a small portion in high-upside bets, little in the middle.
+- **Options have a price.** Keeping every door open costs focus. Exercise options (commit) when the information
+  has arrived.
+
+## Compounding and the rule of 72
+
+Growth at rate $r$ per period for $n$ periods:
+
+$$
+FV = PV (1 + r)^n
+$$
+
+Doubling time solves $(1 + r)^t = 2$:
+
+$$
+t = \frac{\ln 2}{\ln(1 + r)} \approx \frac{0.693}{r - r^2/2} \approx \frac{0.693}{r} + 0.35
+$$
+
+using $\ln(1 + r) \approx r - r^2/2$ for small $r$. With $r$ in percent, $69.3/r$ is exact for continuous
+compounding; for annual compounding the $+0.35$ correction means $72/r$ is almost exact near 8% and within a few
+per cent of the truth from about 4% to 12%. 72 also divides evenly by 2, 3, 4, 6, 8, 9 and 12.
+
+| Rate per period | Exact doubling time | Rule of 72 | Rule of 69.3 |
+| :-------------- | ------------------: | ---------: | -----------: |
+| 2% | 35.0 | 36.0 | 34.7 |
+| 4% | 17.7 | 18.0 | 17.3 |
+| 6% | 11.9 | 12.0 | 11.6 |
+| 8% | 9.0 | 9.0 | 8.7 |
+| 10% | 7.3 | 7.2 | 6.9 |
+| 15% | 5.0 | 4.8 | 4.6 |
+| 25% | 3.1 | 2.9 | 2.8 |
+
+Uses: 7% a year doubles in about 10 years; a product growing 10% a week doubles about every 7 weeks; 3% annual
+inflation halves purchasing power in about 24 years.
+
+**Losses compound too, and asymmetrically:**
+
+| Loss | Gain needed to recover |
+| :--- | :--------------------- |
+| −10% | +11% |
+| −25% | +33% |
+| −50% | +100% |
+| −75% | +300% |
+| −90% | +900% |
+
+This is why volatility drags on growth: the geometric mean return is roughly the arithmetic mean minus half the
+variance ($g \approx \mu - \sigma^2/2$). Money, skills, reputation, code quality and technical debt all
+compound; so do small daily frictions. More on investing on the [investing](/finance/personal/investing/) sheet.
+
+## Common statistical traps
+
+| Trap | What happens | Defense |
+| :--- | :----------- | :------ |
+| **p-hacking** | trying analyses until $p \lt 0.05$; Simmons, Nelson and Simonsohn (2011) showed flexible choices can make false positives likely | pre-register the analysis; report everything you tried |
+| **garden of forking paths** | Gelman and Loken: even without conscious fishing, data-dependent choices inflate false positives | decide the analysis before seeing the data; replicate |
+| **multiple comparisons** | test 20 metrics at $p = 0.05$ and expect one "win" by chance | name one primary metric; correct (Bonferroni, false discovery rate) |
+| **peeking** | stopping an A/B test when it first looks significant | fixed horizon or a sequential method built for peeking |
+| **base-rate neglect** | ignoring the prior; see [the test example](#base-rates-and-bayes-theorem) | start from the reference class |
+| **gambler's fallacy** | expecting independent events to "even out" (red is due) | independent means no memory |
+| **hot-hand fallacy (contested)** | Gilovich, Vallone and Tversky (1985) found no hot hand in basketball shooting; Miller and Sanjurjo (*Econometrica*, 2018) showed their method had a streak-selection bias, and after correcting it the data show evidence **for** a hot hand | don't cite the hot hand as a textbook fallacy; streaks can be real where skill states vary |
+| **regression to the mean** | crediting an intervention for natural reversion | control group |
+| **survivorship** | analyzing only winners | find the denominator |
+| **Texas sharpshooter** | drawing the target around the cluster after the fact | state hypotheses before looking |
+| **relative vs absolute risk** | "halves the risk" from 2 in 1,000 to 1 in 1,000 | always ask for absolute numbers; number needed to treat here is 1,000 |
+| **denominator neglect** | "500 incidents" without the number of deployments | quote rates, not counts |
+| **ecological fallacy** | inferring individual behavior from group averages | group-level data answer group-level questions |
+| **Goodhart's law** | a measure that becomes a target stops measuring well | pair metrics; watch for gaming |
+| **extrapolation** | trend lines beyond the data (every S-curve looks exponential early) | ask what limits the growth |
+
+## Forecasting and scoring
+
+Philip Tetlock's *Expert Political Judgment* (2005) tracked tens of thousands of predictions by experts over
+nearly two decades and found most did little better than simple baselines; generalists who drew on many ideas
+(his "foxes") beat those with one big theory ("hedgehogs"). In the IARPA ACE forecasting tournament (2011–2015),
+Tetlock and Barbara Mellers's **Good Judgment Project** recruited volunteers, scored every forecast, and
+identified the top performers as **superforecasters**: roughly the top 2%. GJP won the tournament; Good
+Judgment reports that its forecasts were over 30% more accurate than intelligence analysts with access to
+classified information. The story is told in *Superforecasting* (Tetlock and Gardner, 2015).
+
+### The Brier score
+
+For binary events, with forecast probability $f_t$ and outcome $o_t \in \{0, 1\}$:
+
+$$
+BS = \frac{1}{N} \sum_{t=1}^{N} (f_t - o_t)^2
+$$
+
+0 is perfect, 0.25 is what always saying 50% earns, 1 is confidently wrong every time. Lower is better. Brier's
+original 1950 version sums over both outcomes, doubling the score to a 0–2 range; that is the scale Tetlock's
+books use.
+
+| Forecast | Happened? | Score |
+| :------- | :-------- | ----: |
+| 90% | yes | 0.01 |
+| 90% | no | 0.81 |
+| 60% | yes | 0.16 |
+| 50% | either | 0.25 |
+| 10% | no | 0.01 |
+
+The squared error punishes confident misses hard, and the score is **proper**: you minimize your expected score
+only by reporting what you actually believe.
+
+### Habits of good forecasters
+
+Paraphrased from Tetlock and Gardner's findings:
+
+| Habit | In practice |
+| :---- | :---------- |
+| outside view first | start from a base rate for similar cases, then adjust for specifics |
+| break the question down | Fermi-style: what would have to be true, and how likely is each part? |
+| granular probabilities | distinguish 60% from 70%; the best forecasters' fine distinctions carried real information |
+| update often, in small steps | move with each piece of news, rarely lurch |
+| actively open-minded | seek out the strongest version of the other side |
+| keep score | a forecast you never check teaches nothing |
+| work in teams | aggregating independent forecasts beats most individuals |
+| post-mortem hits and misses | was it the reasoning or the luck? |
+
+Useful ways to practice: keep a forecast log with dates and probabilities, and play on public forecasting
+platforms such as Metaculus or Good Judgment Open.
+
+## Risk checklist
+
+```text
+RISK CHECKLIST (run before any bet you can't cheaply undo)
+
+Base rate
+[ ] What is the reference class, and how often does this work?
+[ ] How is my case different, and would I bet on that?
+
+Downside
+[ ] What is the worst realistic outcome? Is it survivable?
+[ ] Could this be ruin: money, reputation, health, trust?
+[ ] Does the downside compound, cascade or trigger others?
+[ ] Is anything here irreversible?
+
+Distribution
+[ ] Thin- or fat-tailed domain? Am I using averages where
+    tails dominate?
+[ ] What are the median, 10th and 90th percentile outcomes?
+[ ] Are my risks correlated (one customer, one cloud, one
+    founder, one bank)?
+
+Evidence
+[ ] Is my data survivorship- or selection-biased?
+[ ] Could this be regression to the mean?
+[ ] Confounders? Is the aggregate hiding a Simpson reversal?
+[ ] How many things did I test before this looked good?
+
+Sizing
+[ ] Is the position small enough that being wrong is fine?
+[ ] Am I estimating the edge honestly (use half of it)?
+[ ] Does leverage turn a bad outcome into ruin?
+
+Shape
+[ ] Is the payoff convex (capped loss, open upside)?
+[ ] Can I buy an option (pilot, prototype, trial) first?
+[ ] Where is my margin of safety, and how big is it?
+
+Record
+[ ] Written probability, range and reasoning, dated.
+[ ] Named signals that would make me change my mind.
+[ ] Review date set.
+```
+
+## References
+
+- Amos Tversky and Daniel Kahneman, ["Belief in the law of small numbers"](https://doi.org/10.1037/h0031322), *Psychological Bulletin* 76(2), 1971: small-sample intuitions of researchers
+- Daniel Kahneman and Amos Tversky, ["Subjective probability: a judgment of representativeness"](https://doi.org/10.1016/0010-0285%2872%2990016-3), *Cognitive Psychology* 3(3), 1972: the hospital problem
+- Gerd Gigerenzer and Ulrich Hoffrage, ["How to improve Bayesian reasoning without instruction: frequency formats"](https://doi.org/10.1037/0033-295X.102.4.684), *Psychological Review* 102(4), 1995: natural frequencies
+- Gerd Gigerenzer et al., ["Helping doctors and patients make sense of health statistics"](https://doi.org/10.1111/j.1539-6053.2008.00033.x), *Psychological Science in the Public Interest* 8(2), 2007: the gynaecologist study and risk communication
+- Francis Galton, ["Regression toward mediocrity in hereditary stature"](https://doi.org/10.2307/2841583), *Journal of the Anthropological Institute* 15, 1886: origin of regression to the mean
+- Daniel Kahneman, *Thinking, Fast and Slow* (Farrar, Straus and Giroux, 2011): chapter 17 on regression and the flight instructors
+- Marc Mangel and Francisco Samaniego, ["Abraham Wald's work on aircraft survivability"](https://doi.org/10.1080/01621459.1984.10478038), *Journal of the American Statistical Association* 79(386), 1984: what Wald actually did
+- P. J. Bickel, E. A. Hammel and J. W. O'Connell, ["Sex bias in graduate admissions: data from Berkeley"](https://doi.org/10.1126/science.187.4175.398), *Science* 187, 1975: the Simpson's paradox case
+- C. R. Charig et al., ["Comparison of treatment of renal calculi by open surgery, PCNL and ESWL"](https://doi.org/10.1136/bmj.292.6524.879), *BMJ* 292, 1986: the kidney-stone data
+- Joseph Berkson, ["Limitations of the application of fourfold table analysis to hospital data"](https://doi.org/10.2307/3002000), *Biometrics Bulletin* 2(3), 1946: Berkson's paradox
+- Nassim Nicholas Taleb, *The Black Swan: The Impact of the Highly Improbable* (Random House, 2007): Mediocristan, Extremistan, black swans
+- Ole Peters, ["The ergodicity problem in economics"](https://doi.org/10.1038/s41567-019-0732-0), *Nature Physics* 15, 2019: time vs ensemble averages
+- Jason N. Doctor, Peter P. Wakker and Tong V. Wang, ["Economists' views on the ergodicity problem"](https://doi.org/10.1038/s41567-020-01106-x), *Nature Physics* 16, 2020: the expected-utility reply to Peters
+- J. L. Kelly Jr, ["A new interpretation of information rate"](https://doi.org/10.1002/j.1538-7305.1956.tb03809.x), *Bell System Technical Journal* 35(4), 1956: the Kelly criterion
+- Frank H. Knight, *Risk, Uncertainty and Profit* (Houghton Mifflin, 1921): risk vs uncertainty
+- Benjamin Graham, *The Intelligent Investor* (Harper, 1949): margin of safety
+- [Chris Dixon, "Performance data and the 'Babe Ruth effect' in venture capital"](https://a16z.com/performance-data-and-the-babe-ruth-effect-in-venture-capital/) (a16z, 2015): power-law venture returns
+- Marc Alpert and Howard Raiffa, "A progress report on the training of probability assessors", in Kahneman, Slovic and Tversky (eds), *Judgment under Uncertainty: Heuristics and Biases* (Cambridge University Press, 1982): overconfident intervals
+- Ward Edwards, "Conservatism in human information processing", in B. Kleinmuntz (ed.), *Formal Representation of Human Judgment* (Wiley, 1968): under-updating on evidence
+- Joseph P. Simmons, Leif D. Nelson and Uri Simonsohn, ["False-positive psychology"](https://doi.org/10.1177/0956797611417632), *Psychological Science* 22(11), 2011: p-hacking
+- [Andrew Gelman and Eric Loken, "The garden of forking paths"](https://sites.stat.columbia.edu/gelman/research/unpublished/p_hacking.pdf) (2013): data-dependent analysis
+- Joshua B. Miller and Adam Sanjurjo, ["Surprised by the hot hand fallacy? A truth in the law of small numbers"](https://doi.org/10.3982/ECTA14943), *Econometrica* 86(6), 2018: the hot-hand reassessment
+- Thomas Gilovich, Robert Vallone and Amos Tversky, ["The hot hand in basketball"](https://doi.org/10.1016/0010-0285%2885%2990010-6), *Cognitive Psychology* 17(3), 1985: the original hot-hand study
+- Glenn W. Brier, ["Verification of forecasts expressed in terms of probability"](https://doi.org/10.1175/1520-0493%281950%29078%3C0001:VOFEIT%3E2.0.CO;2), *Monthly Weather Review* 78(1), 1950: the Brier score
+- Philip E. Tetlock and Dan Gardner, *Superforecasting: The Art and Science of Prediction* (Crown, 2015): the Good Judgment Project
+- Philip E. Tetlock, *Expert Political Judgment* (Princeton University Press, 2005): foxes and hedgehogs
+- [Sherman Kent, "Words of Estimative Probability"](https://www.cia.gov/resources/csi/static/Words-of-Estimative-Probability.pdf) (CIA, 1964): mapping words to numbers

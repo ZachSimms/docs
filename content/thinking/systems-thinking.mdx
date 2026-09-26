@@ -1,0 +1,524 @@
+---
+title: Systems thinking
+date: 2026-09-26
+order: 2
+---
+
+How to see and change the structures that produce behavior over time: stocks and flows, feedback loops, delays,
+causal loop diagrams, the recurring archetypes, Donella Meadows' twelve leverage points, the iceberg model, and the
+laws that describe how systems resist and surprise their designers. Includes worked math, a step-by-step analysis
+template and applications to startups, organizations, habits and software. [First principles
+thinking](/thinking/first-principles/) takes a problem apart; this sheet is about how the parts behave once connected.
+For queueing and failure handling in real services see [system design](/infrastructure/system-design/).
+
+## What a system is
+
+Donella Meadows (*Thinking in Systems*, 2008): "A system is an interconnected set of elements that is coherently
+organized in a way that achieves something." Every system has three kinds of thing:
+
+| Part | Meaning | Startup example | How easy to see | Effect of changing it |
+| :--- | :--- | :--- | :--- | :--- |
+| **Elements** | the things: people, machines, money, stock, users | engineers, servers, customers, cash | easiest | usually small, unless an element is also a rule-maker |
+| **Interconnections** | the relationships and information flows that link elements: physical flows, rules, signals | pricing, referral mechanics, pay plans, who reports to whom, dashboards | harder | often large |
+| **Purpose or function** | what the system actually does, deduced from behavior rather than stated goals | "grow ARR" on the slide; "hit this quarter's number at any cost" in practice | hardest | the largest |
+
+Meadows' point: the elements are what we notice, but you can replace every player on a football team and it is still
+the same team; change the rules or the purpose and it becomes a different system. Judge purpose by what the system
+does, not by what it says (a company that says "quality first" but promotes whoever ships fastest has a speed purpose).
+
+| Term | Meaning |
+| :--- | :--- |
+| **Boundary** | what you choose to include; drawn for the question, not given by nature |
+| **Environment** | everything outside the boundary that affects the system but is not affected by it (in your model) |
+| **Open vs closed** | whether the system exchanges matter, energy or information with its environment (organizations always do) |
+| **State** | the values of all the stocks at a moment |
+| **Behavior** | how the state changes over time; the thing you actually care about |
+| **Structure** | stocks, flows, feedback loops, delays and rules; structure produces behavior |
+
+The core claim of systems thinking: **structure produces behavior**. Similar structures produce similar behavior
+whatever the content, so a small vocabulary (stocks, flows, loops, delays) explains a large range of problems.
+
+## Stocks and flows
+
+A **stock** is an accumulation you could count at an instant: water in a bath, money in an account, users, inventory,
+technical debt, trust, skill. A **flow** is a rate that changes a stock: liters per minute, pounds per month, sign-ups
+per week. Stocks change only through flows.
+
+<Diagram src="/images/diagrams/thinking-stock-flow.svg" label="A stock-and-flow diagram. A rectangle labeled Users is the stock. On the left, a pipe runs from a cloud labeled source through a valve labeled inflow, sign-ups per month, into the stock. On the right, a pipe runs out of the stock through a valve labeled outflow, churn per month, into a cloud labeled sink. A dashed arrow from the stock to the churn valve shows that churn equals a churn rate c times Users. Below: Users at t plus 1 equals Users at t plus sign-ups minus churn, and steady state when inflow equals outflow is Users star equals sign-ups divided by c; for example 1,000 sign-ups a month and 5% monthly churn level off at 20,000 users." caption="Stock and flows: the bathtub model of a user base with churn" />
+
+$$
+S_{t+1} = S_t + \text{inflow}_t - \text{outflow}_t
+\qquad\text{or, continuously,}\qquad
+\frac{dS}{dt} = \text{inflow}(t) - \text{outflow}(t)
+$$
+
+| Rule | Consequence |
+| :--- | :--- |
+| a stock rises when inflow exceeds outflow, whatever their absolute sizes | you can grow users by cutting churn as well as by adding sign-ups |
+| **dynamic equilibrium**: inflow = outflow, so the stock is constant while material moves through it | a "stable" headcount can hide 30% annual turnover |
+| stocks change slowly relative to flows; they are the system's memory and inertia | reputation, skills, culture and debt take years to build or pay down |
+| stocks act as **buffers** that decouple inflow from outflow | inventory, cash reserves and queues let the two sides run at different rates |
+| you cannot see a stock's future from its level alone; look at the flows | "we have 18 months of runway" depends on the burn rate trend |
+| the time a unit spends in a stock is stock ÷ throughput (Little's law, below) | a 600-ticket backlog handled at 100 a week is a 6-week wait |
+
+### Worked example: bank balance
+
+Stock: balance, starting at \$2,000. Inflow: salary \$4,000 a month. Outflow: spending \$3,600 a month. Net flow +\$400,
+so the balance grows linearly: \$2,400, \$2,800, \$3,200, … Add interest at 0.4% a month and a **reinforcing loop**
+appears (the interest inflow depends on the stock), so growth becomes slightly exponential. Doubling time for a
+stock growing at $g$% per period:
+
+$$
+t_{\text{double}} \approx \frac{70}{g} \quad\text{(rule of 70; e.g. 7\% a year doubles in about 10 years)}
+$$
+
+### Worked example: user base with churn
+
+New users arrive at a constant $A$ per month; a constant fraction $c$ of existing users leave each month.
+
+$$
+U_{t+1} = U_t + A - cU_t
+\quad\Rightarrow\quad
+U^* = \frac{A}{c},
+\qquad
+U_t = U^* + (U_0 - U^*)(1-c)^t
+$$
+
+| Scenario | Sign-ups $A$ | Monthly churn $c$ | Steady state $U^*$ | Users after 12 months from 0 | Half-way time |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| base | 1,000 | 5% | 20,000 | 9,190 | ~13.5 months |
+| double acquisition | 2,000 | 5% | 40,000 | 18,390 | ~13.5 months |
+| halve churn | 1,000 | 2.5% | 40,000 | 10,480 | ~27 months |
+
+Lessons: with constant acquisition, **growth always levels off** at $A/c$ (a balancing loop through churn). Halving churn
+has the same effect on the ceiling as doubling acquisition, but takes longer to show, which is why churn work is
+chronically undervalued in monthly reviews. The gap to steady state closes by a fraction $c$ each month; the half-way
+time is $\ln 0.5 / \ln(1-c)$, roughly $0.69/c$.
+
+<Note kind="tip">Any time a metric is "stuck", compute its implied steady state: inflow ÷ outflow rate. If the current
+level is close to it, more of the same effort will not move it; only changing a flow rate will.</Note>
+
+## Feedback loops
+
+A **feedback loop** exists when a change in a stock affects the flows into or out of that same stock, directly or
+through a chain of causes. There are two kinds.
+
+<Diagram src="/images/diagrams/thinking-feedback-loops.svg" label="Two causal loop diagrams side by side. Left, a reinforcing loop labeled R: Customers increases Word of mouth (plus), Word of mouth increases New sign-ups (plus), and New sign-ups increase Customers (plus); zero negative links, so change amplifies itself. Right, a balancing loop labeled B: Queue length increases Servers requested (plus), Servers requested increases Capacity (plus, with a delay mark because new servers take minutes to boot), and Capacity decreases Queue length (minus); one negative link, so change is pushed back." caption="A reinforcing (R) and a balancing (B) loop with link polarities and a delay" />
+
+| | Reinforcing (R, "positive") loop | Balancing (B, "negative") loop |
+| :--- | :--- | :--- |
+| Effect | amplifies change in whichever direction it starts | counteracts change; pushes the stock toward a goal |
+| Behavior alone | exponential growth or collapse | goal seeking; with delays, oscillation |
+| Signature | "the more X, the more X"; virtuous or vicious circle | a gap between actual and desired state drives corrective action |
+| Negative links in the loop | even number (0, 2, …) | odd number (1, 3, …) |
+| Examples | compound interest, network effects, word of mouth, bank runs, tech debt slowing fixes, burnout spirals | thermostat, inventory reordering, autoscaling, hunger, market price adjustment, hiring to a headcount plan |
+| Management trap | assuming growth continues; ignoring the vicious version | fighting a balancing loop you did not see (policy resistance) |
+
+"Positive" and "negative" mean the loop's *polarity*, not good and bad. A reinforcing loop of rising tech debt is
+positive feedback and very bad news.
+
+**Loop dominance**: real systems contain many loops, and which one dominates changes over time. S-shaped growth is a
+reinforcing loop dominating early and a balancing loop (a limit) dominating later. Most surprises are shifts in
+dominance that nobody modeled.
+
+## Delays, non-linearity and bounded rationality
+
+### Delays and oscillation
+
+A **delay** is a lag between cause and effect: between an action and its result, or between a result and your
+perceiving it. Balancing loops with delays **overshoot and oscillate**, because the corrective action continues after
+the gap has closed.
+
+| Example | Delay | What happens |
+| :--- | :--- | :--- |
+| **Shower** | a few seconds between turning the tap and feeling the temperature change | you turn it hotter, feel nothing, turn it more, get scalded, overcorrect to cold, and so on |
+| **Beer game** (MIT, developed by Jay Forrester's system dynamics group from the 1960s) | order and shipping delays of several weeks at each of four stages: retailer, wholesaler, distributor, factory | a single step increase in customer demand produces large swings in orders and inventory upstream (the **bullwhip effect**); Sterman (1989) found players typically blame the swings on outside demand rather than their own ordering |
+| **Hiring** | 3–6 months from opening a role to a productive hire | teams hire for last quarter's workload, then have too many people when demand has already turned |
+| **Autoscaling** | minutes for new instances to boot and warm up | naive scaling on current load overshoots, then scales in too far, then thrashes |
+| **Interest rates** | monetary policy acts with long and variable lags | central banks that react only to current inflation risk overshooting in both directions |
+
+| To reduce oscillation | Why it works |
+| :--- | :--- |
+| act on the **supply line** (what is already ordered, hired or booting), not just the current gap | stops you ordering the same correction twice |
+| make smaller corrections and wait longer between them | reduces the gain of the balancing loop relative to the delay |
+| shorten the delay (faster information, faster delivery) | the loop sees its own effects sooner |
+| hold buffers (inventory, cash, spare capacity) | absorbs the gap while the correction arrives |
+
+Meadows lists delay length, relative to the rate of system change, as leverage point 9: often you cannot shorten the
+delay, and then **slowing the system down** so the delay matters less is the fix.
+
+### Non-linearity
+
+Effects are rarely proportional to causes. Relationships have thresholds, saturation and tipping points: the first
+server doubling capacity cuts latency a lot, the fifth barely at all; a queue at 50% utilization is fine, at 95% it
+explodes (see the software section). Linear extrapolation from the current range is the most common modeling error.
+
+### Bounded rationality
+
+Herbert Simon's term: people make reasonable decisions given the limited, delayed and local information they have. In
+systems terms, **each actor can behave rationally and the system still produce an outcome nobody wants** (fishers
+overfishing, teams hoarding shared staff, suppliers over-ordering in the beer game). Meadows' conclusion is that
+replacing the people rarely helps; changing the information and incentives they see does.
+
+## Causal loop diagrams
+
+A **causal loop diagram** (CLD) shows variables joined by arrows labeled with polarity, and the loops those arrows
+form. It is a thinking tool: cheap, qualitative and good for conversations. For numbers you need a stock-and-flow
+model (spreadsheet, or tools such as Vensim, Stella or Insight Maker).
+
+| Notation | Meaning |
+| :--- | :--- |
+| variable | a noun phrase that can go up or down: "customer satisfaction", not "satisfy customers" |
+| arrow A → B | a change in A causes a change in B, all else equal |
+| **+** (or s, "same") | A up → B up, and A down → B down, compared with what B would otherwise have been |
+| **−** (or o, "opposite") | A up → B down, and A down → B up |
+| **‖** across an arrow | a significant delay |
+| **R** / **B** in a loop | reinforcing / balancing loop, often with a name ("R1: word of mouth") |
+
+**Polarity rule**: count the negative links around a loop. **Even (including zero) → reinforcing. Odd → balancing.**
+Check by walking the loop: assume the first variable rises, follow the signs around, and see whether you come back
+with "rises" (reinforcing) or "falls" (balancing).
+
+<Steps>
+<Step title="Start from a behavior over time">
+
+Pick one or two variables whose trend is the problem and sketch the graph: "support tickets per week, rising for 9
+months". The diagram must explain that shape.
+
+</Step>
+<Step title="Name the key variables">
+
+Write 5–10 nouns that can increase or decrease. Use the positive sense ("morale", not "low morale"). Include goals,
+perceived states and pressures as well as physical quantities.
+
+</Step>
+<Step title="Draw causal links and label polarity">
+
+For each link ask "if A goes up, does B go up or down, all else equal?" Only draw direct causes. Mark significant
+delays.
+
+</Step>
+<Step title="Close the loops and label them">
+
+Find the circles. Count negative links to label each R or B. Name each loop in a few words.
+
+</Step>
+<Step title="Tell the story and check it against the data">
+
+Walk each loop aloud. Does the dominant loop explain the observed trend? What would have to change for another loop to
+dominate? If the diagram cannot reproduce the behavior, it is missing a loop, a delay or a limit.
+
+</Step>
+<Step title="Look for leverage">
+
+Mark where you could add, cut or weaken a link, change a goal, shorten a delay or change who sees what information.
+Check each intervention for side effects by walking the loops again.
+
+</Step>
+</Steps>
+
+| Common CLD error | Fix |
+| :--- | :--- |
+| variables that are actions or events ("launch campaign") | make them quantities ("marketing spend") |
+| ambiguous polarity ("it depends") | the link hides two mechanisms; split it into two variables |
+| everything connected to everything | keep 5–15 variables per diagram; one diagram per question |
+| correlation drawn as causation | draw a link only if you can describe the mechanism |
+| no delays marked | ask of every link "how long before the effect shows?" |
+| no goals shown | balancing loops need a goal or desired state; draw it explicitly |
+
+## Behavior over time patterns
+
+A small number of structures produce almost all observed behavior (Sterman, *Business Dynamics*, 2000, calls these the
+fundamental modes of dynamic behavior). Match the graph to the structure, then look for that structure.
+
+| Pattern | Shape | Structure that produces it | Simple model | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| **Exponential growth or decay** | curving ever steeper up (or down) | a dominant reinforcing loop | $S_{t+1} = S_t(1+g)$ | compound interest, early viral growth, a bank run |
+| **Goal seeking** | rises or falls quickly, then flattens at a target | a dominant balancing loop | $S_{t+1} = S_t + k(G - S_t)$ | coffee cooling to room temperature, filling a hiring plan |
+| **Oscillation** | repeated overshoot above and below a target | a balancing loop with a significant delay | goal seeking where the correction acts on an old gap | shower temperature, inventory cycles, commodity price cycles |
+| **S-shaped growth** | exponential start, then levelling off | a reinforcing loop meeting a balancing loop (a limit) | logistic: $\dfrac{dS}{dt} = rS\left(1 - \dfrac{S}{K}\right)$ | product adoption in a finite market, a new team's output |
+| **S-shaped growth with overshoot** | grows past the limit, then oscillates around it | S-shaped growth where the limiting loop is delayed | logistic with a delay | a population rising past its food supply, hiring past demand |
+| **Overshoot and collapse** | grows past the limit and falls sharply | growth that erodes or consumes its own limit (a resource, trust, a customer base) | the carrying capacity $K$ itself falls when exceeded | fisheries, a platform that burns its users' goodwill with ads, a credit bubble |
+
+## System archetypes
+
+Archetypes are recurring combinations of loops with a known story and known leverage. Peter Senge popularised them in
+*The Fifth Discipline* (1990), building on work at Innovation Associates and MIT; Daniel Kim and the journal *The
+Systems Thinker* developed the practitioner versions, and William Braun's 2002 summary lists ten. Accidental Adversaries
+comes from Jennifer Kemeny (*The Systems Thinker*, 1994).
+
+| Archetype | Structure | Symptom (what you hear) | Example | Leverage |
+| :--- | :--- | :--- | :--- | :--- |
+| **Limits to Growth** | R (growth engine) runs into B (a limiting condition) | "we're working harder but growth has stalled" | a product grows through referrals until the reachable market or support capacity saturates | find and remove or weaken the limit before it binds; stop pushing the growth engine harder |
+| **Shifting the Burden** | a quick symptomatic fix (B1) and a slow fundamental fix (B2); the quick fix has a side effect that weakens the fundamental one | "it keeps coming back, but the quick fix works for now" | senior engineers firefight every incident, so the team never learns to; discounts instead of a better product | use the symptomatic fix only to buy time; invest in the fundamental solution; watch for dependency |
+| **Eroding Goals** (drift to low performance) | gap between goal and reality closed by lowering the goal rather than by corrective action | "that target was unrealistic anyway" | on-call SLOs quietly relaxed each quarter; "good enough" test coverage sliding | anchor goals to external benchmarks or customers; make the history of the goal visible |
+| **Escalation** | two balancing loops, each party responding to its position relative to the other, forming a reinforcing figure of eight | "we have to respond to what they just did" | price wars, feature arms races, hospital building races, arms races | find a way for one side to de-escalate unilaterally, or reframe the goal so it is not relative |
+| **Success to the Successful** | two reinforcing loops competing for a shared resource: success brings resources, which bring more success | "they've earned it"; "the other team never delivers" | the flagship product gets all the engineers while a promising new one starves; network effects | question the allocation rule; separate goals and budgets; level the playing field for new entrants |
+| **Tragedy of the Commons** | each actor's reinforcing gain from using a shared resource; total use depletes it (a shared balancing loop with a delay) | "why is the shared service so slow for everyone?" | a shared platform team, a shared database, CI runners, a fishery, a common pasture | make the cumulative cost visible to each user; charge for or allocate use; govern the commons (Ostrom) |
+| **Fixes that Fail** | a quick fix relieves the symptom (B) but causes delayed unintended consequences that worsen it (R) | "it worked at first, now it's worse than before" | adding people to a late project (Brooks's law); cutting maintenance to hit a budget; retries that amplify an outage | map side effects before acting; watch for the delay; prefer fixes that address the cause |
+| **Growth and Underinvestment** | Limits to Growth where the limit is capacity that could be expanded, but demand falls first because of poor performance, which "proves" investment is not needed | "demand is soft, so we can't justify more capacity" | a startup that never hires support, so slow response loses customers, so it never "needs" support | invest in capacity ahead of demand based on external signals; hold performance standards fixed |
+| **Accidental Adversaries** | two partners whose own fixes unintentionally obstruct each other, turning a collaborative reinforcing loop into mutual damage | "they keep undermining us" (from both sides) | Procter & Gamble's promotions and Walmart's forward-buying, as told by Kemeny | bring both parties together to map the whole system; agree shared measures (P&G moved to everyday low pricing) |
+
+Meadows' *Thinking in Systems* has a parallel list she calls **system traps**: policy resistance, tragedy of the
+commons, drift to low performance, escalation, success to the successful, shifting the burden to the intervenor, rule
+beating, and seeking the wrong goal. Rule beating (following the letter of a rule to defeat its purpose) and seeking
+the wrong goal (optimizing the measured proxy) are the two most common in companies; they are Goodhart's law in
+systems language.
+
+## Leverage points
+
+From Donella Meadows, "Leverage Points: Places to Intervene in a System" (1999). The list runs from least to most
+effective. The wording in the first column is Meadows' own summary list; the examples are ours.
+
+| # | Leverage point (Meadows' wording) | Company example |
+| :--- | :--- | :--- |
+| 12 | Constants, parameters, numbers (such as subsidies, taxes, standards). | tweaking a discount from 10% to 15%, a sales quota, an SLO target |
+| 11 | The sizes of buffers and other stabilizing stocks, relative to their flows. | cash runway, inventory, spare server capacity, slack in the roadmap |
+| 10 | The structure of material stocks and flows (such as transport networks, population age structures). | the physical architecture: data centers, office locations, the org's seniority mix |
+| 9 | The lengths of delays, relative to the rate of system change. | deploy lead time, time to hire, how fast sales feedback reaches product |
+| 8 | The strength of negative feedback loops, relative to the impacts they are trying to correct against. | incident review strength, code review, customer complaint escalation, auditors |
+| 7 | The gain around driving positive feedback loops. | referral incentives, network effects, compounding reinvestment, how fast tech debt compounds |
+| 6 | The structure of information flows (who does and does not have access to information). | showing engineers the cloud bill or customer tickets; public dashboards; transparent pay bands |
+| 5 | The rules of the system (such as incentives, punishments, constraints). | compensation plans, promotion criteria, approval rules, pricing model |
+| 4 | The power to add, change, evolve, or self-organize system structure. | teams allowed to form, split and change their own process; an internal platform others build on |
+| 3 | The goals of the system. | "growth at all costs" vs "profitable growth"; "ship features" vs "retain customers" |
+| 2 | The mindset or paradigm out of which the system — its goals, structure, rules, delays, parameters — arises. | shared beliefs such as "software is a cost center" or "customers are the enemy of margin" |
+| 1 | The power to transcend paradigms. | holding no model as final truth; being able to switch frames as the situation demands |
+
+| Observation from the essay | Practical reading |
+| :--- | :--- |
+| Meadows says parameters are "dead last" on the list, yet get most of our attention (she guesses "90, no 95, no 99 percent") | most management meetings argue about numbers; the structure producing them goes unexamined |
+| she quotes Jay Forrester: people often know intuitively where leverage points are, but push them "IN THE WRONG DIRECTION" | a leverage point found by intuition still needs its direction checked against the loops |
+| the list began as a nine-item list scribbled at a meeting and was revised over years; she calls it "a work in progress" | treat the order as a heuristic, not a law |
+| information flows (6) are cheap and powerful: "Missing feedback is one of the most common causes of system malfunction." | before changing rules, make the consequences visible to the people causing them |
+
+## The iceberg model
+
+A teaching device used widely in systems thinking courses: what you see (events) is the tip; below it are patterns,
+the structures producing them, and the mental models that sustain the structures. No single originator is documented;
+Senge's *The Fifth Discipline* distinguishes event, pattern-of-behavior and structural explanations, and practitioner
+versions add mental models as the deepest layer.
+
+| Level | Question | Typical response | Example: production outages |
+| :--- | :--- | :--- | :--- |
+| **Events** | what just happened? | react: fix it now | the site went down on Tuesday |
+| **Patterns** | what has been happening over time? | anticipate: plan for it | outages cluster after big Friday releases; three this quarter |
+| **Structures** | what is causing the pattern? | design: change the system | weekly batch releases, no canarying, on-call rota staffed by the release authors, incentives to ship by the sprint deadline |
+| **Mental models** | what beliefs keep the structure in place? | transform: change the thinking | "moving fast means skipping process"; "outages are bad luck"; "ops is someone else's job" |
+
+Leverage rises as you go down; so does the difficulty and time needed.
+
+## Emergence, resilience, self-organization and hierarchy
+
+| Property | Meaning | Implication | Example |
+| :--- | :--- | :--- | :--- |
+| **Emergence** | system-level behavior that none of the parts has alone and that comes from their interactions | you cannot understand it by studying parts in isolation; you can only change it via interactions | traffic jams, market prices, team culture, a flash crash |
+| **Resilience** | the ability to survive and recover from disturbance, from a variety of redundant balancing loops (Meadows) | it is often invisible until lost; optimizing for efficiency strips it out | just-in-time supply chains in 2020–21; a single engineer who knows the billing system |
+| **Self-organization** | the capacity to make its own structure more complex: learn, diversify, evolve | produces surprises; suppressing it for control reduces adaptability | open-source ecosystems, internal tooling that spreads team to team |
+| **Hierarchy** | subsystems nested in larger systems, each mostly self-regulating, with fewer links between than within them | makes complex systems stable and evolvable; fails when the top over-controls (centralization) or the parts optimize against the whole (suboptimisation) | microservices, divisions, cells in organs |
+
+Herbert Simon's "The Architecture of Complexity" (1962) makes the hierarchy argument with a parable of two watchmakers:
+the one who builds from stable sub-assemblies finishes watches; the one who builds each watch as a single assembly
+loses all progress whenever he is interrupted (paraphrased). The same logic underlies Gall's law, below.
+
+## Laws, effects and traps
+
+| Law or effect | Statement | Use |
+| :--- | :--- | :--- |
+| **Gall's law** | John Gall, *General Systemantics* (1975): "A complex system that works is invariably found to have evolved from a simple system that worked. A complex system designed from scratch never works and cannot be made to work. You have to start over, beginning with a working simple system." (wording varies slightly between editions) | ship the simplest working version and grow it; distrust big-bang rewrites and grand org redesigns |
+| **Goodhart's law** | Charles Goodhart (1975): "Any observed statistical regularity will tend to collapse once pressure is placed upon it for control purposes." Marilyn Strathern's 1997 generalization: "When a measure becomes a target, it ceases to be a good measure." | pair every target with a counter-metric; rotate metrics; keep some measures for observation only |
+| **Campbell's law** | Donald Campbell (1976; published 1979): "The more any quantitative social indicator is used for social decision-making, the more subject it will be to corruption pressures and the more apt it will be to distort and corrupt the social processes it is intended to monitor." | the social version of Goodhart: expect gaming, not just drift |
+| **Conway's law** | Melvin Conway, "How Do Committees Invent?" (*Datamation*, 1968): "organizations which design systems (in the broad sense used here) are constrained to produce designs which are copies of the communication structures of these organizations." | design team boundaries to match the architecture you want (the "inverse Conway maneuver") |
+| **Brooks's law** | Fred Brooks, *The Mythical Man-Month* (1975): "Adding manpower to a late software project makes it later." | a Fixes that Fail instance: onboarding and communication costs arrive before the extra capacity |
+| **Second-order effects** | the consequences of the consequences; first-order effects are usually intended, later ones often not | for each intervention ask "and then what?" at least twice |
+| **Unintended consequences / perverse incentives** | an incentive rewards the measured proxy, so people produce the proxy | pay for outcomes that are hard to fake; test incentives on a small scale first |
+| **Policy resistance** | a system pushes back against an intervention because its actors keep pulling toward their own goals (Meadows' trap; Senge: "compensating feedback") | find out what each actor wants and why; align goals rather than pushing harder |
+
+**The cobra effect**, the story of a colonial bounty on cobras in Delhi leading to cobra farming, is the standard
+illustration of perverse incentives, but it is **anecdotal**: the term was coined by the economist Horst Siebert (*Der
+Kobra-Effekt*, 2001) and no contemporary record of cobra breeding has been found. The better-documented case is the
+**Great Hanoi Rat Massacre** of 1902, researched by historian Michael Vann: the French administration paid a bounty per
+rat tail, and people cut off tails and released the rats to breed.
+
+**Le Chatelier's principle** in chemistry says a system at equilibrium responds to a disturbance by shifting to
+counteract it. Policy resistance is the social analogue, and the reason Jay Forrester called social systems
+"counterintuitive" ("Counterintuitive Behavior of Social Systems", 1971): intuitive policies often attack symptoms,
+trigger compensating loops, and leave the problem as bad or worse.
+
+Senge's "laws of the fifth discipline" (*The Fifth Discipline*, ch. 4), condensed and paraphrased:
+
+| Law (paraphrased) | Loop behind it |
+| :--- | :--- |
+| today's problems come from yesterday's solutions | Fixes that Fail, Shifting the Burden |
+| the harder you push, the harder the system pushes back | policy resistance, compensating balancing loops |
+| behavior grows better before it grows worse | delayed side effects |
+| the easy way out usually leads back in; the cure can be worse than the disease | symptomatic fixes that erode the fundamental solution |
+| faster is slower | pushing past a system's optimal rate triggers limits |
+| cause and effect are not closely related in time and space | delays, and effects that appear in another part of the system |
+| small changes can produce big results, but the highest-leverage areas are often the least obvious | leverage points |
+| dividing an elephant in half does not produce two small elephants | emergence: the whole has properties the parts lack |
+| there is no blame | the structure, not the individual, produces the behavior |
+
+## Applying it
+
+### To a startup
+
+| Question | Systems framing | What to look at |
+| :--- | :--- | :--- |
+| Why has growth stalled? | stock of customers near its steady state $A/c$, or a growth loop meeting a limit | compute $A/c$; list the limits (market size, support capacity, onboarding friction, channel saturation) |
+| Which growth loops do we have? | reinforcing loops: referral (users → invites → users), content (users → content → search traffic → users), paid (revenue → ad spend → customers → revenue) | the gain of each loop (e.g. invites per user × conversion) and its delay; a loop with gain below 1 per cycle does not self-sustain |
+| Why does churn keep rising as we grow? | Growth and Underinvestment: support, onboarding and reliability capacity lag demand | response times, incident rate and churn by cohort; invest ahead of the limit |
+| Why do discounts not stick? | Shifting the Burden: discounting relieves the sales gap but trains customers to wait for discounts and reduces pressure to improve the product | share of revenue on discount over time; win-rate at full price |
+| Why is our metric improving but the business not? | Goodhart and seeking the wrong goal | a counter-metric for every target (activation with 30-day retention, velocity with change failure rate) |
+
+### To an organization
+
+| Symptom | Likely structure | Intervention |
+| :--- | :--- | :--- |
+| a shared platform team is overwhelmed and every team complains | Tragedy of the Commons | visible cost per requesting team, a published intake policy, self-serve tooling |
+| senior people are always firefighting | Shifting the Burden to the intervenor | pair on incidents, runbooks, rotate on-call through the whole team |
+| targets quietly lowered each quarter | Eroding Goals | anchor to customer-facing or external benchmarks; publish the target's history |
+| teams "throwing work over the wall" | Conway's law plus Accidental Adversaries | redraw team boundaries around the product flow; shared goals across the handoff |
+| reorganizations every year with no lasting change | intervening at the level of parameters and elements, not goals, rules or information flows | change what information people see and what they are rewarded for |
+
+### To personal habits
+
+| Habit dynamic | Structure | Lever |
+| :--- | :--- | :--- |
+| fitness, skill and savings build slowly and decay slowly | stocks with small flows and long delays | judge the inflow (sessions, hours, deposits), not the stock, week to week |
+| a streak keeps itself going | reinforcing loop: practice → competence → enjoyment → practice | make the first cycles easy so the loop starts |
+| caffeine to cover lost sleep | Shifting the Burden: the quick fix worsens the underlying sleep deficit | fix the fundamental (sleep time) and use the quick fix only while transitioning |
+| "I'll run 3 times a week" becomes once, then "when I can" | Eroding Goals | fix the goal to an external anchor (a race date, a training partner) |
+| weight regain after a diet | balancing loops (appetite, metabolic adaptation) resisting a parameter change | change the structure (environment, routines), not just the target number |
+
+### To software
+
+Queues, retries and autoscalers are feedback systems; most large outages are loops nobody drew. See
+[system design](/infrastructure/system-design/) for the architecture patterns.
+
+| Concept | Systems view | Numbers or rule |
+| :--- | :--- | :--- |
+| **Little's law** | stock = flow × time in the stock | $L = \lambda W$: 200 req/s × 0.05 s = 10 requests in flight |
+| **Queueing and utilization** | non-linear: waiting time explodes as utilization $\rho$ approaches 1 | single-server M/M/1 queue: $W = S/(1-\rho)$; with a 10 ms service time, 20 ms at 50%, 100 ms at 90%, 1 s at 99% |
+| **Backpressure** | a balancing loop: a full downstream buffer slows the upstream producer | bounded queues, rejecting or slowing input when full, rather than unbounded buffering |
+| **Retry storms** | a reinforcing loop: failures → retries → more load → more failures | 3 retries per call means up to 4× load on a failing service; 3 retrying layers compound to up to $4^3 = 64$× |
+| **Exponential backoff with jitter** | weakens the retry loop's gain and spreads its timing | cap attempts; randomize delays so clients do not retry in sync |
+| **Circuit breakers and load shedding** | add a balancing loop that cuts load when error rates cross a threshold | fail fast, serve degraded responses, protect the constrained resource |
+| **Autoscaling with warm-up delay** | balancing loop with a delay: oscillates if tuned aggressively | scale on leading signals, add cool-down periods, keep a buffer of warm capacity |
+| **Metastable failures** | a system that stays broken after the trigger is removed because a reinforcing loop (retries, cache misses, queue growth) sustains the overload (Bronson et al., HotOS 2021) | the fix is to break the loop (shed load, drop queues, disable retries), not to wait |
+| **Caches** | a buffer stock; its failure removes a balancing loop protecting the database | cold-cache start after an outage can overload the origin: warm caches gradually |
+
+## Systems analysis template
+
+```text
+SYSTEMS ANALYSIS: <problem>
+
+1. BEHAVIOR OVER TIME
+   Variable(s) that show the problem, with units:
+   Sketch the trend (past 1-3 years) and the desired trend:
+   Pattern: growth / decline / goal-seeking / oscillation /
+            S-curve / overshoot-and-collapse
+
+2. BOUNDARY AND HORIZON
+   What is inside the system? What is environment?
+   Time horizon long enough to see the delays:
+
+3. STOCKS AND FLOWS
+   Stock            Inflows              Outflows
+   ..............   ..................   .................
+   Implied steady state (inflow / outflow rate):
+
+4. FEEDBACK LOOPS (causal loop diagram)
+   R1 ................  (links, polarity, delays)
+   B1 ................  (goal it seeks, delay)
+   Which loop dominates now? Which will dominate later?
+
+5. ARCHETYPE MATCH (if any)
+   Limits to Growth / Shifting the Burden / Eroding Goals /
+   Escalation / Success to the Successful / Tragedy of the
+   Commons / Fixes that Fail / Growth and Underinvestment /
+   Accidental Adversaries
+
+6. ICEBERG
+   Events:        ...
+   Patterns:      ...
+   Structures:    ...
+   Mental models: ...
+
+7. ACTORS AND BOUNDED RATIONALITY
+   Actor   Goal   Information they see   Incentive
+   Why is each actor's behavior locally rational?
+
+8. LEVERAGE POINTS (Meadows 12 -> 1)
+   Candidate interventions, with the level of each:
+   Parameter / buffer / delay / loop strength / information /
+   rules / self-organization / goals / paradigm
+
+9. SIDE EFFECTS AND SECOND-ORDER EFFECTS
+   For each intervention: "and then what?" twice.
+   Which loop might push back (policy resistance)?
+   What gets gamed if this becomes a target (Goodhart)?
+
+10. TEST AND MONITOR
+    Smallest reversible experiment:
+    Leading indicator + counter-metric:
+    Expected delay before the effect shows:
+    Review date:
+```
+
+## Common mistakes
+
+| Mistake | Why it hurts | Instead |
+| :--- | :--- | :--- |
+| **Drawing everything** | a 60-variable diagram explains nothing and persuades no one | one question, one diagram, 5–15 variables; the boundary is set by the question |
+| **Ignoring delays** | you misread slow results as failure, double the dose, and overshoot | mark every significant delay; set the review date after the delay, not before |
+| **Treating symptoms** | the fix relieves pressure and the cause persists or grows | ask which loop produces the symptom; check for Shifting the Burden and Fixes that Fail |
+| **Blaming people** | replacing people inside the same structure reproduces the behavior | ask why the behavior is locally rational; change information, rules or goals |
+| **Linear extrapolation** | the dominant loop will change; limits appear | look for the limit and the balancing loop that will take over |
+| **Confusing stocks and flows** | "revenue fell" (a flow) treated like "customers fell" (a stock) | label units: a stock is "X"; a flow is "X per period" |
+| **Only intervening at parameters** | the cheapest intervention is the weakest | walk down the leverage list before settling on a number change |
+| **Systems thinking as an excuse for inaction** | "it's complex" becomes a reason not to act | pick the smallest reversible intervention and learn from it |
+| **Unfalsifiable diagrams** | a CLD can explain any outcome after the fact | write down in advance what the model predicts; check it |
+
+## Critiques and limits
+
+| Critique | Substance | Response |
+| :--- | :--- | :--- |
+| Qualitative diagrams are not models | CLDs cannot tell you magnitudes, timing or which loop wins; two people can draw opposite diagrams | quantify the key stocks and flows in a spreadsheet or a system dynamics tool before big decisions |
+| Easy to be vague | "everything is connected" is true and useless | insist on units, polarities, delays and a testable prediction |
+| Hindsight fitting | archetypes can be matched to almost any story after the fact | use them prospectively: predict what happens next, then check |
+| Boundary choice is subjective | what you leave out drives the conclusion | state the boundary; test whether widening it changes the answer |
+| The *Limits to Growth* controversy | the 1972 world model that launched much of the field was heavily criticized by economists for omitting prices, substitution and technical change | models are aids to thinking about structure; they are not forecasts |
+| Tragedy of the Commons is not inevitable | Elinor Ostrom (*Governing the Commons*, 1990) documented many communities that manage shared resources sustainably through local rules, monitoring and sanctions | the archetype describes an unmanaged commons; governance is a leverage point |
+| Can ignore power and politics | diagrams of "the system" can hide who benefits from the current structure | include actors and their goals explicitly (template step 7) |
+| Over-complication | for a simple, linear, well-understood problem, a loop diagram is overhead | use it when behavior is recurring, counterintuitive or resists fixes |
+
+## References
+
+- Donella H. Meadows, *Thinking in Systems: A Primer*, ed. Diana Wright (Chelsea Green, 2008): definition of a system, stocks and flows, loops, resilience, self-organization, hierarchy, system traps
+- [Donella Meadows, "Leverage Points: Places to Intervene in a System" (1999), Donella Meadows Project](https://donellameadows.org/archives/leverage-points-places-to-intervene-in-a-system/): the twelve leverage points and the original nine-point list
+- [The Donella Meadows Project (Academy for Systems Change)](https://donellameadows.org/): Meadows' essays, columns and systems-thinking resources
+- Peter M. Senge, *The Fifth Discipline: The Art and Practice of the Learning Organization* (Doubleday/Currency, 1990): archetypes (appendix), the laws of the fifth discipline, levels of explanation
+- Peter M. Senge et al., *The Fifth Discipline Fieldbook* (Doubleday/Currency, 1994): practitioner archetype material, including Accidental Adversaries
+- [William Braun, "The System Archetypes" (2002)](http://www.geocities.ws/wasubire/modelling/sys_archetypes.pdf): ten archetypes with generic diagrams, behavior over time and prescriptive actions, drawing on Daniel Kim's *Systems Thinker* articles
+- [Jennifer Kemeny, "'Accidental Adversaries': When Friends Become Foes", *The Systems Thinker*](https://thesystemsthinker.com/accidental-adversaries-when-friends-become-foes/): the archetype and the P&G–Walmart example
+- [The Systems Thinker (archive)](https://thesystemsthinker.com/): Pegasus Communications' practitioner journal on archetypes and causal loop diagrams
+- Daniel H. Kim and Virginia Anderson, *Systems Archetype Basics* (Pegasus Communications, 1998): workbook on the archetypes
+- Jay W. Forrester, *Industrial Dynamics* (MIT Press, 1961): the origin of system dynamics
+- Jay W. Forrester, "Counterintuitive Behavior of Social Systems", *Theory and Decision* 2 (1971): why intuitive policies fail in feedback systems
+- John D. Sterman, *Business Dynamics: Systems Thinking and Modeling for a Complex World* (Irwin/McGraw-Hill, 2000): the standard textbook; modes of behavior, stock-and-flow modeling
+- John D. Sterman, "Modeling Managerial Behavior: Misperceptions of Feedback in a Dynamic Decision Making Experiment", *Management Science* (1989): the beer game findings
+- [Wikipedia: Beer distribution game](https://en.wikipedia.org/wiki/Beer_distribution_game): rules and history
+- [Wikipedia: Causal loop diagram](https://en.wikipedia.org/wiki/Causal_loop_diagram): notation and the polarity rule
+- Herbert A. Simon, "The Architecture of Complexity", *Proceedings of the American Philosophical Society* (1962): hierarchy and the watchmakers parable
+- John Gall, *General Systemantics* (1975; later *Systemantics* and *The Systems Bible*): Gall's law
+- [Wikiquote: John Gall](https://en.wikiquote.org/wiki/John_Gall): the Gall's law passage and its edition variants
+- [Wikipedia: Goodhart's law](https://en.wikipedia.org/wiki/Goodhart%27s_law): Goodhart's 1975 wording, Hoskin (1996) and Strathern (1997)
+- [Marilyn Strathern, "'Improving ratings': audit in the British University system", *European Review* (1997)](https://gwern.net/doc/statistics/decision/1997-strathern.pdf): source of "When a measure becomes a target…"
+- [Donald T. Campbell, "Assessing the Impact of Planned Social Change", *Evaluation and Program Planning* (1979)](https://doi.org/10.1016/0149-7189(79)90048-X): Campbell's law
+- [Melvin E. Conway, "How Do Committees Invent?", *Datamation* (1968)](https://www.melconway.com/Home/Committees_Paper.html): Conway's law
+- Frederick P. Brooks Jr., *The Mythical Man-Month* (Addison-Wesley, 1975): Brooks's law
+- [Wikipedia: Perverse incentive (cobra effect)](https://en.wikipedia.org/wiki/Cobra_effect): Siebert's coinage, the lack of evidence for the Delhi story, and the Hanoi rat bounty
+- Michael G. Vann, "Of Rats, Rice, and Race: The Great Hanoi Rat Massacre", *French Colonial History* (2003): the documented bounty case
+- Garrett Hardin, "The Tragedy of the Commons", *Science* (1968), and Elinor Ostrom, *Governing the Commons* (Cambridge University Press, 1990): the commons and its critique
+- Nathan Bronson et al., "Metastable Failures in Distributed Systems", HotOS (2021): self-sustaining overload loops in software

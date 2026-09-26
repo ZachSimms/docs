@@ -1,0 +1,752 @@
+---
+title: Corporate finance
+date: 2026-09-26
+order: 3
+---
+
+How a firm decides what to invest in, how to pay for it and what to hand back to its owners: the goal of the
+firm, time value of money, capital budgeting (NPV, IRR and their traps), incremental cash flows, risk and the
+cost of capital (CAPM, beta, WACC), capital structure (Modigliani–Miller and what breaks it), financing
+instruments, payout, working capital, planning, hedging and M&A. Statement mechanics, free cash flow
+definitions and ratios live in [financial statements](/finance/business/financial-statements/) and
+[accounting](/finance/business/accounting/); pricing a whole business is [valuation](/finance/business/valuation/);
+cap tables and SAFEs are in [startup finance](/finance/business/startup-finance/). Portfolio theory basics are in
+[investing](/finance/personal/investing/); probability tools in [probability and risk](/thinking/mental-models/probability-risk/).
+
+<Note kind="warning">General information, not financial, tax or legal advice. US tax rules and market inputs are dated where used; check the linked sources before relying on them.</Note>
+
+## The goal of the firm
+
+The textbook objective (Brealey, Myers, Allen and Edmans; Koller et al.) is to **maximize the long-run value of
+the firm to its owners**, which in practice means taking every project whose expected cash flows are worth more
+than they cost, at a discount rate that reflects their risk. Value, not accounting profit, market share or EPS.
+
+| Objective | Problem with it |
+| :--- | :--- |
+| maximize profit | which year's? ignores timing, risk and the capital used to earn it |
+| maximize EPS | can be raised by value-destroying buybacks, leverage or acquisitions (see [M&A](#mergers-and-acquisitions)) |
+| maximize revenue or share | growth that earns less than the cost of capital destroys value |
+| maximize share price today | invites short-termism if markets are misinformed; right only with long-run, well-informed prices |
+| maximize **long-run value** | the standard answer; needs judgment on horizon and on who bears risk |
+
+**Shareholder vs stakeholder.** Milton Friedman's essay "A Friedman Doctrine: The Social Responsibility of
+Business Is to Increase Its Profits" (*New York Times Magazine*, 13 September 1970) argued that "there is one and
+only one social responsibility of business—to use its resources and engage in activities designed to increase
+its profits so long as it stays within the rules of the game, which is to say, engages in open and free
+competition without deception or fraud." On 19 August 2019 the **Business Roundtable** issued a new *Statement on
+the Purpose of a Corporation*, signed by 181 CEOs, committing to deliver value to customers, employees, suppliers,
+communities and shareholders, replacing its 1997 language that put shareholders first.
+
+- The two positions overlap more than the rhetoric suggests: over a long horizon, mistreating customers or staff
+  usually destroys shareholder value too (Koller et al. make this argument).
+- The real conflicts are trade-offs that cost owners money (e.g. keeping an unprofitable plant open). "Serve all
+  stakeholders" gives no rule for resolving them, which is the standard criticism: a manager accountable to
+  everyone is accountable to no one.
+- Working rule for this sheet: maximize long-run value **subject to** law, contracts and the constraints the
+  firm chooses to adopt; price externalities explicitly rather than hiding them in a vague mission.
+
+## The big decisions
+
+| Decision | Question | Main tools | Sections |
+| :--- | :--- | :--- | :--- |
+| **Investment** (capital budgeting) | which real assets should we buy? | NPV, IRR, scenarios, real options | capital budgeting, cash flows |
+| **Financing** | debt or equity, and which instrument? | cost of capital, MM, trade-off, pecking order | WACC, capital structure |
+| **Payout** | what do we return, and how? | dividends vs buybacks | payout policy |
+| **Working capital** | how much cash is tied up running the business? | CCC, DSO/DIO/DPO | working capital |
+
+Separation principle: in a frictionless world the investment decision is made on NPV alone and the financing
+decision does not change it. Most of corporate finance is about the frictions (taxes, distress, information,
+agency) that make the financing side matter at the margin.
+
+## Time value of money for firms
+
+Basics (FV, PV, rule of 72, real vs nominal) are in [money basics](/finance/personal/money-basics/). The firm
+toolkit adds perpetuities and the discipline of matching cash flows to rates.
+
+| Stream | Formula | Example ($r$ = 8%) |
+| :--- | :--- | :--- |
+| single sum | $PV = \dfrac{C_t}{(1+r)^t}$ | — |
+| annuity, $n$ periods | $PV = C\,\dfrac{1 - (1+r)^{-n}}{r}$ | \$100 a year for 10 years → \$671.01 |
+| perpetuity | $PV = \dfrac{C}{r}$ | \$100 a year forever → \$1,250 |
+| growing perpetuity | $PV = \dfrac{C_1}{r - g}$, $g < r$ | \$100 next year, growing 3% → \$2,000 |
+| growing annuity | $PV = \dfrac{C_1}{r-g}\left[1 - \left(\dfrac{1+g}{1+r}\right)^n\right]$ | same, 10 years only → \$755.01 |
+| net present value | $NPV = \sum_{t=0}^{n} \dfrac{C_t}{(1+r)^t}$ | $C_0$ is usually negative |
+
+**APR vs EAR.** A quoted annual percentage rate compounded $m$ times a year has effective annual rate
+$EAR = (1 + APR/m)^m - 1$; continuous compounding gives $e^{APR} - 1$. At 12% APR: monthly 12.68%, daily 12.75%,
+continuous 12.75%. Always compare effective rates, and match the period of the rate to the period of the cash flow.
+
+Consistency rules that catch most errors:
+
+- **Nominal** cash flows with a nominal rate, **real** with real; never mix.
+- **After-tax** cash flows with after-tax rates.
+- Cash flows **to the whole firm** (FCFF) with WACC; cash flows **to equity** (FCFE) with the cost of equity.
+- The $C_1/(r-g)$ formula needs next period's cash flow, not this period's.
+
+## Capital budgeting
+
+**Net present value** is the value a project adds today: the present value of its incremental cash flows at the
+opportunity cost of capital (the return investors could earn on a traded asset of the same risk), minus the
+investment. **Accept if NPV > 0.** It is the only common rule that is consistent with value maximization in all
+cases, because NPVs add up: $NPV(A + B) = NPV(A) + NPV(B)$.
+
+| Rule | Definition | Accept if | Verdict |
+| :--- | :--- | :--- | :--- |
+| **NPV** | $\sum C_t/(1+r)^t$ | > 0 | the benchmark |
+| **IRR** | rate where NPV = 0 | IRR > $r$ | agrees with NPV only for single, conventional, independent projects |
+| **MIRR** | IRR with inflows reinvested at $r$ | MIRR > $r$ | fixes the multiple-IRR problem, still ranks badly on scale |
+| **payback** | years until cumulative cash flow ≥ 0 | ≤ cut-off | ignores time value and everything after the cut-off |
+| **discounted payback** | payback on discounted flows | ≤ cut-off | better, still ignores later flows |
+| **profitability index** | $PV(\text{inflows}) / \text{investment}$ | > 1 | useful only for ranking under a hard capital constraint |
+| **accounting rate of return** | average profit / average book investment | > target | uses accounting profit, not cash; no time value; avoid |
+
+In Graham and Harvey's 2001 survey of 392 US CFOs, about three-quarters said they always or almost always use NPV
+and IRR, and a majority also used payback. IRR is popular because a percentage is easy to communicate; the
+decision should still rest on NPV.
+
+### Worked example
+
+Project A costs \$1,000 and returns \$300, \$400, \$500, \$200 over four years; the cost of capital is 10%.
+
+```text
+Year                  0        1        2        3        4
+Cash flow        -1,000      300      400      500      200
+Cumulative       -1,000     -700     -300      200      400
+Discount factor   1.000    0.909    0.826    0.751    0.683
+PV               -1,000    272.7    330.6    375.7    136.6
+Cumulative PV    -1,000   -727.3   -396.7    -21.0    115.6
+```
+
+| Measure | Result |
+| :--- | :--- |
+| NPV at 10% | **\$115.57** (accept) |
+| IRR | 15.32% |
+| MIRR (reinvest at 10%) | 13.05% |
+| payback | 2 + 300/500 = 2.6 years |
+| discounted payback | 3 + 21.0/136.6 = 3.15 years |
+| profitability index | 1,115.6 / 1,000 = 1.12 |
+
+## IRR pitfalls
+
+IRR is the root of a polynomial, not a measure of value. Four ways it misleads:
+
+| Pitfall | Example (cost of capital 10%) | IRR says | NPV says |
+| :--- | :--- | :--- | :--- |
+| **multiple IRRs** (sign changes twice) | −1,600, +10,000, −10,000 | 25% **and** 400% | −\$773.55: reject |
+| **lending vs borrowing** | +1,000, −1,200 | 20% ("great") | −\$90.91: you are borrowing at 20% |
+| **scale** (mutually exclusive) | S: −100, +150 · L: −1,000, +1,300 | S (50% vs 30%) | L (\$181.82 vs \$36.36) |
+| **timing** (mutually exclusive) | Q: −1,000, +1,200 in yr 1 · R: −1,000, +1,650 in yr 3 | Q (20.0% vs 18.2%) | R (\$239.67 vs \$90.91) |
+
+- **Multiple IRRs**: Descartes' rule of signs allows one IRR per sign change. Projects with clean-up costs at the
+  end (mines, nuclear plants) often have two. Use NPV, or MIRR.
+- **Scale**: a high return on a small investment adds less value than a lower return on a large one. The fix
+  if you must use IRR: compute the IRR of the **incremental** cash flows (L − S = −900, +1,150), which is 27.8%
+  > 10%, so take L.
+- **Timing**: the NPV profiles cross at 17.26%. Below that rate R is worth more; above it Q is. IRR implicitly
+  assumes reinvestment at the IRR itself; NPV assumes reinvestment at the cost of capital, which is the right
+  opportunity cost.
+- **Term structure**: IRR compares to a single hurdle; if rates differ by maturity, NPV can discount each year
+  at its own rate and IRR cannot.
+
+| Rate | NPV of Q | NPV of R |
+| :--- | ---: | ---: |
+| 5% | 142.9 | 425.3 |
+| 10% | 90.9 | 239.7 |
+| 15% | 43.5 | 84.9 |
+| 20% | 0.0 | −45.1 |
+
+**Capital rationing.** With a hard budget, rank by profitability index and fill the budget, or solve it as an
+integer program (maximize $\sum NPV_i x_i$ subject to $\sum I_i x_i \le B$). Most rationing is soft (a
+management-imposed limit); if positive-NPV projects are being turned away, the constraint itself is costing money.
+
+## Incremental cash flows
+
+Discount **cash**, not profit, and only cash that changes because of the decision: firm cash flow *with* the
+project minus firm cash flow *without* it.
+
+| Item | Rule | Example |
+| :--- | :--- | :--- |
+| **sunk costs** | ignore; already spent whatever you decide | last year's \$50k market study |
+| **opportunity costs** | include the value of the best alternative use | owned warehouse you could rent out |
+| **side effects** | include cannibalisation and spillovers | new model steals sales from old one |
+| **allocated overhead** | include only if total overhead actually rises | head-office cost reallocated → exclude |
+| **net working capital** | outflow when inventory and receivables build, inflow when recovered | NWC at 12% of revenue |
+| **taxes** | use marginal tax rate on incremental profit | 21% US federal rate |
+| **depreciation** | not cash, but its **tax shield** $T \times D$ is | \$200k depreciation saves \$42k tax |
+| **financing costs** | exclude interest; it is in the discount rate (WACC) | counting both double-counts |
+| **salvage** | after-tax: price − tax on (price − book value) | sell for \$150k at book 0 → \$118.5k |
+| **inflation** | be consistent: nominal flows at nominal rate | escalate prices and costs explicitly |
+
+Operating cash flow three equivalent ways: $OCF = EBIT(1-T) + D = (R - C)(1-T) + T D = NI + D$ (the last only
+with no debt). Free cash flow for a project: $FCF = EBIT(1-T) + D - \text{CapEx} - \Delta NWC$.
+
+US tax notes (verify before use): the federal corporate rate is 21% (Tax Cuts and Jobs Act of 2017); the 2025
+One Big Beautiful Bill Act restored **100% bonus depreciation** for qualifying property acquired after
+19 January 2025, which front-loads the depreciation tax shield and raises project NPV. The example below uses
+straight-line to keep the arithmetic visible.
+
+### Worked project NPV
+
+A firm is considering a new product line. Figures in USD thousands.
+
+- Machine costs 1,000, straight-line to zero over 5 years (200 a year); sold for 150 at the end of year 5.
+- 10,000 units a year at \$100, variable cost \$45 a unit, incremental fixed cash costs 150 a year.
+- Uses an owned warehouse that could otherwise be rented for 40 a year (opportunity cost).
+- Cannibalises 30 a year of contribution from an existing product (side effect).
+- A 50 market study already done is sunk and excluded; 25 a year of allocated head-office overhead does not
+  change and is excluded.
+- Net working capital is 12% of revenue, invested at the start and recovered at the end.
+- Tax rate 21%; project cost of capital 10%.
+
+```text
+Year                     0        1        2        3        4        5
+Revenue                      1,000.0  1,000.0  1,000.0  1,000.0  1,000.0
+Variable costs                -450.0   -450.0   -450.0   -450.0   -450.0
+Fixed cash costs              -150.0   -150.0   -150.0   -150.0   -150.0
+Lost warehouse rent            -40.0    -40.0    -40.0    -40.0    -40.0
+Cannibalisation                -30.0    -30.0    -30.0    -30.0    -30.0
+Depreciation                  -200.0   -200.0   -200.0   -200.0   -200.0
+EBIT                           130.0    130.0    130.0    130.0    130.0
+Tax at 21%                     -27.3    -27.3    -27.3    -27.3    -27.3
+NOPAT                          102.7    102.7    102.7    102.7    102.7
++ Depreciation                 200.0    200.0    200.0    200.0    200.0
+Capex                 -1,000.0
+Salvage after tax                                                 118.5
+Change in NWC           -120.0                                    120.0
+Free cash flow        -1,120.0   302.7    302.7    302.7    302.7  541.2
+Discount factor 10%      1.000   0.909    0.826    0.751    0.683  0.621
+PV                    -1,120.0   275.2    250.2    227.4    206.7  336.0
+
+NPV = 175.6      IRR = 15.46%      Accept
+```
+
+The depreciation tax shield alone is worth $0.21 \times 200 = 42$ a year, PV 159.2 at 10%: nearly the whole
+NPV. A tax regime that allows immediate expensing would be worth more still.
+
+## Sensitivity, scenario and break-even analysis
+
+A single NPV is a point estimate built on dozens of guesses. Stress the guesses that matter.
+
+**Sensitivity** (one variable at a time, ±10%, same project; NPV in USD thousands):
+
+| Variable | NPV at −10% | NPV at +10% | Swing |
+| :--- | ---: | ---: | ---: |
+| price | −119.4 | 470.5 | 589.8 |
+| units | 15.4 | 335.7 | 320.3 |
+| variable cost | 310.3 | 40.8 | 269.5 |
+| capex | 259.6 | 91.5 | 168.2 |
+| fixed costs | 220.5 | 130.6 | 89.8 |
+| discount rate 8% / 12% | 250.9 | 106.5 | 144.4 |
+
+Price is the variable to research first: a 10% miss turns the project negative. Sorted like this, the table is a
+**tornado chart**.
+
+**Scenarios** move correlated variables together:
+
+| Scenario | Units | Price | Variable cost | NPV |
+| :--- | ---: | ---: | ---: | ---: |
+| bear | 8,000 | \$95 | \$48 | −334.6 |
+| base | 10,000 | \$100 | \$45 | 175.6 |
+| bull | 12,000 | \$105 | \$43 | 744.7 |
+| weighted 25/50/25 | | | | 190.3 |
+
+**Break-even** (units a year, price \$100):
+
+| Break-even | Condition | Units |
+| :--- | :--- | ---: |
+| cash (pre-tax) | contribution covers fixed cash costs: $220 / 55$ | 4,000 |
+| accounting | EBIT = 0: $(220 + 200) / 55$ | 7,636 |
+| **NPV** | NPV = 0, including capital cost and NWC | 8,904 |
+
+Accounting break-even flatters: it recovers depreciation but not the opportunity cost of the 1,000 tied up. The
+NPV break-even price at 10,000 units is \$94.05. **Monte Carlo** simulation generalizes scenarios by sampling
+every input from a distribution; it is only as good as the distributions and correlations you feed it, and its
+output is a distribution of NPVs, not a better discount rate (discount at the cost of capital, not the risk-free
+rate plus a fudge).
+
+## Real options
+
+Static NPV assumes a now-or-never, fixed plan. Real projects let managers react, and flexibility has value
+because it truncates the downside (the term "real options" is Stewart Myers's, 1977).
+
+| Option | Payoff structure | Example |
+| :--- | :--- | :--- |
+| **expand** (growth) | call on the follow-on project | pilot plant; market entry that opens adjacent markets |
+| **abandon** | put: sell or shut for salvage value | walk away from a mine if commodity prices fall |
+| **delay** (timing) | call: wait for information | undeveloped land, oil leases, patents |
+| **switch** | swap inputs or outputs | dual-fuel boiler, flexible factory |
+| **stage** | compound option: invest in tranches | venture funding rounds, drug trials |
+
+$$
+\text{Project value} = \text{static NPV} + \text{value of flexibility}
+$$
+
+- Options are worth more with **higher uncertainty** and **longer time to decide**, the reverse of the naive
+  intuition that risk always lowers value.
+- Use decision trees for discrete choices; Black–Scholes or binomial models only when the underlying behaves like
+  a traded asset. For most firms the discipline of writing down the decision tree matters more than the
+  option-pricing formula.
+- Abuse: "strategic value" and "option value" invoked to rescue a negative-NPV pet project. Demand the tree: what
+  decision, when, triggered by what signal, and what it is worth.
+
+## Risk and return: CAPM
+
+Diversification removes firm-specific risk, so investors are paid only for **systematic** (market) risk. The
+Capital Asset Pricing Model (Sharpe 1964; Lintner 1965) prices it:
+
+$$
+E[R_i] = R_f + \beta_i \left(E[R_m] - R_f\right), \qquad
+\beta_i = \frac{\operatorname{Cov}(R_i, R_m)}{\operatorname{Var}(R_m)}
+$$
+
+| Input | Standard choice | Dated value used here |
+| :--- | :--- | :--- |
+| risk-free rate $R_f$ | 10-year Treasury yield (match duration of cash flows; use a nominal rate for nominal flows) | **4.18%** on 31 December 2025 (FRED DGS10); **5.18%** on 24 September 2026 |
+| equity risk premium | Damodaran's **implied** ERP for the S&P 500 | **4.23%** at 1 January 2026 (Damodaran, January 2026 update) |
+| beta $\beta_i$ | regression or bottom-up industry beta | see below |
+
+Worked: $\beta = 1.2$ gives $4.18\% + 1.2 \times 4.23\% = 9.26\%$. Damodaran's implied ERP backs the premium out of
+index prices and expected cash flows, which makes it forward-looking; historical-average premiums depend heavily
+on the period and averaging method. Rates have moved since January: refresh both inputs on the valuation date and
+keep them from the same date.
+
+### Estimating beta
+
+| Method | How | Problems |
+| :--- | :--- | :--- |
+| **regression** | regress stock returns on index returns (e.g. 2–5 years weekly or 5 years monthly) | standard error often ±0.2–0.3; depends on index, period, frequency |
+| **adjusted** (Blume) | $0.67 \beta_{raw} + 0.33$ | pulls toward 1; a convention, not a law |
+| **bottom-up** | average unlevered beta of comparable firms, relevered at your target debt ratio | best practice; averaging cuts estimation error |
+
+**Levering and unlevering (Hamada 1972)**, assuming debt beta of zero:
+
+$$
+\beta_L = \beta_U \left[1 + (1 - T)\frac{D}{E}\right]
+\qquad\Longleftrightarrow\qquad
+\beta_U = \frac{\beta_L}{1 + (1 - T)\,D/E}
+$$
+
+Worked (tax 21%): four peers with $(\beta_L, D/E)$ of (1.30, 0.20), (1.15, 0.35), (1.45, 0.10) and (1.05, 0.50)
+unlever to 1.123, 0.901, 1.344 and 0.753. Median 1.012. Relevered at your target $D/E = 0.25$:
+$1.012 \times (1 + 0.79 \times 0.25) = 1.212$, so $k_E = 4.18\% + 1.212 \times 4.23\% = 9.31\%$.
+
+**Beyond CAPM.** Fama and French (1993) added **size** (SMB) and **value** (HML) factors; Carhart (1997) added
+momentum; Fama and French (2015) added **profitability** (RMW) and **investment** (CMA) and found HML largely
+redundant in their sample. Factor models explain the cross-section of returns better, but practitioners still
+mostly use CAPM for the cost of capital (73.5% of CFOs in Graham and Harvey's survey) because it is simple and the
+alternatives' factor premiums are unstable. Treat any cost of equity as ±1 percentage point.
+
+## Cost of capital
+
+The **weighted average cost of capital** is the return the firm's assets must earn to satisfy all its investors,
+with interest tax-deductible:
+
+$$
+WACC = \frac{E}{D+E}\,k_E + \frac{D}{D+E}\,k_D\,(1 - T_c)
+$$
+
+| Input | Get it right |
+| :--- | :--- |
+| weights | **market** values (target or long-run), not book; include leases if you treat them as debt |
+| $k_D$ | yield to maturity on the firm's debt, or $R_f$ + default spread for its rating; not the coupon |
+| $T_c$ | marginal rate on interest actually deductible (US §163(j) limits net interest to 30% of adjusted taxable income, EBITDA-based again from 2025) |
+| $k_E$ | CAPM with bottom-up beta relevered at the same D/E as the weights |
+
+Worked (USD millions): equity market value 800, debt 200, pre-tax $k_D$ 6.0%, $T_c$ 21%, $k_E$ 9.31% (above).
+
+$$
+WACC = 0.8 \times 9.31\% + 0.2 \times 6.0\% \times 0.79 = 7.45\% + 0.95\% = 8.39\%
+$$
+
+With the 24 September 2026 10-year yield (5.18%), the same ERP and debt 1 point dearer, it becomes 9.35%. A
+1-point rise in rates moves hurdle rates by about a point: revisit hurdles when rates move.
+
+**Industry reference points** (Damodaran, US, data as of January 2026):
+
+| Industry | Beta | Cost of equity | Debt / capital | Cost of capital |
+| :--- | ---: | ---: | ---: | ---: |
+| Software (System & Application) | 1.28 | 9.64% | 5.28% | 9.34% |
+| Semiconductor | 1.52 | 10.72% | 2.53% | 10.55% |
+| Auto & Truck | 1.46 | 10.45% | 16.45% | 9.38% |
+| Restaurant/Dining | 0.92 | 8.07% | 21.40% | 7.16% |
+| Retail (General) | 0.81 | 7.54% | 7.36% | 7.27% |
+| Utility (General) | 0.24 | 5.02% | 44.90% | 4.36% |
+| Total market | 0.91 | 8.02% | 26.02% | 6.96% |
+
+### When WACC is wrong
+
+| Situation | Fix |
+| :--- | :--- |
+| project riskier or safer than the firm (new market, different business) | **project** cost of capital from pure-play comparables' betas |
+| conglomerate with divisions of different risk | **divisional** WACC; a single rate subsidises risky divisions and starves safe ones |
+| leverage changing a lot over time (LBO, project finance) | **APV**: value unlevered at $k_U$, add PV of tax shields separately |
+| cash flows to equity only (banks, insurers) | discount FCFE at $k_E$; debt is raw material, not financing |
+| country risk | add a country risk premium to the ERP (Damodaran publishes these) |
+| fudge factors ("add 5% for risk") | put risk in the cash flows (scenarios, probability of failure), not in an arbitrary rate |
+
+## Capital structure
+
+**Modigliani and Miller** (1958) proved that in perfect markets (no taxes, no distress costs, no information or
+agency problems, investors can borrow on the same terms as firms) financing does not create value.
+
+| Proposition | No taxes (1958) | Corporate taxes (1963) |
+| :--- | :--- | :--- |
+| **I** (value) | $V_L = V_U$ | $V_L = V_U + T_c D$ (permanent debt) |
+| **II** (cost of equity) | $k_E = k_U + (k_U - k_D)\dfrac{D}{E}$ | $k_E = k_U + (k_U - k_D)(1 - T_c)\dfrac{D}{E}$ |
+| WACC | constant at $k_U$ | falls as debt rises |
+
+**Worked.** EBIT 100 a year forever, $k_U$ = 10%, borrow 400 at 5%.
+
+| | No taxes | 21% tax |
+| :--- | ---: | ---: |
+| unlevered value $V_U$ | 1,000 | 790 |
+| tax shield $T_c D$ | 0 | 84 |
+| levered value $V_L$ | 1,000 | 874 |
+| equity $V_L - D$ | 600 | 474 |
+| cost of equity | 13.33% | 13.33% |
+| WACC | 10.00% | 9.04% |
+
+Cheap debt does not lower WACC without taxes: the cost of equity rises exactly enough to offset it. With taxes
+the government subsidises debt, and the logic points (absurdly) to 100% debt. The theories below explain why
+firms stop well short.
+
+| Theory | Core idea | Prediction | Evidence / caveat |
+| :--- | :--- | :--- | :--- |
+| **trade-off** | tax shield vs expected **costs of financial distress** (direct legal costs; lost customers, suppliers, staff; underinvestment) | target debt ratio; safe, tangible-asset firms borrow more | Andrade and Kaplan (1998) estimate distress costs at 10–20% of firm value for leveraged deals that became distressed |
+| **pecking order** (Myers and Majluf 1984) | managers know more than investors; issuing equity signals overvaluation | internal funds → debt → equity last; no target ratio | explains why profitable firms borrow little; equity-issue announcements lower prices on average (Asquith and Mullins 1986) |
+| **signaling** | taking on debt commits to paying it; only confident firms do | leverage increases are good news | consistent with announcement returns; hard to separate from pecking order |
+| **agency costs of equity** (Jensen and Meckling 1976; Jensen 1986) | managers with **free cash flow** overinvest or empire-build | debt disciplines managers by committing cash to creditors | the case for LBOs in mature, cash-rich firms |
+| **agency costs of debt** | shareholders of a near-distressed firm gamble (asset substitution) or skip positive-NPV projects that mainly help creditors (**debt overhang**, Myers 1977) | covenants, lower leverage for growth firms | why lenders restrict dividends and new borrowing |
+| **market timing** | issue equity when it looks expensive | leverage reflects past issuance windows | complements pecking order |
+
+**Practical synthesis.** Growth firms with intangible assets and volatile cash flows (most software, biotech,
+startups) carry little debt. Mature firms with stable cash flows and tangible, collateralisable assets
+(utilities, REITs, telecoms) carry a lot. Keep enough slack to fund the investment plan through a downturn
+without issuing equity at the bottom; rating agencies' leverage and coverage bands are a practical ceiling.
+
+## Financing options
+
+| Instrument | Typical cost | Key terms / covenants | Fits | Watch out |
+| :--- | :--- | :--- | :--- | :--- |
+| **revolving credit facility** | reference rate (SOFR) + spread; commitment fee on undrawn | maintenance covenants (leverage, interest cover) | working-capital swings, liquidity backstop | can be pulled or limited when you need it most |
+| **term loan** (bank) | SOFR + spread; amortizing | security over assets, financial covenants | capex, acquisitions for mid-sized firms | floating rate: hedge or bear rate risk |
+| **investment-grade bonds** | Treasury + credit spread; fixed | incurrence covenants, light | large, rated companies | refinancing walls; ratings triggers |
+| **high-yield bonds / leveraged loans** | much wider spreads | incurrence covenants; loans often "cov-lite" | LBOs, leveraged firms | expensive; distress risk |
+| **convertible bonds** | low coupon + equity option given away | conversion ratio, call features | high-volatility growth firms | dilution if converted; cost is the option, not the coupon |
+| **leases** | implicit rate in payments | asset-specific; under ASC 842 most leases go on the balance sheet | equipment, property | a lease is debt: include it in leverage and WACC |
+| **asset-based lending / factoring** | spread over receivables or inventory | borrowing base, audits | inventory-heavy or receivables-heavy firms | lender controls collateral |
+| **venture debt** | interest plus warrants | often minimum-cash or other covenants; lender may call on default | VC-backed startups extending runway after a round | covenants can bite before the next raise; see [startup finance](/finance/business/startup-finance/) |
+| **common equity** | cost of equity; issue costs; dilution | none, but governance rights | growth, deleveraging | most expensive capital; signals overvaluation |
+| **preferred equity** | fixed dividend or liquidation preference | seniority, protective provisions | VC rounds, bank capital, rescue financings | layered preferences can crush common value |
+
+Debt is cheaper than equity on paper because of seniority and the tax shield, but every unit of debt raises the
+cost of equity (MM II) and the probability of distress. The question is never "which is cheaper" but "what mix
+maximizes firm value given our cash-flow risk".
+
+## Payout policy
+
+**MM irrelevance** (Miller and Modigliani 1961): with investment fixed and no frictions, payout policy does not
+affect value. Shareholders can create "homemade dividends" by selling shares.
+
+**Worked, dividend vs buyback.** Firm worth 1,000 (including 100 of excess cash), 100 shares at \$10. Pay \$1 a
+share dividend: price falls to \$9, each holder has \$9 + \$1 = \$10. Buy back 10 shares at \$10: 90 shares worth
+900, still \$10 each. Same wealth either way, before frictions.
+
+| Friction | Effect |
+| :--- | :--- |
+| **taxes** | US qualified dividends and long-term gains share rates (0/15/20% plus 3.8% NIIT), but buybacks let holders choose when to realize gains and tax only the gain, not the whole payment |
+| **buyback excise tax** | **1%** of the fair market value of stock repurchased by US-listed corporations, net of stock issued in the same year, for repurchases after 31 December 2022 (IRC §4501, Inflation Reduction Act 2022; final regulations November 2025); de minimis \$1 million. E.g. \$200m of buybacks less \$50m issued → \$1.5m tax |
+| **signaling** | dividend increases are sticky commitments, so markets read them as confidence; cuts are punished |
+| **flexibility** | buybacks can be paused without the stigma of a dividend cut |
+| **clienteles** | income-seeking or tax-exempt investors may prefer dividends |
+| **agency** | paying out free cash flow stops managers wasting it (Jensen 1986) |
+| **EPS optics** | buybacks mechanically raise EPS when the earnings yield exceeds the after-tax return on cash, whether or not value is created |
+
+**EPS optics worked.** Net income 100, 100 shares, price \$20 (P/E 20, earnings yield 5%). Spend 200 of cash
+earning 4% pre-tax (3.16% after tax) on 10 shares. Net income falls to 93.68, shares to 90: EPS rises from
+\$1.00 to \$1.041 (+4.1%). Share price stays \$20: the firm lost 200 of cash and 10% of its shares. Higher EPS came
+with more leverage and risk, so the P/E drops. Judge a buyback by price paid versus intrinsic value, not by EPS.
+
+Rules of thumb: pay out what you cannot invest above the cost of capital; use regular dividends for the part
+you are confident is permanent and buybacks for the variable part; buy back only when shares trade below
+intrinsic value.
+
+## Working capital management
+
+**Net working capital** (operating) = receivables + inventory − payables (and other operating current items).
+Ratios and statement mechanics: [financial statements](/finance/business/financial-statements/).
+
+$$
+DSO = \frac{AR}{\text{Revenue}} \times 365, \quad
+DIO = \frac{\text{Inventory}}{\text{COGS}} \times 365, \quad
+DPO = \frac{AP}{\text{COGS}} \times 365
+$$
+
+$$
+\text{Operating cycle} = DSO + DIO, \qquad \text{Cash conversion cycle} = DSO + DIO - DPO
+$$
+
+Worked (USD thousands): revenue 12,000, COGS 7,200, receivables 1,500, inventory 1,200, payables 900.
+DSO 45.6 days, DIO 60.8, DPO 45.6: operating cycle 106.5 days, CCC 60.8 days. Cutting DSO by 10 days frees
+$12{,}000/365 \times 10 \approx 329$; cutting DIO by 10 days frees about 197. Cash released from working capital is
+a one-off gain, but it is real cash at zero cost of capital.
+
+| Lever | Tactic | Trade-off |
+| :--- | :--- | :--- |
+| receivables | invoice immediately, shorter terms, card or direct debit, early-payment discount | discount "2/10 net 30" costs the seller about 37% a year (simple; about 45% compounded); customers may walk |
+| inventory | demand forecasting, fewer SKUs, just-in-time, vendor-managed stock | stock-outs and supply-chain fragility (2021–22) |
+| payables | negotiate longer terms, pay on the due date not before | squeezing suppliers raises prices or kills weak suppliers |
+| model | upfront or annual prepaid billing | negative CCC: customers fund growth (common in subscription software and retailers with fast inventory turns) |
+
+Growth consumes working capital: a profitable firm growing fast with a long CCC can run out of cash. Forecast
+NWC as days of revenue or COGS, not as a plug.
+
+## Financial planning and forecasting
+
+**Percent-of-sales method.** Items that scale with revenue (most operating assets, payables, accruals) are
+forecast as a percentage of sales; financing items are decided. The gap is **additional funds needed**:
+
+$$
+AFN = \frac{A^*}{S_0}\Delta S - \frac{L^*}{S_0}\Delta S - m\,S_1\,(1 - d)
+$$
+
+where $A^*$ are assets tied to sales, $L^*$ spontaneous liabilities, $m$ net margin, $d$ payout ratio.
+Worked: sales 10,000 growing 20%, assets/sales 0.80, spontaneous liabilities/sales 0.15, margin 6%, payout 40%:
+$1{,}600 - 300 - 432 = 868$ of new external financing.
+
+**Sustainable growth rate**: the fastest growth possible without new equity and with constant leverage, payout
+and asset turnover:
+
+$$
+g^* = ROE \times b \quad (b = \text{retention ratio}); \qquad
+g^* = \frac{ROE \times b}{1 - ROE \times b} \text{ with beginning-of-year equity}
+$$
+
+ROE 15% and retention 60% gives 9% (9.89% on the beginning-equity form). The **internal growth rate** (no
+external financing at all) uses ROA instead: 7.5% ROA and 60% retention → 4.71%. Growing faster than $g^*$
+requires raising margins, turnover, leverage or retention, or issuing equity. DuPont: $ROE = \text{margin}
+\times \text{turnover} \times \text{equity multiplier}$.
+
+**Three-statement model outline:**
+
+<Steps>
+<Step title="Drivers">
+
+Revenue build (volume × price, or cohorts), gross margin, opex as % of revenue or headcount, capex, D&A,
+NWC days, tax rate, interest rate, payout.
+
+</Step>
+<Step title="Income statement">
+
+Revenue → EBITDA → EBIT → interest (on average debt) → tax → net income.
+
+</Step>
+<Step title="Balance sheet">
+
+PP&E roll-forward (opening + capex − D&A), NWC from days, equity roll-forward (opening + net income −
+dividends − buybacks + issuance), debt schedule.
+
+</Step>
+<Step title="Cash flow statement">
+
+Net income + D&A − ΔNWC − capex ± financing. Cash (or the revolver) is the balancing item.
+
+</Step>
+<Step title="Check and stress">
+
+Balance sheet balances every period; interest-on-average-debt circularity handled (iterative calc or opening
+balances); run downside cases against covenants and liquidity.
+
+</Step>
+</Steps>
+
+## Risk management and hedging
+
+Under MM, hedging should not add value: investors can diversify themselves. It does add value when it cuts
+**expected distress costs**, lets the firm fund its investment plan without costly external finance (Froot,
+Scharfstein and Stein 1993), reduces expected taxes when the tax schedule is convex, or improves managers'
+information by removing noise from results.
+
+| Exposure | Example | Instrument |
+| :--- | :--- | :--- |
+| **transaction FX** | exporter receiving €10m in 6 months | forward, option, natural hedge (costs in euros) |
+| **translation FX** | foreign subsidiary's balance sheet | borrow in local currency; often left unhedged |
+| **economic FX** | competitor's costs are in a weakening currency | strategic: move production, pricing |
+| **interest rate** | floating-rate term loan | interest-rate swap (pay fixed, receive floating), cap |
+| **commodity** | airline fuel, food manufacturer's wheat | futures, swaps, options, fixed-price contracts |
+| **credit** | concentrated customer | credit insurance, letters of credit |
+
+| Instrument | What it does | Cost / risk |
+| :--- | :--- | :--- |
+| **forward** | OTC contract to buy or sell later at a price fixed today | no upfront cost; locks out upside; counterparty risk |
+| **future** | exchange-traded, standardized forward, marked to market daily | margin calls drain cash before the hedged item pays |
+| **swap** | exchange one stream for another (fixed for floating, one currency for another) | counterparty and basis risk |
+| **option** | right, not obligation, to trade at a strike | pay a premium; keeps upside |
+
+**Covered interest parity** sets the forward FX rate: $F = S \times \dfrac{1 + r_{\text{dom}} t}{1 + r_{\text{for}} t}$.
+Illustrative (not market) numbers: spot 1.1700 USD per EUR, 6-month USD rate 4.2%, EUR rate 2.1% → forward 1.1822;
+the exporter locks in \$11.82m for its €10m. Hedge **committed or highly probable** exposures; hedging more than the
+exposure is speculation. Metallgesellschaft (1993) is the classic warning: a rolling short-dated futures hedge on
+long-dated fixed-price supply contracts produced huge margin calls when oil prices fell, and the parent
+unwound the positions at a large loss.
+
+## Mergers and acquisitions
+
+An acquisition is a capital-budgeting decision with a large, uncertain price:
+
+$$
+NPV_{\text{acquirer}} = \underbrace{(V_{AB} - V_A - V_B)}_{\text{synergies}} - \underbrace{(\text{price paid} - V_B)}_{\text{premium}} - \text{deal costs}
+$$
+
+| Motive | Sound? |
+| :--- | :--- |
+| cost synergies (overlap, procurement, scale) | often real; usually easier to deliver than revenue synergies |
+| revenue synergies (cross-sell, distribution) | frequently overestimated |
+| replacing bad management (**control premium**) | real when the target is badly run |
+| tax, unused tax losses, cheaper financing | sometimes; scrutinise |
+| diversification | shareholders can diversify more cheaply themselves |
+| EPS accretion | not a source of value (see below) |
+| empire building, hubris (Roll 1986) | the source of many bad deals |
+
+### Accretion and dilution
+
+Acquirer: net income \$500m, 250m shares (EPS \$2.00), price \$40 (P/E 20). Target: net income \$60m, market value
+\$960m (P/E 16); acquirer pays a 25% premium, \$1,200m (P/E 20 on the price paid). Tax 21%.
+
+| Structure | Combined net income | Shares | EPS | vs \$2.00 |
+| :--- | ---: | ---: | ---: | ---: |
+| all stock (30m new shares at \$40) | 560.0 | 280 | \$2.000 | 0.0% |
+| all debt at 6% (after-tax interest 56.9) | 503.1 | 250 | \$2.013 | +0.6% |
+| stock + \$40m pre-tax synergies | 591.6 | 280 | \$2.113 | +5.6% |
+| debt + \$40m pre-tax synergies | 534.7 | 250 | \$2.139 | +6.9% |
+
+- A **stock** deal is accretive when the acquirer's P/E exceeds the P/E paid; a **debt** deal when the target's
+  earnings yield at the price paid (5.0%) exceeds the after-tax cost of debt (4.74%).
+- The debt deal with no synergies is **accretive yet destroys \$240m** (the premium, before deal costs; any tax
+  shield on the new debt was available without buying anything). EPS says nothing about whether the premium was
+  earned.
+- With \$40m a year of pre-tax synergies (31.6 after tax, perpetual, discounted at 9%), synergies are worth
+  \$351m against a \$240m premium: NPV about +\$111m. Break-even synergies are about \$27m a year pre-tax.
+
+### Evidence
+
+- Andrade, Mitchell and Stafford (2001), US mergers 1973–1998: announcement returns averaged about +16% for
+  targets, −0.7% for acquirers and +1.8% combined. Mergers create some value on average, but the target's
+  shareholders capture nearly all of it.
+- Moeller, Schlingemann and Stulz (2005): acquiring-firm shareholders lost about 12 cents per dollar spent at
+  announcement, a total of **\$240 billion from 1998 to 2001**, against \$7 billion in all of the 1980s. The losses
+  were concentrated in a small number of very large deals by highly valued acquirers.
+- So "most acquisitions destroy value" is too strong as a universal claim; "the average acquirer earns roughly
+  nothing, and large, richly valued, stock-financed acquirers in hot markets have done worst" is what the
+  evidence supports. AOL–Time Warner is the canonical example (see [valuation](/finance/business/valuation/)).
+
+Negotiation and bidding dynamics (winner's curse, auction design) are in [game theory](/thinking/game-theory/).
+
+## Corporate governance
+
+Governance is the set of mechanisms that make managers act for owners: the answer to Jensen and Meckling's
+agency problem.
+
+| Mechanism | How it works | Weakness |
+| :--- | :--- | :--- |
+| **board of directors** | hires, pays, fires the CEO; approves major capital decisions | captured by the CEO; part-time, information-poor |
+| **executive pay** | equity and performance-linked pay align incentives | rewards luck; EPS and TSR targets invite manipulation and buybacks |
+| **shareholder voting and activism** | proxy fights, say on pay, activist hedge funds | short horizons; passive funds vote but rarely engage deeply |
+| **market for corporate control** | takeovers replace poor managers | anti-takeover defenses (poison pills, staggered boards) |
+| **debt and covenants** | fixed claims force discipline | can induce underinvestment |
+| **disclosure and audit** | SEC reporting, independent auditors, Sarbanes–Oxley internal controls | Enron and Wirecard show auditors can miss fraud |
+| **dual-class shares** | founders keep control while raising capital | insulates managers from accountability |
+
+For startups, governance lives in the board composition and protective provisions negotiated in each round (see
+[startup finance](/finance/business/startup-finance/)).
+
+## Templates and checklists
+
+### Capital-budgeting template
+
+```text
+PROJECT: ____________________   Owner: ________   Date: ______
+Decision: accept / reject / defer    Alternatives considered: ___
+
+1. Incremental cash flows (with project minus without)
+   Revenue drivers (volume x price):        ________________
+   Variable cost / unit; fixed cash costs:   ________________
+   Opportunity costs (assets used):          ________________
+   Side effects (cannibalisation, spillover):________________
+   EXCLUDED: sunk costs ____  unchanged overhead ____  interest
+   Capex schedule and useful life:           ________________
+   Depreciation method (tax) and shield:     ________________
+   NWC (days of revenue/COGS), recovery:     ________________
+   Salvage value and tax on gain:            ________________
+   Tax rate (marginal):                      ________________
+
+2. Discount rate
+   Comparable pure-play betas (unlevered):   ________________
+   Relevered beta at target D/E:             ________________
+   Rf ____ (date ____)  ERP ____ (source/date ____)
+   Project WACC:                             ________________
+
+3. Results
+   NPV ____   IRR ____   MIRR ____   PI ____   Disc. payback ____
+   % of PV from final year / terminal value: ____
+
+4. Risk
+   Tornado: top 3 variables and NPV swing:   ________________
+   Bear / base / bull NPV and weights:       ________________
+   NPV break-even (units, price):            ________________
+   Real options (expand / abandon / delay):  ________________
+
+5. Post-investment review date and KPIs:     ________________
+```
+
+### CFO questions checklist
+
+```text
+[ ] Does every project's NPV rest on cash flows, not profit?
+[ ] Are sunk costs excluded and opportunity costs included?
+[ ] Is interest excluded from cash flows (it is in WACC)?
+[ ] Is the discount rate specific to the project's risk?
+[ ] Rf and ERP from the same date, and is the date stated?
+[ ] Nominal flows with nominal rate, after-tax with after-tax?
+[ ] Do we rank mutually exclusive projects by NPV, not IRR?
+[ ] What single variable turns NPV negative, and how likely?
+[ ] Is leverage within rating and covenant headroom in a downturn?
+[ ] Could we fund the plan for 12-24 months without new equity?
+[ ] Are payouts funded by free cash flow, not new borrowing?
+[ ] Are buybacks done below intrinsic value, not to hit EPS?
+[ ] What is our cash conversion cycle, and its trend?
+[ ] Which FX, rate and commodity exposures are hedged, and why?
+[ ] For each acquisition: synergies PV vs premium, not EPS?
+[ ] Who reviews the outcome of past capital decisions?
+[ ] Do incentive plans reward value created or EPS/growth?
+```
+
+## References
+
+- Richard A. Brealey, Stewart C. Myers, Franklin Allen and Alex Edmans, *Principles of Corporate Finance*, 14th ed. (McGraw Hill, 2023): the standard graduate text; NPV, cost of capital, MM, payout, real options
+- Tim Koller, Marc Goedhart and David Wessels (McKinsey & Company), *Valuation: Measuring and Managing the Value of Companies*, 8th ed. (Wiley, 2025): value creation, WACC and capital structure in practice
+- [Aswath Damodaran: Cost of equity and capital by industry (US), January 2026](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/wacc.html): industry betas, costs of equity and WACC used in the table above
+- [Aswath Damodaran: Historical implied equity risk premiums, January 2026](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histimpl.html): implied ERP 4.23% and T-bond rate 4.18% at the start of 2026
+- [Damodaran, Equity Risk Premiums: Determinants, Estimation and Implications, 2026 edition (SSRN)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6361419): annual survey paper on estimating the ERP
+- [FRED: 10-Year Treasury Constant Maturity Rate (DGS10)](https://fred.stlouisfed.org/series/DGS10): Federal Reserve Board H.15 data; 4.18% on 31 December 2025, 5.18% on 24 September 2026
+- Milton Friedman, "A Friedman Doctrine: The Social Responsibility of Business Is to Increase Its Profits", *New York Times Magazine*, 13 September 1970: the shareholder-primacy essay quoted above
+- [Business Roundtable: Statement on the Purpose of a Corporation (19 August 2019)](https://www.businessroundtable.org/business-roundtable-redefines-the-purpose-of-a-corporation-to-promote-an-economy-that-serves-all-americans): the 181-CEO stakeholder statement
+- Franco Modigliani and Merton H. Miller, "The Cost of Capital, Corporation Finance and the Theory of Investment", *American Economic Review* 48(3), 1958: capital-structure irrelevance
+- Franco Modigliani and Merton H. Miller, "Corporate Income Taxes and the Cost of Capital: A Correction", *American Economic Review* 53(3), 1963: the tax shield $T_c D$
+- Merton H. Miller and Franco Modigliani, "Dividend Policy, Growth, and the Valuation of Shares", *Journal of Business* 34(4), 1961: payout irrelevance
+- William F. Sharpe, "Capital Asset Prices: A Theory of Market Equilibrium under Conditions of Risk", *Journal of Finance* 19(3), 1964: the CAPM
+- Robert S. Hamada, "The Effect of the Firm's Capital Structure on the Systematic Risk of Common Stocks", *Journal of Finance* 27(2), 1972: levering and unlevering beta
+- Eugene F. Fama and Kenneth R. French, "Common Risk Factors in the Returns on Stocks and Bonds", *Journal of Financial Economics* 33(1), 1993; and "A Five-Factor Asset Pricing Model", *JFE* 116(1), 2015
+- Michael C. Jensen and William H. Meckling, "Theory of the Firm: Managerial Behavior, Agency Costs and Ownership Structure", *Journal of Financial Economics* 3(4), 1976: agency costs
+- Michael C. Jensen, "Agency Costs of Free Cash Flow, Corporate Finance, and Takeovers", *American Economic Review* 76(2), 1986: debt as discipline
+- Stewart C. Myers and Nicholas S. Majluf, "Corporate Financing and Investment Decisions When Firms Have Information That Investors Do Not Have", *Journal of Financial Economics* 13(2), 1984: the pecking order
+- Stewart C. Myers, "Determinants of Corporate Borrowing", *Journal of Financial Economics* 5(2), 1977: debt overhang and the origin of "real options"
+- [Andrade and Kaplan (1998), How Costly Is Financial (Not Economic) Distress?](https://doi.org/10.1111/0022-1082.00062), *Journal of Finance* 53(5): distress costs of 10–20% of firm value
+- Paul Asquith and David W. Mullins, "Equity Issues and Offering Dilution", *Journal of Financial Economics* 15(1–2), 1986: negative price reaction to equity issues
+- [Graham and Harvey (2001), The Theory and Practice of Corporate Finance: Evidence from the Field](https://people.duke.edu/~jgraham/website/SurveyPaper.PDF), *Journal of Financial Economics* 60(2–3): CFO survey on NPV, IRR and CAPM use
+- Kenneth A. Froot, David S. Scharfstein and Jeremy C. Stein, "Risk Management: Coordinating Corporate Investment and Financing Policies", *Journal of Finance* 48(5), 1993: why hedging can add value
+- [Andrade, Mitchell and Stafford (2001), New Evidence and Perspectives on Mergers](https://www.aeaweb.org/articles?id=10.1257/jep.15.2.103), *Journal of Economic Perspectives* 15(2): target, acquirer and combined announcement returns
+- [Moeller, Schlingemann and Stulz (2005), Wealth Destruction on a Massive Scale?](https://doi.org/10.1111/j.1540-6261.2005.00745.x), *Journal of Finance* 60(2): \$240 billion of acquirer losses in 1998–2001
+- Richard Roll, "The Hubris Hypothesis of Corporate Takeovers", *Journal of Business* 59(2), 1986: overconfident bidders
+- [Congressional Research Service: The 1% Excise Tax on Stock Repurchases (R47397)](https://www.congress.gov/crs-product/R47397): how IRC §4501 works
+- [Sullivan & Cromwell: IRS Issues Final Regulations on Stock Buyback Tax (November 2025)](https://www.sullcrom.com/insights/memo/2025/November/Stock-Buyback-Tax): summary of the final §4501 regulations

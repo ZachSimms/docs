@@ -30,14 +30,14 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("lists the fifteen topics, the v link and the Info footer", async ({ page }) => {
+  test("lists the nineteen topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(15);
-    await expect(nav.locator("span").first()).toHaveText("15.");
+    await expect(nav.locator("a")).toHaveCount(19);
+    await expect(nav.locator("span").first()).toHaveText("19.");
     await expect(nav.locator("span").last()).toHaveText("01.");
     await expect(nav.locator("a").first()).toHaveText("Math");
     await expect(nav.locator("a").last()).toHaveText("Design");
@@ -166,6 +166,7 @@ test.describe("syntax highlighting", () => {
 test.describe("search palette", () => {
   test("opens with cmd+k, filters, navigates on Enter, closes on Escape", async ({ page }) => {
     await page.goto("/");
+    await hydrated(page);
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Search" });
     await expect(dialog).toBeVisible();
@@ -641,10 +642,10 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"]):not([href$="/overview/"])',
+        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(101);
+    expect(hrefs).toHaveLength(157);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -661,6 +662,7 @@ test.describe("typescript topic and directories", () => {
 
   test("search finds a nested sheet and opens its url", async ({ page }) => {
     await page.goto("/");
+    await hydrated(page);
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Search" });
     await dialog.getByRole("combobox").fill("backend websockets");
@@ -676,9 +678,9 @@ test.describe("new topics", () => {
     const links = page.locator("main nav a");
     await expect(links.nth(3)).toHaveText("Fitness");
     await expect(links.nth(4)).toHaveText("Economics");
-    await expect(links.nth(6)).toHaveText("TypeScript");
-    await expect(links.nth(7)).toHaveText("Databases");
-    await expect(links.nth(8)).toHaveText("Infrastructure");
+    await expect(links.nth(10)).toHaveText("TypeScript");
+    await expect(links.nth(11)).toHaveText("Databases");
+    await expect(links.nth(12)).toHaveText("Infrastructure");
     await page.goto("/infrastructure/");
     await expect(page.locator("main nav a")).toHaveText([
       "Linux/",
@@ -694,9 +696,9 @@ test.describe("new topics", () => {
   test("game dev sits after C++ and holds the Godot directory", async ({ page }) => {
     await page.goto("/");
     const links = page.locator("main nav a");
-    await expect(links.nth(10)).toHaveText("C++");
-    await expect(links.nth(11)).toHaveText("Game dev");
-    await links.nth(11).click();
+    await expect(links.nth(14)).toHaveText("C++");
+    await expect(links.nth(15)).toHaveText("Game dev");
+    await links.nth(15).click();
     await expect(page).toHaveURL(/\/game-dev\/$/);
     await expect(page.locator("main nav a")).toHaveText(["Godot/"]);
     await page.goto("/game-dev/godot/");
@@ -1235,6 +1237,53 @@ test.describe("economics and C++", () => {
     await page.goto("/cpp/fundamentals/");
     await expect(page.locator("main h2").last()).toHaveText("References");
     await expect(page.locator("main pre code").first()).toBeVisible();
+  });
+});
+
+test.describe("finance, thinking, leadership, startups and writing", () => {
+  test("the four new topics sit between Economics and ML/AI", async ({ page }) => {
+    await page.goto("/");
+    const links = page.locator("main nav a");
+    await expect(links.nth(4)).toHaveText("Economics");
+    await expect(links.nth(5)).toHaveText("Finance");
+    await expect(links.nth(6)).toHaveText("Thinking");
+    await expect(links.nth(7)).toHaveText("Leadership");
+    await expect(links.nth(8)).toHaveText("Startups");
+    await expect(links.nth(9)).toHaveText("ML/AI");
+    await expect(links.nth(17)).toHaveText("Writing");
+  });
+
+  test("each new topic lists its directories and sheets in order", async ({ page }) => {
+    for (const [url, entries] of [
+      ["/thinking/", ["First principles thinking", "Systems thinking", "Game theory", "Mental models/"]],
+      ["/startups/", ["Idea to MVP/", "Advice/"]],
+      ["/writing/", ["Nonfiction/", "Fiction/", "Worldbuilding/"]],
+      ["/design/", ["Principles/", "HTML/", "CSS/", "Demo"]],
+    ] as const) {
+      await page.goto(url);
+      await expect(page.locator("main nav a")).toHaveText([...entries]);
+    }
+    await page.goto("/finance/");
+    await expect(page.locator("main nav a")).toHaveText(["Personal finance/", "Business finance/"]);
+    await page.goto("/finance/business/");
+    await expect(page.locator("main nav a")).toHaveCount(5);
+    await page.goto("/leadership/");
+    await expect(page.locator("main nav a")).toHaveCount(6);
+    await page.goto("/startups/idea-to-mvp/");
+    await expect(page.locator("main nav a").first()).toHaveText("Playbook");
+  });
+
+  test("writing no longer has a coming-soon overview", async ({ page }) => {
+    const response = await page.goto("/writing/overview/");
+    expect(response?.status()).toBe(404);
+  });
+
+  test("HTML sheets run their live demos and money stays text, not math", async ({ page }) => {
+    await page.goto("/design/html/semantic-elements/");
+    expect(await page.locator('main iframe[title^="Live demo"]').count()).toBeGreaterThanOrEqual(2);
+    await page.goto("/finance/personal/banking/");
+    await expect(page.locator("main")).toContainText("$250,000");
+    await expect(page.locator("main .katex-error")).toHaveCount(0);
   });
 });
 

@@ -121,6 +121,86 @@ const TOPICS: Readonly<Record<string, Layout>> = {
   },
   economics: { entries: ["microeconomics", "macroeconomics"], directories: {} },
   cpp: { entries: ["fundamentals"], directories: {} },
+  finance: {
+    entries: ["personal/", "business/"],
+    directories: {
+      personal: [
+        "money-basics",
+        "banking",
+        "credit-debt",
+        "investing",
+        "retirement-taxes",
+        "insurance-estate",
+      ],
+      business: [
+        "accounting",
+        "financial-statements",
+        "corporate-finance",
+        "valuation",
+        "startup-finance",
+      ],
+    },
+  },
+  thinking: {
+    entries: ["first-principles", "systems-thinking", "game-theory", "mental-models/"],
+    directories: {
+      "mental-models": [
+        "general-thinking",
+        "decision-making",
+        "probability-risk",
+        "cognitive-biases",
+        "cross-discipline",
+      ],
+    },
+  },
+  leadership: {
+    entries: [
+      "ooda-loop",
+      "extreme-ownership",
+      "mission-command",
+      "five-dysfunctions",
+      "management",
+      "leadership-models",
+    ],
+    directories: {},
+  },
+  startups: {
+    entries: ["idea-to-mvp/", "advice/"],
+    directories: {
+      "idea-to-mvp": [
+        "playbook",
+        "ideation",
+        "validation",
+        "product-design",
+        "building-mvp",
+        "launch-iterate",
+      ],
+      advice: [
+        "y-combinator",
+        "a16z",
+        "peter-thiel",
+        "elon-musk",
+        "steve-jobs",
+        "jensen-huang",
+        "founders",
+        "designers",
+      ],
+    },
+  },
+  writing: {
+    entries: ["nonfiction/", "fiction/", "worldbuilding/"],
+    directories: {
+      nonfiction: ["clear-writing", "persuasive-writing", "technical-writing"],
+      fiction: ["story-structure", "character", "scene-prose"],
+      worldbuilding: [
+        "fundamentals",
+        "physical-world",
+        "societies-cultures",
+        "magic-technology",
+        "game-worlds",
+      ],
+    },
+  },
   "game-dev": {
     entries: ["godot/"],
     directories: {
@@ -142,6 +222,14 @@ const OVERVIEW = "overview";
 /** Design sheets checked for sections and line length (the topic also holds the Demo sheet). */
 const DESIGN_DIRECTORIES: Readonly<Record<string, readonly string[]>> = {
   principles: ["ux-ui", "color-theory"],
+  html: [
+    "document-head",
+    "semantic-elements",
+    "forms-inputs",
+    "media-embeds",
+    "interactive-elements",
+    "accessibility",
+  ],
   css: ["css", "tailwind", "animation"],
 };
 
@@ -223,6 +311,13 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "ui-animation-audio",
   "shaders",
   "resources-saving-export",
+  "document-head",
+  "semantic-elements",
+  "forms-inputs",
+  "media-embeds",
+  "interactive-elements",
+  "design/html/accessibility",
+  "startups/idea-to-mvp/building-mvp",
 ]);
 
 /** Visual components or live demos each design sheet must use at least this many times. */
@@ -232,6 +327,12 @@ const DESIGN_VISUALS: Readonly<Record<string, number>> = {
   css: 3,
   animation: 3,
   tailwind: 20,
+  "document-head": 2,
+  "semantic-elements": 2,
+  "forms-inputs": 2,
+  "media-embeds": 2,
+  "interactive-elements": 2,
+  accessibility: 2,
 };
 
 /** A visual in MDX source: a color component, a diagram or a live demo fence. */
@@ -322,10 +423,11 @@ for (const [topic, layout] of Object.entries(TOPICS)) {
 }
 
 describe("content/design", () => {
-  it("lists the principles and CSS directories before the Demo sheet", () => {
+  it("lists the principles, HTML and CSS directories before the Demo sheet", () => {
     const entries = listTopicEntries("design");
     expect(entries.map((e) => (e.kind === "group" ? `${e.slug}/` : e.slug))).toEqual([
       "principles/",
+      "html/",
       "css/",
       "overview",
     ]);
@@ -427,7 +529,7 @@ describe("content/math", () => {
 });
 
 /** Topic overviews that have no real content yet: a heading and the meme, nothing else. */
-const COMING_SOON = ["math", "physics", "biology", "ml-ai", "python", "robotics", "writing"];
+const COMING_SOON = ["math", "physics", "biology", "ml-ai", "python", "robotics"];
 /** The shared meme on every coming-soon page. */
 const COMING_SOON_IMAGE = "/images/coming-soon.png";
 

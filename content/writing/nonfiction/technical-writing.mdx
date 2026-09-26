@@ -1,0 +1,742 @@
+---
+title: Technical writing
+date: 2026-09-26
+order: 3
+---
+
+Documentation and engineering writing for developers and users: the Diátaxis framework, docs as code, style
+guide essentials, READMEs, procedures, reference and API docs, design docs, RFCs, ADRs, commit messages,
+changelogs, comments, error messages, runbooks and postmortems, diagrams, terminology, accessibility and how to
+measure docs quality. Sentence-level rules are in [clear writing](/writing/nonfiction/clear-writing/);
+proposals and decision memos in [persuasive writing](/writing/nonfiction/persuasive-writing/). Architecture
+itself is in [system design](/infrastructure/system-design/).
+
+## Diátaxis: four kinds of documentation
+
+Daniele Procida's **Diátaxis** framework says documentation serves four distinct user needs, and most bad docs
+come from mixing them. The **compass** classifies any piece of content with two questions: does it inform
+**action** (practical steps, doing) or **cognition** (theoretical knowledge, thinking)? Does it serve the
+**acquisition** of skill (study) or its **application** (work)?
+
+|  | Acquisition (study) | Application (work) |
+| :- | :------------------ | :----------------- |
+| **Action** (doing) | **Tutorial**: learning-oriented | **How-to guide**: goal-oriented |
+| **Cognition** (knowing) | **Explanation**: understanding-oriented | **Reference**: information-oriented |
+
+| Type | The user says | Form | Example | Must not |
+| :--- | :------------ | :--- | :------ | :------- |
+| **Tutorial** | "teach me" | a lesson: a guaranteed-to-work path with visible results at each step | "Build your first API with Hono in 15 minutes" | explain alternatives, digress into theory, offer choices |
+| **How-to guide** | "how do I…?" | a recipe for a real goal; assumes competence | "How to rotate a database password without downtime" | teach basics, explain why at length |
+| **Reference** | "what exactly is…?" | austere, complete, structured like the product | API endpoint list, CLI flags, config keys | instruct or persuade; omit edge cases |
+| **Explanation** | "why…?" | discussion: context, design decisions, trade-offs, history | "Why we use event sourcing for billing" | contain step-by-step instructions |
+
+Common failure patterns and fixes:
+
+| Symptom | Diagnosis | Fix |
+| :------ | :-------- | :-- |
+| the quick-start explains architecture for three pages | tutorial polluted with explanation | move the "why" to an explanation page; link to it |
+| the API reference is a narrative tutorial | reference written as a story | generate reference from the code/spec; write tutorials separately |
+| "how to" pages start by teaching concepts | how-to mixed with tutorial | assume competence; link prerequisites |
+| nobody knows why the system works this way | missing explanation | write design docs and ADRs, link them from the docs |
+| users can't find the answer | organized by team or by feature history | organize by the four types, then by topic |
+
+## Docs as code
+
+**Docs as code** (a term popularised by the Write the Docs community) means writing documentation with the same
+tools and workflow as code.
+
+| Practice | Benefit |
+| :------- | :------ |
+| plain text (Markdown, MDX, AsciiDoc, reStructuredText) in the repo | docs change in the same PR as the code they describe |
+| review docs in pull requests | the same review culture and the same reviewers |
+| CI checks: build, broken links, spelling, prose lint (Vale, markdownlint) | errors are caught before readers see them |
+| generate reference from source (OpenAPI, TypeDoc, docstrings) | reference never drifts from the code |
+| test code samples (doctests, snippet extraction, compile checks) | examples keep working |
+| version docs with releases | readers on v2 see v2 docs |
+| definition of done includes docs | "it's not shipped until it's documented" |
+
+Limits: docs as code works for engineers; non-engineering writers may need a friendlier editor on top, and
+nothing in the pipeline checks whether the docs actually answer the user's question.
+
+## Style guide essentials
+
+Adopt an existing style guide and record only your exceptions. The two most used in software are Google's and
+Microsoft's.
+
+**Google developer documentation style guide** highlights:
+
+| Rule | Example |
+| :--- | :------ |
+| use second person: "you" rather than "we" | "You can configure…" not "We can configure…" / "The user can configure…" |
+| use active voice: make clear who's performing the action | "The server sends a response" not "A response is sent" |
+| use present tense | "The function returns…" not "The function will return…" |
+| put conditions before instructions | "To delete the file, click **Delete**." / "If the build fails, rerun it." |
+| use sentence case for titles and headings | "Configure the cache", not "Configure The Cache" |
+| numbered lists for sequences, bulleted lists for other lists | steps are numbered; options are bulleted |
+| put code-related text in code font | "Set `timeout` to `30`." |
+| put UI elements in bold | "Click **Save**." |
+| use descriptive link text | "see the [authentication guide]" not "click here" |
+| use serial commas; unambiguous dates | "Rust, Go, and Python"; "2026-09-26" or "26 September 2026" |
+| provide alt text for images | every non-decorative image |
+| don't pre-announce features | document what exists, not what's "coming soon" |
+| write for a global audience | short sentences, no idioms, no culture-specific jokes |
+
+**Microsoft Writing Style Guide** "top 10 tips" add: "Use bigger ideas, fewer words"; "Write like you speak";
+use contractions ("it's", "you'll"); "Get to the point fast"; "Be brief"; "When in doubt, don't capitalize";
+no end punctuation on titles and headings; "Remember the last comma" (the Oxford comma); one space after full
+stops. Microsoft's own before/after: "If you're ready to purchase Office 365 for your organization, contact your
+Microsoft account representative." → "Ready to buy? Contact us."
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "The configuration file should be edited by the user in order to enable caching." | "To enable caching, edit `config.toml`." | condition first; second person implied; active; code font |
+| "Clicking on the Save button will save your changes." | "Click **Save**." | present tense; bold UI; the result is obvious |
+| "It's really easy to simply set up the CLI." | "Install the CLI:" | "easy" and "simply" insult readers who struggle |
+| "We will now configure the database." | "Configure the database." | no "we will now" metadiscourse |
+| "Click here for more information about tokens." | "For details, see [Access tokens]." | descriptive link text |
+| "The API may possibly return an error in some cases." | "If the token has expired, the API returns `401`." | specific condition and result |
+
+## README anatomy
+
+A README answers, in order: what is this, why should I care, how do I use it, how do I help. The first screen
+decides whether anyone reads further.
+
+| Section | Content | Required? |
+| :------ | :------ | :-------- |
+| Name + one-line description | what it does, for whom | yes |
+| Badges (optional) | build status, version, license; a few, not a wall | optional |
+| Why / features | the problem it solves; 3–6 key features | yes for public projects |
+| Quick start | install + the smallest working example, copy-pasteable | yes |
+| Usage | common tasks with examples; link to full docs | yes |
+| Configuration | env vars / options table with defaults | if any |
+| Development | clone, install, test, run locally | for contributors |
+| Contributing | how to report bugs, open PRs; link `CONTRIBUTING.md` | public projects |
+| License | name + link to `LICENSE` | public projects |
+| Support / contact | where to ask questions | optional |
+
+Test: a new teammate on a clean machine gets from `git clone` to a running example using only the README. Time
+it, and fix every place they stall.
+
+## Writing procedures
+
+Procedures (how-to guides, runbook steps, setup instructions) fail when the reader cannot tell what to do, in
+what order, and whether it worked.
+
+| Rule | Detail |
+| :--- | :----- |
+| state the goal and prerequisites first | "Before you begin: Node 20+, an API key, admin access" |
+| numbered steps, one action each | two actions in one step get half-done |
+| start each step with an imperative verb | "Run", "Open", "Set", "Click" |
+| condition before the action | "If you use Docker, run…" |
+| show the exact command or input | copy-pasteable; no prompts in the snippet if users paste it |
+| show the expected result | "You should see `Server listening on :3000`." |
+| say what to do if it fails | the most common error and its fix, inline |
+| keep optional steps visibly optional | "Optional:" at the start |
+| end with verification and next steps | "To confirm, open…"; link to the next guide |
+| ≤ 10 steps per procedure | split longer procedures into sub-procedures |
+
+| Before | After |
+| :----- | :---- |
+| "Install the dependencies and then configure the environment variables, making sure to also set up the database if you haven't already." | "1. Install dependencies: `bun install`. 2. Copy `.env.example` to `.env`. 3. Set `DATABASE_URL` in `.env`. 4. Create the database: `bun db:migrate`." |
+| "Now the server should hopefully be working." | "Start the server with `bun dev`. You should see `Listening on http://localhost:3000`." |
+| "Make sure you have the right permissions." | "Prerequisite: the `Owner` role on the project. To check, run `gcloud projects get-iam-policy`." |
+
+```text
+## Rotate the database password
+
+Before you begin: admin access to the secrets manager;
+a maintenance window is not required.
+
+1. Create a new password:
+   `openssl rand -base64 32`
+2. Add it as a second credential in the database:
+   `ALTER ROLE app WITH PASSWORD '<new>';` ...
+3. Update the secret `db/app-password` to the new value.
+4. Restart the API pods: `kubectl rollout restart deploy/api`
+   Expected: all pods Ready within 2 minutes.
+5. Verify: `curl -f https://api.example.com/health`
+   returns `{"db":"ok"}`.
+
+If step 4 pods crash-loop: the secret did not propagate.
+Roll back by restoring the previous secret version.
+```
+
+## Reference and API docs
+
+Reference docs are **looked up, not read**. Make them complete, consistent and predictable: every entry has the
+same shape.
+
+| Element (per endpoint) | Content |
+| :--------------------- | :------ |
+| Summary | one line: what it does ("Creates a customer.") |
+| Method and path | `POST /v1/customers` |
+| Authentication | required scopes or roles |
+| Path / query parameters | table: name, type, required, default, description |
+| Request body | schema with types, constraints, example |
+| Response | status codes, schema, example |
+| Errors | each error code, cause and fix |
+| Rate limits, idempotency, pagination | where relevant |
+| Example | a complete, runnable request and its real response |
+
+| Parameter | Type | Required | Default | Description |
+| :-------- | :--- | :------- | :------ | :---------- |
+| `email` | string | yes | — | customer's email; must be unique per account |
+| `name` | string | no | `null` | display name, max 256 characters |
+| `metadata` | object | no | `{}` | up to 50 string key–value pairs |
+
+| Error | Status | Cause | Fix |
+| :---- | :----- | :---- | :-- |
+| `email_taken` | 409 | a customer with this email exists | look up the existing customer with `GET /v1/customers?email=` |
+| `invalid_email` | 400 | the email is malformed | send an address of the form `name@domain` |
+| `unauthorized` | 401 | missing or expired API key | send `Authorization: Bearer <key>`; rotate expired keys |
+
+Rules: generate the skeleton from the source of truth (OpenAPI spec, types); write descriptions by hand;
+describe every parameter including the obvious ones; state units (ms, bytes, cents) and formats (ISO 8601, UTC);
+give realistic example values, not `foo` and `string`.
+
+## Design docs
+
+A design doc records the problem, the chosen design and, above all, the **trade-offs**, before implementation.
+Malte Ubl's "Design Docs at Google" (2020): "The design doc documents the high level implementation strategy and
+key design decisions with emphasis on the trade-offs that were considered during those decisions." Rule #1 in
+his words: "Write them in whatever form makes the most sense for the particular project." The structure that has
+established itself:
+
+| Section | Content (per Ubl) |
+| :------ | :---------------- |
+| **Context and scope** | a rough overview of the landscape and what is being built; "objective background facts"; not a requirements doc |
+| **Goals and non-goals** | a short bullet list; non-goals are things that "could reasonably be goals" but are explicitly excluded (e.g. "ACID compliance") |
+| **The actual design** | overview, then details: system-context diagram, APIs (sketched, not pasted), data storage, code or pseudo-code only for novel algorithms, degree of constraint |
+| **Alternatives considered** | other designs that would reasonably achieve similar outcomes, and the trade-offs that ruled them out; "one of the most important" sections |
+| **Cross-cutting concerns** | security, privacy, observability and whatever else your organization standardizes |
+
+Length: "around 10-20ish pages" for a larger project; a 1–3 page "mini design doc" for incremental work. **Don't
+write one** when the solution is not ambiguous: if the doc is really an implementation manual (Ubl's
+phrase) with no trade-offs, you should have just written the code.
+
+Lifecycle (Ubl): creation and rapid iteration → review → implementation and iteration (update the doc when the
+design changes) → maintenance and learning (re-read your own docs a year or two later).
+
+## RFCs
+
+**RFC** (request for comments) processes circulate a proposal for broad feedback before a decision. The name comes
+from the IETF series that began with RFC 1 in 1969; open-source projects run their own versions (Rust RFCs,
+Python PEPs, React RFCs), and many companies use "RFC" for what Google calls a design doc.
+
+| Element | Detail |
+| :------ | :----- |
+| number and status | draft → in review → accepted / rejected / withdrawn / superseded |
+| summary | one paragraph |
+| motivation | why, with use cases |
+| detailed design | enough for someone else to implement |
+| drawbacks | the honest case against |
+| alternatives | including "do nothing" |
+| unresolved questions | what the review should settle |
+| comment period | a deadline (e.g. two weeks) and a named decider |
+
+**Normative keywords.** RFC 2119 (1997) defines MUST, MUST NOT, SHOULD, SHOULD NOT and MAY for requirement
+levels; RFC 8174 (2017) clarifies they carry that meaning only in capitals. Use them in specs and APIs so
+"should" is not read as "must".
+
+## Architecture decision records
+
+Michael Nygard, "Documenting Architecture Decisions" (Cognitect blog, 15 November 2011), proposed keeping "a
+collection of records for 'architecturally significant' decisions: those that affect the structure,
+non-functional characteristics, dependencies, interfaces, or construction techniques." Each **ADR** is a short
+text file in the repo, numbered sequentially; numbers are never reused, and reversed decisions are marked
+superseded rather than deleted.
+
+| Section | Nygard's definition (condensed) |
+| :------ | :------------------------------ |
+| **Title** | a short noun phrase: "ADR 9: LDAP for Multitenant Integration" |
+| **Context** | the forces at play (technological, political, social, project); "value-neutral", "simply describing facts" |
+| **Decision** | "our response to these forces", in full sentences, active voice: "We will…" |
+| **Status** | proposed, accepted, deprecated or superseded (with a link to the replacement) |
+| **Consequences** | the resulting context after the decision; all of them, "not just the 'positive' ones" |
+
+He adds: "The whole document should be one or two pages long", written "as if it is a conversation with a future
+developer", in full sentences because "Bullets kill people, even PowerPoint bullets."
+
+| ADR vs design doc | ADR | Design doc |
+| :---------------- | :-- | :--------- |
+| scope | one decision | a whole system or feature |
+| length | 1–2 pages | up to ~20 pages |
+| when | at the decision; immutable afterward | before implementation; updated during it |
+| lives | in the repo, next to the code | usually a shared doc, linked from the repo |
+
+## Commit messages
+
+Chris Beams, "How to Write a Git Commit Message" (2014), "The seven rules of a great Git commit message":
+
+| # | Rule |
+| :- | :--- |
+| 1 | Separate subject from body with a blank line |
+| 2 | Limit the subject line to 50 characters |
+| 3 | Capitalize the subject line |
+| 4 | Do not end the subject line with a period |
+| 5 | Use the imperative mood in the subject line |
+| 6 | Wrap the body at 72 characters |
+| 7 | Use the body to explain what and why vs. how |
+
+His test for rule 5: a subject line should complete "If applied, this commit will ___". "Refactor subsystem X for
+readability" passes; "Fixed bug with Y" doesn't.
+
+| Before | After |
+| :----- | :---- |
+| "fixed stuff" | "Fix race condition in session refresh" |
+| "Updated the README file to include new instructions." | "Document Docker setup in README" |
+| "WIP" | squash it before merging |
+| "Changes per review" | squash into the commit the review was about |
+
+```text
+Fix race condition in session refresh
+
+Two tabs refreshing an expired token at the same time both
+sent the old refresh token; the second request failed and
+logged the user out.
+
+Serialize refreshes behind a single in-flight promise so
+concurrent callers share one request.
+
+Fixes #482
+```
+
+**Conventional Commits** (v1.0.0) adds a machine-readable prefix: `<type>[optional scope]: <description>`, an
+optional body and optional footers. The spec defines only two types: `fix:` (correlates with a SemVer PATCH) and
+`feat:` (a MINOR). A breaking change is marked with a `BREAKING CHANGE:` footer or a `!` after the type/scope (a
+MAJOR). Other types are allowed; `@commitlint/config-conventional` (based on the Angular convention) recommends
+`build`, `chore`, `ci`, `docs`, `style`, `refactor`, `perf` and `test`.
+
+```text
+feat(api)!: require email verification before login
+
+BREAKING CHANGE: unverified accounts now receive 403 from
+POST /v1/sessions. Existing sessions are not affected.
+```
+
+Beams's capitalized subject and Conventional Commits' lowercase `type:` prefix conflict; pick one convention per
+repo and enforce it with a commit-msg hook.
+
+## Changelogs
+
+**Keep a Changelog** (keepachangelog.com): "Changelogs are for humans, not machines." Its guiding principles: an
+entry for every version; group the same types of change; linkable versions and sections; latest version first;
+show the release date of each version; say whether you follow Semantic Versioning.
+
+| Type | For |
+| :--- | :-- |
+| `Added` | new features |
+| `Changed` | changes in existing functionality |
+| `Deprecated` | soon-to-be removed features |
+| `Removed` | now removed features |
+| `Fixed` | any bug fixes |
+| `Security` | in case of vulnerabilities |
+
+Keep an `Unreleased` section at the top. Use ISO 8601 dates (`2026-09-26`). Don't dump the commit log: "they're
+full of noise". "If you do nothing else, list deprecations, removals, and any breaking changes in your
+changelog."
+
+Write entries for users, not for the team: "Fixed: CSV export no longer drops rows with commas in the name"
+beats "Fixed: escape bug in exporter (#1234)".
+
+## Code comments and docstrings
+
+**Comments explain why; code explains what.** If a comment restates the code, delete it; if the code needs a
+comment to explain what it does, try renaming or restructuring first.
+
+| Comment type | Keep? | Example |
+| :----------- | :---- | :------ |
+| why / intent | yes | `// Retry once: the provider returns 503 during failover` |
+| non-obvious constraint | yes | `// Must run before auth middleware; it sets req.tenant` |
+| warning / gotcha | yes | `// Don't cache: prices change per request` |
+| link to decision | yes | `// See ADR-012 for why we don't use an ORM here` |
+| TODO with owner and ticket | yes, sparingly | `// TODO(ana, #512): remove after v3 migration` |
+| what the next line does | no | `// increment i` |
+| commented-out code | no | git remembers |
+| changelog in the file header | no | that's what commits are for |
+
+**Docstrings** document the public interface: what it does, parameters, return value, errors, and an example.
+Python's PEP 257 asks for a one-line summary written as a command ("Return the…"); JSDoc/TSDoc use `@param`,
+`@returns`, `@throws`.
+
+```ts
+/**
+ * Returns the price in cents after applying the coupon.
+ *
+ * @param priceCents - list price in cents; must be >= 0
+ * @param coupon - percentage (0-100) or fixed amount
+ * @returns discounted price, never below 0
+ * @throws RangeError if the percentage exceeds 100
+ */
+export function applyCoupon(
+  priceCents: number,
+  coupon: Coupon,
+): number { /* ... */ }
+```
+
+## Error messages
+
+A good error message says **what happened, why, and what to do next**, in the user's language. The UI side
+(placement, color, inline validation) is in [UX/UI design](/design/principles/ux-ui/).
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "Error 500" | "We couldn't save your changes because the server is unavailable. Your draft is kept; try again in a minute." | what, why, what next; reassurance |
+| "Invalid input" | "Enter a date in the format YYYY-MM-DD, e.g. 2026-09-26." | says what valid looks like |
+| "Authentication failed" | "Your API key has expired. Create a new key in Settings → API keys." | specific cause and the fix, with the path |
+| "Something went wrong!" | "Payment declined by your bank. Use another card or contact your bank." | no vague cheerfulness |
+| "ENOENT: no such file or directory" | "Config file not found at `./app.toml`. Run `app init` to create one." | wrap system errors with context and a fix |
+| "You entered an illegal character." | "Names can contain only letters, numbers and hyphens." | no blame; state the rule |
+
+| Rule | Detail |
+| :--- | :----- |
+| be specific | name the field, file, value or limit |
+| no blame | "the password is too short", not "you entered a bad password" |
+| actionable | every error has a next step, or says none is needed |
+| preserve work | tell users what was and wasn't saved |
+| include an ID for support | "Error ID: 8f3a…" so logs can be found |
+| developer errors can be longer | include the expected vs actual value and a docs link |
+
+## Runbooks and postmortems
+
+### Runbooks
+
+A runbook is a procedure for a known operational situation, written for someone who is stressed, possibly
+half-asleep, and not the author.
+
+| Section | Content |
+| :------ | :------ |
+| alert / trigger | which alert links here; what it means |
+| impact | what users experience; severity |
+| diagnosis | the first 3–5 checks, with exact commands and dashboards |
+| mitigation | the fastest safe way to stop the bleeding (rollback, failover, feature flag) |
+| resolution | the full fix, if different |
+| escalation | who to call, when, how |
+| verification | how to know it's fixed |
+| last reviewed | date and owner; a stale runbook is worse than none |
+
+### Postmortems
+
+Google's *Site Reliability Engineering* book (chapter 15, "Postmortem Culture: Learning from Failure"): "For a
+postmortem to be truly blameless, it must focus on identifying the contributing causes of the incident without
+indicting any individual or team for bad or inappropriate behavior." And: "You can't 'fix' people, but you can
+fix systems and processes." The same logic drives the military after-action review (AAR); see
+[mission command](/leadership/mission-command/).
+
+| Section | Content |
+| :------ | :------ |
+| summary | two or three sentences: what broke, for how long, impact |
+| impact | users affected, duration, revenue, SLO budget consumed |
+| timeline | timestamped events in UTC: detection, escalation, mitigation, resolution |
+| root cause(s) and trigger | the contributing causes, not a single scapegoat |
+| detection | how we found out; how we could have found out sooner |
+| resolution | what stopped it |
+| what went well / what went wrong / where we got lucky | honest lessons |
+| action items | each with owner, priority and ticket; prevent, detect, mitigate |
+
+| Blameful | Blameless |
+| :------- | :-------- |
+| "Dan ran the wrong migration on production." | "The migration tool accepted a production target without confirmation; an engineer ran a staging migration against production." |
+| "Ops failed to notice the disk filling." | "No alert existed for disk usage above 80% on the database hosts." |
+
+## Diagrams in docs
+
+Simon Brown's **C4 model** gives architecture diagrams a shared vocabulary: hierarchical abstractions (software
+systems, containers, components, code) and one diagram level per abstraction.
+
+| Level | Shows | Audience |
+| :---- | :---- | :------- |
+| 1. **System context** | your system as one box, its users and the external systems it talks to | everybody, technical and non-technical |
+| 2. **Container** | the deployable/runnable units (web app, API, database, queue) and how they communicate | technical staff |
+| 3. **Component** | the components inside one container and their responsibilities | developers and architects |
+| 4. **Code** | classes, tables (UML or ERD); usually generated, often skipped | developers |
+
+Supporting diagrams: system landscape, dynamic (a sequence for one use case) and deployment. The model is
+notation- and tooling-independent.
+
+| Diagram rule | Why |
+| :----------- | :-- |
+| a title and a key/legend on every diagram | shapes and colors mean nothing without one |
+| label every arrow with what flows and how ("JSON/HTTPS", "reads orders") | an unlabelled arrow is ambiguous |
+| one level of abstraction per diagram | mixing servers and classes confuses |
+| diagrams as code where possible (Mermaid, PlantUML, Structurizr) | reviewable and versioned |
+| alt text or a prose description | accessibility, and a check that the diagram has a point |
+| date or version it | architecture drifts |
+
+## Terminology and glossaries
+
+| Rule | Detail |
+| :--- | :----- |
+| one term per concept | "workspace" everywhere, not "workspace / project / org" |
+| one concept per term | don't use "account" for both a login and a billing entity |
+| match the UI | if the button says **Remove**, the docs say "remove", not "delete" |
+| define on first use | expand abbreviations: "service-level objective (SLO)" |
+| keep a glossary | alphabetical; one-line definition, link to the main explanation |
+| a word list for style | preferred spellings and banned terms (e.g. "allowlist" not "whitelist") |
+| lint it | Vale or a similar prose linter can enforce the word list in CI |
+
+In technical writing, **repetition is a feature**: a synonym signals a different thing. "Elegant variation" from
+school essays is a bug here.
+
+## Accessibility of docs
+
+| Practice | Detail |
+| :------- | :----- |
+| alt text for informative images | describe what the image shows and why it's there; `alt=""` for decorative images (WCAG 1.1.1) |
+| descriptive link text | the link says where it goes: "the rate limits page", not "here" (WCAG 2.4.4) |
+| real heading hierarchy | one H1, then H2/H3 in order; screen-reader users navigate by headings |
+| text, not screenshots of text | code and errors must be copyable, searchable and readable by screen readers |
+| don't rely on color alone | "the red line" fails for color-blind readers; add labels or patterns |
+| tables with header rows | and no merged-cell layouts |
+| captions and transcripts for video | and don't hide essential steps only in video |
+| plain language | helps non-native readers, cognitive accessibility and machine translation |
+
+Semantics and markup are covered in [HTML accessibility](/design/html/accessibility/).
+
+## Measuring docs quality
+
+There is no single docs metric. Combine signals and watch trends, not absolute numbers.
+
+| Signal | What it suggests | Caveat |
+| :----- | :--------------- | :----- |
+| time to first success (clone → running example) | onboarding quality | measure with real newcomers |
+| task completion in usability tests | whether docs actually work | small samples, but the best evidence |
+| support tickets on documented topics | gaps or unfindable docs | tag tickets by docs page |
+| site search with no results / refined searches | missing content or wrong terms | add the users' words as synonyms |
+| page feedback ("Was this helpful?") | page-level problems | low response rates; read the comments |
+| exits to support from a docs page | the page failed | |
+| staleness (last reviewed date, broken links, failing snippets) | maintenance debt | automate in CI |
+| page views | demand, not quality | a confusing page gets revisited |
+
+Quality checklist per page: correct, complete for its Diátaxis type, findable, up to date, consistent terms,
+runnable examples, one clear purpose.
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| docs organized by team or code structure | organize by user need (Diátaxis), then topic |
+| tutorial that teaches everything | one path, visible success, link the theory |
+| "simply", "just", "easy", "obviously" | delete; they fail exactly the readers who need help |
+| steps with two actions or no expected result | one action per step; show the output |
+| future tense and passive voice in docs | present tense, second person, active |
+| examples with `foo`, `bar`, `string` | realistic values the reader can recognize |
+| screenshots of code or terminal output | text in code blocks |
+| design doc without alternatives | "Alternatives considered" is the most important section |
+| ADRs edited after the fact | supersede with a new ADR |
+| commit messages that describe the diff | explain why; the diff shows what |
+| changelog = commit log | curated, user-facing entries by type |
+| comments that restate code | comment the why; rename for the what |
+| "An error occurred" | what happened, why, what to do |
+| blameful postmortems | contributing causes and system fixes |
+| undefined abbreviations | define on first use; glossary |
+| docs not updated with the code | docs in the same PR; definition of done |
+
+## Templates
+
+### README
+
+```text
+# project-name
+
+One sentence: what it does and for whom.
+
+## Why
+The problem it solves, in 2-3 sentences. Key features:
+- Feature -> benefit
+- Feature -> benefit
+
+## Quick start
+    npm install project-name
+    npx project-name init
+Expected output: ...
+
+## Usage
+Common task 1 (with a copy-pasteable example)
+Common task 2
+Full docs: [link]
+
+## Configuration
+| Variable | Default | Description |
+
+## Development
+    git clone ... && cd project-name
+    npm install && npm test
+
+## Contributing
+See CONTRIBUTING.md. Bugs: [issue tracker link].
+
+## License
+MIT - see LICENSE.
+```
+
+### ADR (Nygard format)
+
+```text
+# ADR 12: Use Postgres row-level security for tenancy
+
+Status: Accepted (2026-09-26). Supersedes ADR 4.
+
+## Context
+Facts and forces, value-neutral. What constrains us:
+tenant isolation is a contractual requirement; queries
+are written by 12 engineers across 3 services; an audit
+found 2 missing tenant filters last quarter.
+
+## Decision
+We will enforce tenant isolation with Postgres row-level
+security policies on every tenant-scoped table, set
+from the session's tenant ID.
+
+## Consequences
+Positive: a missing WHERE clause can no longer leak data.
+Negative: every connection must set the tenant; bulk
+admin jobs need a separate role; policies add query cost
+(measured at ~3% on hot paths).
+Neutral: migrations must include policies (CI check).
+```
+
+### Design doc
+
+```text
+# [System/feature] design
+Author(s) / reviewers / status / last updated
+
+## Context and scope
+Landscape and what we're building. Facts only. Links.
+
+## Goals
+- Measurable goal
+## Non-goals
+- Plausible goal we are explicitly NOT pursuing
+
+## Design
+### Overview (with system-context diagram)
+### APIs (sketch; relevant parts only)
+### Data storage
+### Key algorithms / flows (pseudo-code only if novel)
+
+## Alternatives considered
+Option -> trade-offs -> why not chosen.
+
+## Cross-cutting concerns
+Security, privacy, observability, cost, migration,
+rollout and rollback.
+
+## Open questions
+- Question - owner - due
+```
+
+### Runbook
+
+```text
+# Runbook: [Alert name]
+Owner: [team]   Last reviewed: [date]
+
+## What this alert means
+[Condition] for [duration]. User impact: [..]. Sev: [..]
+
+## Diagnose (first 5 minutes)
+1. Dashboard: [link] - look for [..]
+2. `[command]` - expected: [..]
+3. Recent deploys: `[command]`
+
+## Mitigate
+- If caused by a deploy: `[rollback command]`
+- If traffic spike: [scale / rate-limit steps]
+
+## Escalate
+After [15] minutes or if [condition]: page [rota/person].
+
+## Verify
+[Metric] back below [threshold] for [10] minutes.
+
+## Follow-up
+Open an incident doc; schedule the postmortem.
+```
+
+### Bug report
+
+```text
+Title: [Component]: [symptom] when [condition]
+
+Environment: version/commit, OS, browser, config
+Severity: [blocker / major / minor] - [users affected]
+
+Steps to reproduce:
+1. ...
+2. ...
+3. ...
+
+Expected: ...
+Actual: ...   (exact error text, not a screenshot of it)
+
+Frequency: always / intermittent (N of M tries)
+Logs / trace IDs / screenshots: ...
+Workaround: ... (or none)
+```
+
+### Pull request description
+
+```text
+## What
+One or two sentences: the change, from the user's or
+system's point of view.
+
+## Why
+The problem or ticket (#123). Link the design doc/ADR.
+
+## How
+Key implementation choices and trade-offs; anything
+non-obvious a reviewer should look at first.
+
+## Testing
+How you verified it: tests added, manual steps, results.
+
+## Risk and rollout
+Migrations, flags, backwards compatibility, rollback.
+
+## Screenshots (UI changes)
+Before / after.
+```
+
+### Postmortem
+
+```text
+# Postmortem: [title] ([date])
+Status: draft / reviewed   Authors: [..]   Blameless.
+
+Summary: [what broke, how long, impact - 2-3 sentences]
+Impact: [users, duration, revenue, SLO budget]
+Root causes: [contributing causes]
+Trigger: [what set it off]
+Detection: [how found; time to detect]
+Resolution: [what stopped it]
+
+Timeline (UTC)
+HH:MM  event
+
+What went well / What went wrong / Where we got lucky
+
+Action items
+| Action | Type (prevent/detect/mitigate) | Owner | Ticket |
+```
+
+## References
+
+- [Diátaxis](https://diataxis.fr/): Daniele Procida's framework; see [the compass](https://diataxis.fr/compass/) for the action/cognition × acquisition/application questions
+- [Write the Docs: Docs as Code](https://www.writethedocs.org/guide/docs-as-code/): the docs-as-code philosophy and tooling
+- [Google developer documentation style guide: highlights](https://developers.google.com/style/highlights): the core rules summarized above
+- [Microsoft Writing Style Guide: top 10 tips](https://learn.microsoft.com/en-us/style-guide/top-10-tips-style-voice): Microsoft's voice and style in brief
+- [Make a README](https://www.makeareadme.com/): README guidance and template
+- [Malte Ubl, "Design Docs at Google" (2020)](https://www.industrialempathy.com/posts/design-docs-at-google/): design doc sections, length and lifecycle
+- [Michael Nygard, "Documenting Architecture Decisions" (2011)](https://www.cognitect.com/blog/2011/11/15/documenting-architecture-decisions): the original ADR format
+- [RFC 2119: Key words for use in RFCs to Indicate Requirement Levels](https://www.rfc-editor.org/rfc/rfc2119): MUST, SHOULD, MAY; clarified by [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)
+- [Chris Beams, "How to Write a Git Commit Message" (2014)](https://cbea.ms/git-commit/): the seven rules
+- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): machine-readable commit types and SemVer mapping
+- [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/): changelog principles and change types
+- [PEP 257: Docstring Conventions](https://peps.python.org/pep-0257/): Python docstring rules
+- [Google SRE book, chapter 15: Postmortem Culture](https://sre.google/sre-book/postmortem-culture/): blameless postmortems
+- [The C4 model](https://c4model.com/): Simon Brown's four levels of architecture diagrams
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/): non-text content (1.1.1) and link purpose (2.4.4)
+- [Clear writing](/writing/nonfiction/clear-writing/) and [persuasive writing](/writing/nonfiction/persuasive-writing/): the companion sheets

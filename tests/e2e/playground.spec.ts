@@ -169,7 +169,7 @@ test.describe("playground: reference panel", () => {
     await openPlayground(page, "web");
     await page.getByRole("button", { name: /Refs/ }).click();
     const panel = page.getByRole("complementary", { name: "Reference sheets" });
-    await expect(panel.getByRole("option").first()).toContainText("design/css/css");
+    await expect(panel.getByRole("option").first()).toContainText("design/html/semantic-elements");
     await page.getByRole("combobox", { name: "Search reference sheets" }).fill("flexbox");
     await expect(panel.getByRole("option").first()).toContainText("design/css");
     await page.getByRole("combobox", { name: "Search reference sheets" }).press("Enter");

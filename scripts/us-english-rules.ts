@@ -89,6 +89,8 @@ const ISE_STEMS = [
   "materialis",
   "stabilis",
   "centralis",
+  "decentralis",
+  "amortis",
   "personalis",
   "characteris",
   "criticis",
@@ -251,6 +253,7 @@ export const SPELLING_RULES: readonly SpellingRule[] = [
     tyres: "tires",
     plough: "plow",
     cheque: "check",
+    cheques: "checks",
     storey: "story",
     mould: "mold",
     moult: "molt",
@@ -282,6 +285,7 @@ export const KEEP: readonly RegExp[] = [
   /"\/maths\/[^"]*"/, // the redirect from the old topic URL (next.config.ts)
   /`\/maths\/[^`]*`/, // the old URL, named in the README
   /from "Maths"/,
+  /Behavioural Public Policy/, // a journal's name
 ];
 
 /** Replace a word keeping its capitalization pattern (Word, WORD, word). */

@@ -1,0 +1,616 @@
+---
+title: Valuation
+date: 2026-09-26
+order: 4
+---
+
+How to put a number on a business: intrinsic (DCF) valuation step by step with a complete worked model, the
+bridge from enterprise value to a price per share, dividend and FCFE models, multiples and comparables,
+sector metrics, young and unprofitable companies, startup methods, and the biases that make most valuations
+wrong in predictable directions. Discount rates, CAPM and WACC are derived in
+[corporate finance](/finance/business/corporate-finance/); free cash flow definitions and statement analysis in
+[financial statements](/finance/business/financial-statements/); cap tables, SAFEs and 409A mechanics in
+[startup finance](/finance/business/startup-finance/).
+
+<Note kind="warning">General information, not investment advice. Worked examples use invented companies; market inputs are dated where used.</Note>
+
+## Value versus price
+
+**Value** is what an asset is worth given its expected cash flows and their risk. **Price** is what someone pays
+today, set by supply, demand, mood, liquidity and narrative. They converge only if the market eventually agrees
+with your cash-flow view, and nothing guarantees when.
+
+| | Valuing (intrinsic) | Pricing (relative) |
+| :--- | :--- | :--- |
+| question | what are the cash flows worth? | what are others paying for similar things? |
+| driver | cash flows, growth, risk | multiples, momentum, flows, sentiment |
+| tool | DCF, DDM | comparables, precedent transactions |
+| who uses it | long-horizon investors, acquirers, corporate finance | traders, bankers, most VCs, IPO pricing |
+| fails when | inputs are fantasy | the whole peer group is mispriced |
+
+Damodaran's framing: most "valuations" in practice are pricing exercises. That is fine if you know which one you
+are doing. A DCF that is reverse-engineered to hit a comparable's multiple is pricing dressed as valuation.
+
+## Approaches
+
+| Approach | Method | Best for | Weakness |
+| :--- | :--- | :--- | :--- |
+| **intrinsic / DCF** | PV of free cash flows at the cost of capital | businesses with forecastable cash flows; acquisitions; strategy | garbage in, garbage out; terminal value dominates |
+| **relative / multiples** | apply peer EV/EBITDA, P/E, EV/Revenue | quick market-consistent price; IPOs; fairness opinions | imports the market's errors; peers rarely comparable |
+| **asset-based** | sum of assets at market or liquidation value, minus liabilities | holding companies, real estate, liquidation, distress | ignores going-concern and intangible value |
+| **option-based** | price equity or projects as options (Black–Scholes, binomial) | distressed equity, patents, undeveloped reserves, real options | inputs (volatility, underlying value) hard to estimate |
+| **VC method** | exit value ÷ target multiple, adjusted for dilution | early-stage startups | exit value and target return are negotiated guesses |
+| **sum of the parts** | value each division separately | conglomerates, spin-off analysis | holding-company discounts and dis-synergies |
+
+Use at least two approaches and reconcile the difference; the gap usually tells you which assumption to
+investigate.
+
+## DCF step by step
+
+$$
+EV = \sum_{t=1}^{n} \frac{FCFF_t}{(1+WACC)^t} + \frac{TV_n}{(1+WACC)^n},
+\qquad FCFF = EBIT(1-T) + D\&A - \text{CapEx} - \Delta NWC
+$$
+
+<Steps>
+<Step title="Understand the business and write the narrative">
+
+What does it sell, to whom, why does it win, how big can it get, what does it cost to grow? Every number below
+should trace back to a sentence here.
+
+</Step>
+<Step title="Normalize the base year">
+
+Start from [financial statements](/finance/business/financial-statements/): strip one-offs, capitalize R&D if
+it behaves like investment, treat leases as debt consistently, separate non-operating assets.
+
+</Step>
+<Step title="Forecast free cash flow to the firm">
+
+Revenue growth → operating margin → taxes → reinvestment (capex − D&A + ΔNWC). Explicit period of 5–10 years,
+long enough to reach a **steady state** where growth, margins and returns on capital are stable.
+
+</Step>
+<Step title="Discount at WACC">
+
+Market-value weights, bottom-up beta, risk-free rate and equity risk premium from the same date (see
+[corporate finance](/finance/business/corporate-finance/)). Use the mid-year convention if cash arrives
+through the year (multiply by $(1+WACC)^{0.5}$).
+
+</Step>
+<Step title="Terminal value">
+
+Gordon growth with a growth rate at or below long-run nominal GDP and reinvestment consistent with that growth;
+cross-check against an exit multiple.
+
+</Step>
+<Step title="Bridge to equity and per share">
+
+Add non-operating assets, subtract debt and other claims, divide by diluted shares (treasury stock method).
+
+</Step>
+<Step title="Stress and reconcile">
+
+Sensitivity table (WACC × g), scenarios, compare to multiples and to the current price; explain the gap.
+
+</Step>
+</Steps>
+
+## Terminal value
+
+**Gordon growth (perpetuity) method:**
+
+$$
+TV_n = \frac{FCF_{n+1}}{WACC - g}
+\qquad\text{with}\qquad
+FCF_{n+1} = NOPAT_{n+1}\left(1 - \frac{g}{RONIC}\right)
+$$
+
+The second form is Koller et al.'s **value-driver formula**: growth needs reinvestment, and the reinvestment rate
+is $g/RONIC$ (return on new invested capital). If $RONIC = WACC$, growth adds no value and
+$TV = NOPAT_{n+1}/WACC$ whatever $g$ is. Plugging a growth rate in without the matching reinvestment is the most
+common way DCFs overstate value.
+
+**Exit multiple method:** $TV_n = \text{multiple} \times EBITDA_n$. Simple and market-consistent, but it is a
+relative valuation inserted into a DCF: the multiple embeds someone else's growth and return assumptions. Always
+back out the implied perpetual growth rate and ask if it is plausible.
+
+| Check | Rule of thumb |
+| :--- | :--- |
+| $g$ | ≤ long-run nominal growth of the economy (and of the currency's risk-free rate); 2–4% is typical for USD models |
+| $g$ vs $WACC$ | $g$ must be well below WACC; as $g \to WACC$, value → ∞ |
+| steady state | margins, growth and ROIC stable in the last explicit year; otherwise extend the forecast |
+| RONIC | between WACC (competition erodes excess returns) and today's ROIC (durable moat) |
+| TV share of EV | commonly 60–80%+, higher for growth firms: that is normal, but it means the explicit forecast barely matters |
+
+## From enterprise value to equity value
+
+| Step | Item | Note |
+| :--- | :--- | :--- |
+| | **enterprise value** (PV of FCFF) | value of operations to all capital providers |
+| + | cash and equivalents | excess cash only, if some is needed to operate |
+| + | non-operating assets | investments, equity stakes, surplus property, overfunded pensions |
+| − | debt | market value if available; include lease liabilities if FCFF was computed before lease payments |
+| − | preferred stock | at liquidation or market value |
+| − | minority (non-controlling) interest | if you consolidated 100% of a subsidiary's cash flows |
+| − | other claims | underfunded pensions, litigation, some deferred taxes, contingent consideration |
+| = | **equity value** | |
+| ÷ | diluted shares | basic + in-the-money options (treasury stock method) + RSUs + convertibles if in the money |
+| = | **value per share** | |
+
+**Treasury stock method (TSM):** in-the-money options add $N \times (1 - K/P)$ shares, because the exercise cash
+buys back shares at price $P$. In a DCF, $P$ is the value you are solving for, so iterate (or value options with
+Black–Scholes and subtract their value from equity before dividing by basic shares, the more rigorous route).
+
+## Worked five-year DCF
+
+An invented company, **Quillmark Sensors**: industrial sensors, \$500m revenue last year, growing fast but slowing.
+USD millions except per share.
+
+| Assumption | Value |
+| :--- | :--- |
+| revenue growth, years 1–5 | 20%, 16%, 12%, 9%, 6% |
+| EBIT margin, years 1–5 | 12.0%, 13.5%, 15.0%, 16.0%, 17.0% |
+| tax rate | 21% |
+| D&A / capex | 4% / 6% of revenue |
+| NWC | 10% of revenue (ΔNWC = 10% of Δrevenue) |
+| WACC | 9.0% (≈ β 1.3 at 4.18% $R_f$ and 4.23% ERP, 15% debt at 6% pre-tax → 8.94%) |
+| terminal growth / RONIC | 3.0% / 15% |
+
+```text
+Year                    1       2       3       4       5
+Revenue             600.0   696.0   779.5   849.7   900.7
+EBIT                 72.0    94.0   116.9   135.9   153.1
+Tax at 21%          -15.1   -19.7   -24.6   -28.5   -32.2
+NOPAT                56.9    74.2    92.4   107.4   121.0
++ D&A                24.0    27.8    31.2    34.0    36.0
+- Capex             -36.0   -41.8   -46.8   -51.0   -54.0
+- Change in NWC     -10.0    -9.6    -8.4    -7.0    -5.1
+FCFF                 34.9    50.7    68.4    83.4    97.8
+Discount factor    0.9174  0.8417  0.7722  0.7084  0.6499
+PV of FCFF           32.0    42.7    52.8    59.1    63.6
+
+Sum of PV (years 1-5)                        250.2
+NOPAT year 6 = 121.0 x 1.03                  124.6
+Reinvestment rate = g / RONIC = 3% / 15%       20%
+FCFF year 6 = 124.6 x (1 - 0.20)              99.7
+Terminal value = 99.7 / (9.0% - 3.0%)       1,661.2
+PV of terminal value = 1,661.2 x 0.6499     1,079.6
+Enterprise value                            1,329.8
+Terminal value share of EV                    81.2%
+
++ Cash                                         60.0
++ Non-operating investments                    25.0
+- Debt                                       -220.0
+- Minority interest                           -15.0
+Equity value                                1,179.8
+
+Basic shares 40.0m; RSUs 0.8m
+Options 3.0m at strike 12 (in the money)
+Options 1.5m at strike 30 (out of the money)
+TSM, iterated: diluted shares 42.50m
+Value per share                              27.76
+```
+
+- The iteration converges at \$27.76: the \$12 options add $3.0 \times (1 - 12/27.76) = 1.70$m shares; the \$30
+  options are out of the money and add nothing.
+- The terminal value is 81% of enterprise value. The five forecast years, where all the modeling effort went,
+  contribute less than a fifth.
+- **Exit-multiple cross-check.** The Gordon terminal value is 8.8× year-5 EBITDA (189.1). An "industry" exit
+  multiple of 11× gives TV 2,080.5 and EV 1,602.4 (+20%), but at 15% RONIC that multiple implies perpetual growth
+  of about 4.9%, above what most forecasters expect for long-run US nominal GDP. The multiple is smuggling in
+  growth.
+- A naive $FCF_5 \times (1+g)$ terminal cash flow gives EV 1,341.9: close here only because year-5 reinvestment
+  (19.1% of NOPAT) happens to be near the 20% that 3% growth requires. With heavier year-5 capex, the naive method
+  would be badly off.
+
+### Sensitivity: value per share (WACC × terminal growth)
+
+| WACC \ g | 2.0% | 2.5% | 3.0% | 3.5% | 4.0% |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| 8.0% | 30.95 | 32.39 | 34.12 | 36.22 | 38.82 |
+| 8.5% | 28.17 | 29.34 | 30.69 | 32.27 | 34.18 |
+| 9.0% | 25.78 | 26.70 | **27.76** | 29.00 | 30.47 |
+| 9.5% | 23.70 | 24.43 | 25.26 | 26.22 | 27.35 |
+| 10.0% | 21.89 | 22.47 | 23.12 | 23.87 | 24.74 |
+
+Enterprise value across the same grid runs from \$1,073m (10%, 2%) to \$1,828m (8%, 4%). A ±1 point range on
+WACC, which is roughly the honest uncertainty in any cost of capital, moves value per share from \$23.12 to
+\$34.12 (−17% to +23%). Report
+a range, not a point.
+
+## Common DCF mistakes
+
+| Mistake | Why it matters | Fix |
+| :--- | :--- | :--- |
+| **terminal value is 70–80%+ of EV and nobody examined it** | common and not wrong in itself, but it means the value rests on steady-state assumptions, not the detailed forecast | spend as much effort on steady-state margin, RONIC and $g$ as on year 1 |
+| **$g$ above nominal GDP growth** | a firm growing faster than the economy forever eventually becomes the economy | cap $g$ at or below the risk-free rate / nominal GDP; extend the high-growth period instead |
+| **growth without reinvestment** | free growth inflates value | reinvestment = $g/RONIC$; or sales-to-capital ratio in the forecast |
+| **mismatched cash flows and rates** | FCFF at cost of equity, FCFE at WACC, nominal flows at real rates, USD flows at a local-currency rate | FCFF ↔ WACC, FCFE ↔ $k_E$, nominal ↔ nominal, same currency |
+| **double counting** | subtracting interest from FCFF *and* using WACC; counting cash in FCFF and adding it again; leases in both EBITDA and debt inconsistently | pick one treatment and apply it to cash flows, WACC weights and the bridge |
+| **risk counted twice** | conservative cash flows *and* a padded discount rate | expected (probability-weighted) cash flows at an unpadded rate |
+| **circularity ignored** | WACC weights depend on equity value, which depends on WACC; TSM dilution depends on price | iterate, or use target weights |
+| **stock-based compensation added back** | SBC is a real cost paid in shares | treat it as an expense in FCFF, or count all future dilution |
+| **margins that expand forever** | margins above the best firms in the industry | benchmark steady-state margin against peers |
+| **no link between story and numbers** | a 30% revenue CAGR for a firm with no moat | write the narrative first; test each number against it |
+| **precision theatre** | "\$27.7614 per share" | round, and show the sensitivity grid |
+
+## FCFE and dividend discount models
+
+**Free cash flow to equity** is what is left for shareholders after reinvestment and debt flows:
+
+$$
+FCFE = NI - (\text{CapEx} - D\&A) - \Delta NWC + (\text{new debt} - \text{debt repaid})
+$$
+
+Worked: net income 120, capex 60, D&A 40, ΔNWC 10, net borrowing 15 → $FCFE = 120 - 20 - 10 + 15 = 105$.
+Discount FCFE at the **cost of equity** to get equity value directly. Use FCFE when leverage is stable or when
+debt is operating raw material (banks, insurers).
+
+**Dividend discount model (Gordon 1959):**
+
+$$
+P_0 = \frac{D_1}{k_E - g}
+$$
+
+$D_1$ = \$2.00, $k_E$ = 8%, $g$ = 4% → \$50.00. **Two-stage**: $D_0$ = \$1.50 growing 12% for 5 years (\$1.680,
+\$1.882, \$2.107, \$2.360, \$2.644), then 4%, at $k_E$ = 9%. PV of dividends \$8.14, terminal value
+$2.644 \times 1.04 / 0.05 = 54.99$, PV \$35.74, value **\$43.88**, 81% of it from the terminal value.
+
+DDMs suit stable dividend payers (utilities, banks, consumer staples) and fail for firms that pay little and
+buy back a lot; use FCFE or FCFF there.
+
+## Multiples
+
+| Multiple | Formula | Fits | Avoid when |
+| :--- | :--- | :--- | :--- |
+| **EV/EBITDA** | enterprise value / EBITDA | capital-intensive, leveraged or cross-border comparisons (before D&A, interest, tax differences) | capex intensity differs (EBITDA ignores it); leases treated inconsistently |
+| **EV/EBIT** | EV / operating profit | when D&A reflects real capital consumption | heavy acquisition amortization distorts EBIT |
+| **EV/Revenue** | EV / sales | unprofitable or early firms; margins expected to converge | margins differ a lot among peers |
+| **P/E** | price / EPS | mature, profitable firms with similar leverage | losses, one-offs, very different leverage |
+| **PEG** | P/E ÷ expected growth (%) | comparing growth firms (popularised by Peter Lynch) | ignores risk and ROIC; growth estimates are optimistic |
+| **P/B** | price / book equity | banks, insurers (assets marked near market) | intangible-heavy firms; buyback-shrunk equity |
+| **EV/ARR, P/FFO, EV/reserves** | sector-specific | see below | outside that sector |
+
+Rules: **equity** multiples (P/E, P/B) pair equity value with equity-holder earnings; **enterprise** multiples
+(EV/…) pair EV with pre-interest measures. Mixing them (price / EBITDA) is wrong. Prefer **forward**
+multiples for growing firms and be consistent across peers.
+
+**Multiples are compressed DCFs.** From the Gordon model:
+
+$$
+\frac{P_0}{E_1} = \frac{\text{payout}}{k_E - g}, \qquad
+\frac{P_0}{B_0} = \frac{ROE - g}{k_E - g}, \qquad
+\frac{EV}{NOPAT_1} = \frac{1 - g/ROIC}{WACC - g}
+$$
+
+| Inputs | Implied multiple |
+| :--- | :--- |
+| payout 50%, $k_E$ 9%, $g$ 4% | forward P/E 10.0× |
+| ROE 12%, $k_E$ 9%, $g$ 4% | P/B 1.6× |
+| ROE 8% (below $k_E$), same | P/B 0.8×: book value destroyed |
+| ROIC 15%, WACC 8.5%, $g$ 4%, tax 21% | EV/NOPAT 16.3×, EV/EBIT 12.9× |
+
+A peer "trading at a discount" may simply have lower ROIC or higher risk. Before calling it cheap, check that the
+fundamentals match.
+
+### Picking comparables
+
+- Same **economics**: business model, growth, margins, ROIC, risk, size, geography. Industry code is a starting
+  point, not a test.
+- 5–10 peers beats 30 loosely related ones. Remove outliers with a stated reason, not because they are
+  inconvenient.
+- Use the **median** (robust to outliers) and the interquartile range; show both.
+- Adjust for accounting differences (leases, SBC, one-offs) before computing multiples.
+- Regress the multiple on its driver (EV/Revenue on operating margin or growth) across peers when the set is
+  large enough.
+
+| | Trading comparables | Precedent transactions |
+| :--- | :--- | :--- |
+| source | current market prices of listed peers | prices paid in past M&A deals |
+| includes control premium | no (minority, liquid stakes) | yes |
+| use | IPO pricing, minority valuation | M&A pricing, fairness opinions, floor for a sale price |
+| problem | market-wide mispricing | stale (different market conditions); deal-specific synergies baked in |
+
+### Worked example
+
+Target: EBITDA \$120m, net income \$45m, net debt \$300m, 50m shares.
+
+| Peer | EV/EBITDA | P/E |
+| :--- | ---: | ---: |
+| A | 9.5× | 17.0× |
+| B | 11.0× | 19.5× |
+| C | 12.5× | 24.0× |
+| D | 10.0× | 16.0× |
+| E | 14.0× | 31.0× |
+| **median** (mean) | **11.0×** (11.4×) | **19.5×** (21.5×) |
+
+| Method | Low (2nd peer) | Median | High (4th peer) |
+| :--- | ---: | ---: | ---: |
+| EV/EBITDA → EV | 1,200 | 1,320 | 1,500 |
+| − net debt → equity | 900 | 1,020 | 1,200 |
+| per share | \$18.00 | **\$20.40** | \$24.00 |
+| P/E → per share | \$15.30 | **\$17.55** | \$21.60 |
+
+The P/E answer is lower: either the target has higher interest costs or tax than peers, or its EBITDA converts
+to earnings less efficiently. Find out which before averaging the two.
+
+## Sector-specific metrics
+
+| Sector | Metric | Why | Pitfall |
+| :--- | :--- | :--- | :--- |
+| **SaaS / subscription** | EV/ARR (or EV/NTM revenue); net revenue retention; Rule of 40 | revenue is recurring and margins are depressed by growth spending | ARR definitions vary; multiples swing with interest rates |
+| **banks** | P/B (or P/tangible book) vs ROE; P/E | assets and liabilities near market value; debt is raw material | book value depends on loan-loss provisioning |
+| **insurers** | P/B, embedded value | as banks | reserve adequacy |
+| **REITs** | P/FFO, P/AFFO, NAV | GAAP depreciation of property understates cash earnings | FFO ignores maintenance capex (AFFO deducts it) |
+| **energy / mining** | EV/reserves, EV/production, NAV at strip prices | value is in the ground | commodity price deck assumptions |
+| **retail** | EV/EBITDAR, sales per square foot | rent-heavy cost bases | lease treatment |
+| **biotech** | risk-adjusted NPV (rNPV) by pipeline asset | binary trial outcomes | phase success probabilities |
+
+**Rule of 40.** Revenue growth % + profit margin % ≥ 40 for a healthy software company at scale. Brad Feld
+popularised it in "The Rule of 40% For a Healthy SaaS Company" (3 February 2015), saying he heard it from a
+late-stage investor at a board meeting; he preferred EBITDA as the profit measure and applied it to companies
+with at least about \$50m of revenue. Many now use free-cash-flow margin instead. Worked: 35% growth and 5% FCF
+margin scores 40. It is a heuristic for the growth-versus-profit trade-off, not a valuation model; at illustrative
+EV/ARR multiples of 6–10×, \$50m ARR spans \$300–500m of EV, a range that shows how much the multiple, not the
+company, drives the answer.
+
+**FFO** (Nareit definition): GAAP net income excluding gains or losses on sales of property, impairments of
+depreciable real estate, and real-estate depreciation and amortization.
+
+## Young, high-growth and unprofitable companies
+
+No earnings, short history, few comparables and a real chance of failure. Damodaran's approach (*The Dark Side
+of Valuation*; his paper on young and start-up companies) keeps the DCF structure but changes what drives it:
+
+| Driver | How |
+| :--- | :--- |
+| **revenue growth** | start from total addressable market and plausible market share; growth decays toward the economy's |
+| **target operating margin** | margin in steady state, benchmarked to mature peers; converge from today's losses |
+| **reinvestment** | $\Delta \text{Revenue} / \text{sales-to-capital ratio}$ (industry benchmark); ties growth to capital spent |
+| **net operating losses** | carry forward to shield future profits from tax |
+| **cost of capital** | high early (like a young firm), falling to a mature-firm level by the terminal year |
+| **probability of failure** | value the going concern, then weight: $V = V_{GC}(1 - p) + V_{distress}\,p$ |
+| **equity claims** | subtract the value of employee options and preferred claims; value per share of **common** |
+
+**Worked (invented, USD millions).** Revenue 20, operating margin −30%, NOL 5, cash 30. Growth 60% decaying to
+3% by year 10; margin converging linearly to 20%; sales-to-capital 2.0; tax 21%; cost of capital 11% for years
+1–5, falling to 8.5% by year 10.
+
+```text
+Yr  Growth  Revenue  Margin   EBIT    Tax  Reinvest   FCFF    WACC  PV
+ 1   60.0%    32.0   -25%     -8.0    0.0     6.0    -14.0   11.0%  -12.6
+ 2   50.0%    48.0   -20%     -9.6    0.0     8.0    -17.6   11.0%  -14.3
+ 3   40.0%    67.2   -15%    -10.1    0.0     9.6    -19.7   11.0%  -14.4
+ 4   35.0%    90.7   -10%     -9.1    0.0    11.8    -20.8   11.0%  -13.7
+ 5   30.0%   117.9    -5%     -5.9    0.0    13.6    -19.5   11.0%  -11.6
+ 6   24.6%   146.9     0%      0.0    0.0    14.5    -14.5   10.5%   -7.8
+ 7   19.2%   175.2     5%      8.8    0.0    14.1     -5.3   10.0%   -2.6
+ 8   13.8%   199.3    10%     19.9    0.0    12.1      7.8    9.5%    3.5
+ 9    8.4%   216.1    15%     32.4    2.8     8.4     21.2    9.0%    8.7
+10    3.0%   222.6    20%     44.5    9.3     3.2     31.9    8.5%   12.0
+
+Sum of PV, years 1-10                                  -52.8
+Terminal: NOPAT 36.2 x (1 - 3%/15%) / (8.5% - 3%)        526.8
+PV of terminal value                                    198.6
+Value of operating assets (going concern)               145.8
+Failure probability 25%, distress proceeds 5.0
+Adjusted: 145.8 x 0.75 + 5.0 x 0.25                     110.6
++ Cash                                                   30.0
+Equity value (before option and preference claims)      140.6
+```
+
+Seven of the ten years have negative cash flows and their combined PV is negative, so **all** of the value is in
+the terminal value; the failure probability alone removes about a quarter. The model's use is not the point estimate but showing which
+story assumptions (TAM, target margin, capital efficiency) the price requires.
+
+## Startup valuation
+
+At seed and Series A there is little to discount, so investors price the round. Details of cap tables, SAFEs,
+option pools and dilution are in [startup finance](/finance/business/startup-finance/).
+
+**Pre-money vs post-money.** $\text{post} = \text{pre} + \text{new money}$; investor ownership =
+$\text{investment} / \text{post}$. A \$2m investment at \$8m pre is \$10m post and 20%. Watch whether the option
+pool is created before the round (reducing the effective pre-money for founders) and whether SAFEs convert on a
+pre- or post-money basis.
+
+### VC method
+
+$$
+\text{Post-money} = \frac{\text{exit value}}{\text{target multiple}} \times \text{retention ratio},
+\qquad
+\text{required ownership now} = \frac{\text{investment} \times \text{target multiple}}{\text{exit value} \times \text{retention}}
+$$
+
+Worked: a VC invests \$8m. If the company succeeds, year-6 revenue of \$60m at 5× EV/Revenue gives an exit value
+of \$300m. Target multiple 10× (≈ 46.8% IRR over 6 years).
+
+| Case | Required ownership | Post-money | Pre-money |
+| :--- | ---: | ---: | ---: |
+| no future dilution | $8 \times 10 / 300$ = 26.7% | \$30.0m | \$22.0m |
+| later rounds leave 70% (retention 0.7) | $26.7\% / 0.7$ = 38.1% | \$21.0m | \$13.0m |
+
+The high target multiple is not greed alone: it bundles the probability of failure (most portfolio companies return
+little), illiquidity and the VC's own fees into one number, applied to a **success-case** exit value. That makes the
+method a pricing convention, not an expected-value calculation.
+
+### Scorecard and Berkus
+
+| Method | How | Weakness |
+| :--- | :--- | :--- |
+| **Berkus** (Dave Berkus, 1990s) | up to \$0.5m for each of five elements (sound idea, prototype, quality team, strategic relationships, product rollout or sales); pre-revenue maximum \$2.5m in the original version | arbitrary caps; ignores market size and the current funding market; Berkus himself later suggested adjusting the caps |
+| **Scorecard** (Bill Payne) | start from the median pre-money of comparable local deals, then adjust by weighted factors: team up to 30%, opportunity size 25%, product 15%, competition 10%, marketing and channels 10%, need for more funding 5%, other 5% | anchored on what others paid; subjective weights |
+
+Both are negotiation anchors for angels, not valuations: neither looks at cash flows, and both inherit whatever the
+local market is paying.
+
+### Headline valuations overstate common stock
+
+The headline post-money = latest preferred price × **all** fully diluted shares. It assumes every share is worth
+what the newest preferred paid, but preferred shares carry liquidation preferences, seniority and other rights
+common shares do not.
+
+Worked: 100m fully diluted shares; Series B buys 10m at \$10 (\$100m) with a 1× non-participating preference.
+Headline post-money: \$1bn.
+
+| Exit value | Series B takes | Common per share (90m shares) |
+| :--- | ---: | ---: |
+| \$150m | \$100m (preference) | \$0.56 |
+| \$400m | \$100m (preference) | \$3.33 |
+| \$1,000m | \$100m (either) | \$10.00 |
+| \$2,000m | \$200m (converts to 10%) | \$20.00 |
+
+Common is only worth the headline price if the exit is at least \$1bn. With a **participating** preference, at
+\$400m Series B takes \$100m + 10% of the remaining \$300m = \$130m, and common falls to \$3.00. Gornall and
+Strebulaev (2020) modeled 135 US unicorns and found reported post-money valuations averaged 48% above fair value,
+with common shares overvalued by 56%; 65 lost unicorn status after adjustment.
+
+### 409A valuations
+
+US private companies granting options need a fair-market-value estimate of **common** stock under IRC §409A;
+an independent appraisal is presumed reasonable (a safe harbor) for up to 12 months unless a material event
+occurs. It is usually well below the preferred price because of preferences and illiquidity. Mechanics and
+timing are in [startup finance](/finance/business/startup-finance/).
+
+## Real options valuation
+
+Some assets are worth more than their DCF because they carry rights to act later: undeveloped oil reserves, a
+drug patent, a pilot that could scale, the equity of a distressed firm (a call on the firm's assets struck at the
+face value of its debt).
+
+| Option input | Real-asset analogue |
+| :--- | :--- |
+| underlying value $S$ | PV of cash flows from developing the asset now |
+| strike $K$ | cost of developing it |
+| time to expiry $T$ | life of the patent, lease or license |
+| volatility $\sigma$ | uncertainty in the underlying value |
+| dividend yield | value lost each year of waiting (competitors, cash flows forgone) |
+
+Intuition: a project with negative NPV today can still be worth something if it can be deferred and is highly
+uncertain, because you only exercise in the good states. Keep option value **separate** from the DCF and show it
+explicitly; do not add "strategic value" to a DCF without a named decision, trigger and payoff. Decision trees
+are usually more honest than Black–Scholes for non-traded assets. Details in
+[corporate finance](/finance/business/corporate-finance/#real-options).
+
+## Biases, narrative and numbers
+
+Valuations are biased before they are wrong: the analyst usually knows the answer the client wants.
+
+| Bias | Symptom | Counter |
+| :--- | :--- | :--- |
+| **who pays** | sell-side, fairness opinions and deal models land near the deal price | ask what answer each party needs; value it before seeing the price |
+| **anchoring** | DCF tuned until it matches the market or the last round | build the model before looking up the price; record the first estimate |
+| **confirmation** | only bullish comparables survive the outlier screen | pre-register the peer set and screening rule |
+| **overconfidence** | narrow ranges, single-point answers | sensitivity grids, scenario weights, base rates |
+| **narrative drift** | a great story with numbers that do not follow from it | test each number against the story |
+| **false precision** | many decimals, tiny ranges | round; show ranges |
+
+More on these in [cognitive biases](/thinking/mental-models/cognitive-biases/) and
+[decision-making](/thinking/mental-models/decision-making/).
+
+**Narrative and numbers (Damodaran, 2017).** Every valuation is a story told in numbers. Write the story first
+(what the company will be), check it is **possible**, **plausible** and **probable**, convert it into drivers
+(market size, share, margins, reinvestment, risk), value it, then keep a feedback loop: when events change the
+story (a regulatory ruling, a new competitor, a management change) the value changes; noise that does not change
+the story should not. Storytellers learn where their narrative is implausible; number-crunchers learn when their
+spreadsheet tells a story no one would believe.
+
+## Famous valuation lessons
+
+| Episode | What happened | Lesson |
+| :--- | :--- | :--- |
+| **dot-com bubble** | Nasdaq Composite closed at 5,048.62 on 10 March 2000 and fell 78% to 1,114.11 by 9 October 2002 | "new economy" narratives with no path to cash flows; prices set by momentum and comparables of comparables |
+| **AOL–Time Warner** | announced January 2000 at the peak; in 2002 the combined company reported a \$98.7bn net loss, driven by goodwill write-downs, then the largest annual loss in US corporate history | paying with overvalued stock for a real business; goodwill write-downs are how accounting eventually admits it |
+| **Uber, 2014** | Damodaran valued Uber at about \$5.9bn when it raised money at \$17bn; Bill Gurley replied ("How to Miss By a Mile") that he had underestimated the market by assuming it was the existing taxi market; Uber listed in May 2019 at \$45 a share, about \$82bn fully diluted | TAM is a narrative choice; a disciplined DCF exposes which assumption carries the price, and good investors argue about that assumption, not the spreadsheet |
+| **WeWork, 2019** | valued at \$47bn in a January 2019 SoftBank round; the August 2019 S-1 exposed losses, governance and related-party problems; the IPO was withdrawn on 30 September 2019 and SoftBank's October rescue valued it under \$8bn; listed by SPAC in October 2021 at about \$9bn; Chapter 11 on 6 November 2023 | a private mark set by one motivated investor is a price, not a value; a property-leasing business priced as a tech platform |
+| **unicorn marks** | preferred-share terms inflate headline valuations (Gornall and Strebulaev) | value the security you hold, not the headline |
+
+Common threads: the price was set by a narrative that was never converted into cash-flow assumptions, or by a
+comparable set that was itself mispriced, and the people setting it had incentives to agree.
+
+## Templates and checklists
+
+### DCF template
+
+```text
+COMPANY: __________   Valuation date: ______   Currency: ___
+
+NARRATIVE (3-5 sentences): what it is, why it wins, how big,
+how profitable, what it costs to grow, what could break it.
+
+INPUTS                          Value     Source / date
+Base-year revenue, EBIT         ______    ______________
+Revenue growth yrs 1..n         ______    TAM x share logic
+Target operating margin         ______    mature peer median
+Sales-to-capital / reinvest.    ______    industry benchmark
+Tax rate (effective -> marg.)   ______    ______________
+Risk-free rate                  ______    10y yield, date
+Equity risk premium             ______    implied ERP, date
+Beta (bottom-up, relevered)     ______    peer set listed
+Cost of debt (pre-tax)          ______    rating / yield
+Target D/(D+E)                  ______    ______________
+WACC                            ______
+Terminal g / RONIC              ______    <= risk-free rate
+Probability of failure          ______    (young firms)
+
+OUTPUT
+Sum PV FCFF ____  PV TV ____  EV ____  TV % of EV ____
++ cash ____ + non-op ____ - debt ____ - leases ____
+- minority ____ - preferred ____ - other claims ____
+Equity ____  Diluted shares (TSM) ____  Per share ____
+
+CROSS-CHECKS
+Implied EV/EBITDA and P/E vs peers: ____
+Implied g from exit multiple: ____
+Sensitivity grid WACC x g attached: [ ]
+Bear / base / bull and weights: ____
+Current price ____  Gap ____  Which assumption explains it?
+```
+
+### Valuation checklist
+
+```text
+[ ] Am I valuing (cash flows) or pricing (multiples)? Say so.
+[ ] Narrative written before the spreadsheet was opened?
+[ ] Base year normalized (one-offs, R&D, leases, SBC)?
+[ ] FCFF with WACC, or FCFE with cost of equity, never mixed?
+[ ] Nominal/real and currency consistent with the discount rate?
+[ ] Rf and ERP from the same stated date?
+[ ] Growth backed by reinvestment (g / RONIC, sales-to-capital)?
+[ ] Terminal g at or below long-run nominal GDP / risk-free?
+[ ] Terminal-year margins and ROIC plausible vs mature peers?
+[ ] TV share of EV reported and examined?
+[ ] Implied exit multiple and implied growth sanity-checked?
+[ ] Bridge: cash, non-operating assets, debt, leases, minority,
+    preferred, pensions, options (TSM or option value)?
+[ ] Failure probability for young or distressed firms?
+[ ] Comparables chosen on economics; median and IQR shown?
+[ ] Equity vs enterprise multiples matched correctly?
+[ ] For startups: preferred terms modeled, not headline post?
+[ ] Sensitivity grid and scenarios shown; answer is a range?
+[ ] Who wants which answer, and have I corrected for it?
+```
+
+## References
+
+- Tim Koller, Marc Goedhart and David Wessels (McKinsey & Company), *Valuation: Measuring and Managing the Value of Companies*, 8th ed. (Wiley, 2025): DCF practice, the value-driver terminal value formula, the EV-to-equity bridge
+- Aswath Damodaran, *Investment Valuation*, 3rd ed. (Wiley, 2012): DCF, relative valuation and option-based valuation in depth
+- Aswath Damodaran, *The Dark Side of Valuation*, 3rd ed. (Pearson FT Press, 2018): young, distressed, cyclical and hard-to-value companies
+- Aswath Damodaran, *Narrative and Numbers: The Value of Stories in Business* (Columbia Business School Publishing, 2017): connecting story to valuation inputs
+- [Damodaran (2009), Valuing Young, Start-up and Growth Companies: Estimation Issues and Valuation Challenges](https://pages.stern.nyu.edu/~adamodar/pdfiles/papers/younggrowth.pdf): the revenue → margin → reinvestment → failure-probability approach
+- [Aswath Damodaran: Historical implied equity risk premiums, January 2026](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histimpl.html): implied ERP 4.23% and T-bond rate 4.18% at the start of 2026
+- [Aswath Damodaran: Cost of capital by industry (US), January 2026](https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/wacc.html): industry betas and WACCs for bottom-up estimates
+- [Damodaran, A Disruptive Cab Ride to Riches: The Uber Payoff (June 2014)](https://aswathdamodaran.blogspot.com/2014/06/a-disruptive-cab-ride-to-riches-uber.html): the \$5.9bn Uber valuation
+- [Bill Gurley, How to Miss By a Mile: An Alternative Look at Uber's Potential Market Size (July 2014)](https://abovethecrowd.com/2014/07/11/how-to-miss-by-a-mile-an-alternative-look-at-ubers-potential-market-size/): the rebuttal on TAM
+- Richard A. Brealey, Stewart C. Myers, Franklin Allen and Alex Edmans, *Principles of Corporate Finance*, 14th ed. (McGraw Hill, 2023): valuation of bonds, stocks and businesses; real options
+- Myron J. Gordon, "Dividends, Earnings, and Stock Prices", *Review of Economics and Statistics* 41(2), 1959: the constant-growth dividend model
+- [Gornall and Strebulaev (2020), Squaring Venture Capital Valuations with Reality](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2955455), *Journal of Financial Economics* 135(1): unicorn post-money valuations average 48% above fair value
+- [Brad Feld, The Rule of 40% For a Healthy SaaS Company (3 February 2015)](https://feld.com/archives/2015/02/rule-40-healthy-saas-company/): the post that popularised the Rule of 40
+- [Dave Berkus, The Berkus Method: Valuing an Early-Stage Investment](https://berkus.com/the-berkus-method-valuing-an-early-stage-investment-2/): the method's author on its five elements
+- Bill Payne, *Scorecard Valuation Methodology: Establishing the Valuation of Pre-revenue, Start-up Companies* (white paper for angel investors): the scorecard factor weights
+- [Nareit Funds From Operations White Paper, 2018 Restatement](https://www.reit.com/sites/default/files/2018-FFO-white-paper-(11-27-18).pdf): the standard FFO definition for REITs
+- [Moeller, Schlingemann and Stulz (2005), Wealth Destruction on a Massive Scale?](https://doi.org/10.1111/j.1540-6261.2005.00745.x), *Journal of Finance* 60(2): acquirer losses in the 1998–2001 merger wave
+- [AOL Time Warner Form 10-K for 2002 (SEC EDGAR)](https://www.sec.gov/Archives/edgar/data/0001105705/000095014403004064/g81332e10vk.htm): the goodwill write-downs behind the 2002 loss
+- [TechCrunch: WeWork, once valued at \$47B, files for bankruptcy (6 November 2023)](https://techcrunch.com/2023/11/06/wework-once-worth-47-billion-files-for-bankruptcy/): WeWork's valuation history and Chapter 11 filing
+- [CNBC: WeWork shares jump in public markets debut after SPAC merger (21 October 2021)](https://www.cnbc.com/2021/10/21/wework-goes-public-through-spac-.html): the roughly \$9bn SPAC listing
+- [CNBC: Uber prices IPO at \$45 per share (9 May 2019)](https://www.cnbc.com/2019/05/09/uber-ipo-pricing.html): Uber's IPO price and valuation

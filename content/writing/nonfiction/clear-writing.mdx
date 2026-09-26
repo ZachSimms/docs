@@ -1,0 +1,642 @@
+---
+title: Clear writing
+date: 2026-09-26
+order: 1
+---
+
+How to write prose that a busy reader understands on the first pass: the core principle, the canonical rules
+(Orwell, Strunk, Zinsser, Pinker) and where they go wrong, structure, sentences, word choice, punctuation,
+readability formulas and an editing process. Applying it to memos, emails and pitches is in
+[persuasive writing](/writing/nonfiction/persuasive-writing/); docs, design docs and commit messages are in
+[technical writing](/writing/nonfiction/technical-writing/). Reader-first thinking is the same idea as in
+[UX/UI design](/design/principles/ux-ui/).
+
+## The core principle
+
+Clear writing is **clear thinking made visible, aimed at a specific reader**. Almost every rule below is a
+corollary of three ideas.
+
+| Idea | Meaning | Test |
+| :--- | :------ | :--- |
+| **Know what you think** | you cannot write clearly about something you have not decided | can you state the point in one sentence, out loud, without notes? |
+| **One main point** | every document, section and paragraph has one job | could a reader summarize it in a line, and would it match yours? |
+| **Reader first** | the reader has less context, less time and less interest than you | what does *this* reader already know, and what do they need to do next? |
+
+Zinsser puts the first one bluntly in *On Writing Well* (chapter "Simplicity"): "Clear thinking becomes clear
+writing: one can't exist without the other." Paul Graham makes the same point from the other side in "Putting
+Ideas into Words" (2022): writing about something usually shows you that you did not know it as well as you
+thought.
+
+Practical consequences:
+
+- **Write the point first, then the document.** If you cannot write the one-sentence version, you are still
+  thinking, not writing. That is fine, but label the draft as thinking.
+- **Name the reader.** "The CFO who will approve this" produces a different document from "people interested in
+  our infrastructure". Write for one real person; others will cope.
+- **Decide what the reader should do or believe afterward.** Informing, deciding and persuading need different
+  shapes (see [persuasive writing](/writing/nonfiction/persuasive-writing/)).
+- **The reader cannot interrupt.** In conversation a confused listener asks. On the page, every gap you leave is
+  filled by a guess or a closed tab.
+
+<Note kind="tip">The fastest clarity test: explain the point to a colleague in two sentences, then write down
+what you said. It is usually better than the draft.</Note>
+
+## The canonical rules
+
+### Orwell's six rules
+
+George Orwell, "Politics and the English Language" (*Horizon*, 1946). Before the rules he lists the questions a
+"scrupulous writer" asks of every sentence: "What am I trying to say? What words will express it? What image or
+idiom will make it clearer? Is this image fresh enough to have an effect?" Then:
+
+> I think the following rules will cover most cases:
+>
+> i. Never use a metaphor, simile or other figure of speech which you are used to seeing in print.
+>
+> ii. Never use a long word where a short one will do.
+>
+> iii. If it is possible to cut a word out, always cut it out.
+>
+> iv. Never use the passive where you can use the active.
+>
+> v. Never use a foreign phrase, a scientific word or a jargon word if you can think of an everyday English
+> equivalent.
+>
+> vi. Break any of these rules sooner than say anything outright barbarous.
+
+(Text as published by the Orwell Foundation; some printings add serial commas in rules i and v.)
+
+| Rule | What it targets | Modern caveat |
+| :--- | :-------------- | :------------ |
+| i. stale figures | clichés that substitute for thought ("move the needle", "low-hanging fruit") | a fresh, precise metaphor is still one of the best explanation tools |
+| ii. long words | inflation: *utilize*, *facilitate*, *commence* | the precise technical word beats a vague short one (*idempotent* is fine for engineers) |
+| iii. cut words | padding, throat-clearing, redundancy | cutting can remove the connectives that make logic followable |
+| iv. active voice | hidden agents, evasions ("errors were made") | the passive is often right (see [sentences](#sentences)) |
+| v. jargon | in-group words used on outsiders | jargon is efficient *inside* the group; the error is using it on the wrong reader |
+| vi. break the rules | rules are tools, not law | the most ignored and most important rule |
+
+Orwell's own essay contains passives and long words; he says himself that "one could keep all of them and still
+write bad English". The rules are a checklist against habits, not a definition of good prose.
+
+### Strunk and White
+
+William Strunk Jr privately printed *The Elements of Style* for his Cornell students in 1918; E. B. White revised
+and expanded it for Macmillan in 1959. The useful core is in Strunk's original "Elementary Principles of
+Composition" (rule numbers from the 1918 text):
+
+| # | Rule (1918 wording) | Keep it? |
+| :- | :------------------ | :------- |
+| 8 | Make the paragraph the unit of composition: one paragraph to each topic | yes |
+| 9 | As a rule, begin each paragraph with a topic sentence; end it in conformity with the beginning | yes, for expository prose |
+| 10 | Use the active voice | as a default, not a ban |
+| 11 | Put statements in positive form | yes: "late" beats "not on time" |
+| 12 | Use definite, specific, concrete language | yes, the most valuable rule in the book |
+| 13 | Omit needless words | yes, but it only helps if you can tell which words are needless |
+| 15 | Express co-ordinate ideas in similar form | yes (parallelism) |
+| 16 | Keep related words together | yes |
+| 18 | Place the emphatic words of a sentence at the end | yes (end focus) |
+
+Strunk's rule 13 in full: "Vigorous writing is concise. A sentence should contain no unnecessary words, a
+paragraph no unnecessary sentences, for the same reason that a drawing should have no unnecessary lines and a
+machine no unnecessary parts. This requires not that the writer make all his sentences short, or that he avoid
+all detail and treat his subjects only in outline, but that he make every word tell." The second sentence is the
+part everyone forgets: concision is about every word earning its place, not about brevity.
+
+**The critique.** Linguist Geoffrey Pullum's "50 Years of Stupid Grammar Advice" (*Chronicle of Higher
+Education*, April 2009) argues that the book's "advice ranges from limp platitudes to inconsistent nonsense". His
+main points:
+
+- Much of the style advice is harmless but empty: "Omit needless words" is "useless" because "The students who
+  know which words are needless don't need the instruction."
+- The grammar is wrong. Of the four examples offered to show the passive, Pullum shows three contain no passive
+  at all ("There were a great number of dead leaves lying on the ground").
+- The anti-passive bias ignores information flow: a passive sounds bad when its subject is newer than the agent,
+  and natural otherwise ("The bill was paid by an anonymous benefactor").
+- Rules against starting with *however*, against *which* in restrictive clauses and for singular *none* are
+  contradicted by the usage of respected writers.
+
+Verdict: use Strunk's composition rules as prompts; ignore its grammar pronouncements; never enforce "no
+passives" mechanically.
+
+### Zinsser: clutter and simplicity
+
+William Zinsser, *On Writing Well* (first edition 1976). The chapter "Simplicity" opens: "Clutter is the disease
+of American writing." His fix: "the secret of good writing is to strip every sentence to its cleanest components.
+Every word that serves no function, every long word that could be a short word, every adverb that carries the
+same meaning that is already in the verb, every passive construction that leaves the reader unsure of who is
+doing what—these are the thousand and one adulterants that weaken the strength of a sentence." (Wording from the
+1980 edition.)
+
+| Clutter type | Example | Clean |
+| :----------- | :------ | :---- |
+| inflated phrase | "at this point in time" | "now" |
+| redundant adverb | "totally unique", "smiled happily" | "unique", "smiled" |
+| qualifier | "in a funny sort of way", "rather", "quite" | delete |
+| euphemism | "negative patient care outcome" | "the patient died" |
+| buzzword | "leverage our learnings going forward" | "use what we learned" |
+
+Zinsser also insists that "Writing is hard work. A clear sentence is no accident." Most clear sentences are
+rewrites.
+
+### Pinker: *The Sense of Style*
+
+Steven Pinker, *The Sense of Style* (2014), is the best modern guide because it explains *why* prose is hard to
+read, using cognitive science rather than decree.
+
+**Classic style.** Borrowed from Thomas and Turner's *Clear and Simple as the Truth* (1994). Pinker: "The guiding
+metaphor of classic style is seeing the world. The writer can see something that the reader has not yet noticed,
+and he orients the reader's gaze so that she can see it for herself." Writing is a **window onto the world**;
+writer and reader are **equals** in a conversation; the writer shows rather than argues about how hard the topic
+is.
+
+| Classic style does | Classic style avoids |
+| :----------------- | :------------------- |
+| points at concrete things, examples, numbers | talking about the writing itself ("in this section we will…") |
+| states claims with appropriate confidence | reflexive hedging to avoid being wrong |
+| treats the reader as intelligent and uninformed | condescension or in-group shorthand |
+| uses the concrete noun and the active verb | abstractions stacked on abstractions |
+| presents the conclusion, not the writer's struggle | the literature-review tour before the point |
+
+**The curse of knowledge.** Pinker calls it "the single best explanation I know of why good people write bad
+prose": once you know something, you cannot easily imagine not knowing it. The term comes from economists
+Camerer, Loewenstein and Weber (1989). In Elizabeth Newton's 1990 Stanford study, people tapped the rhythm of
+well-known songs and predicted listeners would name about half; listeners named 2.5%. Symptoms in writing:
+undefined abbreviations, skipped steps, "obviously", examples that only make sense if you already understand.
+
+| Fix | How |
+| :-- | :-- |
+| show a draft to a real outsider | someone from the target audience, not a teammate |
+| read your own draft after a gap | days, not minutes; you forget enough to see the gaps |
+| define on first use | every abbreviation and every term the reader might not share |
+| add the example | an abstraction plus one concrete instance beats three abstractions |
+| replace labels with descriptions | "the Q3 thing" → "the pricing change we shipped in September" |
+
+**Zombie nouns.** Helen Sword's term ("Zombie Nouns", *New York Times* Opinionator, 23 July 2012) for
+**nominalisations**: verbs and adjectives turned into abstract nouns (*investigate* → *investigation*,
+*decide* → *decision*, *able* → *ability*). They drain the agent and the action from a sentence. Pinker describes
+the move as taking "a perfectly spry verb" and embalming it into a noun.
+
+| Zombie | Alive |
+| :----- | :---- |
+| "The implementation of the migration resulted in a reduction of latency." | "Migrating cut latency." |
+| "We had a discussion about the prioritization of the roadmap." | "We discussed which roadmap items come first." |
+| "Failure to provide confirmation will result in cancellation." | "If you don't confirm, we'll cancel your booking." |
+| "There was an agreement among the team on the adoption of TypeScript." | "The team agreed to adopt TypeScript." |
+
+**Metadiscourse** is writing about the writing: "In this section I will discuss…", "As noted above…", "It is
+worth mentioning that…". A little signposting helps in long documents; most of it is throat-clearing. Pinker's
+alternatives: open with the question the section answers, or just state the point.
+
+**Hedging.** Compulsive qualifiers (*somewhat*, *arguably*, *to some extent*, *it could be said that*) protect the
+writer, not the reader. Hedge once, precisely, where there is real uncertainty, and say how uncertain: "probably
+(we have three weeks of data)" beats "it may potentially be the case".
+
+### Plain language
+
+The **Plain Writing Act of 2010** (Public Law 111-274, signed 13 October 2010) requires US federal agencies to use
+"plain writing" in public documents, defined as "writing that is clear, concise, well-organized, and follows other
+best practices appropriate to the subject or field and intended audience." The **Federal Plain Language
+Guidelines** (PLAIN, March 2011, revision 1 May 2011) turn that into practice; the material formerly on
+plainlanguage.gov now lives in digital.gov's plain language guides.
+
+| Guideline theme | Practice |
+| :-------------- | :------- |
+| write for your audience | identify readers and their top tasks; answer their questions in their order |
+| organize | most important first; useful headings (often questions); short sections |
+| words | short, everyday words; the same term for the same thing; define unavoidable jargon |
+| sentences | active voice; "you" for the reader; "must" for obligations; short sentences |
+| layout | lists for steps and options; tables for comparisons; white space |
+| test | check comprehension with real readers, not with formulas alone |
+
+Plain language is not dumbing down. Experts read plain prose faster too, and nobody has ever complained that a
+specification was too easy to understand.
+
+## Structure
+
+Structure matters more than sentences. A reader who knows where the argument is going forgives clumsy
+sentences; perfect sentences in the wrong order still fail.
+
+| Pattern | Rule | Use for |
+| :------ | :--- | :------ |
+| **BLUF** (bottom line up front) | put the conclusion, request or decision in the first line or two | emails, status updates, memos, anything someone might stop reading |
+| **Inverted pyramid** | most important information first, then supporting detail in descending importance | news-style updates, incident notices, announcements |
+| **Pyramid Principle** | answer first, then grouped supporting arguments (Minto) | recommendations; see [persuasive writing](/writing/nonfiction/persuasive-writing/#answer-first-the-pyramid-principle) |
+| **Topic sentence** | the first sentence of a paragraph states what the paragraph shows | expository paragraphs |
+| **One idea per paragraph** | a new idea starts a new paragraph | everything |
+| **Chronological** | events in order | incident timelines, histories, tutorials |
+| **Problem → solution** | describe the pain before the fix | proposals, design docs |
+
+BLUF comes from US military correspondence; the inverted pyramid from newspaper practice. Both exist because
+readers stop early.
+
+### Topic sentences and skimming
+
+If a reader reads only the first sentence of each paragraph, they should get the argument. This "skim test" is
+the single most useful structural check.
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "Over the last quarter the team has been looking at several aspects of the onboarding flow, including drop-off, time to activate and support volume." | "Onboarding loses 40% of sign-ups at the email-verification step." | the topic sentence states the finding, not the activity |
+| "There are a number of considerations regarding the database choice." | "Postgres fits our workload better than MongoDB for three reasons." | announces the claim and the shape of what follows |
+| "Security is important." | "Every endpoint that changes data must check the session's role." | specific, testable, actually says something |
+
+### Parallelism
+
+Items in a list, a comparison or a series take the same grammatical form (Strunk's rule 15).
+
+| Before | After |
+| :----- | :---- |
+| "The plan covers hiring, how we will budget, and a timeline for launch." | "The plan covers hiring, budget and launch timing." |
+| "Steps: 1. Install the CLI 2. Configuration of the token 3. You should now run the tests" | "1. Install the CLI. 2. Configure the token. 3. Run the tests." |
+| "She is fast, accurate and has experience." | "She is fast, accurate and experienced." |
+
+### Lists vs prose
+
+| Use a list when | Use prose when |
+| :-------------- | :------------- |
+| items are parallel and independent (options, requirements, steps) | ideas depend on each other (because, therefore, unless) |
+| order matters (numbered steps) | you are making an argument |
+| the reader will scan or check items off | nuance and trade-offs matter |
+| there are 3–9 items | there are 2 items (a sentence is shorter) |
+
+Bullets hide missing logic: three bullets can sit side by side without anyone stating how they relate. Bezos's
+2004 email banning slides at Amazon's senior meetings made this point: "If someone builds a list of bullet points
+in word, that would be just as bad as powerpoint." Use lists for data, prose for reasoning.
+
+## Sentences
+
+### Active and passive voice
+
+**Active**: subject does the action ("The deploy script deleted the table"). **Passive**: subject receives it
+("The table was deleted", optionally "by the deploy script"). A passive needs a form of *be* (or *get*) plus a
+past participle; "There were leaves on the ground" and "The server is down" are not passives.
+
+| Prefer active when | Passive is right when |
+| :----------------- | :-------------------- |
+| the agent matters and is known | the agent is unknown or irrelevant: "The server was restarted at 02:00." |
+| the passive would hide responsibility: "mistakes were made" | the thing acted on is the topic you are continuing: "The parser has a bug. It was introduced in v2.3." |
+| instructions: "Run the migration" | you want the new or heavy element at the end: "The prize was won by a team of three first-year students from Leeds." |
+| the sentence gets shorter | the convention requires it (methods sections, some legal text) |
+
+<Callout type="warn" title="Passive as evasion">
+"The decision was made to deprecate the API" hides who decided. In post-incident writing that is sometimes
+deliberate (blameless), but in proposals and decisions name the owner: "We (the platform team) decided…".
+</Callout>
+
+### Strong verbs, fewer nouns
+
+The action of a sentence belongs in its verb. Hunt for weak verbs (*make*, *do*, *have*, *give*, *provide*,
+*perform*, *conduct*, *is*) attached to action nouns.
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "We performed an analysis of the logs." | "We analyzed the logs." | nominalisation → verb |
+| "The report provides a description of the outage." | "The report describes the outage." | same |
+| "There is a need for us to reduce costs." | "We need to cut costs." | expletive "there is" plus zombie noun |
+| "It is recommended that users update." | "Update to 4.2." | hidden agent; instruction as command |
+| "The team made the decision to postpone." | "The team postponed." | the decision is implied |
+| "Our goal is the facilitation of faster onboarding." | "We want new users productive in a day." | abstraction → concrete target |
+
+### Given-new and end focus
+
+Readers process a sentence by linking its start to what they already know, then adding the new part (the
+"given-new" principle from Haviland and Clark's psycholinguistics research in the 1970s). English also puts **emphasis at the end** of a clause (Strunk's
+rule 18). Together: **start with the familiar, end with the new or important.**
+
+| Before | After | Why |
+| :----- | :---- | :-- |
+| "Moving to Postgres in March was what let us drop the document store, because JSONB support is included in Postgres." | "We moved to Postgres in March. Its JSONB support let us drop the document store." | each sentence starts with something already mentioned |
+| "A 40% cost reduction is expected from the new caching layer." | "The new caching layer should cut costs by 40%." | the number is the news; put it last |
+| "We should ship on Friday, in my view, given the risks." | "Given the risks, we should ship on Friday." | the recommendation lands last; qualifiers move to the front |
+
+Chains of given → new across sentences produce **cohesion**: each sentence picks up where the last one ended.
+Topic-hopping (every sentence starting with a new subject) feels choppy even when each sentence is fine.
+
+### Sentence length
+
+There is no correct length; there is a correct **variation**. Uniform short sentences read like a telegram;
+uniform long ones exhaust working memory.
+
+| Guideline | Detail |
+| :-------- | :----- |
+| average 15–20 words | a common plain-language target; not a hard cap |
+| vary deliberately | a short sentence after long ones lands a point |
+| one main clause per idea | split when a sentence has two "and"-joined main points |
+| keep subject and verb close | long insertions between them force the reader to hold the subject in memory |
+| front-load conditions only when short | "If the build fails, rerun it." fine; a four-line "if" clause first is not |
+| avoid noun stacks | "user account password reset email template" → "the template for password-reset emails" |
+
+### Positive, concrete, specific
+
+| Before | After |
+| :----- | :---- |
+| "not unlikely" | "likely" |
+| "did not remember" | "forgot" |
+| "The results were not insignificant." | "Conversion rose from 2.1% to 2.9%." |
+| "a period of unfavourable weather" | "a week of rain" |
+| "improve performance" | "cut p95 latency from 800 ms to 200 ms" |
+| "soon" | "by Friday 3 October" |
+
+## Word choice
+
+The table below is a working list. "Instead of" items are not banned; they are defaults to question.
+
+| Type | Instead of | Write | Note |
+| :--- | :--------- | :---- | :--- |
+| wordy | in order to | to | "in order to" occasionally helps avoid ambiguity |
+| wordy | due to the fact that / owing to the fact that | because | |
+| wordy | in spite of the fact that | although | |
+| wordy | at this point in time / at the present time | now | |
+| wordy | in the event that | if | |
+| wordy | with regard to / in relation to | about, on | |
+| wordy | for the purpose of | to, for | |
+| wordy | has the ability to / is able to | can | |
+| wordy | a large number of / a majority of | many / most | |
+| wordy | prior to / subsequent to | before / after | |
+| wordy | in close proximity to | near | |
+| wordy | on a daily basis | daily | |
+| wordy | the question as to whether | whether | Strunk's own example |
+| wordy | it is important to note that | (delete) | if it is important, the reader will notice |
+| wordy | in terms of | (rewrite) | usually hides a vague relation |
+| inflated | utilize / utilization | use | |
+| inflated | facilitate | help, enable, run | |
+| inflated | commence / terminate | start / end | |
+| inflated | endeavor | try | |
+| inflated | sufficient / numerous | enough / many | |
+| inflated | approximately | about | keep "approximately" in technical specs if house style wants it |
+| nominalisation | make a decision | decide | |
+| nominalisation | conduct an investigation | investigate | |
+| nominalisation | provide assistance | help | |
+| nominalisation | give consideration to | consider | |
+| nominalisation | achieve a reduction in | reduce | |
+| redundant pair | each and every | each, every | |
+| redundant pair | first and foremost | first | |
+| redundant pair | null and void | void | |
+| redundancy | end result / final outcome | result / outcome | |
+| redundancy | past history / future plans | history / plans | |
+| redundancy | basic fundamentals | fundamentals | |
+| redundancy | completely finished / very unique | finished / unique | |
+| redundancy | close proximity / advance planning | near / planning | |
+| hedge | I think / I believe / it seems that | (delete) or give the confidence level | the byline already says it is your view |
+| hedge | quite, rather, somewhat, fairly, relatively | (delete) or quantify | "relatively fast" → "twice as fast as v1" |
+| hedge | may potentially / might possibly | may / might | double hedge |
+| weasel | some people say / it is widely believed | name who, cite where | |
+| weasel | up to 50% faster | typically 30% faster (median of N runs) | "up to" hides the typical case |
+| weasel | significantly (not statistical) | the number | "significant" implies a test in technical writing |
+| weasel | industry-leading, best-in-class, world-class | the evidence | readers discount unsupported superlatives |
+| weasel | virtually, essentially, basically | (delete) or be precise | |
+| jargon | leverage (verb) | use | |
+| jargon | synergy | what exactly combines, and the gain | |
+| jargon | bandwidth (for time) | time, capacity | |
+| jargon | circle back / touch base | "I'll reply by Tuesday" | give a time |
+| jargon | move the needle | raise X by Y | |
+| jargon | going forward | from now on, or delete | |
+| jargon | impactful | effective, or state the effect | |
+| jargon | learnings | lessons, findings | |
+| jargon | robust / scalable / seamless | the actual property: "handles 10× traffic" | adjectives without numbers |
+
+<Note kind="info">Jargon is fine when every reader shares it and it is more precise than the alternative. "p95
+latency" in an engineering memo is clarity; in a board update it is a barrier. Define it once or replace it.</Note>
+
+## Punctuation essentials
+
+| Mark | Rule | Example |
+| :--- | :--- | :------ |
+| comma, non-restrictive clause | commas around information that could be removed without changing which thing you mean | "My brother, who lives in Leeds, is a doctor." (one brother) |
+| no comma, restrictive clause | no commas when the clause identifies which one | "My brother who lives in Leeds is a doctor." (implies other brothers) |
+| *that* vs *which* | US style reserves *which* for non-restrictive clauses; British usage allows restrictive *which* | "the bug that broke login" / "the bug, which broke login, …" |
+| comma after long introductory element | helps parsing | "After the migration finished, we reran the tests." |
+| comma splice | don't join two independent clauses with only a comma | "The build failed, we rolled back." → full stop or semicolon |
+| semicolon | joins closely related independent clauses; separates list items that contain commas | "The build failed; we rolled back." / "Leeds, UK; Lyon, France; Porto, Portugal" |
+| colon | introduces what the first clause promises: a list, an explanation, an example | "One thing blocks launch: the payment provider." |
+| em dash (—) | a strong break for an aside or an amplification; use sparingly | "The fix — one line — took three days to find." |
+| en dash (–) | ranges and connections; British style often uses a spaced en dash where US uses an em dash | "pages 10–20", "London–Paris route" |
+| hyphen | compound modifiers before a noun | "a well-known issue", "an open-source tool", but "the tool is open source" |
+| apostrophe | possession and contraction, never plurals | "the team's plan", "it's" (= it is), "its" (possessive), "APIs" |
+| Oxford (serial) comma | comma before the final *and*/*or* in a list of three or more | "Rust, Go, and Python" |
+
+**The Oxford comma is a style choice, not a rule.** Chicago, the Google developer style guide and the Microsoft
+style guide use it; AP and many British newspapers generally don't. Pick one per document and use it
+consistently; add one anyway wherever omitting it creates ambiguity ("I thanked my parents, Ayn Rand and God").
+The comma is not always trivial: in *O'Connor v. Oakhurst Dairy* (US Court of Appeals, First Circuit, 2017) a
+missing serial comma in a Maine overtime exemption decided the case in the drivers' favor.
+
+## Readability formulas
+
+Formulas estimate difficulty from surface features: sentence length and word length (syllables). With $W$ =
+words, $S$ = sentences and $Y$ = syllables:
+
+**Flesch Reading Ease** (Rudolf Flesch, 1948; higher is easier, roughly 0–100):
+
+$$
+\text{FRE} = 206.835 - 1.015\,\frac{W}{S} - 84.6\,\frac{Y}{W}
+$$
+
+**Flesch–Kincaid Grade Level** (Kincaid and colleagues for the US Navy, 1975; approximate US school grade):
+
+$$
+\text{FKGL} = 0.39\,\frac{W}{S} + 11.8\,\frac{Y}{W} - 15.59
+$$
+
+| FRE score | US grade | Description |
+| :-------- | :------- | :---------- |
+| 90–100 | 5th | very easy |
+| 80–90 | 6th | easy; conversational |
+| 70–80 | 7th | fairly easy |
+| 60–70 | 8th–9th | plain English |
+| 50–60 | 10th–12th | fairly difficult |
+| 30–50 | college | difficult |
+| 10–30 | college graduate | very difficult |
+| 0–10 | professional | extremely difficult |
+
+**Worked example.** A 100-word paragraph with 5 sentences and 150 syllables: $W/S = 20$, $Y/W = 1.5$, so
+$\text{FRE} = 206.835 - 20.3 - 126.9 \approx 59.6$ and $\text{FKGL} = 7.8 + 17.7 - 15.59 \approx 9.9$. Rewritten
+as 8 sentences with 135 syllables ($W/S = 12.5$, $Y/W = 1.35$): FRE $\approx 79.9$, FKGL $\approx 5.2$.
+
+Other formulas (Gunning fog, SMOG, Coleman–Liau, Automated Readability Index) use similar inputs and give
+similar rankings.
+
+**Limits.** Formulas were built on school texts and Navy manuals and measure proxies, not comprehension.
+
+| Formula blind spot | Consequence |
+| :----------------- | :---------- |
+| meaning and logic | a shuffled paragraph scores the same as the original |
+| word familiarity | "Kubernetes" counts as 4 syllables of difficulty; "ontic" counts as easy |
+| reader knowledge | a specialist reads dense jargon faster than a layperson reads "easy" text |
+| structure and layout | headings, lists and examples don't count |
+| gaming | chopping sentences raises the score and can reduce cohesion |
+
+Use a formula as a **smoke alarm** (a grade of 16 on a customer email means something is wrong), never as a
+target. The real test is a reader: ask someone from the audience what the text says and what they would do next.
+
+## Editing process
+
+Drafting and editing are different jobs. Draft fast without judging; edit slowly in **passes**, from large to
+small, because fixing words in a paragraph you will delete is wasted work.
+
+<Steps>
+  <Step title="Structure">
+
+  - Is the main point in the first paragraph (or the first line of an email)?
+  - Does the order match the reader's questions?
+  - Skim test: read only headings and first sentences. Does the argument survive?
+  - Cut or move whole sections that don't serve the point.
+
+  </Step>
+  <Step title="Paragraphs">
+
+  - One idea each, stated in the topic sentence.
+  - Each paragraph follows from the last; add the missing link where it doesn't.
+  - Split paragraphs longer than about 6–8 lines on screen.
+
+  </Step>
+  <Step title="Sentences">
+
+  - Agent as subject, action as verb; convert zombie nouns.
+  - Given before new; the important element last.
+  - Vary length; split sentences with two main clauses joined by "and".
+
+  </Step>
+  <Step title="Words">
+
+  - Run the word-choice table: wordy phrases, hedges, weasels, jargon.
+  - Replace vague adjectives with numbers or examples.
+  - Same term for the same thing throughout.
+
+  </Step>
+  <Step title="Proofread">
+
+  - Names, numbers, dates, links, attachments.
+  - Read aloud or with text-to-speech; stumbles mark bad sentences.
+  - Last: spelling and punctuation (a spell-checker, then your eyes).
+
+  </Step>
+</Steps>
+
+| Technique | Why it works |
+| :-------- | :----------- |
+| **Read aloud** | the ear catches rhythm problems, missing words and sentences you run out of breath in; Paul Graham recommends it in "Writing, Briefly" (2005) |
+| **Cut 10%** | Stephen King, in *On Writing* (2000), describes adopting a rejection slip's formula: second draft = first draft minus 10% |
+| **Wait** | a day's gap reduces the curse of knowledge; you read what is there, not what you meant |
+| **Change the medium** | print it, change the font, read on your phone; familiarity hides errors |
+| **Reverse outline** | write one line per paragraph of the finished draft; gaps and repeats become obvious |
+| **Outsider read** | the only direct measure of clarity; ask "what is this asking you to do?" |
+| **Search for tics** | grep your own crutch words (*just*, *very*, *really*, *actually*, *basically*, *in order to*) |
+
+## Common mistakes
+
+| Mistake | Symptom | Fix |
+| :------ | :------ | :-- |
+| writing before thinking | the conclusion appears in the last paragraph | move it to the top; rewrite from there |
+| burying the lede | background first, point on page 2 | BLUF |
+| curse of knowledge | undefined terms, skipped steps | outsider read; define on first use |
+| throat-clearing | "I wanted to reach out to touch base about…" | start with the second sentence |
+| zombie nouns | "-tion", "-ment", "-ance" everywhere; weak verbs | put the action back into the verb |
+| hedging everything | "perhaps", "arguably", "somewhat" in every paragraph | hedge once, precisely |
+| wall of text | 15-line paragraphs, no headings | one idea per paragraph; descriptive headings |
+| bullet soup | lists of fragments with no logic between them | prose for reasoning |
+| inconsistent terms | "user", "customer", "account holder" for the same thing | pick one; add a glossary |
+| vague quantities | "significant growth", "soon", "many users" | numbers, dates, names |
+| elegant variation | synonyms for the same concept to avoid repetition | repeat the term; readers assume a new word means a new thing |
+| over-applying rules | no passives ever, no sentence over 20 words | rules serve the reader, not the other way round |
+| one-pass editing | typos fixed in a structurally broken draft | edit in passes, largest first |
+
+## Templates
+
+### Editing checklist
+
+```text
+STRUCTURE
+[ ] Main point stated in the first paragraph / first line
+[ ] I can say the point in one sentence
+[ ] Reader named; I know what they should do next
+[ ] Headings + first sentences alone carry the argument
+[ ] Every section serves the main point (else cut)
+
+PARAGRAPHS
+[ ] One idea per paragraph, stated first
+[ ] Each paragraph follows from the previous one
+[ ] No paragraph longer than ~8 lines on screen
+
+SENTENCES
+[ ] Agent is the subject, action is the verb
+[ ] Zombie nouns turned back into verbs
+[ ] Given before new; important words at the end
+[ ] Passives only where they help
+[ ] Sentence length varies; average around 15-20 words
+
+WORDS
+[ ] Wordy phrases, hedges, weasel words removed
+[ ] Jargon defined or replaced for this reader
+[ ] Vague adjectives replaced by numbers or examples
+[ ] One term per concept, used consistently
+
+PROOF
+[ ] Read aloud once
+[ ] Names, numbers, dates, links checked
+[ ] Cut ~10% from the first draft
+```
+
+### One-point paragraph
+
+```text
+[Topic sentence: the claim, specific and testable.]
+[Evidence: a number, an example, or a source.]
+[Explanation: why the evidence supports the claim.]
+[Consequence: what it means for the reader / what next.]
+
+Example:
+Onboarding loses 40% of sign-ups at email verification.
+In September, 6,200 of 15,500 new accounts never clicked
+the link. Most were on mobile, where the link opens a
+different browser and loses the session. Letting users
+verify with a six-digit code should recover about half.
+```
+
+### BLUF status update
+
+```text
+Subject: [Project] status: [on track / at risk / blocked]
+         - [one-line headline]
+
+BLUF: [One or two sentences: state, and what you need.]
+
+Progress since [date]:
+- [Outcome, not activity]
+- [Outcome]
+
+Risks / blockers:
+- [Risk] - [impact] - [what we're doing / what we need]
+
+Next: [what happens by when]
+Ask: [specific request, owner, deadline] (or "none")
+```
+
+### Explain-it-to-a-newcomer paragraph
+
+```text
+[Term] is [plain one-line definition].
+It matters because [consequence the reader cares about].
+For example, [concrete instance with real names/numbers].
+It is not [common confusion]; that is [the other thing].
+```
+
+## References
+
+- [George Orwell, "Politics and the English Language" (1946)](https://www.orwellfoundation.com/the-orwell-foundation/orwell/essays-and-other-works/politics-and-the-english-language/): the six rules and the four questions, text from the Orwell Foundation
+- [William Strunk Jr, *The Elements of Style* (1918), Project Gutenberg](https://www.gutenberg.org/ebooks/37134): Strunk's original rules, including rule 13, "Omit needless words"
+- [Geoffrey K. Pullum, "50 Years of Stupid Grammar Advice" (*Chronicle of Higher Education*, 2009)](https://www.lel.ed.ac.uk/~gpullum/50years.pdf): the linguist's critique of Strunk and White, especially on the passive
+- William Zinsser, *On Writing Well* (Harper & Row, 1976; later editions HarperCollins): clutter, simplicity, the nonfiction classic
+- Steven Pinker, *The Sense of Style* (Viking, 2014): classic style, the curse of knowledge, zombie nouns, given-new
+- Francis-Noël Thomas and Mark Turner, *Clear and Simple as the Truth* (Princeton University Press, 1994): the source of "classic style"
+- [Helen Sword, "Zombie Nouns" (*New York Times* Opinionator, 23 July 2012)](https://opinionator.blogs.nytimes.com/2012/07/23/zombie-nouns/): the term for nominalisations
+- Joseph M. Williams, *Style: Lessons in Clarity and Grace* (Pearson; many editions): characters as subjects, actions as verbs, old-before-new
+- [Plain Writing Act of 2010, Public Law 111-274](https://www.govinfo.gov/app/details/PLAW-111publ274): the statutory definition of plain writing
+- [Digital.gov plain language guides](https://digital.gov/guides/plain-language): successor to plainlanguage.gov and the Federal Plain Language Guidelines (2011)
+- [Flesch–Kincaid readability tests (Wikipedia)](https://en.wikipedia.org/wiki/Flesch%E2%80%93Kincaid_readability_tests): formulas, score bands and history
+- [Kincaid et al. (1975), Derivation of New Readability Formulas for Navy Enlisted Personnel (ERIC)](https://eric.ed.gov/?id=ED108134): origin of the grade-level formula
+- [Paul Graham, "Writing, Briefly" (2005)](https://paulgraham.com/writing44.html): a one-paragraph writing method
+- [Paul Graham, "Write Simply" (2021)](https://paulgraham.com/simply.html): the case for ordinary words and simple sentences
+- [Paul Graham, "Putting Ideas into Words" (2022)](https://paulgraham.com/words.html): writing as a test of what you know
+- Stephen King, *On Writing: A Memoir of the Craft* (Scribner, 2000): the "minus 10%" revision rule
+- [Persuasive writing](/writing/nonfiction/persuasive-writing/) and [technical writing](/writing/nonfiction/technical-writing/): the companion sheets

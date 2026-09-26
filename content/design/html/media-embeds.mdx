@@ -1,0 +1,827 @@
+---
+title: Media & embeds
+date: 2026-09-26
+order: 4
+---
+
+Images, responsive images, video, audio, iframes, SVG and canvas in HTML as of September 2026,
+with Baseline status from MDN and webstatus.dev. Captions, alt text and embeds are covered here
+from the markup side; the wider rules are in [Accessibility](/design/html/accessibility/),
+page-level preloading is in [Document head](/design/html/document-head/), and drawing with
+script is in [Canvas 2D](/typescript/web-apis/canvas-2d/).
+
+## `<img>` essentials
+
+```html
+<img
+  src="/img/team-800.jpg"
+  alt="Five engineers around a whiteboard sketching a map"
+  width="800" height="533"
+  loading="lazy" decoding="async">
+```
+
+| Attribute | Use | Notes |
+| :-------- | :-- | :---- |
+| `src` | the fallback URL | always set it, even with `srcset` |
+| `alt` | text alternative | required; `alt=""` for decoration (see the table below) |
+| `width`, `height` | intrinsic size in CSS px, no units | the browser derives `aspect-ratio` from them and reserves space, so no layout shift (CLS) |
+| `srcset` | candidate files with `w` or `x` descriptors | the browser picks one |
+| `sizes` | the rendered width for `w` candidates | defaults to `100vw` when missing |
+| `loading` | `eager` (default) or `lazy` | lazy-loading is Baseline widely available (June 2026) for `img` and `iframe` |
+| `decoding` | `sync`, `async`, `auto` (default) | a hint; the effect is rarely measurable for markup images |
+| `fetchpriority` | `high`, `low`, `auto` (default) | Baseline 2024 (October); use `high` on the LCP image |
+| `crossorigin` | `anonymous`, `use-credentials` | needed to read pixels into a canvas without tainting it |
+| `referrerpolicy` | as for `iframe` | rarely needed on images |
+| `usemap` | `#map-name` | image maps, see below |
+| `ismap` | server-side map | legacy; don't use |
+
+Set `width` and `height` to the file's pixel size and let CSS scale it. The attributes only
+supply the ratio once CSS gives one dimension:
+
+```css
+img, video {
+  max-inline-size: 100%;
+  block-size: auto;  /* keep the attribute-derived ratio */
+}
+```
+
+<Note kind="tip">`object-fit: cover` crops an image to its box and `object-position` picks the focal point. Both need a box with both dimensions set, for example `aspect-ratio: 16 / 9; inline-size: 100%`.</Note>
+
+## Alt text by image purpose
+
+The W3C WAI Images Tutorial sorts images by what they do on the page, not by what they show.
+The same photo needs different alt text in different places.
+
+| Purpose | Example | `alt` | Rule |
+| :------ | :------ | :---- | :--- |
+| Informative | a photo in a news story, a diagram with a simple point | a short description of the information it adds | one or two sentences; no "image of" |
+| Decorative | a divider, a background texture, a photo that repeats the adjacent heading | `alt=""` | empty, never missing; screen readers skip it |
+| Functional | an image that is the only content of a link or button | what happens: `alt="Search"`, `alt="Acme home"` | describe the action or destination, not the picture |
+| Image of text | a logo wordmark, a styled quote | the text itself | avoid images of text otherwise (WCAG 1.4.5) |
+| Complex | a chart, a map, an infographic | a short summary in `alt`, the full data nearby | put the long description in the page (table, `figcaption`) and point to it |
+| Group | five star icons for a rating | `alt="4 out of 5 stars"` on one, `alt=""` on the rest | one alt for the whole set |
+| Redundant with caption or link text | a thumbnail next to its own title link | `alt=""` | don't make the screen reader say it twice |
+
+```html
+<!-- functional: the link's name comes from the alt -->
+<a href="/"><img src="logo.svg" alt="Acme home"></a>
+
+<!-- complex: short alt, long description in the page -->
+<figure>
+  <img src="sales.png" alt="Bar chart of 2025 sales by
+    quarter; details in the table below"
+    aria-describedby="sales-desc">
+  <figcaption id="sales-desc">Sales rose each quarter,
+    from 1.2 M in Q1 to 2.0 M in Q4.</figcaption>
+</figure>
+```
+
+| Mistake | Why it fails |
+| :------ | :----------- |
+| `alt` missing | many screen readers read the file name instead ("IMG underscore 4032 dot jpeg") |
+| `alt="image"`, `alt="photo of…"` | the role already says it is an image |
+| alt repeats the caption | read twice |
+| alt on a decorative flourish | noise on every page load |
+| `title` instead of `alt` | not a reliable text alternative; invisible to touch users |
+| describing a functional image's pixels | "magnifying glass" tells nobody that it searches |
+
+The alt text renders in place of an image that fails to load; an empty alt renders nothing:
+
+```html demo height=170 title="alt-fallback.html"
+<style>
+  img { display: block; margin-block: 6px 14px;
+    font-style: italic; color: var(--muted); }
+  p { margin: 0; }
+</style>
+<p>Informative image that failed to load:</p>
+<img src="data:," width="300" height="44"
+  alt="Line chart: sign-ups doubled from May to June">
+<p>Decorative image with <code>alt=""</code>:</p>
+<img src="data:," alt="">
+<p>Nothing is drawn or read for it.</p>
+```
+
+## Loading, decoding & priority
+
+The **Largest Contentful Paint** (LCP) element is usually a hero image. Google's Core Web
+Vitals thresholds, measured at the 75th percentile of page loads, are LCP ≤ 2.5 s,
+INP ≤ 200 ms and CLS ≤ 0.1.
+
+| Image | `loading` | `fetchpriority` | Why |
+| :---- | :-------- | :-------------- | :-- |
+| The LCP image (hero, first product photo) | omit (`eager`) | `high` | lazy-loading it delays LCP: the browser waits for layout before fetching |
+| Other images in the first viewport | omit | omit | the preload scanner finds them early anyway |
+| Carousel slides 2 onwards | `lazy` or omit | `low` | visible soon, but not first |
+| Everything below the fold | `lazy` | omit | saves bytes the user may never scroll to |
+| Images injected by JS | `lazy` | omit | and give them `width`/`height` |
+
+```html
+<!-- above the fold: fetched first -->
+<img src="hero.avif" alt="…" width="1600" height="900"
+  fetchpriority="high">
+
+<!-- below the fold: fetched near the viewport -->
+<img src="chart.png" alt="…" width="800" height="400"
+  loading="lazy">
+```
+
+- A lazy image with no dimensions is 0 × 0 until it loads, so it may never intersect the
+  viewport and never load inside a scroller. Always give it `width` and `height`.
+- `<img sizes="auto" loading="lazy">` (use the laid-out width to pick from `srcset`) is
+  Chromium only: limited availability. Keep an explicit fallback list after `auto`.
+- `loading="lazy"` on `<video>` and `<audio>` is limited availability; use `preload="none"`.
+- An LCP image referenced only from CSS or JS is invisible to the preload scanner; preload it
+  from the head (see [Document head](/design/html/document-head/)):
+
+```html
+<link rel="preload" as="image" fetchpriority="high"
+  imagesrcset="hero-800.avif 800w, hero-1600.avif 1600w"
+  imagesizes="100vw" type="image/avif">
+```
+
+## Responsive images: `srcset` & `sizes`
+
+Two problems, two descriptors:
+
+| Descriptor | Problem it solves | Example | `sizes` |
+| :--------- | :---------------- | :------ | :------ |
+| `x` (density) | the same CSS size on 1×, 2×, 3× screens: logos, avatars, icons | `srcset="a.png 1x, a@2x.png 2x"` | not used |
+| `w` (width) | the image's CSS width changes with the layout | `srcset="a-400.jpg 400w, a-800.jpg 800w"` | required in practice |
+
+```html
+<!-- fixed 48 px avatar: density descriptors -->
+<img src="ana-48.jpg" alt="Ana Diaz" width="48" height="48"
+  srcset="ana-48.jpg 1x, ana-96.jpg 2x, ana-144.jpg 3x">
+
+<!-- fluid card image: width descriptors plus sizes -->
+<img
+  src="card-800.jpg"
+  srcset="card-400.jpg 400w, card-800.jpg 800w,
+          card-1200.jpg 1200w, card-1600.jpg 1600w"
+  sizes="(min-width: 64rem) 20rem,
+         (min-width: 40rem) calc(50vw - 2rem),
+         calc(100vw - 2rem)"
+  width="800" height="600" alt="…">
+```
+
+How the browser picks, step by step:
+
+1. Evaluate `sizes` left to right; the **first** media condition that matches gives the slot
+   width. The last entry has no condition and is the default. `rem` and `em` here are the
+   initial font size, normally 16 px.
+2. Multiply the slot width by the device pixel ratio (DPR) to get the pixels needed.
+3. Choose a candidate from `srcset`. Browsers usually take the smallest one that covers the
+   need, but the spec leaves the final choice to them: a larger file already in the cache, or
+   a smaller one on a slow connection, are both allowed.
+
+Worked through for the card above (`64rem` = 1024 px, `40rem` = 640 px):
+
+| Device | Viewport | DPR | Matching entry | Slot | Needed | Picked |
+| :----- | -------: | --: | :------------- | ---: | -----: | :----- |
+| Phone | 390 px | 3 | `calc(100vw - 2rem)` | 358 px | 1074 px | `card-1200.jpg` |
+| Tablet | 800 px | 2 | `calc(50vw - 2rem)` | 368 px | 736 px | `card-800.jpg` |
+| Laptop | 1440 px | 1 | `20rem` | 320 px | 320 px | `card-400.jpg` |
+| Laptop, Retina | 1440 px | 2 | `20rem` | 320 px | 640 px | `card-800.jpg` |
+
+Without `sizes`, the phone would assume `100vw` × 3 = 1170 px (same pick) but the laptop
+would assume 1440 px and download `card-1600.jpg` for a 320 px slot, 4–5× the bytes.
+
+| Rule | Detail |
+| :--- | :----- |
+| `sizes` describes layout, not files | copy the slot widths from your CSS breakpoints; overestimating wastes bytes, underestimating blurs |
+| Order `sizes` from the most specific condition | first match wins, like `if … else if` |
+| Don't mix `w` and `x` | in one `srcset` that is invalid |
+| 4–6 widths is plenty | e.g. 400, 800, 1200, 1600, 2000; beyond 2× DPR the gains are small |
+| Cap the largest candidate | 2× the biggest slot is enough for most photos |
+| `srcset` is a hint | never rely on which file is chosen (analytics, JS logic) |
+
+## `<picture>`: art direction & format fallback
+
+`<picture>` wraps one `<img>` and any number of `<source>` elements. The browser takes the
+**first** `<source>` whose `media` and `type` both match, then applies its `srcset`/`sizes`.
+The `<img>` supplies `alt`, dimensions, `loading` and the final fallback; it is what renders
+and what you style.
+
+<Tabs items={["Format fallback", "Art direction"]}>
+  <Tab>
+
+    ```html
+    <picture>
+      <source type="image/avif"
+        srcset="hero-800.avif 800w, hero-1600.avif 1600w"
+        sizes="100vw">
+      <source type="image/webp"
+        srcset="hero-800.webp 800w, hero-1600.webp 1600w"
+        sizes="100vw">
+      <img src="hero-1600.jpg" alt="…"
+        srcset="hero-800.jpg 800w, hero-1600.jpg 1600w"
+        sizes="100vw" width="1600" height="900">
+    </picture>
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```html
+    <picture>
+      <!-- narrow screens: tight square crop -->
+      <source media="(max-width: 40rem)"
+        srcset="team-sq-600.jpg 600w, team-sq-1200.jpg 1200w"
+        sizes="100vw" width="1200" height="1200">
+      <!-- otherwise: the wide shot -->
+      <img src="team-wide-1600.jpg" alt="…"
+        srcset="team-wide-800.jpg 800w,
+                team-wide-1600.jpg 1600w"
+        sizes="100vw" width="1600" height="700">
+    </picture>
+    ```
+
+  </Tab>
+</Tabs>
+
+| Use | Reach for |
+| :-- | :-------- |
+| Same image, different resolutions | `<img srcset sizes>`; no `<picture>` needed |
+| Different crop or composition per breakpoint (art direction) | `<picture>` + `<source media>` |
+| Newer format with fallback | `<picture>` + `<source type>` |
+| Light and dark versions | `<source media="(prefers-color-scheme: dark)">` |
+| Reduced motion (static instead of animated) | `<source media="(prefers-reduced-motion: reduce)">` |
+
+- Put `width` and `height` on each `<source>` whose crop has a different ratio; all engines
+  have supported it since late 2022.
+- `alt` goes on the `<img>` only. `<source>` has no `alt`.
+- With `media` sources the browser **must** obey the match; with plain `srcset` it may choose.
+  That is the difference between art direction and resolution switching.
+
+## Image formats
+
+| Format | Compression | Alpha | Animation | Best for | Support |
+| :----- | :---------- | :---- | :-------- | :------- | :------ |
+| JPEG | lossy | no | no | photos; universal fallback | everywhere |
+| PNG | lossless | yes | APNG | screenshots, flat graphics needing exact pixels | everywhere |
+| WebP | lossy and lossless | yes | yes | photos and graphics; MDN cites 25–35% smaller than JPEG | Baseline widely available (since 2023) |
+| AVIF | lossy and lossless | yes | yes | photos; MDN cites about 50% smaller than JPEG; slower to encode | Baseline 2024 (January), widely available since July 2026 |
+| SVG | vector (text, gzips well) | yes | yes (SMIL, CSS) | icons, logos, diagrams, anything drawn | everywhere |
+| GIF | lossless, 256 colors | 1-bit | yes | nothing new; use `<video>` or animated WebP/AVIF | everywhere |
+
+- **Default in 2026:** AVIF, with WebP or JPEG fallback in `<picture>`. AVIF is now
+  widely available, so the JPEG fallback matters mainly for old devices and email clients.
+- AVIF has no progressive rendering: a large AVIF appears all at once, a progressive JPEG
+  paints coarse first.
+- Animated GIFs are huge: web.dev's example clip is 3.7 MB as GIF, 551 KB as MP4 and
+  341 KB as WebM. Use a muted `<video autoplay loop muted playsinline>` instead.
+- JPEG XL is not Baseline (Safari only); don't serve it without a fallback.
+- Compress at build time or through an image CDN; quality 60–80 is typical for lossy photos.
+  Check visually rather than trusting one number.
+
+## Figures & captions
+
+`<figure>` is self-contained content referenced from the main text: an image, chart, code
+listing, quote or video. `<figcaption>` (first or last child) gives it a caption, which
+browsers use as the figure's accessible name.
+
+```html
+<figure>
+  <img src="map.png" alt="Route map of the 12 km loop"
+    width="800" height="500">
+  <figcaption>Fig. 3: The loop starts and ends at the
+    north car park.</figcaption>
+</figure>
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Caption ≠ alt | the caption is visible context for everyone; the alt replaces the image for those who can't see it |
+| Don't repeat | if the caption fully describes the image, a short or empty alt is fine |
+| Not every image is a figure | decorative and inline images don't need `<figure>` |
+| Default margins | `figure` has `margin: 1em 40px`; reset it |
+
+An inline SVG chart as a captioned figure. `role="img"` flattens it into one image for
+assistive tech, and `aria-labelledby` names it from its `<title>`:
+
+```html demo height=210 title="figure.html"
+<style>
+  figure { margin: 0; max-inline-size: 320px; }
+  figcaption { color: var(--muted); font-size: 13px; }
+  rect { fill: var(--graph-0); }
+  text { fill: var(--fg); font-size: 11px; }
+</style>
+<figure>
+  <svg role="img" aria-labelledby="chart-t"
+    viewBox="0 0 300 130" width="300">
+    <title id="chart-t">Visitors per quarter: Q1 40k,
+      Q2 65k, Q3 90k, Q4 110k</title>
+    <rect x="10" y="80" width="50" height="40"/>
+    <rect x="85" y="55" width="50" height="65"/>
+    <rect x="160" y="30" width="50" height="90"/>
+    <rect x="235" y="10" width="50" height="110"/>
+    <text x="25" y="75">40k</text>
+    <text x="250" y="7">110k</text>
+  </svg>
+  <figcaption>Fig. 1: Visitors nearly tripled over
+    the year.</figcaption>
+</figure>
+```
+
+## Video
+
+```html
+<video controls width="1280" height="720"
+  poster="/media/tour-poster.jpg" preload="metadata">
+  <source src="/media/tour.webm"
+    type='video/webm; codecs="vp9, opus"'>
+  <source src="/media/tour.mp4"
+    type='video/mp4; codecs="avc1.4d401f, mp4a.40.2"'>
+  <track kind="captions" src="/media/tour.en.vtt"
+    srclang="en" label="English" default>
+  <p>Your browser can't play this video.
+    <a href="/media/tour.mp4">Download the MP4</a>.</p>
+</video>
+```
+
+| Attribute | Values | Notes |
+| :-------- | :----- | :---- |
+| `controls` | boolean | native, keyboard-accessible controls; leave on unless you build accessible custom ones |
+| `autoplay` | boolean | blocked with sound in all major browsers; see below |
+| `muted` | boolean | required for autoplay |
+| `playsinline` | boolean | iPhone Safari plays inline instead of going fullscreen |
+| `loop` | boolean | pairs with muted autoplay for ambient clips |
+| `poster` | URL | shown before playback; can be the LCP element, so size it like a hero image |
+| `preload` | `none`, `metadata`, `auto` | the default varies by browser; the spec suggests `metadata`. `none` for below-the-fold video |
+| `width`, `height` | CSS px | reserve the box, as for `img` |
+| `crossorigin` | `anonymous` | needed for cross-origin `<track>` files and canvas capture |
+| `disablepictureinpicture`, `controlslist` | | Chromium-leaning; `controlslist="nodownload"` is not DRM |
+
+### Autoplay rules
+
+| Browser | Autoplays when |
+| :------ | :------------- |
+| All (Chrome, Firefox, Safari) | the video is `muted` (or has no audio track) |
+| Chrome | also with sound after the user has interacted with the site, or once the site's media engagement score is high |
+| Safari on iPhone | `muted` **and** `playsinline`; without `playsinline` it plays fullscreen. Low Power Mode can still block autoplay |
+| Firefox | per-site setting; muted by default allowed |
+
+```html
+<!-- ambient background clip: the only reliable autoplay -->
+<video autoplay muted loop playsinline
+  poster="waves.jpg" width="1920" height="1080">
+  <source src="waves.av1.mp4"
+    type='video/mp4; codecs="av01.0.05M.08"'>
+  <source src="waves.h264.mp4" type="video/mp4">
+</video>
+```
+
+- Anything that moves for more than 5 seconds and starts on its own needs a way to pause it
+  (WCAG 2.2.2); with `controls` removed, add a pause button. Respect
+  `prefers-reduced-motion` by not autoplaying at all.
+- Audio that plays automatically for more than 3 seconds needs pause, stop or a separate
+  volume control (WCAG 1.4.2).
+- `<source>` order is preference order. The first `type` the browser can play wins, so list
+  AV1 or VP9 before H.264. A `type` without `codecs` is only a guess.
+- The `codecs` string must be quoted inside `type`; use single quotes around the attribute.
+
+## Captions & subtitles: `<track>` and WebVTT
+
+| `kind` | For | Contains |
+| :----- | :-- | :------- |
+| `subtitles` (default) | viewers who can hear but not understand the language | dialogue translation |
+| `captions` | deaf and hard-of-hearing viewers | dialogue plus speaker IDs and meaningful sound ("[door slams]") |
+| `descriptions` | blind viewers | text descriptions of visuals, for synthesis; player support is poor |
+| `chapters` | navigation | chapter titles |
+| `metadata` | scripts | not shown |
+
+```html
+<track kind="captions" src="talk.en.vtt" srclang="en"
+  label="English (CC)" default>
+<track kind="subtitles" src="talk.es.vtt" srclang="es"
+  label="Español">
+```
+
+- `srclang` is required when `kind="subtitles"`; set it on every track anyway.
+- `default` turns one track on at start; users can change it in the native controls menu.
+- Serve `.vtt` files as `text/vtt`. A cross-origin track needs CORS headers and
+  `crossorigin` on the `<video>`.
+
+```text
+WEBVTT
+
+00:00:00.000 --> 00:00:03.500
+[upbeat music]
+
+00:00:03.500 --> 00:00:07.000
+<v Ana>Welcome to the plant tour.
+
+00:00:07.000 --> 00:00:11.000 line:10% align:center
+<v Ben>Hard hats stay on past this door.
+
+NOTE Cue settings: line, position, size, align, vertical
+```
+
+WCAG requires captions for prerecorded video with audio (1.2.2, A), captions for live video
+(1.2.4, AA) and audio description of prerecorded video (1.2.5, AA). Auto-generated captions
+count only once someone has corrected them. A transcript on the page helps everyone and is
+the text alternative for audio-only content (1.2.1).
+
+## Audio
+
+```html
+<figure>
+  <figcaption>Episode 12: Keyboard design</figcaption>
+  <audio controls preload="none">
+    <source src="ep12.opus" type='audio/ogg; codecs="opus"'>
+    <source src="ep12.mp3" type="audio/mpeg">
+    <a href="ep12.mp3">Download the episode (MP3)</a>
+  </audio>
+  <a href="/podcast/12/transcript/">Transcript</a>
+</figure>
+```
+
+| Point | Detail |
+| :---- | :----- |
+| Attributes | same as `<video>` minus `poster`, `playsinline`, `width`/`height` |
+| Without `controls` | the element is invisible and takes no space |
+| Formats | MP3 and AAC play everywhere; Opus in WebM or Ogg is smaller and widely supported |
+| Accessibility | label it (a caption or heading next to it) and link a transcript |
+| Autoplay | treat as blocked; never autoplay audio |
+
+For synthesis, analysis and effects use the [Web Audio API](/typescript/web-apis/web-audio/).
+
+## Iframes
+
+```html
+<iframe
+  src="https://maps.example.com/embed?q=depot"
+  title="Map: our depot on Harbor Road"
+  width="600" height="400"
+  loading="lazy"
+  referrerpolicy="strict-origin-when-cross-origin"
+  sandbox="allow-scripts allow-same-origin allow-popups"
+  allow="fullscreen; geolocation 'none'">
+</iframe>
+```
+
+| Attribute | Use |
+| :-------- | :-- |
+| `title` | the accessible name; screen reader users hear it before deciding whether to enter the frame. Required in practice |
+| `loading="lazy"` | defers offscreen embeds; Baseline widely available |
+| `sandbox` | empty = maximum restrictions; add tokens to re-allow capabilities |
+| `allow` | Permissions Policy for the frame: `camera`, `microphone`, `geolocation`, `fullscreen`, `autoplay`, `payment`, `clipboard-write`… |
+| `referrerpolicy` | default `strict-origin-when-cross-origin`; `no-referrer` hides your URL but breaks embeds that check it |
+| `srcdoc` | inline HTML document; overrides `src` |
+| `name` | target for links and forms |
+| `allowfullscreen` | legacy; prefer `allow="fullscreen"` |
+| `credentialless` | load without cookies or storage (Chromium only, limited) |
+
+### `sandbox` tokens
+
+| Token | Re-allows |
+| :---- | :-------- |
+| (none) | nothing: no scripts, forms, popups, top navigation, downloads; unique opaque origin |
+| `allow-scripts` | JavaScript (but not popups) |
+| `allow-same-origin` | keeps the real origin, so cookies and storage work |
+| `allow-forms` | form submission |
+| `allow-popups` | `window.open()` and `target="_blank"` |
+| `allow-popups-to-escape-sandbox` | popups open without inheriting the sandbox (e.g. an ad's landing page) |
+| `allow-modals` | `alert()`, `confirm()`, `prompt()`, `print()` |
+| `allow-top-navigation` | navigating the top page |
+| `allow-top-navigation-by-user-activation` | the same, only after a click; the safer choice |
+| `allow-top-navigation-to-custom-protocols` | `mailto:`, `tel:` and registered protocols |
+| `allow-downloads` | downloads via links |
+| `allow-pointer-lock`, `allow-orientation-lock`, `allow-presentation` | those APIs |
+| `allow-storage-access-by-user-activation` | the Storage Access API (unpartitioned cookies on request) |
+
+<Callout type="warn" title="allow-scripts + allow-same-origin">
+  For a same-origin document this pair lets the frame's script remove its own `sandbox`
+  attribute, so it is no safer than no sandbox (MDN). It is fine for a genuinely cross-origin
+  embed; for untrusted HTML, serve it from a separate origin or use `srcdoc` without
+  `allow-same-origin`.
+</Callout>
+
+`srcdoc` embeds a whole document inline. Escape its quotes and ampersands in the attribute:
+
+```html demo height=120 title="srcdoc.html"
+<iframe
+  title="Sandboxed inline preview"
+  sandbox
+  srcdoc="<p style='font:14px system-ui'>Rendered
+    from <code>srcdoc</code>: no scripts, no forms,
+    opaque origin.</p>"
+  style="inline-size: 100%; block-size: 80px;
+    border: 1px dashed var(--muted);"></iframe>
+```
+
+Responsive frames: set `width`/`height` for the ratio, then
+`iframe { inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; }`.
+
+## SVG: inline, `<img>` or CSS
+
+| Method | Styleable from page CSS | Cached separately | Scripts run | Accessible name | Use for |
+| :----- | :---------------------- | :---------------- | :---------- | :-------------- | :------ |
+| Inline `<svg>` | yes (`currentColor`, custom properties, `:hover`) | no (ships with the HTML) | yes | `role="img"` + `<title>` / `aria-label` | icons that follow text color, interactive or animated graphics, charts |
+| `<img src="x.svg">` | no | yes | no | `alt` | logos, illustrations, big static drawings |
+| `<svg><use href="sprite.svg#id">` | partly (`currentColor` and custom properties inherit into the `<use>` content) | yes | no | on the outer `<svg>` | many repeated icons; the sprite must be same-origin |
+| CSS `background-image` / `mask-image` | color via `mask` + `background-color` | yes | no | none | decoration only |
+
+```html
+<!-- meaningful standalone graphic -->
+<svg role="img" aria-labelledby="logo-t" viewBox="0 0 64 16">
+  <title id="logo-t">Acme</title>
+  <path d="…"/>
+</svg>
+
+<!-- decorative icon next to visible text -->
+<button type="button">
+  <svg aria-hidden="true" width="16" height="16">
+    <use href="/icons.svg#trash"/>
+  </svg>
+  Delete
+</button>
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Decorative SVG | `aria-hidden="true"`; otherwise some screen readers announce "group" or read stray text |
+| Meaningful SVG | `role="img"` plus a name; `aria-labelledby` pointing at the `<title>` is the most reliable combination |
+| Icon-only control | name the **button** (`aria-label` or visually hidden text), hide the SVG |
+| `focusable="false"` | only mattered for IE 11; drop it |
+| `fill="currentColor"` | icons inherit the text color, including in dark mode and forced colors |
+| Untrusted SVG | never inline it: inline SVG runs scripts. `<img>` is safe |
+
+## Canvas, `<object>`, `<embed>` & image maps
+
+**`<canvas>`** is a bitmap: nothing drawn on it is in the accessibility tree. Put fallback
+content inside the element; it isn't rendered where canvas works, but it can hold real,
+focusable markup that mirrors the drawing.
+
+```html
+<canvas id="sales" width="600" height="300"
+  role="img" aria-label="Sales by month, 2026: see table">
+  <p>Sales by month: January 12k, February 15k, …</p>
+</canvas>
+<table><!-- the same data as a table --></table>
+```
+
+For a static chart, `role="img"` with a summary `aria-label` plus the data as a table or
+list is the pragmatic pattern. For an interactive canvas app you must rebuild the semantics
+yourself; consider SVG or HTML instead. Drawing APIs are in
+[Canvas 2D](/typescript/web-apis/canvas-2d/) and [WebGL](/typescript/web-apis/webgl/).
+
+**`<object>` and `<embed>`** date from the plugin era (Flash reached end of life in December
+2020). Their remaining use is embedding a PDF or an external SVG document.
+
+```html
+<object data="/docs/policy.pdf" type="application/pdf"
+  width="800" height="600">
+  <p><a href="/docs/policy.pdf">Download the policy
+    (PDF, 240 KB)</a></p>
+</object>
+```
+
+| Element | Fallback content | Verdict |
+| :------ | :--------------- | :------ |
+| `<object>` | yes, its children | acceptable for PDFs; inline PDF display is inconsistent (especially on mobile), so always link the file |
+| `<embed>` | none | avoid |
+| `<iframe src="x.pdf">` | none | works in desktop browsers with a PDF viewer; same caveat |
+
+**Image maps** make regions of one image into links. The `coords` are in the image's
+intrinsic pixels and don't scale with CSS, so they only suit fixed-size images; for anything
+responsive, use SVG with `<a>` elements instead.
+
+```html
+<img src="floor.png" alt="Floor plan" usemap="#floor"
+  width="600" height="400">
+<map name="floor">
+  <area shape="rect" coords="0,0,300,200"
+    href="/rooms/a/" alt="Meeting room A">
+  <area shape="circle" coords="450,300,60"
+    href="/rooms/pod/" alt="Phone pod">
+</map>
+```
+
+Every `<area>` with an `href` needs `alt`.
+
+## Performance checklist
+
+```text
+LCP
+[ ] Identify the LCP element per template (DevTools Performance panel, PageSpeed Insights)
+[ ] LCP image is in the HTML (not CSS/JS-injected), or preloaded with <link rel=preload>
+[ ] LCP image: no loading="lazy"; fetchpriority="high"
+[ ] Served from the same origin or a preconnected CDN
+[ ] AVIF/WebP with fallback; compressed; sized by srcset + accurate sizes
+
+CLS
+[ ] width + height on every img, video, iframe (and on <source> with a different ratio)
+[ ] img { max-inline-size: 100%; block-size: auto; }
+[ ] Embeds and ads have reserved boxes (aspect-ratio or min-block-size)
+[ ] Web fonts don't reflow images (font metrics overrides; see CSS sheet)
+
+Bytes
+[ ] loading="lazy" on offscreen images and iframes
+[ ] preload="none" (or "metadata") on video/audio not seen at load
+[ ] No GIF animations: muted looping <video> or animated AVIF/WebP instead
+[ ] Largest srcset candidate ≤ 2× the largest slot width
+[ ] Heavy third-party embeds (video, maps, social) behind a click-to-load facade
+[ ] Long cache lifetimes on hashed media URLs
+```
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| `loading="lazy"` on the hero | remove it; add `fetchpriority="high"` |
+| No `width`/`height` | set them to the intrinsic size; CSS scales |
+| `srcset` with `w` descriptors but no `sizes` | the browser assumes `100vw` and downloads too much |
+| `sizes` copied from a different layout | recompute from the real CSS; check in DevTools which file loaded (`currentSrc`) |
+| `alt` missing or "image" | follow the purpose table above |
+| `alt` on `<source>` | it goes on the `<img>` |
+| `<picture>` for plain resolution switching | `<img srcset sizes>` is enough |
+| Unmuted autoplay | it won't play; mute it, or wait for a click |
+| Missing `playsinline` | the clip goes fullscreen on iPhone |
+| Video without captions | add a `captions` track; correct auto-generated ones |
+| `<iframe>` without `title` | name it after the content ("Map: …", "Video: …") |
+| `sandbox="allow-scripts allow-same-origin"` on same-origin untrusted HTML | separate origin, or drop `allow-same-origin` |
+| Inline user-uploaded SVG | render it via `<img>` |
+| Icons from an icon font | inline SVG or `<use>` sprites: fonts fail, get overridden by user fonts, and read as random characters |
+
+## Recipes
+
+### Responsive hero image with AVIF and WebP
+
+```html
+<picture>
+  <source type="image/avif" sizes="100vw"
+    srcset="hero-800.avif 800w, hero-1200.avif 1200w,
+            hero-1600.avif 1600w, hero-2400.avif 2400w">
+  <source type="image/webp" sizes="100vw"
+    srcset="hero-800.webp 800w, hero-1200.webp 1200w,
+            hero-1600.webp 1600w, hero-2400.webp 2400w">
+  <img src="hero-1600.jpg" sizes="100vw"
+    srcset="hero-800.jpg 800w, hero-1200.jpg 1200w,
+            hero-1600.jpg 1600w, hero-2400.jpg 2400w"
+    width="2400" height="1200"
+    alt="Cyclists crossing the old stone bridge at dawn"
+    fetchpriority="high" class="hero">
+</picture>
+```
+
+```css
+.hero {
+  inline-size: 100%;
+  block-size: auto;
+  max-block-size: 70svh;
+  object-fit: cover;
+  object-position: 50% 40%;  /* keep the bridge in frame */
+}
+```
+
+### Lazy thumbnail grid
+
+```html
+<ul class="thumbs" role="list">
+  <li>
+    <a href="/photos/41/">
+      <img src="p41-320.jpg" alt="Harbor at low tide"
+        srcset="p41-320.jpg 320w, p41-640.jpg 640w"
+        sizes="(min-width: 48rem) 12rem, 45vw"
+        width="320" height="240" loading="lazy">
+    </a>
+  </li>
+  <!-- … -->
+</ul>
+```
+
+```css
+.thumbs {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  padding: 0;
+}
+.thumbs img {
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+```
+
+The first row is usually visible at load: leave `loading="lazy"` off those few, or accept the
+small delay if the grid is below the fold.
+
+### Captioned video
+
+```html
+<figure class="video">
+  <video controls preload="metadata" playsinline
+    width="1280" height="720" poster="demo-poster.jpg">
+    <source src="demo.webm" type="video/webm">
+    <source src="demo.mp4" type="video/mp4">
+    <track kind="captions" src="demo.en.vtt"
+      srclang="en" label="English (CC)" default>
+    <track kind="subtitles" src="demo.fr.vtt"
+      srclang="fr" label="Français">
+    <a href="demo.mp4">Download the demo video</a>
+  </video>
+  <figcaption>Setting up the sensor in 90 seconds.
+    <a href="demo-transcript/">Read the transcript</a>.
+  </figcaption>
+</figure>
+```
+
+```css
+.video video {
+  inline-size: 100%;
+  block-size: auto;
+}
+::cue {
+  font-size: 1.1em;
+  background: rgb(0 0 0 / 80%);  /* legible over any frame */
+}
+```
+
+### Privacy-friendly YouTube embed
+
+`youtube-nocookie.com` is YouTube's privacy-enhanced mode: YouTube says views in it are not
+used to personalize the viewer's YouTube experience or ads outside your site. It is not
+zero tracking, and the player still loads hundreds of kilobytes of script, so load it
+lazily. YouTube's API terms require the embed to send a `Referer`, so keep the default
+policy rather than `no-referrer`, and keep the player at least 200 × 200 px.
+
+```html
+<iframe
+  class="yt"
+  src="https://www.youtube-nocookie.com/embed/VIDEO_ID"
+  title="Video: How our heat pump works (4 min)"
+  width="560" height="315"
+  loading="lazy"
+  referrerpolicy="strict-origin-when-cross-origin"
+  allow="encrypted-media; picture-in-picture; fullscreen">
+</iframe>
+```
+
+```css
+.yt {
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 16 / 9;
+  border: 0;
+}
+```
+
+The stricter option is a **facade**: render the poster (`https://i.ytimg.com/vi/VIDEO_ID/hqdefault.jpg`)
+inside a link to the video, and swap in the iframe with a few lines of JS only when the user
+clicks. Nothing loads from YouTube until then. Under GDPR-style consent regimes the facade is
+the usual way to avoid loading third-party content before consent.
+
+### Accessible inline SVG icon button
+
+The button carries the name; the SVG is hidden and inherits the text color:
+
+```html demo height=90 title="icon-button.html"
+<style>
+  .icon-btn { display: inline-grid; place-items: center;
+    inline-size: 2.75rem; block-size: 2.75rem;
+    border: 1px solid var(--muted); border-radius: 8px;
+    background: none; color: var(--fg); cursor: pointer; }
+  .icon-btn:hover { color: var(--graph-1); }
+  .icon-btn:focus-visible {
+    outline: 2px solid var(--graph-0); outline-offset: 2px; }
+</style>
+<button type="button" class="icon-btn" aria-label="Delete">
+  <svg aria-hidden="true" viewBox="0 0 24 24" width="20"
+    height="20" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round">
+    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13
+      M9 7V4h6v3"/>
+  </svg>
+</button>
+```
+
+Prefer visible text where space allows; for icon-only buttons add a tooltip that shows the
+same word on hover and focus, so the visible and accessible names match (WCAG 2.5.3).
+
+## References
+
+- [MDN: The Image Embed element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/img): `<img>` attributes, `sizes` default, lazy-loading caveats
+- [MDN: Responsive images](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Responsive_images): `srcset`, `sizes`, art direction with `<picture>`
+- [MDN: Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types): JPEG, PNG, WebP, AVIF, SVG, GIF compared
+- [MDN: The Video Embed element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/video): attributes, `preload`, sources
+- [MDN: Autoplay guide for media and Web Audio APIs](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay): autoplay policies and detection
+- [MDN: The Embed Text Track element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/track): `kind`, `srclang`, `default`
+- [MDN: WebVTT](https://developer.mozilla.org/en-US/docs/Web/API/WebVTT_API/Web_Video_Text_Tracks_Format): cue syntax and settings
+- [MDN: The Inline Frame element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe): `sandbox` tokens, `allow`, `referrerpolicy`, `srcdoc`
+- [MDN: Permissions-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy): the features `allow` can grant
+- [WHATWG HTML: Embedded content](https://html.spec.whatwg.org/multipage/embedded-content.html): the normative definitions of `img`, `picture`, `iframe`, `video`
+- [W3C WAI: Images tutorial](https://www.w3.org/WAI/tutorials/images/): alt text by image purpose, with the alt decision tree
+- [W3C WAI: Making audio and video media accessible](https://www.w3.org/WAI/media/av/): captions, transcripts, audio description
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/): 1.1.1, 1.2.x, 1.4.2, 2.2.2 as cited above
+- [web.dev: Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp): LCP sub-parts and image loading
+- [web.dev: Browser-level image lazy loading](https://web.dev/articles/browser-level-image-lazy-loading): when not to lazy-load
+- [web.dev: Optimize resource loading with the Fetch Priority API](https://web.dev/articles/fetch-priority): `fetchpriority` on LCP images
+- [web.dev: Web Vitals](https://web.dev/articles/vitals): LCP, INP and CLS thresholds
+- [web.dev: Replace animated GIFs with video](https://web.dev/articles/replace-gifs-with-videos): the GIF vs MP4 vs WebM sizes quoted above
+- [YouTube Help: Embed videos and playlists](https://support.google.com/youtube/answer/171780): privacy-enhanced mode
+- [YouTube API Services: Required Minimum Functionality](https://developers.google.com/youtube/terms/required-minimum-functionality): Referer requirement and minimum player size
+- [Web Platform Status](https://webstatus.dev/): Baseline dates for AVIF, lazy-loading, `fetchpriority`

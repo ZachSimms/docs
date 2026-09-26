@@ -1,0 +1,529 @@
+---
+title: Document & head
+date: 2026-09-26
+order: 1
+---
+
+Everything above `<body>`: the doctype, the root element, and the `<head>` that tells browsers,
+crawlers and link unfurlers how to parse, render, load and describe the page. Support data is
+from MDN and web.dev's Baseline as of September 2026. Body markup is in
+[Semantic elements](/design/html/semantic-elements/), styling in [CSS](/design/css/css/), and
+the general accessibility rules in [Accessibility](/design/html/accessibility/).
+
+## Minimal valid document
+
+```html title="index.html"
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+      content="width=device-width, initial-scale=1">
+    <title>Pricing – Acme</title>
+  </head>
+  <body>
+    <h1>Pricing</h1>
+  </body>
+</html>
+```
+
+| Line | Why it matters | If you leave it out |
+| :--- | :------------- | :------------------ |
+| `<!doctype html>` | puts the parser in **no-quirks** (standards) mode; case-insensitive | **quirks mode**: legacy line-height, percentage-height and table quirks |
+| `<html lang="en-GB">` | language for screen-reader voices, hyphenation (`hyphens: auto`), spell-check, font selection for CJK, translation prompts; WCAG 3.1.1 (level A) | voices mispronounce, `hyphens` does nothing, audits fail |
+| `<meta charset="utf-8">` | fixes the encoding before any text is decoded; must sit entirely within the **first 1024 bytes** | browser guesses (often windows-1252): mojibake like `â€™` for `’` |
+| `<meta name="viewport">` | mobile browsers use the device width instead of a ~980 px virtual desktop | page renders zoomed out on phones; mobile breakpoints never match |
+| `<title>` | required by the spec; tab and history label, bookmark name, default search result title, first thing a screen reader announces | validators error; tab shows the URL |
+
+What you can omit: the `<html>`, `<head>` and `<body>` tags are all optional in the HTML syntax
+(the parser creates the elements anyway), but write them so `lang` has a home and the structure
+is obvious. Closing slashes on void elements (`<meta … />`) are allowed and ignored.
+
+<Note kind="tip">Prefer an HTTP header for the encoding too: `Content-Type: text/html; charset=utf-8`. The header wins over the meta tag; keep them consistent.</Note>
+
+## Parsing & rendering modes
+
+| Mode | Triggered by | Effect |
+| :--- | :----------- | :----- |
+| **No-quirks** (standards) | `<!doctype html>` | modern CSS behavior; what you want |
+| **Limited-quirks** ("almost standards") | some legacy doctypes, e.g. XHTML 1.0 Transitional, HTML 4.01 Transitional with a system identifier | standards, except inline images in table cells get the old line-height gaps |
+| **Quirks** | no doctype, or an old/unknown public identifier | Navigator 4 and IE5-era emulation: unitless lengths and hashless colors accepted, percentage heights and line heights computed differently, tables don't inherit font sizes, `body` fills the viewport |
+
+- Check the mode from DevTools: `document.compatMode` is `"CSS1Compat"` (standards) or
+  `"BackCompat"` (quirks).
+- Anything before the doctype (a BOM is fine; a comment or whitespace is fine; text is not) can
+  push the page into quirks mode.
+- The HTML parser never fails: missing end tags, stray `</p>` and misnested tags are all repaired by
+  fixed rules, which is why invalid markup "works" but may not build the tree you think. The
+  repairs are covered in [Semantic elements](/design/html/semantic-elements/#content-categories--content-model).
+
+## Head elements
+
+Only these eight elements may appear in `<head>`:
+
+| Element | Purpose | Rules and gotchas |
+| :------ | :------ | :---------------- |
+| `title` | page title | exactly one; unique per page; put the specific part first: `Pricing – Acme` |
+| `meta` | metadata by `charset`, `name`, `http-equiv` or `itemprop` | void element; unknown names are ignored |
+| `link` | relationship to another resource (`rel` + `href`) | `rel` is required; several `rel` values are also allowed in `body` (stylesheet, preload, preconnect, prefetch, modulepreload, dns-prefetch) |
+| `base` | base URL and default `target` for every relative URL | at most one, before any element that uses a URL; also rewrites `href="#top"` to point at the base URL, not the current page |
+| `style` | inline CSS | `media`, `nonce` (for CSP), `blocking="render"`; `type="text/css"` is redundant |
+| `script` | classic scripts, modules, import maps, speculation rules, data blocks | see [Script loading](#script-loading) |
+| `noscript` | fallback when scripting is disabled | inside `head` it may contain only `link`, `style` and `meta` |
+| `template` | inert markup fragment for later cloning; declarative shadow DOM | not rendered; images in it don't load, scripts don't run |
+
+Anything else (a `div`, an `img`, stray text) makes the parser **close the head early** and start
+the body, so everything after it lands in `<body>`. A misplaced tracking pixel can push your
+`meta` and `link` tags out of the head.
+
+Scripts never run in these sandboxed demos, so the `<noscript>` fallback shows and the
+`<template>` stays invisible:
+
+```html demo height=110 title="noscript-template.html"
+<script>document.body.append("JavaScript ran.")</script>
+<noscript>
+  <p>Scripting is disabled in this frame, so the
+    noscript fallback renders.</p>
+</noscript>
+<template id="row">
+  <p>Parsed but inert: never shown until cloned.</p>
+</template>
+<p>Nothing from the template appears above.</p>
+```
+
+## Meta tags
+
+| Tag | Values | Notes |
+| :-- | :----- | :---- |
+| `<meta charset="utf-8">` | `utf-8` is the only valid value in HTML | first in `head`; within the first 1024 bytes |
+| `name="viewport"` | `width=device-width, initial-scale=1` | see the options table below |
+| `name="description"` | 1–2 sentence summary | often used as the search snippet; Google rewrites it when it judges the page text a better match. No fixed length limit; snippets are truncated to fit the screen |
+| `name="robots"` | `noindex`, `nofollow`, `none`, `nosnippet`, `max-snippet:50`, `max-image-preview:large`, `max-video-preview:-1`, `notranslate`, `noimageindex`, `unavailable_after:2027-01-01`, `indexifembedded` | default is `all`; `name="googlebot"` targets Google only; Google no longer uses `noarchive` |
+| `name="theme-color"` | a CSS color; add `media` for light/dark | tints browser UI in Safari (macOS, iOS) and Chrome on Android and in installed PWAs; Firefox ignores it (not Baseline) |
+| `name="color-scheme"` | `light`, `dark`, `light dark`, `only light` | tells the browser before CSS loads which schemes the page supports, so the default canvas and form controls start dark: no white flash (Baseline widely available) |
+| `name="referrer"` | `no-referrer`, `origin`, `strict-origin-when-cross-origin` (browser default), `same-origin`, `unsafe-url`… | page-wide referrer policy; per-link `referrerpolicy` overrides it |
+| `name="keywords"` | comma list | ignored by Google; don't bother |
+| `name="generator"`, `name="author"`, `name="application-name"` | free text | harmless metadata |
+| `http-equiv="content-security-policy"` | a CSP string | works, but `frame-ancestors`, `report-uri` and `sandbox` are ignored in a meta tag, and report-only policies can't be set this way; prefer the header |
+| `http-equiv="refresh"` | `"5"` or `"0; url=/new"` | timed reloads and redirects fail WCAG 2.2.1 and 3.2.5 unless instant; use an HTTP 301/308 for moves |
+| `http-equiv="content-type"` | `text/html; charset=utf-8` | legacy spelling of `meta charset`; use one or the other, not both |
+| `http-equiv="x-ua-compatible"` | `IE=edge` | Internet Explorer only; delete it |
+
+### Viewport options
+
+| Key | Values | Advice |
+| :-- | :----- | :----- |
+| `width` | `device-width` or pixels | always `device-width` |
+| `initial-scale` | `0`–`10` | `1`: start at 100 % zoom |
+| `minimum-scale`, `maximum-scale` | `0`–`10` | don't cap zoom; WCAG 1.4.4 requires 200 % text resize |
+| `user-scalable` | `yes` / `no` | never `no`: it blocks low-vision users; iOS ignores it since iOS 10 anyway |
+| `viewport-fit` | `auto`, `contain`, `cover` | `cover` extends under a notch; then pad with `env(safe-area-inset-*)` |
+| `interactive-widget` | `resizes-visual` (default), `resizes-content`, `overlays-content` | how the on-screen keyboard resizes the layout; Chrome and Firefox on Android only |
+
+```html
+<!-- full-bleed app shell that sits under the notch -->
+<meta name="viewport" content="width=device-width,
+  initial-scale=1, viewport-fit=cover,
+  interactive-widget=resizes-content">
+```
+
+The `color-scheme` meta (or the CSS property it mirrors) switches the browser's own colors:
+the canvas, form controls and scrollbars. This demo sets the property per box to show both:
+
+```html demo height=120 title="color-scheme.html"
+<style>
+  .pane { padding: 10px; margin-block-end: 8px;
+    background: Canvas; color: CanvasText; }
+  .light { color-scheme: light; }
+  .dark { color-scheme: dark; }
+</style>
+<div class="pane light">light:
+  <input value="Text"> <button>Button</button>
+  <input type="checkbox" checked></div>
+<div class="pane dark">dark:
+  <input value="Text"> <button>Button</button>
+  <input type="checkbox" checked></div>
+```
+
+## Link relations
+
+| `rel` | Use | Key attributes |
+| :---- | :-- | :------------- |
+| `stylesheet` | external CSS; render-blocking unless `media` doesn't match | `media`, `crossorigin`, `integrity`, `disabled`, `blocking` |
+| `icon` | favicon | `sizes`, `type`; iOS ignores it and uses `apple-touch-icon` |
+| `apple-touch-icon` | home-screen icon on iOS/iPadOS (180×180 PNG) | no `sizes` needed for one file |
+| `manifest` | web app manifest (name, icons, `display`) for installable apps | `crossorigin="use-credentials"` if it needs cookies; Firefox desktop ignores manifests |
+| `canonical` | the preferred URL for duplicate or parameterised pages | absolute URL; one per page; self-referencing is fine |
+| `alternate` | another version: language (`hreflang`), feed (`type="application/rss+xml"`), print | `hreflang="x-default"` for the fallback page |
+| `preconnect` | open DNS + TCP + TLS to an origin early | `crossorigin` when the later request is CORS (fonts, `fetch`); only the few origins needed in the first seconds |
+| `dns-prefetch` | DNS lookup only; cheap fallback for less important origins | Baseline 2025 |
+| `preload` | fetch a resource the parser would discover late, at high priority, for this page | `as` required; `crossorigin` for fonts and CORS fetches; `type` to skip unsupported formats; `imagesrcset`/`imagesizes` for responsive images |
+| `modulepreload` | fetch, parse and compile a module (and optionally its graph) early | Baseline 2023; `as` defaults to `script` |
+| `prefetch` | low-priority fetch for a *likely next* navigation | not supported in Safari (behind a flag); the speculation rules API is Chromium's replacement |
+| `expect` | with `blocking="render"`, hold first paint until an element id is parsed (cross-document view transitions) | Chromium and Safari 18.2+; not Baseline |
+| `me`, `author`, `license`, `search` | identity links (IndieWeb, Mastodon verification), author page, license, OpenSearch description | |
+
+### Resource-hint attributes
+
+| Attribute | Values | Why |
+| :-------- | :----- | :-- |
+| `as` | `style`, `script`, `font`, `image`, `fetch`, `track` | sets priority and the `Accept` header, and lets the later request reuse the preload; a wrong or missing `as` means a **double download** |
+| `crossorigin` | (empty) = `anonymous`, `use-credentials` | must match the eventual request's CORS mode. Fonts are always fetched in CORS mode, so font preloads need `crossorigin` **even on the same origin** |
+| `fetchpriority` | `high`, `low`, `auto` | nudges the browser's priority: `high` on the LCP image or its preload, `low` on below-the-fold carousels. Baseline 2024 |
+| `type` | MIME type | browser skips preloads it can't use, e.g. `type="font/woff2"` or `type="image/avif"` |
+| `media` | media query | preload only on matching viewports |
+| `blocking` | `render` | makes a `link`, `style` or `script` explicitly render-blocking; Chromium and Safari, not Firefox |
+
+<Callout type="warn" title="Preload is a promise">
+  Every `preload` must be used within a few seconds or the browser logs an "unused preload" warning,
+  and each one competes for bandwidth with the CSS and the LCP image. Preload the one or two
+  late-discovered critical resources (a web font, a CSS background hero, a script injected by
+  another script), not everything.
+</Callout>
+
+## Script loading
+
+| Markup | Fetch | Runs | Order | Blocks parser |
+| :----- | :---- | :--- | :---- | :------------ |
+| `<script src>` | immediately, pauses parsing | as soon as fetched | document order | **yes**, fetch and run |
+| `<script>` inline | none | immediately (after any pending stylesheets load) | document order | yes, while it runs |
+| `<script defer src>` | in parallel | after parsing, before `DOMContentLoaded` | document order | no |
+| `<script async src>` | in parallel | as soon as fetched, interrupting the parser | **whichever loads first** | only while running |
+| `<script type="module" src>` | in parallel, with its imports | like `defer` | document order | no |
+| `<script type="module" async>` | in parallel | like `async` | load order | only while running |
+| `<script type="module">` inline | its imports | like `defer` (after parsing) | document order | no |
+| `<script nomodule>` | skipped by any browser that understands modules | | | |
+
+```text
+HTML parsing      ████████░░░░░░░░░░█████████████████│ DOMContentLoaded
+<script>                  ▒▒▒▒▒▒▒▒▓▓                 │   (parser waits for fetch + run)
+<script defer>    ▒▒▒▒▒▒▒▒                           │▓▓ (runs after parsing, in order)
+<script async>    ▒▒▒▒▒▒▒▒▓▓                          (runs as soon as fetched)
+type="module"     ▒▒▒▒▒▒▒▒▒▒▒ (+ imports)            │▓▓ (deferred by default)
+
+▒ fetch   ▓ execute   ░ parser blocked
+```
+
+Rules that follow from the table:
+
+- `defer` and `async` only apply to external classic scripts; on an inline classic script they do
+  nothing. Modules are already deferred, so `defer` on a module does nothing.
+- An inline script that comes after a `<link rel="stylesheet">` waits for that stylesheet (scripts
+  can read styles), so a slow CSS file also delays the inline script and everything below it.
+- `async` suits independent scripts (analytics, ads). Anything that needs the DOM or another script
+  should be `defer` or a module.
+- `nomodule` served the ES5 fallback for Internet Explorer 11. Every current browser supports
+  modules; drop the fallback unless you have measured traffic that needs it.
+- `document.write()` from an `async` or `defer` script is ignored (with a console warning).
+
+### Import maps
+
+Map bare specifiers (`import "lit"`) to URLs without a bundler. Baseline 2023.
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "lit": "https://cdn.jsdelivr.net/npm/lit@3/+esm",
+    "app/": "/js/app/"
+  },
+  "integrity": {
+    "/js/app/main.js": "sha384-…"
+  }
+}
+</script>
+<script type="module">
+  import { html } from "lit";
+  import "app/main.js";
+</script>
+```
+
+- The map must come before the first module that uses a bare specifier. More than one import map
+  per page works in Chromium and Safari 18.4+, but not yet in Firefox; keep to one.
+- `scopes` remaps within a URL prefix: `"scopes": { "/legacy/": { "lit": "/vendor/lit2.js" } }`.
+- The `integrity` key (subresource integrity for modules) is supported in all engines since 2025.
+
+### Other script types
+
+| `type` | What it is |
+| :----- | :--------- |
+| omitted, `text/javascript` | classic script (the attribute is redundant) |
+| `module` | ES module: strict mode, deferred, CORS-fetched (cross-origin needs CORS headers) |
+| `importmap` | import map JSON |
+| `speculationrules` | JSON rules for prefetch/prerender of next pages; Chromium only |
+| `application/ld+json`, any unknown type | **data block**: parsed as text, never executed; readable via `textContent` |
+
+## Social & SEO metadata
+
+### Open Graph
+
+Read by Facebook, LinkedIn, Slack, Discord, iMessage, Mastodon and most other unfurlers. Note
+`property=`, not `name=`.
+
+| Property | Required by the protocol | Notes |
+| :------- | :----------------------- | :---- |
+| `og:title` | yes | can differ from `<title>` (drop the site suffix) |
+| `og:type` | yes | `website`, `article`, `profile`, `video.movie`… |
+| `og:image` | yes | **absolute** HTTPS URL; 1200×630 (1.91:1) is the common target; add `og:image:alt`, `og:image:width`, `og:image:height` |
+| `og:url` | yes | canonical URL; same as `rel="canonical"` |
+| `og:description` | no | 1–2 sentences |
+| `og:site_name`, `og:locale` | no | `en_GB` (underscore, not hyphen) |
+| `article:published_time`, `article:author` | no | for `og:type="article"`; ISO 8601 dates |
+
+### X (Twitter) cards
+
+X reads its own `twitter:` tags and, per its card documentation, falls back to the matching `og:`
+tags for title, description and image. So in practice you add only:
+
+```html
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@acme">
+```
+
+`twitter:card` is usually `summary` (small square thumbnail) or `summary_large_image`.
+
+### Structured data (JSON-LD)
+
+Schema.org vocabulary in a data block. Google recommends JSON-LD over Microdata and RDFa; it
+feeds rich results (article dates, breadcrumbs, products, recipes, FAQs), not ranking directly.
+
+| Rule | Detail |
+| :--- | :----- |
+| Describe what is visible | marking up content that isn't on the page violates Google's guidelines |
+| Types for articles | `Article`, `NewsArticle`, `BlogPosting`; none of the properties is required, add what applies |
+| Dates | ISO 8601 with a time zone: `2026-09-26T09:00:00+01:00` |
+| `author` | a `Person` or `Organization` with `name` (just the name) and `url` |
+| Test it | Google's Rich Results Test and the Schema.org validator |
+
+### Canonical and language alternates
+
+```html
+<link rel="canonical"
+  href="https://acme.example/en-gb/pricing/">
+<link rel="alternate" hreflang="en-GB"
+  href="https://acme.example/en-gb/pricing/">
+<link rel="alternate" hreflang="de"
+  href="https://acme.example/de/preise/">
+<link rel="alternate" hreflang="x-default"
+  href="https://acme.example/pricing/">
+```
+
+Every language version lists **all** versions, including itself; links must be reciprocal or
+Google ignores them.
+
+## Favicons in 2026
+
+Andrey Sitnik's Evil Martians guide ("How to Favicon in 2026") reduces the pile of generated
+sizes to a few files:
+
+| File | Size | Who uses it |
+| :--- | :--- | :---------- |
+| `favicon.ico` | 32×32 | older browsers, feed readers, anything requesting `/favicon.ico` directly |
+| `icon.svg` | vector | current browsers; can switch colors with `@media (prefers-color-scheme: dark)` inside the SVG |
+| `apple-touch-icon.png` | 180×180, opaque background | iOS/iPadOS home screen (iOS ignores `rel="icon"`) |
+| `icon-192.png`, `icon-512.png`, `icon-mask.png` | 192, 512, 512 maskable | only in the manifest, only for installable apps |
+
+```html
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+```
+
+`sizes="32x32"` on the `.ico` stops Chrome preferring it over the SVG. Maskable icons need their
+content inside the central safe circle (about 80 % of the canvas).
+
+## Head order for performance
+
+Order changes how early the browser discovers and prioritizes resources. Rick Viscomi's capo.js
+ranks head elements into groups; keep each group above the next:
+
+| # | Group | Elements |
+| :- | :---- | :------- |
+| 1 | Pragma directives | `meta charset`, `meta http-equiv`, `meta name="viewport"`, `base` |
+| 2 | Title | `title` |
+| 3 | Critical resource hints | `link rel="preconnect"`, `link rel="preload"` with `fetchpriority="high"` |
+| 4 | Async scripts | `script async src` |
+| 5 | Import styles | `<style>` containing `@import` |
+| 6 | Synchronous scripts | `script src` without `async`/`defer` |
+| 7 | Synchronous styles | `link rel="stylesheet"`, `style` |
+| 8 | Preloads | `link rel="preload"`, `link rel="modulepreload"` |
+| 9 | Deferred scripts | `script defer src`, modules |
+| 10 | Prefetch and prerender hints | `link rel="prefetch"`, `link rel="dns-prefetch"`, speculation rules |
+| 11 | Everything else | description, Open Graph, icons, manifest, JSON-LD |
+
+- **Render-blocking**: `link rel="stylesheet"` (matching `media`), `<style>`, and parser-blocking
+  `<script>` in the head. Everything else can go below them.
+- Critical CSS inline plus the full sheet as a normal `link` is the usual compromise for
+  above-the-fold speed; don't hand-roll "async CSS" hacks unless you've measured a gain.
+- Third-party tags injected by a tag manager are discovered late; `preconnect` to their origin if
+  they are critical, or better, don't make them critical.
+
+## Common mistakes
+
+| Mistake | Effect | Fix |
+| :------ | :----- | :-- |
+| `meta charset` after a long `<title>` or inline script | outside the first 1024 bytes: encoding may be sniffed, page re-parsed | make it the first child of `head` |
+| No `lang`, or `lang="en"` on a German page | wrong voice and hyphenation; WCAG 3.1.1 failure | set it on `html`; override on elements with `lang` |
+| `user-scalable=no` / `maximum-scale=1` | blocks zoom for low-vision users | remove; fix the input zoom on iOS with a 16 px font size instead |
+| Font preload without `crossorigin` | font downloaded twice | add `crossorigin` |
+| Preloading five images and three scripts | fights the real critical path | preload only what the parser finds late |
+| `async` on scripts that depend on each other | intermittent "X is not defined" | `defer` or modules |
+| Relative `og:image` or `canonical` | unfurlers and crawlers resolve it wrongly or not at all | absolute HTTPS URLs |
+| `noindex` copied from staging to production | page drops out of search | check robots meta in the release checklist |
+| `<base href>` added for convenience | every `href="#section"` link now leaves the page | avoid `base`; use root-relative URLs |
+| `@import` inside CSS or `<style>` | serial, blocking fetches | `link` each file or bundle |
+| Div, image or text in `head` | head closes early; later metadata lands in body | keep only the eight head elements |
+| Two `<title>` or two canonicals | the first `title` wins in the tab; Google may ignore conflicting canonicals altogether | one each |
+| `meta http-equiv="refresh"` for redirects | slow, disorienting, and a weaker signal to crawlers than a real redirect | HTTP 301/308 |
+
+## Recipes
+
+### Boilerplate head
+
+```html title="index.html"
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1">
+  <title>Pricing – Acme</title>
+
+  <link rel="preconnect" href="https://cdn.acme.example"
+    crossorigin>
+  <link rel="stylesheet" href="/css/main.css">
+  <script type="module" src="/js/main.js"></script>
+
+  <meta name="description"
+    content="Plans from free to enterprise, billed monthly.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical"
+    href="https://acme.example/pricing/">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon"
+    href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+```
+
+### SEO and social block
+
+```html
+<meta name="description"
+  content="How we cut our build from 9 to 2 minutes.">
+<link rel="canonical"
+  href="https://acme.example/blog/fast-builds/">
+
+<meta property="og:type" content="article">
+<meta property="og:title" content="Faster builds">
+<meta property="og:description"
+  content="How we cut our build from 9 to 2 minutes.">
+<meta property="og:url"
+  content="https://acme.example/blog/fast-builds/">
+<meta property="og:image"
+  content="https://acme.example/og/fast-builds.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt"
+  content="Bar chart: build time falls from 9 to 2 min">
+<meta property="og:site_name" content="Acme">
+<meta property="og:locale" content="en_GB">
+<meta property="article:published_time"
+  content="2026-09-26T09:00:00+01:00">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@acme">
+```
+
+### Preloading a web font
+
+```html
+<link rel="preload" href="/fonts/inter-var.woff2"
+  as="font" type="font/woff2" crossorigin>
+
+<style>
+  @font-face {
+    font-family: "Inter";
+    src: url("/fonts/inter-var.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+</style>
+```
+
+The `href` must match the `@font-face` URL exactly, or the browser downloads it twice. Preload
+only the one or two faces used above the fold (usually the regular text weight).
+
+### Dark-mode-aware theme color
+
+```html
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f1ea"
+  media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161616"
+  media="(prefers-color-scheme: dark)">
+```
+
+Match each value to the page background at the top of the page, so the browser chrome blends
+into it. The first `theme-color` whose `media` matches wins.
+
+### JSON-LD Article
+
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Faster builds",
+  "image": [
+    "https://acme.example/og/fast-builds.png"
+  ],
+  "datePublished": "2026-09-26T09:00:00+01:00",
+  "dateModified": "2026-09-27T14:20:00+01:00",
+  "author": [{
+    "@type": "Person",
+    "name": "Sam Lee",
+    "url": "https://acme.example/team/sam-lee/"
+  }],
+  "publisher": {
+    "@type": "Organization",
+    "name": "Acme",
+    "url": "https://acme.example/"
+  }
+}
+</script>
+```
+
+### Page-specific render blocking for a view transition
+
+```html
+<style>
+  @view-transition { navigation: auto; }
+</style>
+<!-- hold first paint until #hero is parsed -->
+<link rel="expect" href="#hero" blocking="render">
+```
+
+Chromium and Safari only; Firefox ignores both lines and simply navigates.
+
+## References
+
+- [MDN: `<head>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/head): the metadata container and its permitted content
+- [MDN: `<meta>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta), [standard metadata names](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name) and [`http-equiv`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/http-equiv): every meta variant
+- [MDN: Viewport meta tag](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport): keys, values and the zoom warning
+- [MDN: `<link>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/link) and [`rel` values](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel): link types and attributes
+- [MDN: `<script>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script) and [import maps](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap): loading attributes and module resolution
+- [MDN: Quirks mode and standards mode](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Quirks_mode_and_standards_mode): the three rendering modes
+- [WHATWG HTML: Document metadata](https://html.spec.whatwg.org/multipage/semantics.html#document-metadata): the normative rules for head elements
+- [WHATWG HTML: Scripting](https://html.spec.whatwg.org/multipage/scripting.html): classic, module and async/defer processing
+- [web.dev: Preload critical assets](https://web.dev/articles/preload-critical-assets) and [Fetch Priority](https://web.dev/articles/fetch-priority): when hints help and when they hurt
+- [web.dev: Baseline](https://web.dev/baseline) and [Web Platform Status](https://webstatus.dev/): the support data quoted on this page
+- [capo.js: head order rules](https://rviscomi.github.io/capo.js/user/rules/): Rick Viscomi's ranking of head elements
+- [Evil Martians: How to Favicon in 2026](https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs): Andrey Sitnik's minimal favicon set, updated yearly
+- [The Open Graph protocol](https://ogp.me/): required and optional `og:` properties
+- [Google Search Central: Robots meta tag](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag): directives Google honors
+- [Google Search Central: Article structured data](https://developers.google.com/search/docs/appearance/structured-data/article): recommended properties and author markup
+- [Google Search Central: Localized versions (hreflang)](https://developers.google.com/search/docs/specialty/international/localized-versions): reciprocal alternates and `x-default`
+- [W3C: Content Security Policy Level 3](https://www.w3.org/TR/CSP3/): which directives a meta-delivered policy ignores

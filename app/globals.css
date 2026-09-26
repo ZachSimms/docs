@@ -325,6 +325,9 @@ h2 {
 table {
   border-collapse: collapse;
   display: block;
+  /* containing block for absolutely positioned descendants (the links' .sr-only hint), so a
+     link scrolled out of a wide table can't widen the page */
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   /* block tables would otherwise grow a vertical scrollbar on sub-pixel overflow */

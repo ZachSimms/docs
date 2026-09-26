@@ -1,0 +1,802 @@
+---
+title: Accessibility
+date: 2026-09-26
+order: 6
+---
+
+HTML-first accessibility: how markup becomes the accessibility tree, when ARIA helps and when
+it hurts, names, roles, states, focus, live regions and forms, then a WCAG 2.2 AA checklist
+for HTML authors, a testing workflow and the legal picture as of September 2026. Design-side
+guidance (contrast, touch targets, states) is in [UX & UI](/design/principles/ux-ui/); the
+native widgets that make most ARIA unnecessary are in
+[Interactive elements](/design/html/interactive-elements/).
+
+## The accessibility tree
+
+Browsers build a second tree from the DOM and hand it to assistive technology (screen
+readers, voice control, switch access) through the platform's accessibility API. Each node
+exposes:
+
+| Property | Question it answers | From HTML | From ARIA |
+| :------- | :------------------ | :-------- | :-------- |
+| **Role** | what is it? | the element: `<button>` → button, `<nav>` → navigation | `role="tab"` |
+| **Name** | what is it called? | content, `<label>`, `alt`, `<caption>`, `<legend>` | `aria-label`, `aria-labelledby` |
+| **Description** | anything more? | `title` (if not used as the name) | `aria-describedby` |
+| **State** | what condition is it in? | `disabled`, `checked`, `required`, `open` | `aria-expanded`, `aria-pressed`, `aria-invalid` |
+| **Value** | what's its value? | an input's value, `<progress value>` | `aria-valuenow`, `aria-valuetext` |
+| **Relationships** | what does it belong to or control? | `<label for>`, `<fieldset>`, table headers | `aria-controls`, `aria-describedby`, `aria-owns` |
+
+A screen reader announces a focused control as roughly *name, role, state*: "Mute, toggle
+button, pressed". If any part is missing or wrong, the control is broken for those users even
+when it looks fine. Inspect it in Chrome DevTools (Elements → Accessibility pane, or the full
+accessibility tree view), Firefox's Accessibility Inspector, or Safari's Web Inspector
+(Node → Accessibility).
+
+- Elements with `display: none`, `visibility: hidden`, `hidden`, `inert` or `aria-hidden="true"`
+  are pruned from the tree.
+- `opacity: 0`, off-screen positioning and `clip-path` hide visually but stay in the tree:
+  that is how visually hidden text works.
+- CSS can change semantics: `display: contents` historically dropped the role of buttons and
+  tables in some engines, and `list-style: none` makes Safari/VoiceOver drop list semantics
+  (add `role="list"` back if the count matters).
+
+## The rules of ARIA use
+
+The W3C note *Using ARIA* sets out rules for ARIA in HTML. It is now published as a
+discontinued draft that keeps four rules "for historical purposes and for easier reference",
+pointing to the APG for further guidance. The wording below is quoted from it.
+
+| Rule | Text (W3C, *Using ARIA*) | In practice |
+| :--- | :----------------------- | :---------- |
+| 1 | "If you *can* use a native HTML element or attribute with the semantics and behavior you require already built in, instead of re-purposing an element and adding an ARIA role, state or property to make it accessible, then do so." | `<button>`, not `<div role="button">` |
+| 2 | "Do not change native semantics, unless you really have to." | not `<h2 role="tab">`; put the tab inside the heading, or drop the heading |
+| 3 | "All interactive ARIA controls must be usable with the keyboard." | a `role="slider"` needs arrow keys, Home/End |
+| 4 | "Do not use `role="presentation"` or `aria-hidden="true"` on a focusable element." | a focusable node that says nothing to a screen reader is a "ghost" tab stop |
+| 5 (2018 drafts) | "All interactive elements must have an accessible name." | icon buttons, unlabeled inputs, empty links |
+
+Rule 5 appeared in earlier versions (e.g. the 2018 working draft) and is absent from the
+current discontinued draft; it is still sound advice, and WCAG 4.1.2 requires it anyway.
+
+Why ARIA goes last: it changes only what assistive tech is **told**. It adds no focus, no
+keyboard handling and no behavior. `role="button"` on a `div` announces "button" to a
+control that can't be tabbed to or activated with Enter. The WebAIM Million 2026 scan of a
+million home pages found ARIA on 82.7% of them, and pages with ARIA averaged 59.1 detected
+errors against 42 for pages without. ARIA correlates with complex widgets, so this isn't
+causation, but it shows how often ARIA arrives without the behavior it promises.
+
+## Landmarks & headings
+
+Screen reader users move around a page by landmarks and headings rather than reading
+everything. In WebAIM's Screen Reader User Survey #10 (December 2023–January 2024, 1,539
+respondents), 71.6% said their first move on a long page is to navigate by headings.
+
+| Element | Landmark role | Condition |
+| :------ | :------------ | :-------- |
+| `<header>` | `banner` | only when it's not inside `article`, `aside`, `main`, `nav` or `section` |
+| `<nav>` | `navigation` | always; label several: `aria-label="Breadcrumb"` |
+| `<main>` | `main` | exactly one visible per page |
+| `<aside>` | `complementary` | at the top level; label several |
+| `<footer>` | `contentinfo` | same condition as `header` |
+| `<section>` | `region` | only when it has an accessible name (`aria-labelledby` its heading) |
+| `<form>` | `form` | only when it has an accessible name |
+| `<search>` | `search` | Baseline widely available since April 2026 |
+
+```html
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header>…site logo, <nav aria-label="Main">…</nav></header>
+  <main id="main" tabindex="-1">
+    <h1>Order history</h1>
+    <section aria-labelledby="open-h">
+      <h2 id="open-h">Open orders</h2>…
+    </section>
+  </main>
+  <aside aria-label="Help">…</aside>
+  <footer>…</footer>
+</body>
+```
+
+| Heading rule | Why |
+| :----------- | :-- |
+| One `h1` naming the page's main content | it is the "you are here" |
+| Don't skip levels going down (`h2` → `h4`) | users infer structure from levels |
+| Levels describe structure, not size | style with CSS; `h3` can look small or big |
+| Every section with a visible title gets a real heading | a bold `<div>` isn't in the headings list |
+| Headings are short and distinct | they're read out of context in a list |
+| Don't put everything in headings | a heading every line is as useless as none |
+
+Don't label landmarks with their role ("Navigation navigation"); name what's inside ("Main",
+"Breadcrumb", "Filters"). The document outline algorithm (sectioning elements resetting
+heading levels) was never implemented by browsers or screen readers and has been removed
+from the HTML standard; only `h1`–`h6` levels count. Semantics of each element are in
+[Semantic elements](/design/html/semantic-elements/).
+
+## Accessible names
+
+The name is computed per the W3C *Accessible Name and Description Computation* (accname).
+Simplified, the first rule that yields text wins:
+
+| Order | Source | Notes |
+| :---- | :----- | :---- |
+| 1 | hidden nodes skipped | unless referenced by `aria-labelledby` |
+| 2 | `aria-labelledby` | ids of other elements, concatenated in the order listed; can reference hidden text and the element itself |
+| 3 | `aria-label` | a string; invisible to sighted users, may be missed by machine translation |
+| 4 | native label | `<label>`, `alt`, `<caption>`, `<legend>`, `<figcaption>`, SVG `<title>` |
+| 5 | contents | only for roles that allow name from content: buttons, links, headings, cells, tabs, options… |
+| 6 | `title` | last resort (the accname "tooltip" step) |
+| (inputs) | `placeholder` | HTML-AAM uses it after `title` for text inputs when nothing else exists; never rely on it |
+
+```html
+<!-- 2 beats 3 beats 4: name is "Search the docs" -->
+<span id="s-l">Search the docs</span>
+<input type="search" aria-labelledby="s-l"
+  aria-label="Search" id="q">
+<label for="q">Query</label>
+
+<!-- name from content, including alt of child images -->
+<a href="/cart/"><img src="cart.svg" alt="Cart"> (3)</a>
+
+<!-- combined names: "Delete Invoice 42" -->
+<button id="del-42" aria-labelledby="del-42 inv-42">
+  Delete</button>
+<span id="inv-42">Invoice 42</span>
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| `aria-label` on non-interactive elements | ignored or inconsistent on `div`, `span`, `p` with no role; ARIA prohibits naming `generic` elements |
+| Label in name (WCAG 2.5.3) | the accessible name must **contain** the visible label, ideally start with it, so voice users can say "click Send" |
+| Don't restate the role | "Close", not "Close button" |
+| Names are for identity, descriptions for detail | put hints and errors in `aria-describedby`, not in the name |
+| One source of truth | a visible label wired with `for`/`id` beats an `aria-label` copy that drifts |
+
+## Roles reference
+
+Prefer the native element in the second column. ARIA roles are for patterns HTML lacks.
+
+### Widget roles
+
+| Role | Prefer | Keyboard you owe with the role |
+| :--- | :----- | :----------------------------- |
+| `button` | `<button>` | Enter, Space |
+| `link` | `<a href>` | Enter |
+| `checkbox` | `<input type="checkbox">` | Space; `aria-checked` |
+| `radio` / `radiogroup` | `<input type="radio">` in a `<fieldset>` | arrows, one tab stop |
+| `switch` | checkbox (Safari has `<input type="checkbox" switch>`) | Space; `aria-checked` |
+| `textbox` | `<input>`, `<textarea>` | editing |
+| `searchbox` | `<input type="search">` | editing |
+| `combobox` | `<input list>` + `<datalist>` or `<select>` | arrows, Esc, typeahead; `aria-expanded`, `aria-activedescendant` |
+| `listbox` / `option` | `<select>` (`multiple`) | arrows, Home/End, typeahead; `aria-selected` |
+| `slider` | `<input type="range">` | arrows, Page Up/Down, Home/End; `aria-valuenow` |
+| `spinbutton` | `<input type="number">` | ↑/↓ |
+| `progressbar` | `<progress>` | none |
+| `meter` | `<meter>` | none |
+| `dialog` / `alertdialog` | `<dialog>` | Esc, focus containment |
+| `tablist` / `tab` / `tabpanel` | none | arrows between tabs, Tab into the panel |
+| `menu` / `menubar` / `menuitem` | none (and usually not what you want) | arrows, Esc, typeahead; for app-style command menus only |
+| `tree` / `treeitem` | none | arrows expand, collapse and move |
+| `grid` | `<table>` if not interactive | arrows cell by cell |
+| `tooltip` | `popover="hint"` + `aria-describedby` | Esc |
+
+### Document structure roles
+
+| Role | Prefer |
+| :--- | :----- |
+| `heading` + `aria-level` | `<h1>`–`<h6>` |
+| `list` / `listitem` | `<ul>`, `<ol>`, `<li>` |
+| `table`, `row`, `cell`, `columnheader`, `rowheader` | `<table>`, `<tr>`, `<td>`, `<th scope>` |
+| `img` | `<img alt>`; `role="img"` groups an SVG or emoji sequence into one image |
+| `figure` | `<figure>` |
+| `article` | `<article>` |
+| `group` | `<fieldset>`, `<details>` |
+| `separator` | `<hr>` |
+| `none` / `presentation` | removes the role (e.g. a layout table); children keep theirs |
+| `status`, `alert`, `log`, `timer` | live regions, below; `<output>` is a status |
+| `generic` | `<div>`, `<span>` |
+
+### Landmark roles
+
+`banner`, `navigation`, `main`, `complementary`, `contentinfo`, `region`, `form`, `search`:
+all have native elements (table in the previous section). Adding `role="main"` to `<main>`
+is redundant.
+
+## States & properties
+
+| Attribute | Values | Use | Native equivalent |
+| :-------- | :----- | :-- | :---------------- |
+| `aria-expanded` | `true`, `false` | on the **button** that shows/hides something | `<details>`; `popovertarget` sets it implicitly |
+| `aria-controls` | id(s) | points at the element a control changes; little screen reader support beyond JAWS, harmless to add | none |
+| `aria-current` | `page`, `step`, `location`, `date`, `time`, `true` | the current item in a set: nav link to this page, step in a wizard | none; don't use `aria-selected` for this |
+| `aria-pressed` | `true`, `false`, `mixed` | toggle buttons ("Bold", "Mute"); the label stays the same while the state changes | none |
+| `aria-selected` | `true`, `false` | selection in tabs, listbox options, grid cells | `<option selected>` |
+| `aria-checked` | `true`, `false`, `mixed` | `checkbox`, `radio`, `switch`, `menuitemcheckbox` roles | `checked`, `indeterminate` |
+| `aria-disabled` | `true` | disabled but still focusable and discoverable; you must block activation in JS | `disabled`: not focusable, not submitted, no events |
+| `aria-hidden` | `true` | removes decorative or duplicate content from the tree; never on focusable elements or their ancestors | `hidden`, `inert` also hide from everyone |
+| `aria-live` | `off`, `polite`, `assertive` | announce changes inside the region | `<output>` (implicit `status`) |
+| `aria-atomic` | `true`, `false` | read the whole region, not just the changed node | |
+| `aria-relevant` | `additions`, `removals`, `text`, `all` | which changes to announce; default `additions text`; rarely needed | |
+| `aria-busy` | `true`, `false` | region is updating; AT may hold announcements until `false` (support varies) | |
+| `aria-describedby` | id(s) | hints, format rules, error text: read after name and role | none |
+| `aria-invalid` | `true`, `false`, `grammar`, `spelling` | the value failed validation (set it after the user submits or leaves the field) | `:user-invalid` is visual only |
+| `aria-errormessage` | id | the error text for an `aria-invalid="true"` field; support has lagged, so also reference the error from `aria-describedby` | none |
+| `aria-required` | `true` | required custom controls | `required` on inputs |
+| `aria-haspopup` | `true`/`menu`, `listbox`, `tree`, `grid`, `dialog` | announces that activation opens that kind of popup; `true` means menu, so don't add it to plain disclosure buttons | `<select>`, `<input list>` |
+| `aria-modal` | `true` | on a custom `role="dialog"`: tells AT to ignore the page behind | `showModal()` sets it |
+| `aria-label`, `aria-labelledby` | string, id(s) | name (see above) | `<label>`, `alt`, content |
+
+<Note kind="tip">State attributes must track reality. A stale `aria-expanded="false"` on an open menu is worse than no attribute. Style from the ARIA state (`[aria-expanded="true"] .chevron { rotate: 180deg; }`) so visuals and semantics can't drift apart.</Note>
+
+`disabled` versus `aria-disabled`, side by side (Tab through them):
+
+```html demo height=120 title="disabled.html"
+<style>
+  button { font: inherit; padding: 6px 12px; margin: 4px; }
+  [aria-disabled="true"] { opacity: 0.55;
+    cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--graph-0);
+    outline-offset: 2px; }
+</style>
+<button>Enabled</button>
+<button disabled>disabled (skipped by Tab)</button>
+<button aria-disabled="true"
+  aria-describedby="why">aria-disabled (focusable)</button>
+<p id="why" style="color:var(--muted)">Complete the form to
+  enable saving.</p>
+```
+
+Use `aria-disabled` when users need to find the control and learn why it is unavailable (a
+submit button explained by a hint); use `disabled` when it is simply irrelevant.
+
+## Keyboard & focus
+
+### `tabindex`
+
+| Value | Effect | Use |
+| :---- | :----- | :-- |
+| (none) on native controls | focusable in DOM order | the default; nearly always right |
+| `0` | adds a non-interactive element to the tab order in DOM order | custom widgets with a role and keyboard handling; scrollable regions |
+| `-1` | focusable by script and by click, not by Tab | focus targets: headings after route changes, `<main>` for a skip link, inactive items in a roving group |
+| positive (`1`+) | jumps ahead of everything else, in number order | **never**: it breaks visual order (WCAG 2.4.3) and every later edit |
+
+- Tab order is DOM order. If CSS (`order`, `grid-area`, `flex-direction: row-reverse`,
+  absolute positioning) puts things elsewhere visually, fix the DOM, not the tabindex.
+- Keep focus visible (WCAG 2.4.7): never `outline: none` without a replacement. Style
+  `:focus-visible`, which shows for keyboard focus and not mouse clicks on buttons. A ring
+  recipe is in [UX & UI](/design/principles/ux-ui/).
+- Don't let sticky headers or cookie banners cover the focused element (2.4.11):
+  `html { scroll-padding-block-start: 5rem; }` sized to the sticky header.
+- Scrollable regions need to be keyboard-scrollable: recent Chromium and Firefox make them
+  focusable automatically; add `tabindex="0"`, a role and a name to be safe.
+
+### Roving tabindex
+
+A composite widget (toolbar, tab list, radio-like group, grid) is **one** tab stop; arrow
+keys move within it. Exactly one item has `tabindex="0"`, the rest `-1`, and arrow key
+handling moves the `0` and calls `focus()`. Toggle buttons in a toolbar add `aria-pressed`.
+
+```html
+<div role="toolbar" aria-label="Text formatting">
+  <button tabindex="0">Bold</button>
+  <button tabindex="-1">Italic</button>
+  <button tabindex="-1">Underline</button>
+</div>
+```
+
+```ts
+function onKey(e: KeyboardEvent): void {
+  const items = [...toolbar.querySelectorAll("button")];
+  const i = items.indexOf(e.target as HTMLButtonElement);
+  const next =
+    e.key === "ArrowRight" ? (i + 1) % items.length
+    : e.key === "ArrowLeft"
+      ? (i - 1 + items.length) % items.length
+    : e.key === "Home" ? 0
+    : e.key === "End" ? items.length - 1
+    : -1;
+  if (next < 0) return;
+  e.preventDefault();
+  items[i]!.tabIndex = -1;
+  items[next]!.tabIndex = 0;
+  items[next]!.focus();
+}
+```
+
+The alternative, `aria-activedescendant`, keeps DOM focus on the container (or a combobox
+input) and points at the active option by id: use it when focus must stay in a text input.
+The `focusgroup` attribute, which would do this natively, is limited availability: not
+shipped across engines yet.
+
+### Managing focus
+
+| Event | Move focus to | Why |
+| :---- | :------------ | :-- |
+| Client-side route change | the new page's `h1` (with `tabindex="-1"`) or `<main>`; also update `document.title` | otherwise focus stays on the clicked link, now gone or meaningless, and nothing is announced |
+| Modal opens | inside the dialog (`showModal()` does it; use `autofocus` to choose) | 2.4.3 |
+| Modal closes | back to the opener (native dialogs and popovers do it) | users continue where they were |
+| Item deleted | the next item, or the list heading if empty | focus on a removed node falls back to `<body>` |
+| Form submitted with errors | the error summary, or the first invalid field | errors are found immediately |
+| Content loaded ("Load more") | the first new item | don't make users hunt |
+| Toast or status | **don't** move focus; use a live region | 4.1.3 |
+
+Skip links (2.4.1) are in Recipes below.
+
+## Live regions & status messages
+
+A live region is an element whose later changes are announced without moving focus. WCAG
+4.1.3 requires status messages ("3 results", "Saved", "Item added to cart") to be announced
+this way.
+
+| Markup | Politeness | Atomic | Use |
+| :----- | :--------- | :----- | :-- |
+| `role="status"` / `<output>` | polite: waits for the user to finish | `true` | results counts, "Saved", progress milestones |
+| `role="alert"` | assertive: interrupts | `true` | errors and time-critical warnings only |
+| `role="log"` | polite | `false` | chat, activity feeds (new lines only) |
+| `aria-live="polite"` | polite | set `aria-atomic` as needed | custom regions |
+| `aria-live="assertive"` | assertive | | rarely; prefer `role="alert"` |
+
+```html
+<!-- in the initial HTML, empty -->
+<div id="cart-status" role="status"></div>
+```
+
+```ts
+const status = document.querySelector("#cart-status")!;
+
+export function announce(message: string): void {
+  status.textContent = "";          // allow repeats
+  requestAnimationFrame(() => {
+    status.textContent = message;   // this change is read
+  });
+}
+announce("Added to cart. 3 items.");
+```
+
+| Rule | Why |
+| :--- | :-- |
+| The region must exist, and be rendered, **before** the content changes | screen readers watch regions they already know about; inserting `<div role="alert">Error</div>` in one go is often not announced (alerts are the most forgiving) |
+| Don't hide the region with `display: none` | it leaves the tree; use a visually hidden class if it shouldn't be seen |
+| Keep messages short and complete | "Saved", not "The operation has completed successfully" |
+| Use `polite` by default | assertive messages cut off whatever the user was hearing |
+| No interactive content inside | it's read as text; links in a toast are unreachable if it disappears |
+| Toasts that vanish | give them at least several seconds, pause on hover and focus, and put anything actionable somewhere persistent |
+| Don't announce everything | typing feedback on every keystroke is noise; debounce |
+
+`ariaNotify()` (announce a string without a live region) reached Baseline in September 2026
+(Chrome 141, Firefox 150, Safari 27), so it is newly available: use it with a live-region
+fallback for now.
+
+## Forms
+
+The full form sheet is [Forms & inputs](/design/html/forms-inputs/); the accessibility core:
+
+| Requirement | Markup | WCAG |
+| :---------- | :----- | :--- |
+| Every control has a visible label | `<label for="email">Email</label><input id="email">` or wrap the input in the label | 1.3.1, 3.3.2, 4.1.2 |
+| Related controls are grouped | `<fieldset><legend>Delivery</legend>…</fieldset>`, always for radio groups | 1.3.1 |
+| Hints are attached | `aria-describedby="pw-hint"` | 1.3.1 |
+| Required is marked in text and in code | `required` plus a visible "(required)" or asterisk explained once | 3.3.2 |
+| Errors are identified in text | message next to the field, `aria-invalid="true"`, linked via `aria-describedby` | 3.3.1 |
+| Errors say how to fix | "Enter a date like 21/03/2026", not "Invalid" | 3.3.3 |
+| Personal-data fields declare their purpose | `autocomplete="email"`, `"given-name"`, `"street-address"`, `"postal-code"`, `"tel"`, `"cc-number"`, `"bday"` | 1.3.5 |
+| Logins work with password managers and paste | `autocomplete="username"`, `"current-password"`, `"new-password"`, `"one-time-code"`; never block paste | 3.3.8 |
+| Don't ask twice | prefill or offer "same as billing" | 3.3.7 |
+| Legal, financial, data-deleting submissions can be reviewed, corrected or reversed | a confirm step or undo | 3.3.4 |
+| No change of context on input | a `<select>` must not navigate on change; use a submit button | 3.2.2 |
+
+- A placeholder is not a label: it disappears on typing, often fails contrast, and support as
+  a name is a last-resort fallback.
+- Native validation bubbles aren't fully accessible and can't be styled. A common pattern:
+  `novalidate` on the form, validate on submit, then show inline messages and an error
+  summary (Recipes).
+- Mark the fewer case: if most fields are required, mark the optional ones instead, and say
+  so at the top.
+
+## Images, media & color
+
+| Topic | Rule | Details |
+| :---- | :--- | :------ |
+| Images | `alt` by purpose: informative, decorative (`alt=""`), functional, complex | [Media & embeds](/design/html/media-embeds/) |
+| SVG | `role="img"` + name when meaningful; `aria-hidden="true"` when decorative | [Media & embeds](/design/html/media-embeds/) |
+| Video | captions (1.2.2, 1.2.4), audio description (1.2.5), no unmuted autoplay, pause for motion (2.2.2) | [Media & embeds](/design/html/media-embeds/) |
+| Audio | transcript (1.2.1); auto-playing audio over 3 s needs a control (1.4.2) | |
+| Iframes | a `title` naming the content | |
+| Contrast | text 4.5:1, large text 3:1, UI and graphics 3:1 (1.4.3, 1.4.11) | [Color theory](/design/principles/color-theory/) |
+| Color alone | never the only signal: add text, icons or patterns (1.4.1) | |
+| Motion | honor `prefers-reduced-motion`; nothing flashes more than 3 times a second (2.3.1) | [Animation](/design/css/animation/) |
+| Forced colors | test Windows High Contrast (`forced-colors: active`); use `currentColor` and real borders | [CSS](/design/css/css/) |
+
+## WCAG 2.2 A & AA checklist for HTML authors
+
+WCAG 2.2 became a W3C Recommendation on 5 October 2023. It has 86 success criteria, 55 of
+them at levels A and AA, which is what laws and contracts usually require. It added nine
+criteria (six at A/AA, marked **new**) and removed **4.1.1 Parsing** as obsolete: browsers
+and assistive tech no longer depend on strictly valid markup, and the problems it covered
+(duplicate ids, bad nesting) are caught by 1.3.1 and 4.1.2 where they matter.
+
+| SC | Level | Check in the markup |
+| :- | :---- | :------------------ |
+| 1.1.1 Non-text content | A | `alt` on every `img`, names on icon buttons, `aria-hidden` on decorative SVG |
+| 1.2.1 Audio-only and video-only (prerecorded) | A | transcript, or a text/audio description for silent video |
+| 1.2.2 Captions (prerecorded) | A | `<track kind="captions">`, corrected |
+| 1.2.3 Audio description or media alternative | A | description track or full text alternative |
+| 1.2.4 Captions (live) | AA | live captioning for streams |
+| 1.2.5 Audio description (prerecorded) | AA | narrated description of visual-only information |
+| 1.3.1 Info and relationships | A | headings, lists, tables with `th`, labels, fieldsets, landmarks in markup |
+| 1.3.2 Meaningful sequence | A | DOM order matches reading order |
+| 1.3.3 Sensory characteristics | A | not "click the round green button" alone |
+| 1.3.4 Orientation | AA | no forced portrait or landscape |
+| 1.3.5 Identify input purpose | AA | `autocomplete` tokens on personal-data fields |
+| 1.4.1 Use of color | A | errors, links, chart series not by color alone |
+| 1.4.2 Audio control | A | no auto-playing audio over 3 s without a control |
+| 1.4.3 Contrast (minimum) | AA | 4.5:1 text, 3:1 large text |
+| 1.4.4 Resize text | AA | usable at 200% zoom; `rem`/`em`, no fixed-height text boxes |
+| 1.4.5 Images of text | AA | real text, not pictures of it |
+| 1.4.10 Reflow | AA | no horizontal scroll at 320 CSS px wide (400% zoom) |
+| 1.4.11 Non-text contrast | AA | 3:1 for borders of inputs, icons, focus rings |
+| 1.4.12 Text spacing | AA | no clipping when line height is 1.5 and spacing grows |
+| 1.4.13 Content on hover or focus | AA | tooltips dismissible (Esc), hoverable, persistent |
+| 2.1.1 Keyboard | A | every action works with the keyboard alone |
+| 2.1.2 No keyboard trap | A | focus can always leave (modals via Esc or a button) |
+| 2.1.4 Character key shortcuts | A | single-key shortcuts can be turned off or remapped |
+| 2.2.1 Timing adjustable | A | session timeouts warn and can be extended |
+| 2.2.2 Pause, stop, hide | A | carousels, auto-playing video and tickers can be paused |
+| 2.3.1 Three flashes or below threshold | A | nothing flashes more than 3 times per second |
+| 2.4.1 Bypass blocks | A | skip link and/or landmarks |
+| 2.4.2 Page titled | A | a unique, descriptive `<title>`, updated on route change |
+| 2.4.3 Focus order | A | no positive `tabindex`; logical DOM order; focus managed on dialogs |
+| 2.4.4 Link purpose (in context) | A | no bare "click here"; context or `aria-describedby` |
+| 2.4.5 Multiple ways | AA | search, sitemap or nav, not a single route to each page |
+| 2.4.6 Headings and labels | AA | headings and labels describe their content |
+| 2.4.7 Focus visible | AA | a visible `:focus-visible` style everywhere |
+| 2.4.11 Focus not obscured (minimum) **new** | AA | sticky headers and banners don't fully cover the focused element |
+| 2.5.1 Pointer gestures | A | pinch and multi-finger gestures have single-pointer alternatives |
+| 2.5.2 Pointer cancellation | A | actions fire on up-event (`click`), not `pointerdown` |
+| 2.5.3 Label in name | A | the accessible name contains the visible label |
+| 2.5.4 Motion actuation | A | shake or tilt features have a button alternative |
+| 2.5.7 Dragging movements **new** | AA | drag-to-reorder, sliders, maps have click or keyboard alternatives |
+| 2.5.8 Target size (minimum) **new** | AA | targets ≥ 24 × 24 CSS px or spaced so a 24 px circle doesn't overlap another target; inline links exempt |
+| 3.1.1 Language of page | A | `<html lang="en">` |
+| 3.1.2 Language of parts | AA | `lang` on passages in another language |
+| 3.2.1 On focus | A | focusing something doesn't submit, navigate or open windows |
+| 3.2.2 On input | A | changing a value doesn't change context without warning |
+| 3.2.3 Consistent navigation | AA | nav in the same order across pages |
+| 3.2.4 Consistent identification | AA | the same function has the same name everywhere |
+| 3.2.6 Consistent help **new** | A | help links or contact details in the same relative place on each page |
+| 3.3.1 Error identification | A | errors described in text |
+| 3.3.2 Labels or instructions | A | visible labels and format hints |
+| 3.3.3 Error suggestion | AA | say how to fix it |
+| 3.3.4 Error prevention (legal, financial, data) | AA | review, confirm or undo |
+| 3.3.7 Redundant entry **new** | A | don't make users re-enter information they already gave in the same process |
+| 3.3.8 Accessible authentication (minimum) **new** | AA | no cognitive test to log in unless there's an alternative; allow paste and password managers; object-recognition CAPTCHAs are an allowed exception |
+| 4.1.2 Name, role, value | A | native elements, or complete ARIA for custom widgets |
+| 4.1.3 Status messages | AA | `role="status"` / `role="alert"` for messages that don't take focus |
+
+Also in 2.2 but AAA: 2.4.12 Focus not obscured (enhanced), 2.4.13 Focus appearance and
+3.3.9 Accessible authentication (enhanced). The design-side subset with quick checks is in
+[UX & UI](/design/principles/ux-ui/).
+
+## Testing workflow
+
+<Steps>
+  <Step title="Automated scan">
+    Run axe DevTools or Lighthouse on each template, and axe-core in CI (e.g. with Playwright,
+    see [Testing](/typescript/testing/)). Fix everything flagged: these are the cheap wins.
+  </Step>
+  <Step title="Keyboard-only pass">
+
+    Put the mouse away. Tab and Shift+Tab through the page and check:
+
+    - every control is reachable, in a sensible order, with a visible focus ring
+    - Enter and Space work on buttons; arrows inside composite widgets
+    - menus and dialogs close with Esc and return focus
+    - nothing traps focus; nothing focused is hidden under sticky UI
+
+  </Step>
+  <Step title="Screen reader pass">
+    Use one desktop and one mobile screen reader. Navigate by headings, landmarks and form
+    fields, then complete the page's main task. Listen for missing names, wrong roles and
+    unannounced changes.
+  </Step>
+  <Step title="Zoom and reflow">
+    Browser zoom to 200% and 400% (or a 320 px wide window). Nothing is cut off, overlapping or
+    scrolling sideways. Apply a text-spacing bookmarklet.
+  </Step>
+  <Step title="Visual settings">
+    Check contrast, `prefers-reduced-motion`, Windows forced colors and dark mode.
+  </Step>
+  <Step title="Users">
+    Test with disabled people for anything important. Checklists find defects; people find
+    whether the product is usable.
+  </Step>
+</Steps>
+
+### Screen readers
+
+| Screen reader | Platform | Browser to pair | Start | Essential keys |
+| :------------ | :------- | :-------------- | :---- | :------------- |
+| VoiceOver | macOS (built in) | Safari | <kbd>⌘</kbd> <kbd>F5</kbd> | VO = <kbd>Ctrl</kbd>+<kbd>Option</kbd>; VO+→ / ← next/previous; VO+U rotor (headings, landmarks, links, form controls); VO+⌘+H next heading; VO+Space activate; Ctrl stops speech |
+| NVDA | Windows (free) | Firefox or Chrome | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>N</kbd> | NVDA key = Insert; H / Shift+H headings, 1–6 by level, D landmarks, K links, F form fields, B buttons, T tables; NVDA+F7 elements list; NVDA+Space browse/focus mode; Ctrl stops speech |
+| JAWS | Windows (paid; 40-minute demo mode) | Chrome or Edge | desktop shortcut | H headings, R regions (landmarks), F form fields, T tables; Insert+F6 headings list, Insert+F7 links list, Insert+F5 form fields list; Insert+Z toggles the virtual cursor |
+| VoiceOver | iOS, iPadOS | Safari | Settings → Accessibility, or the Accessibility Shortcut (triple-click side button) | swipe right/left next/previous; double-tap activate; rotate two fingers for the rotor, then swipe up/down to jump by the chosen unit |
+| TalkBack | Android | Chrome | Settings → Accessibility, or hold both volume keys if the shortcut is on | swipe right/left next/previous; double-tap activate; reading controls to jump by headings, links, controls |
+
+In WebAIM's Survey #10 the primary desktop screen readers were JAWS (40.5%), NVDA (37.7%) and
+VoiceOver (9.7%); on mobile, 70.6% used VoiceOver and 34.7% TalkBack. The commonest pairings
+were JAWS with Chrome and NVDA with Chrome. Test with NVDA + Chrome or Firefox and VoiceOver +
+Safari at minimum.
+
+### What automated tools miss
+
+Automated checkers only test what can be decided from code: missing alt, missing labels,
+contrast of plain text, invalid ARIA, duplicate ids. They can't judge whether alt text is
+accurate, whether focus order makes sense, whether a custom widget is operable, or whether an
+announcement ever happens.
+
+| Study | Finding |
+| :---- | :------ |
+| GOV.UK (Government Digital Service), 2017 | on a test page with 143 deliberate failures, the best single tool found 37–41% depending on how warnings were counted; all tools together found 71% |
+| Deque, *Automated accessibility testing coverage* | across 2,000+ audits and nearly 300,000 issues, Deque's automated (axe) tests found 57.38% of issues **by volume**; the far lower figures often quoted count WCAG criteria covered instead |
+
+The same WebAIM Million 2026 run found detectable WCAG failures on 95.9% of a million home
+pages, averaging 56.1 per page. The six most common: low-contrast text (83.9% of pages),
+missing alt text (53.1%), missing form labels (51%), empty links (46.3%), empty buttons
+(30.6%) and missing `lang` (13.5%). All six are one-line HTML or CSS fixes.
+
+## Legal context
+
+Laws usually reference WCAG rather than restating it. This is orientation, not legal advice.
+
+| Jurisdiction | Instrument | Standard | Status (September 2026) |
+| :----------- | :--------- | :------- | :---------------------- |
+| US state and local government | ADA Title II final rule, published 24 April 2024 | WCAG 2.1 AA for web content and mobile apps | an Interim Final Rule (20 April 2026) extended compliance to **26 April 2027** for entities serving 50,000+ people and **26 April 2028** for smaller ones and special districts |
+| US federal agencies | Section 508 (2017 refresh) | WCAG 2.0 AA | in force |
+| US private businesses | ADA Title III | no technical regulation; lawsuits and settlements commonly cite WCAG 2.x AA | litigation-driven |
+| EU private sector | European Accessibility Act, Directive (EU) 2019/882 | harmonized standard EN 301 549, which builds its web requirements on WCAG AA | applies to products placed on the market and services provided to consumers after **28 June 2025**; e-commerce, banking, e-books, transport ticketing, communications; microenterprises providing services are exempt |
+| EU public sector | Web Accessibility Directive (EU) 2016/2102 | EN 301 549 | in force |
+
+Target WCAG 2.2 AA: it is a superset of 2.1 AA apart from the removed 4.1.1, so it satisfies
+rules written against 2.1.
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| `<div>`/`<span>` click handlers | `<button>` or `<a href>` |
+| Icon buttons with no name | `aria-label` or visually hidden text |
+| `aria-label` on a `div` with no role | name something interactive or a landmark; otherwise use visible text |
+| `aria-hidden="true"` on a container with focusable children | `inert`, or remove them from the tab order |
+| `role="button"` without `tabindex="0"` and key handlers | use `<button>` |
+| Redundant roles (`<nav role="navigation">`, `<button role="button">`) | delete them |
+| `role="menu"` for site navigation | a list of links; menus are for application commands |
+| `outline: none` with no replacement | a `:focus-visible` ring |
+| Positive `tabindex` | DOM order |
+| Live region added at the same moment as its text | render it empty at load, then fill it |
+| Heading levels chosen for size | pick by structure, style with CSS |
+| Placeholder as the only label | a real `<label>` |
+| Errors shown only in red | text plus an icon; `aria-invalid` and `aria-describedby` |
+| "Click here", "Read more" ×10 | descriptive link text, or `aria-describedby` to the item heading |
+| Missing `lang` | `<html lang="…">` |
+| Overlays and widgets sold as automatic compliance | they don't fix the underlying markup; fix the HTML |
+| Testing only with axe | add keyboard and screen reader passes |
+
+## Recipes
+
+### Skip link
+
+Hidden until focused; the first Tab on the page reveals it. Tab into the frame to see it:
+
+```html demo height=140 title="skip-link.html"
+<style>
+  .skip-link { position: absolute; left: 8px; top: -40px;
+    padding: 8px 12px; border-radius: 6px; z-index: 10;
+    background: var(--fg); color: var(--bg); }
+  .skip-link:focus { top: 8px; }
+  nav a { margin-inline-end: 12px; color: inherit; }
+</style>
+<a class="skip-link" href="#main">Skip to main content</a>
+<nav aria-label="Main" style="margin-top:44px">
+  <a href="#a">Products</a><a href="#b">Pricing</a>
+  <a href="#c">Docs</a>
+</nav>
+<main id="main" tabindex="-1">
+  <h3>Main content</h3>
+</main>
+```
+
+- The target needs `tabindex="-1"` (or be focusable) so focus, not just the scroll position,
+  moves there in every browser.
+- Make it the first focusable element in the `<body>`.
+- Several skip links ("Skip to search", "Skip to results") suit long, complex pages.
+
+### Visually hidden utility
+
+Hidden on screen, read by screen readers; becomes visible when it or a descendant receives
+focus, so it doubles for skip links:
+
+```css
+.visually-hidden:not(:focus-within, :active) {
+  position: absolute !important;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;  /* no word-by-word reading */
+  border: 0;
+}
+```
+
+Never use `display: none` or `visibility: hidden` for this: both remove the text from the
+accessibility tree. Tailwind's `sr-only` is the same idea.
+
+### Accessible icon button
+
+```html
+<!-- visually hidden text: survives machine translation -->
+<button type="button" class="icon-btn">
+  <svg aria-hidden="true" width="20" height="20">
+    <use href="/icons.svg#bell" />
+  </svg>
+  <span class="visually-hidden">Notifications</span>
+</button>
+
+<!-- or aria-label on the button -->
+<button type="button" class="icon-btn"
+  aria-label="Notifications">
+  <svg aria-hidden="true" width="20" height="20">
+    <use href="/icons.svg#bell" />
+  </svg>
+</button>
+```
+
+Make the target at least 24 × 24 CSS px (2.5.8; 44 px is better on touch), give it a visible
+focus ring, and if it's a toggle, add `aria-pressed` rather than changing the name.
+
+### Disclosure button with `aria-expanded`
+
+When `<details>` doesn't fit (the trigger sits apart from the panel, or needs custom
+markup):
+
+```html
+<button type="button" class="disclosure"
+  aria-expanded="false" aria-controls="filters">
+  Filters
+</button>
+<div id="filters" hidden>…</div>
+```
+
+```ts
+for (const btn of document.querySelectorAll<HTMLElement>(
+  "button[aria-expanded][aria-controls]",
+)) {
+  const panel = document.getElementById(
+    btn.getAttribute("aria-controls")!,
+  )!;
+  btn.addEventListener("click", () => {
+    const open =
+      btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!open));
+    panel.hidden = open;
+  });
+}
+```
+
+```css
+.disclosure::after {
+  content: "▸";
+  margin-inline-start: 0.5ch;
+}
+.disclosure[aria-expanded="true"]::after { content: "▾"; }
+```
+
+Keep the name constant ("Filters"); the state carries open or closed. Put the panel right
+after the button in the DOM so the reading and tab order follow.
+
+### Form error pattern
+
+Inline message referenced by the field, `aria-invalid` on the field, and an error summary
+focused on submit:
+
+```html demo height=280 title="form-errors.html"
+<style>
+  .summary { border: 2px solid var(--graph-1); padding: 8px;
+    border-radius: 6px; margin-block-end: 12px; }
+  .summary h3 { margin: 0 0 4px; font-size: 15px; }
+  .summary a { color: var(--graph-1); }
+  label { display: block; font-weight: 600; }
+  input { font: inherit; padding: 6px; margin-block: 4px;
+    border: 1px solid var(--muted); border-radius: 4px; }
+  input[aria-invalid="true"] {
+    border: 2px solid var(--graph-1); }
+  .error { color: var(--graph-1); margin: 0; }
+  .hint { color: var(--muted); margin: 0; }
+</style>
+<div class="summary" role="alert" tabindex="-1">
+  <h3>There is 1 problem</h3>
+  <a href="#email">Enter an email address like
+    name@example.com</a>
+</div>
+<label for="email">Email</label>
+<p class="hint" id="email-hint">We'll send the receipt
+  here.</p>
+<input id="email" type="email" autocomplete="email"
+  aria-invalid="true"
+  aria-describedby="email-hint email-err"
+  value="ana@">
+<p class="error" id="email-err">Error: enter an email
+  address like name@example.com</p>
+```
+
+```ts
+form.addEventListener("submit", (e) => {
+  const invalid = [...form.elements].filter(
+    (el): el is HTMLInputElement =>
+      el instanceof HTMLInputElement && !el.checkValidity(),
+  );
+  if (invalid.length === 0) return;
+  e.preventDefault();
+  for (const el of invalid) {
+    el.setAttribute("aria-invalid", "true");
+    showMessage(el);     // fills the linked .error element
+  }
+  renderSummary(invalid); // links to each field's id
+  summary.focus();
+});
+```
+
+- Add `novalidate` to the `<form>` so browser bubbles don't compete with your messages.
+- The word "Error:" (and optionally an icon) means the message doesn't rely on color
+  (1.4.1).
+- Remove `aria-invalid` and the message when the user fixes the field, not on every keystroke
+  before they finish.
+
+### Live status message
+
+```html
+<button type="button" id="save">Save draft</button>
+<p id="save-status" role="status"
+  class="visually-hidden"></p>
+```
+
+```ts
+const status = document.querySelector("#save-status")!;
+
+saveButton.addEventListener("click", async () => {
+  status.textContent = "Saving…";
+  await saveDraft();
+  const time = new Date().toLocaleTimeString([], {
+    timeStyle: "short",
+  });
+  status.textContent = `Draft saved at ${time}`;
+});
+```
+
+The `<p role="status">` is in the initial HTML. Drop `visually-hidden` if sighted users should
+see the message too, which is usually better.
+
+## References
+
+- [W3C: Using ARIA](https://www.w3.org/TR/using-aria/): the rules of ARIA use (now a discontinued draft)
+- [W3C: Using ARIA, 2018 working draft](https://www.w3.org/TR/2018/WD-using-aria-20180927/): includes the fifth rule on accessible names
+- [WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/): roles, states and properties
+- [WAI-ARIA Authoring Practices Guide (APG)](https://www.w3.org/WAI/ARIA/apg/): patterns, keyboard conventions, landmark and naming guidance
+- [W3C: Accessible Name and Description Computation 1.2](https://www.w3.org/TR/accname-1.2/): the name algorithm
+- [W3C: HTML Accessibility API Mappings](https://w3c.github.io/html-aam/): element-to-role mappings and per-element name computation
+- [W3C: ARIA in HTML](https://www.w3.org/TR/html-aria/): which roles are allowed on which elements
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/): the success criteria
+- [W3C WAI: What's new in WCAG 2.2](https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/): the nine new criteria and the removal of 4.1.1
+- [W3C WAI: Understanding WCAG 2.2](https://www.w3.org/WAI/WCAG22/Understanding/): intent and examples per criterion
+- [MDN: Accessibility](https://developer.mozilla.org/en-US/docs/Web/Accessibility): guides and ARIA reference
+- [MDN: ARIA live regions](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Guides/Live_regions): politeness, atomic, relevant
+- [MDN: tabindex](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/tabindex): values and warnings
+- [MDN: HTML autocomplete attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete): the token list for 1.3.5
+- [web.dev: Learn Accessibility](https://web.dev/learn/accessibility): course covering focus, ARIA, forms and testing
+- [WebAIM: Screen Reader User Survey #10](https://webaim.org/projects/screenreadersurvey10/): usage shares and heading navigation
+- [WebAIM: The WebAIM Million](https://webaim.org/projects/million/): 2026 failure rates on a million home pages
+- [WebAIM: Using NVDA to evaluate web accessibility](https://webaim.org/articles/nvda/): NVDA shortcuts
+- [WebAIM: Using VoiceOver to evaluate web accessibility](https://webaim.org/articles/voiceover/): VoiceOver shortcuts
+- [GOV.UK: What we found when we tested tools on the world's least-accessible webpage](https://accessibility.blog.gov.uk/2017/02/24/what-we-found-when-we-tested-tools-on-the-worlds-least-accessible-webpage/): automated tool coverage study
+- [Deque: Automated accessibility testing coverage](https://www.deque.com/automated-accessibility-testing-coverage/): the 57% by-volume study
+- [ADA.gov: Fact sheet on the Title II web and mobile app rule](https://www.ada.gov/resources/2024-03-08-web-rule/): requirements and the 2026 compliance-date extension
+- [EUR-Lex: Directive (EU) 2019/882](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32019L0882): the European Accessibility Act

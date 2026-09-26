@@ -1,0 +1,784 @@
+---
+title: Startup finance
+date: 2026-09-26
+order: 5
+---
+
+The money side of going from idea to MVP to a first priced round, for a technical first-time founder with a US
+Delaware C-corp: founder stock and the 83(b) election, unit economics and SaaS metrics, burn and runway, SAFEs, priced
+rounds, cap tables, term sheets, employee equity, startup tax breaks and the admin you can't skip. Accounting rules
+are in [accounting](/finance/business/accounting/), the statements in
+[financial statements](/finance/business/financial-statements/), and DCF and VC-method theory in
+[valuation](/finance/business/valuation/). The product pipeline is the [idea-to-MVP playbook](/startups/idea-to-mvp/playbook/);
+YC's fundraising advice is summarized on [Y Combinator](/startups/advice/y-combinator/).
+
+<Note kind="warning">General information, not legal, tax or investment advice. US (Delaware C-corp) conventions and 2026 rules; talk to a startup lawyer and accountant before signing or filing anything.</Note>
+
+## Entity, founder stock and vesting
+
+**Default for a venture-backed startup: a Delaware C-corporation.** An LLC is fine for a lifestyle or services
+business, but it is the wrong vehicle if you plan to raise from VCs.
+
+| Question | Delaware C-corp | LLC |
+| :--- | :--- | :--- |
+| What VCs expect | the standard; NVCA and YC documents assume it | many funds can't or won't invest (pass-through income creates tax problems for their tax-exempt and foreign LPs) |
+| Preferred stock, option plans | standard, well-understood | possible via units and profits interests, but bespoke and costly |
+| Taxation | entity pays corporate tax; shareholders taxed on dividends and sale | pass-through: losses and profits flow to members' returns |
+| QSBS (§1202) | eligible if the tests are met | not eligible; converting to a C-corp later starts QSBS from the conversion date |
+| Early losses | trapped in the company as NOLs | usable by members (the main LLC advantage) |
+| When to pick | you intend to raise venture capital or grant options to many employees | bootstrapped, profitable-from-day-one, or real-estate/services |
+
+Incorporate with a startup lawyer or a standard incorporation service that produces: certificate of incorporation,
+bylaws, board consents, **founder stock purchase agreements with vesting**, IP assignment (every founder assigns
+code and inventions to the company), and an equity incentive plan.
+
+### Founder stock and vesting
+
+| Term | Convention | Why |
+| :--- | :--- | :--- |
+| Founder shares | bought for cash at a tiny price (par, e.g. \$0.00001–\$0.0001 per share) right after incorporation | price ≈ fair value when the company is worth nothing, so no tax at grant |
+| Authorized shares | often ~10M authorized, most issued to founders | leaves room for a pool; watch the Delaware franchise tax (below) |
+| Vesting | **4 years with a 1-year cliff**: 25% at 12 months, then monthly | a co-founder who leaves in month 5 takes nothing; investors expect it and will impose it if you don't |
+| Mechanism | shares issued up front, company has a **repurchase right** at cost on unvested shares that lapses as they vest | technically "restricted stock", which is why 83(b) matters |
+| Credit for time served | some founders start with 6–12 months already vested | reasonable if real work pre-dates incorporation |
+| **Single-trigger** acceleration | vesting speeds up on a sale alone | investors dislike it: acquirers want the team incentivised after closing |
+| **Double-trigger** acceleration | vesting speeds up only on sale *and* termination without cause (or resignation for good reason) within a window, commonly 12 months | the common founder/executive compromise; often 100% for founders, less for employees |
+
+### The 83(b) election
+
+Under [IRC §83](https://www.law.cornell.edu/uscode/text/26/83), property subject to a "substantial risk of forfeiture"
+(unvested stock) is taxed as **ordinary income when it vests**, on (value at vesting − price paid). Section 83(b) lets
+you elect to be taxed **at transfer** instead, on (value at transfer − price paid), which for founder stock is about
+zero. After that, all growth is capital gain, the capital-gains holding period starts, and so does the QSBS clock.
+
+- **Deadline: 30 days after the stock is transferred** (the purchase/grant date, not the vesting date). No extensions,
+  no late elections. Miss it and the usual workarounds (e.g. canceling and
+  reissuing stock at today's value) are costly and imperfect.
+- **Filing online**: since July 2025 the IRS accepts [Form 15620](https://www.irs.gov/pub/irs-pdf/f15620.pdf) online
+  through an IRS account (ID.me sign-in); you get a timestamped confirmation to keep. Only Form 15620 can be filed
+  online, and law-firm alerts (e.g. [Sidley, August 2025](https://www.sidley.com/en/insights/newsupdates/2025/08/83b-goes-digital-two-quirks-founders-should-know-before-you-click-submit))
+  reported quirks such as a 999,999-share cap per submission and two-decimal prices, which can bite on founder stock at
+  \$0.0001; check the current form, or mail it.
+- **Paper**: mail to the IRS address for your return, by certified mail with return receipt; keep the proof. File one
+  way only. Give a copy to the company. Since 2016 you no longer attach a copy to your tax return.
+- The election is **irrevocable**. If you later forfeit unvested shares, you don't get the tax back (a tiny amount
+  for founder stock, which is the point).
+- It also applies to **early-exercised options** (see employee equity).
+
+<details>
+<summary>Worked example: 83(b) vs no 83(b)</summary>
+
+A founder buys 4,000,000 shares at \$0.0001 (\$400), 4-year vesting with a 1-year cliff. Simplify vesting to four
+annual tranches of 1,000,000 shares, and suppose common stock's fair value at each vest is \$0.40, \$1.00, \$2.00
+and \$3.00 as the company raises.
+
+| Vest | Shares | FMV/share | Ordinary income without 83(b) | Tax at an illustrative 37% federal rate |
+| :--- | ---: | ---: | ---: | ---: |
+| Year 1 | 1,000,000 | \$0.40 | \$399,900 | \$147,963 |
+| Year 2 | 1,000,000 | \$1.00 | \$999,900 | \$369,963 |
+| Year 3 | 1,000,000 | \$2.00 | \$1,999,900 | \$739,963 |
+| Year 4 | 1,000,000 | \$3.00 | \$2,999,900 | \$1,109,963 |
+| **Total** | 4,000,000 | | **\$6,399,600** | **\$2,367,852** |
+
+That tax is due in cash on **illiquid** stock you can't sell. With a timely 83(b): income at purchase = \$400 − \$400
+= \$0, no tax now, and gain is taxed only on sale, as long-term capital gain (and possibly excluded under QSBS).
+State tax and payroll withholding questions come on top; personal tax basics are on
+[retirement and taxes](/finance/personal/retirement-taxes/).
+
+</details>
+
+## Unit economics
+
+Unit economics ask whether one customer is worth more than it costs to get and serve. Pre-product-market fit the
+numbers are noisy; track them anyway so you notice when they stabilize.
+
+| Metric | Formula | Notes |
+| :--- | :--- | :--- |
+| **CAC** (customer acquisition cost) | sales & marketing spend in period ÷ new customers in period | use *fully loaded* S&M (salaries, tools, ads); "blended" includes organic customers and flatters; "paid" CAC counts only paid channels |
+| **ARPA** | revenue ÷ accounts (monthly) | per account, not per user, for B2B |
+| **Gross margin** | (revenue − COGS) ÷ revenue | COGS = hosting, third-party APIs/model inference, payment fees, support, onboarding |
+| **Contribution margin** | (revenue − all variable costs) ÷ revenue | also subtracts variable costs below gross profit (e.g. per-order fulfillment, sales commissions) |
+| **Churn** $c$ | customers lost ÷ customers at start (per month) | average lifetime ≈ $1/c$ months |
+| **LTV** (simple) | $\text{LTV} = \dfrac{\text{ARPA} \times \text{GM}}{c}$ | margin, not revenue: revenue LTV overstates by $1/\text{GM}$ |
+| **LTV** (discounted) | $\text{LTV} = \dfrac{\text{ARPA} \times \text{GM}}{c + d}$ | $d$ = monthly discount rate; payments start next month |
+| **LTV:CAC** | LTV ÷ CAC | heuristic target ≥ 3 |
+| **CAC payback** | $\dfrac{\text{CAC}}{\text{ARPA} \times \text{GM}}$ months | heuristic target ≤ 12 months; 5–7 is strong |
+
+The ≥ 3 and ≤ 12-month thresholds come from David Skok's
+[SaaS Metrics 2.0](https://www.forentrepreneurs.com/saas-metrics-2/) (For Entrepreneurs): he suggests LTV:CAC above 3
+(the best businesses reach 7–8) and recovering CAC within about 12 months (5–7 is better). They are **rules of thumb
+from venture-backed SaaS**, not laws; a business with 90-day payback and LTV:CAC of 2 can be excellent, and one with
+LTV:CAC of 5 can die if payback is 30 months and cash runs out first.
+
+**Why simple LTV overstates.** It assumes churn is constant forever (early cohorts churn fast, so a 3% monthly
+number measured in month 2 is usually wrong in month 20), ignores the time value of money, often uses revenue instead
+of margin, and extrapolates lifetimes far longer than the company has existed. Cap the horizon (3–5 years) and use
+cohort data once you have it.
+
+**Worked example.** ARPA \$500/month, gross margin 80%, monthly churn 3%, CAC \$6,000, discount rate 1%/month.
+
+| Measure | Calculation | Result |
+| :--- | :--- | ---: |
+| Monthly gross profit per account | \$500 × 0.80 | \$400 |
+| Revenue "LTV" (wrong) | \$500 ÷ 0.03 | \$16,667 (LTV:CAC 2.8) |
+| Simple LTV | \$400 ÷ 0.03 | \$13,333 (LTV:CAC 2.2) |
+| Discounted LTV | \$400 ÷ (0.03 + 0.01) | \$10,000 (LTV:CAC 1.7) |
+| Discounted, 36-month cap | \$400 × (1 − $r^{36}$) ÷ 0.04, with $r = 0.97/1.01$ | \$7,665 (LTV:CAC 1.3) |
+| CAC payback | \$6,000 ÷ \$400 | 15 months |
+
+Verdict: below every heuristic. Levers, in rough order of power: churn (fix the product), price (see pricing), CAC
+(channel mix), gross margin (infrastructure costs).
+
+**Gross margin norms (commonly quoted rough ranges, vary widely):**
+
+| Model | Typical gross margin | Watch |
+| :--- | :--- | :--- |
+| Software / SaaS | ~70–85% | AI products with heavy inference costs can sit well below this |
+| Marketplace (on net revenue / take rate) | ~60–80% | report GMV and net revenue separately; payment and trust-and-safety costs sit in COGS |
+| E-commerce / D2C | ~30–50% | shipping and returns can erase it |
+| Hardware | ~20–50% | inventory ties up cash before revenue |
+| Tech-enabled services | ~20–50% | people costs scale with revenue |
+
+## SaaS metrics
+
+| Metric | Definition / formula |
+| :--- | :--- |
+| **MRR** | monthly recurring revenue from subscriptions (normalize annual contracts to /12; exclude one-off fees) |
+| **ARR** | MRR × 12 (or annual contract value of the recurring base) |
+| New MRR | from customers who weren't paying last period |
+| Expansion MRR | upgrades, seats, usage growth from existing customers |
+| Contraction MRR | downgrades from customers who stay |
+| Churned MRR | from customers who cancel |
+| **Net new MRR** | new + expansion − contraction − churned |
+| **Logo churn** | customers lost ÷ customers at start |
+| **Revenue churn** | (contraction + churned MRR) ÷ starting MRR |
+| **GRR** (gross revenue retention) | $\dfrac{\text{start} - \text{contraction} - \text{churn}}{\text{start}}$, capped at 100% |
+| **NRR** (net revenue retention) | $\dfrac{\text{start} + \text{expansion} - \text{contraction} - \text{churn}}{\text{start}}$, can exceed 100% |
+| **Rule of 40** | revenue growth % + profit margin % ≥ 40 |
+| **Burn multiple** | $\dfrac{\text{net burn}}{\text{net new ARR}}$ (same period) |
+| **Magic number** | $\dfrac{(\text{rev}_q - \text{rev}_{q-1}) \times 4}{\text{S\&M}_{q-1}}$ (one common variant) |
+
+Measure NRR and GRR on a **cohort**: take the customers paying 12 months ago and compare their revenue now; new
+customers are excluded. Logo and revenue churn diverge: losing many small accounts gives high logo churn but modest
+revenue churn, and vice versa. Report both. Skok notes that 2% monthly revenue churn already loses about 22% of
+revenue a year (paraphrased, SaaS Metrics 2.0).
+
+| Metric | Origin | Rough bands |
+| :--- | :--- | :--- |
+| Rule of 40 | popularised by Brad Feld, [Feb 2015](https://feld.com/archives/2015/02/rule-40-healthy-saas-company/), who heard it from a late-stage investor | meant for SaaS companies at scale (Feld: think \$50M+ revenue); meaningless at seed |
+| Burn multiple | David Sacks, [The Burn Multiple](https://www.craftventures.com/articles/the-burn-multiple) (Craft Ventures, 23 April 2020) | as widely reproduced from his table: &lt;1 amazing, 1–1.5 great, 1.5–2 good, 2–3 suspect, &gt;3 bad; he expects ~3 at seed falling with stage |
+| Magic number | coined by Rory O'Driscoll of Scale Venture Partners in the 2000s while looking at Omniture ([Scale, 2020](https://www.scalevp.com/blog/saas-metrics-a-history-of-the-magic-number)) | Scale uses ~0.7 as a healthy baseline; widely repeated folklore: below ~0.75 fix go-to-market before spending more, above it spend more |
+
+**Worked example (one year, a 60%-growth startup).**
+
+| Item | Value |
+| :--- | ---: |
+| ARR from customers active 12 months ago | \$1,200,000 |
+| Their expansion / contraction / churned ARR over the year | +\$240,000 / −\$60,000 / −\$120,000 |
+| Customers at start / lost | 80 / 10 |
+| **NRR** | (1,200 + 240 − 60 − 120) ÷ 1,200 = **105%** |
+| **GRR** | (1,200 − 60 − 120) ÷ 1,200 = **85%** |
+| Logo churn vs revenue churn | 10 ÷ 80 = 12.5% vs 180 ÷ 1,200 = 15% |
+| Revenue growth, free-cash-flow margin | 60%, −35% → **Rule of 40 score 25** |
+| Net burn \$3.0M, net new ARR \$1.5M | **burn multiple 2.0** |
+| Quarterly revenue \$500k → \$600k, prior-quarter S&M \$450k | magic number = 100k × 4 ÷ 450k = **0.89** |
+
+Monthly roll-forward for the same kind of company: start MRR \$100,000 + new \$15,000 + expansion \$6,000 − contraction
+\$2,000 − churn \$4,000 = end MRR \$115,000 (net new MRR \$15,000).
+
+## Burn, runway and default alive
+
+| Term | Definition |
+| :--- | :--- |
+| **Gross burn** | total cash out per month (payroll, rent, tools, COGS) |
+| **Net burn** | cash out − cash in per month (gross burn − collected revenue) |
+| **Runway** | $\text{runway (months)} = \dfrac{\text{cash}}{\text{net burn}}$ |
+| **Default alive** | on current expenses and the recent revenue growth rate, you reach profitability before cash runs out |
+| **Default dead** | you don't; you need new money or cuts |
+| **Ramen profitable** | revenue covers the founders' (frugal) living costs; buys time and negotiating power |
+
+Paul Graham's [Default Alive or Default Dead?](https://paulgraham.com/aord.html) (2015) and
+[Ramen Profitable](https://paulgraham.com/ramenprofitable.html) (2009) are summarized on
+[Y Combinator](/startups/advice/y-combinator/). His warning: founders assume investors will appear; investor interest is a
+function of growth and is fickle, so plan as if they won't.
+
+Use **net** burn from the bank statement (cash basis) for runway, and use a trailing 3-month average, not the best
+month. Runway shrinks faster than the formula says when burn is rising, which it usually is after a raise.
+
+**Worked example.** Cash \$1.8M, gross burn \$180k/month (flat), revenue \$30k/month. Net burn \$150k → **runway 12
+months** on today's numbers. Default alive or dead depends on growth (month-by-month simulation, expenses flat):
+
+| Monthly revenue growth | Outcome |
+| :--- | :--- |
+| 5% | default dead: cash runs out in month 13 |
+| 8% | default dead: cash runs out in month 15 |
+| 10% | default dead, just: cash runs out in month 16 |
+| 12% | **default alive**: revenue passes \$180k in month 16 (\$184k) with ~\$200k left |
+
+The gap between 10% and 12% monthly growth is the difference between needing investors and not. That is why PG says
+to ask the question early: in month 3 a modest cut in burn can flip the answer; in month 10 it usually can't.
+
+## Forecasting and scenario planning
+
+Two models, two jobs: a **13-week cash forecast** (weekly, operational: can we make payroll?) and a **24-month
+operating model** (monthly, strategic: how much to raise and what it buys). Keep both in a spreadsheet you understand
+line by line; a model you can't explain in a board meeting is a liability.
+
+### 13-week cash forecast
+
+Direct method: actual cash receipts and payments by week, not accrual revenue and expenses. Update weekly; compare
+last week's forecast with actuals (variance) to learn where you're wrong. Layout in [templates](#templates).
+
+| Row group | Contents | Tips |
+| :--- | :--- | :--- |
+| Opening cash | bank balances, all accounts | reconcile to the bank every week |
+| Receipts | collections by customer (dated by expected payment, not invoice), grants, financing | enterprise customers pay 30–60+ days after invoice; model that |
+| Payroll | net pay, payroll taxes, benefits on actual pay dates | the biggest and least flexible line |
+| Operating payments | rent, cloud, SaaS tools, contractors, insurance | annual prepayments create lumpy weeks |
+| Other | taxes (incl. Delaware franchise tax by 1 March), capex, loan payments | |
+| Closing cash | opening + receipts − payments | flag any week below your minimum cash buffer |
+
+### 24-month operating model
+
+Build it **driver-first**: a few assumptions flow through to cash. Change a driver, see the cash date move.
+
+| Layer | Contents |
+| :--- | :--- |
+| 1. Drivers | leads or sign-ups, conversion rates, ARPA and price changes, churn, expansion, sales capacity (quota per rep, ramp months), collection terms |
+| 2. Revenue | customer count and MRR roll-forward by month (new, expansion, contraction, churn); bookings vs revenue vs cash collected for annual prepaid contracts |
+| 3. Headcount | hiring plan by role and start month at fully loaded cost (salary + payroll taxes + benefits + equipment, commonly 1.2–1.4× salary); usually most of a software startup's spend |
+| 4. Opex and COGS | hosting and inference as % of revenue or per user; tools per head; rent; marketing tied to CAC and new-customer targets |
+| 5. Cash | net burn, cumulative cash, runway, month cash hits the minimum buffer; financing on its own line so you see the plan with and without the raise |
+
+### Scenarios
+
+| Scenario | Typical assumption changes | Use |
+| :--- | :--- | :--- |
+| Base | your honest plan | the budget |
+| Downside | growth half of plan, raise slips 6 months, a big customer churns | what you cut, and when (write the trigger down: "if cash &lt; 9 months by Q2, freeze hiring") |
+| Upside | growth 1.5× plan | when to hire ahead; whether to raise early |
+| No raise | no new money ever | the default-alive test; how to get there by cutting |
+
+## Pricing
+
+Pricing is covered in more depth on [launch and iterate](/startups/idea-to-mvp/launch-iterate/); the finance view:
+
+| Approach | How | Fit |
+| :--- | :--- | :--- |
+| **Value-based** | a fraction (often quoted as 10–20%) of the value the customer gets: hours saved, revenue gained, risk avoided | best for B2B; requires knowing the customer's economics |
+| **Cost-plus** | unit cost × (1 + markup) | hardware, services; sets a floor, not a price; software's marginal cost is near zero so it underprices |
+| **Competitive** | anchor to alternatives, including spreadsheets and doing nothing | crowded markets; risks a race to the bottom |
+
+- **Charge from the start.** Payment is the strongest validation signal and funds the company.
+- Price is the most powerful unit-economics lever: a price rise flows straight to gross margin, LTV and payback.
+- Annual prepaid plans (often with a discount) pull cash forward and cut churn; they also create deferred revenue on
+  accrual books.
+
+## Funding options
+
+| Source | Rough size | What you give | Best for | Watch |
+| :--- | :--- | :--- | :--- | :--- |
+| **Bootstrapping** | savings | your time, personal risk | proving demand cheaply | personal runway; don't mix funds |
+| **Customer revenue** | any | delivery obligations | everything: non-dilutive and validating | custom work that becomes a consultancy |
+| **Grants (SBIR/STTR)** | Phase I tens to a few hundred \$k; Phase II larger | reporting, IP and data-rights terms; US ownership rules | deep-tech, defense, health, climate R&D | slow cycles; programs lapsed Oct 2025–Apr 2026 (see below) |
+| **Friends & family** | \$10k–\$250k | equity (usually a SAFE) | the very first months | only take money people can afford to lose; most should be accredited |
+| **Angels** | \$10k–\$250k per check | SAFE or equity | pre-seed/seed; help and intros | many small checks = a messy cap table |
+| **Accelerators** | e.g. YC \$500k | equity, time | network, credibility, demo day | read the deal; see below |
+| **Pre-seed / seed VC** | ~\$0.5M–\$5M (varies by market and year) | ~10–25% | building to product-market fit | sets expectations of venture-scale growth |
+| **Venture debt** | often sized as a fraction of the last equity round | interest, fees, warrants, covenants | extending runway after an equity round | covenants and repayment when you're weakest |
+| **Revenue-based financing** | a multiple of monthly recurring revenue | a % of revenue until a fixed cap is repaid | predictable-revenue businesses | effective cost can be high; needs revenue already |
+| **Crowdfunding (Reg CF)** | up to \$5M per 12 months | equity/SAFEs to many small investors via a registered portal | consumer brands with a community | disclosure costs; hundreds of shareholders |
+
+**YC's standard deal** ([ycombinator.com/deal](https://www.ycombinator.com/deal), checked Sept 2026): \$500,000 in two
+SAFEs: \$125,000 on a post-money SAFE for **7%** (an implied \$1.79M post-money cap) plus \$375,000 on an **uncapped
+MFN SAFE** that converts on the terms of the lowest-cap SAFE (or other most favorable terms) issued between roughly
+the start of the batch and the priced round. YC's own example: if the next SAFEs are at a \$15M post-money cap, the
+\$375k converts into 2.5%. YC also gets a pro rata right.
+
+**SBIR/STTR status:** the programs' authority expired on 30 September 2025; the Small Business Innovation and
+Economic Security Act (S. 3971) was signed on 13 April 2026 and reauthorised them through 30 September 2031
+([SBA](https://www.sba.gov/article/2026/04/13/administrator-loeffler-applauds-sbir-sttr-reauthorization)). Check
+[sbir.gov](https://www.sbir.gov/) for current solicitations and any new per-company proposal limits.
+
+**Reg CF:** [SEC](https://www.sec.gov/resources-small-businesses/exempt-offerings/regulation-crowdfunding): up to
+\$5 million in 12 months, only through an SEC-registered broker-dealer or funding portal, with limits on what
+non-accredited investors can put in.
+
+## SAFEs and convertible notes
+
+A **SAFE** (simple agreement for future equity, YC, 2013) is a right to shares in a future priced round. It is not debt:
+no interest, no maturity. The **post-money SAFE** replaced the original (pre-money) SAFE as YC's standard in 2018 and is
+what almost everyone means by "a SAFE" today ([YC documents](https://www.ycombinator.com/documents)).
+
+| Term | Meaning |
+| :--- | :--- |
+| **Post-money valuation cap** | the maximum valuation at which the SAFE converts, *including all SAFE money* but excluding the priced round's new money and its new pool top-up |
+| **Discount** | converts at a discount to the priced round's price (e.g. 20% off = 80% "discount rate") |
+| **MFN** | if you later issue SAFEs on better terms, the holder may amend its SAFE to match (one amendment, no cherry-picking) |
+| **Pro rata side letter** | right to buy its pro rata share of the priced round in which the SAFE converts: conversion shares ÷ Company Capitalization |
+| Forms YC posts (US) | cap only; discount only; uncapped MFN (the user guide also describes a cap-and-discount variant) |
+| On a sale before conversion | greater of money back or the as-converted amount; ranks like non-participating preferred: behind debt, level with other SAFEs and preferred, ahead of common |
+
+### How conversion works (post-money SAFE)
+
+Per the SAFE text, on the priced round the SAFE converts at the **Safe Price** = cap ÷ **Company Capitalization**,
+where Company Capitalization counts (as-converted) all outstanding shares, issued and promised options, the existing
+unissued pool, and **all converting securities**, but not the new money or the round's pool increase (except to cover
+promised options). The holder gets the greater number of shares under the Safe Price or the round's price.
+
+The practical upshot: **each capped post-money SAFE owns exactly amount ÷ cap of the company as it stands just before the
+priced round.** Selling \$500k at a \$5M cap sells 10%, whatever else you raise on SAFEs.
+
+$$
+\text{Company Capitalization} = \frac{\text{pre-SAFE fully diluted shares}}{1 - \sum_i \dfrac{\text{amount}_i}{\text{cap}_i}}
+$$
+
+<Callout type="warn" title="The key insight">
+Post-money SAFEs don't dilute each other. Every new SAFE dilutes the **founders, option holders and pool only**, until the
+priced round, which then dilutes everyone including the SAFE holders. Ten SAFEs raised one at a time "because each one is
+small" add up, and the founders pay for all of it.
+</Callout>
+
+**Worked example.** Founders hold 8,000,000 shares; the pool has 1,000,000 shares (400,000 granted, 600,000
+unissued). Fully diluted: 9,000,000.
+
+| SAFE | Amount | Post-money cap | Ownership bought |
+| :--- | ---: | ---: | ---: |
+| A (early angel) | \$500,000 | \$5,000,000 | 10% |
+| B (seed fund) | \$1,000,000 | \$10,000,000 | 10% |
+
+A seed round follows: **\$3M new money at \$12M pre-money (\$15M post)**, with the unissued pool topped up in the
+pre-money so it is 10% of the post-money fully diluted count.
+
+| Step | Calculation | Result |
+| :--- | :--- | ---: |
+| 1. SAFE ownership | 500k/5M + 1M/10M | 20% |
+| 2. Company Capitalization | 9,000,000 ÷ (1 − 0.20) | 11,250,000 |
+| 3. Safe Prices | A: \$5M ÷ 11.25M; B: \$10M ÷ 11.25M | \$0.4444; \$0.8889 |
+| 4. Conversion shares | A: \$500k ÷ \$0.4444; B: \$1M ÷ \$0.8889 | 1,125,000 each |
+| 5. Pool increase $X$ | solve $600{,}000 + X = 0.10 \times 1.25 \times (11{,}250{,}000 + X)$ | 921,429 |
+| 6. Seed price | \$12M ÷ (11,250,000 + 921,429) | \$0.9859 |
+| 7. Seed shares | \$3M ÷ \$0.9859 | 3,042,904 |
+| 8. Check | both Safe Prices are below \$0.9859, so the caps apply (not the round price) | ✓ |
+
+Founders go from 88.9% (pre-SAFE, fully diluted) to 71.1% after the SAFEs convert and 52.6% after the seed (full table in
+[cap tables](#cap-tables-and-dilution)). Had they raised only SAFE A, A would still own 10% and founders 80.0% before the
+seed; SAFE B's 10% came entirely out of the founders' and option holders' share.
+
+The **pre-money SAFE** (original 2013 form) set its cap on a pre-money basis and included the priced round's pool
+increase in the conversion denominator, so the ownership sold depended on every other SAFE and on a future pool
+negotiation. SAFE holders diluted each other and founders couldn't compute what they had sold. Avoid it for new rounds.
+
+### SAFE vs convertible note
+
+| Feature | Post-money SAFE | Convertible note |
+| :--- | :--- | :--- |
+| Legal form | contract for future equity | **debt** that converts |
+| Interest | none | accrues (YC quotes 2–8% as typical); converts into more shares |
+| Maturity | none | yes (commonly 12–24 months); at maturity holders can demand repayment or renegotiate |
+| Cap / discount | cap, discount, MFN | cap and/or discount, same idea |
+| Priority on insolvency | behind all debt | ahead of equity (it is debt) |
+| Cost and speed | one standard document, lowest cost | more negotiation |
+| When still used | default at pre-seed/seed | bridges from existing investors; some non-US markets; investors who want creditor status |
+
+## Priced rounds and the option pool shuffle
+
+A priced round sells a new series of **preferred stock** at a set price per share, with the full document set (NVCA
+[model documents](https://nvca.org/model-legal-documents/): certificate of incorporation, stock purchase agreement,
+investors' rights, voting, ROFR and co-sale agreements).
+
+| Term | Formula |
+| :--- | :--- |
+| Post-money valuation | pre-money + new money |
+| Investor ownership | new money ÷ post-money |
+| Price per share | pre-money ÷ pre-money fully diluted shares (incl. converted SAFEs and any pool increase) |
+| New shares | new money ÷ price per share |
+
+**The option pool shuffle.** Investors usually require the pool to be enlarged so that the *unissued* pool is some % of
+the **post**-money fully diluted count, and they require it **in the pre-money**. That makes the founders (and other
+existing holders) pay for the whole pool, and it quietly lowers the effective valuation.
+
+**Worked example.** Founders own 10,000,000 shares. Term sheet: \$3M at \$12M pre (\$15M post), 15% post-money unissued
+pool included in the pre-money.
+
+| Pool treatment | Price/share | Investor | Pool | Founders | Effective pre-money to founders |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| No pool | \$1.200 | 20% | 0% | 80.0% | \$12.0M |
+| 15% pool created **after** the round (dilutes everyone) | \$1.200 | 17% | 15% | 68.0% | \$12.0M |
+| 15% pool **in the pre-money** (standard ask) | \$0.975 | 20% | 15% | 65.0% | **\$9.75M** |
+
+Effective pre-money = headline pre-money − value of the new pool = \$12M − 15% × \$15M = \$9.75M. The counter: build a
+**hiring plan** showing the options you'll actually grant before the next round, and size the pool to that, not to a
+round number.
+
+**Typical dilution.** Carta's *State of Private Markets: 2025 in Review* (Q4 2025) reports median dilution at both seed
+and Series A of roughly 19–20%, slightly lower than two years earlier; medians vary by sector and year. Brian Ralston's
+2016 YC guide (paraphrased): 10% in a seed round is great, most give up to 20%, and try not to exceed 25%.
+
+## Cap tables and dilution
+
+**Fully diluted shares** = issued common + preferred (as converted) + granted options/RSUs + unissued pool + shares
+issuable on SAFEs and notes. Investors price and quote ownership on a fully diluted basis; your percentage "on the
+cap table" as outstanding shares is higher and misleading.
+
+Dilution per round multiplies: after rounds selling $d_1, d_2, \dots$ (including pool increases),
+
+$$
+\text{ownership}_{\text{after}} = \text{ownership}_{\text{before}} \times \prod_k (1 - d_k)
+$$
+
+Worked cap table continuing the SAFE example: after the seed, 1,000,000 options are granted from the pool; then a
+**Series A of \$10M at \$40M pre-money (\$50M post)**, again topping the unissued pool up to 10% post-money in the
+pre-money. Series A price = \$40M ÷ (15,214,333 + 1,577,558) = \$2.3821; new shares 4,197,976.
+
+```text
+Holder                  Founding          Pre-SAFE         +SAFEs*          Post-seed          Post-A
+Founders          8,000,000 100.0%  8,000,000  88.9%  8,000,000  71.1%  8,000,000  52.6%  8,000,000  38.1%
+Options granted           –           400,000   4.4%    400,000   3.6%    400,000   2.6%  1,400,000   6.7%
+Pool unissued             –           600,000   6.7%    600,000   5.3%  1,521,429  10.0%  2,098,987  10.0%
+SAFE A ($500k @ $5M)      –                 –         1,125,000  10.0%  1,125,000   7.4%  1,125,000   5.4%
+SAFE B ($1M @ $10M)       –                 –         1,125,000  10.0%  1,125,000   7.4%  1,125,000   5.4%
+Seed ($3M @ $12M pre)     –                 –                 –         3,042,904  20.0%  3,042,904  14.5%
+Series A ($10M @ $40M)    –                 –                 –                 –         4,197,976  20.0%
+Total fully diluted 8,000,000  100%  9,000,000  100% 11,250,000   100% 15,214,333   100% 20,989,867   100%
+
+* SAFEs shown as if converted at the Company Capitalization, before the seed money.
+  Percentages rounded; each column sums to its total.
+  Seed pool increase 921,429; Series A pool increase 1,577,558.
+```
+
+Read it like an investor: founders own 38% of a company valued at \$50M post (about \$19M on paper, as common behind
+\$14.5M of preference). The two pool top-ups together (about 2.5M shares) cost the founders more than both SAFEs combined (2.25M).
+
+## Term sheet essentials
+
+| Term | Founder-friendly / standard | Aggressive | Why it matters |
+| :--- | :--- | :--- | :--- |
+| **Liquidation preference** | 1× non-participating | participating, or >1× | decides who gets paid in modest exits |
+| **Anti-dilution** | broad-based weighted average | full ratchet | cost to founders of a down round |
+| **Pro rata rights** | major investors can buy their share of future rounds | super pro rata | crowds out new investors later |
+| **Board** | seed: often 2 founders + 1 investor, or founders only; Series A: 2 common + 1 investor, or 2–1–1 with an independent | investor majority early | control of hiring/firing the CEO and of a sale |
+| **Protective provisions** | preferred vote on new senior securities, charter changes, sale, dividends | vetoes on budgets and operations | blocking rights |
+| **Drag-along** | holders must vote for a sale approved by board + majority of preferred (+ often common) | low thresholds, no floor on price | lets a majority force a sale |
+| **ROFR / co-sale** | company (then investors) can buy shares founders sell; investors can sell alongside | | limits founder secondary sales |
+| **Information rights** | annual audited/unaudited statements, quarterly financials, budget for major investors | monthly everything to all | reporting burden |
+| **Dividends** | non-cumulative, only if declared | cumulative (compounding preference) | rare but expensive |
+| **Redemption** | none | investor can force a buyback after N years | a disguised debt claim |
+
+### Liquidation preference waterfall
+
+One preferred series: **\$10M invested for 20%** (post-money \$50M). Everyone else (founders, employees, other holders)
+owns 80% on an as-converted basis.
+
+- **1× non-participating**: investor gets the **greater** of \$10M or 20% of proceeds (it converts to common when 20% of the
+  exit exceeds \$10M, i.e. exits above \$50M).
+- **Participating (uncapped)**: investor gets \$10M **and** 20% of what's left ("double dip").
+
+| Exit value | Non-participating: preferred | Non-participating: everyone else | Participating: preferred | Participating: everyone else | Pro rata (80%) for comparison |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| \$5M | \$5.0M | \$0 | \$5.0M | \$0 | \$4.0M |
+| \$20M | \$10.0M | \$10.0M | \$12.0M | \$8.0M | \$16.0M |
+| \$50M | \$10.0M | \$40.0M | \$18.0M | \$32.0M | \$40.0M |
+| \$100M | \$20.0M (converts) | \$80.0M | \$28.0M | \$72.0M | \$80.0M |
+| \$300M | \$60.0M (converts) | \$240.0M | \$68.0M | \$232.0M | \$240.0M |
+
+At a \$20M exit, the "80%" owners get half the money, not 80%. Real companies stack preferences (seed + A + B, usually
+*pari passu* or senior by series), so **total preference outstanding** is the number to know: exits below it pay common
+little or nothing. Model this before accepting a high valuation with heavy terms.
+
+### Anti-dilution
+
+Triggered when a later round is priced **below** this series' price (a down round). It lowers the conversion price so
+the series converts into more common.
+
+**Broad-based weighted average** (NVCA standard):
+
+$$
+CP_2 = CP_1 \times \frac{A + B}{A + C}
+$$
+
+$CP_1$ old conversion price; $A$ shares outstanding before the new issue (broad-based: fully diluted, including options
+and pool); $B$ shares the new money would buy at $CP_1$; $C$ shares actually issued. **Full ratchet**: $CP_2$ = the new
+round's price, whatever the size of the round.
+
+**Example.** Series A: 10M shares at \$1.00; 50M fully diluted. Down round: 5M shares at \$0.50 (\$2.5M).
+$B = 2.5\text{M}$, $C = 5\text{M}$: $CP_2 = 1.00 \times 52.5/55 = 0.9545$ (\$0.9545 a share). Series A now converts into 10.48M common
+(+476k). Under full ratchet it converts into **20M** (+10M), all of it out of common.
+
+## Employee equity
+
+| | ISO (incentive stock option) | NSO (non-qualified stock option) |
+| :--- | :--- | :--- |
+| Who | employees only | employees, advisers, contractors, directors |
+| Tax at exercise | no regular income tax; spread is an **AMT** adjustment | spread is ordinary income (wages for employees, withholding) |
+| Tax on sale | long-term capital gain if held 2 years from grant and 1 year from exercise; otherwise a disqualifying disposition (ordinary income) | capital gain on growth after exercise |
+| Limits | \$100k of stock (at grant value) first exercisable per year; excess is NSO; strike ≥ FMV (110% and 5-year term for 10% holders); term ≤ 10 years | strike ≥ FMV to avoid §409A |
+| After leaving | must exercise within 3 months to keep ISO status | per plan |
+
+Statute: [IRC §422](https://www.law.cornell.edu/uscode/text/26/422). AMT and personal tax are on
+[retirement and taxes](/finance/personal/retirement-taxes/).
+
+**409A valuations.** Options must be granted with a strike price at least equal to fair market value of common on the
+grant date, or they become deferred compensation under §409A (immediate income plus a 20% additional tax for the holder).
+The [regulations](https://www.law.cornell.edu/cfr/text/26/1.409A-1) give a presumption of reasonableness (**safe
+harbor**) to an **independent appraisal** used within 12 months (refresh sooner after a financing or material event),
+and to a written good-faith valuation by a qualified person for an illiquid start-up under 10 years old with no sale
+expected within 90 days or IPO within 180 days. Common is valued **below the preferred price** because it has no
+liquidation preference, no protective provisions and is less liquid; a 409A after a seed commonly lands well under the
+preferred price.
+
+| Decision | Options | Opinion |
+| :--- | :--- | :--- |
+| Exercise window after leaving | 90 days (ISO rule) vs extended (e.g. 5–10 years, converts to NSO after 3 months) | extended windows are fairer to early employees who can't afford to exercise; cost is a slower-recycling pool |
+| **Early exercise** | let employees exercise unvested options (company repurchase right) and file 83(b) | at seed-stage 409A prices it can cost little and start capital-gains and QSBS clocks; risk: paying for shares that end up worthless |
+| RSUs vs options | RSUs taxed on vest (and need a liquidity trigger in private companies) | options are the norm before late stage |
+
+**Pool sizing (heuristics, not rules):** commonly 10–20% of post-money fully diluted at seed/Series A. Better: list the
+hires until the next round with a grant % each (early engineers and executives get the most), sum, add a buffer.
+
+## Taxes
+
+### QSBS (§1202)
+
+[IRC §1202](https://www.law.cornell.edu/uscode/text/26/1202) excludes gain on **qualified small business stock**: stock
+acquired at original issue from a domestic C-corp (for cash, property or services) whose aggregate gross assets never
+exceeded the threshold before and immediately after issuance, with at least 80% of assets used in an active qualified
+business. Excluded fields include, among others, health, law, engineering, architecture, accounting, financial services, banking,
+insurance, farming, extraction, hospitality, consulting, brokerage, and any business whose principal asset is employees' reputation or skill.
+The One Big Beautiful Bill Act (signed 4 July 2025) changed it for stock issued after that date:
+
+| | Stock acquired 28 Sep 2010 – 4 Jul 2025 | Stock acquired after 4 Jul 2025 |
+| :--- | :--- | :--- |
+| Holding period / exclusion | 100% after more than 5 years; nothing before | **50% at 3 years, 75% at 4 years, 100% at 5+ years** |
+| Per-issuer cap on excluded gain | greater of \$10M or 10× basis | greater of **\$15M** (inflation-indexed after 2026) or 10× basis |
+| Gross-asset test | \$50M | **\$75M** (inflation-indexed after 2026) |
+
+Partial exclusions leave the non-excluded part taxed at the special 28% rate for §1202 gain; state conformity varies.
+Why it matters to founders: a timely 83(b), a C-corp from day one, and keeping records of the gross-asset test at each
+issuance can make millions of gain tax-free. Get a QSBS memo from your accountant before any sale.
+
+### R&D credit and the payroll-tax offset
+
+The federal research credit (§41) can be used by startups with no income tax against **payroll taxes**. A **qualified
+small business** (gross receipts under \$5M in the year and none before the 5-year period ending that year) can elect up
+to **\$500,000 a year** (up from \$250,000; Inflation Reduction Act, tax years beginning after 31 Dec 2022), first against
+the employer share of Social Security tax and then Medicare, for up to 5 years
+([IRS](https://www.irs.gov/businesses/small-businesses-self-employed/qualified-small-business-payroll-tax-credit-for-increasing-research-activities)).
+Elect on Form 6765 with a **timely-filed original** return (not an amended one), then claim on Form 8974 with the
+quarterly Form 941. Engineers' wages building novel software commonly qualify; keep contemporaneous records.
+
+### §174 research expenses
+
+From 2022 the TCJA forced domestic research and experimental (R&E) costs, **including software development**, to be
+capitalized and amortized over 5 years (15 for foreign), which gave loss-making startups taxable income. OBBBA added
+**§174A**: domestic R&E is **deductible immediately again for tax years beginning after 31 Dec 2024**; foreign R&E stays
+at 15-year amortization. Transition ([Rev. Proc. 2025-28](https://www.irs.gov/pub/irs-drop/rp-25-28.pdf)): taxpayers can
+deduct remaining unamortised 2022–2024 domestic amounts over 1 or 2 years, and **small businesses** (average gross
+receipts ≤ \$31M under the §448(c) test) could elect to apply §174A retroactively to tax years beginning after 2021; the
+main deadline for that retroactive election was **6 July 2026**, now passed. Ask your accountant what was filed.
+
+### Delaware franchise tax trap
+
+Delaware's default invoice uses the **authorized shares method**, which punishes the typical 10M-authorized-share
+startup. You may instead pay under the **assumed par value capital method**, which needs total gross assets and issued
+shares ([Delaware Division of Corporations](https://corp.delaware.gov/frtaxcalc/)). Annual report and tax due **1
+March**; \$50 report fee; late filing costs a \$200 penalty plus 1.5% interest a month.
+
+| Method | Rule | Example: 10,000,000 authorized, 8,000,000 issued, par \$0.00001, gross assets \$500,000 |
+| :--- | :--- | :--- |
+| Authorized shares | \$175 up to 5,000 shares; \$250 for 5,001–10,000; +\$85 per extra 10,000 (max \$200,000) | \$250 + 999 × \$85 = **\$85,165** |
+| Assumed par value capital | assumed par = gross assets ÷ issued shares (or stated par if higher); × authorized shares; \$400 per \$1M or part (min \$400) | \$500,000 ÷ 8M = \$0.0625; × 10M = \$625,000 → **\$400** |
+
+Don't pay the scary invoice; recalculate on the Delaware site and file the annual report with issued shares and gross
+assets.
+
+## Fundraising process and securities law
+
+**How much to raise:** enough for **18–24 months of runway** to the milestones the next round's investors will want to
+see, plus a buffer (Ralston's 2016 YC guide said 12–18 months; 18–24 is the figure most commonly quoted now). Work backwards: milestones → plan → cumulative burn.
+
+**Example:** burn ramps linearly from \$120k to \$250k a month over 24 months: 24-month spend \$4.44M (18 months:
+\$3.02M). Raise ~\$4.5M for 24 months, or ~\$3M plus revenue for 18. At 20% dilution, \$3M implies a \$15M post-money.
+
+| Investors look at | Evidence |
+| :--- | :--- |
+| Team | why you, technical depth, founder–market fit |
+| Market | credible bottom-up size, why now |
+| Traction | revenue/usage growth rate, retention cohorts, NRR, customer quotes |
+| Efficiency | burn multiple, CAC payback, gross margin |
+| The round | amount, use of funds, milestones it buys, runway |
+| Cleanliness | cap table, IP assignments, 83(b)s, no disputes |
+
+**Securities law basics.** Every SAFE or share sale is a securities offering that must be registered or exempt; startups
+use **Regulation D Rule 506**.
+
+| | [506(b)](https://www.sec.gov/resources-small-businesses/exempt-offerings/private-placements-rule-506b) | [506(c)](https://www.sec.gov/resources-small-businesses/exempt-offerings/general-solicitation-rule-506c) |
+| :--- | :--- | :--- |
+| General solicitation (public posts, demo-day publicity naming the raise) | **not allowed** | allowed |
+| Investors | unlimited accredited + up to 35 non-accredited but sophisticated in any 90 days (who then must get extensive disclosure; in practice, avoid) | **accredited only** |
+| Verification | investor's representation is typical | issuer must take **reasonable steps to verify** (tax returns, letters from advisers; since a March 2025 SEC staff no-action letter, a high minimum investment of \$200k for individuals / \$1M for entities plus written representations can suffice) |
+| Filing | **Form D within 15 days after the first sale**, plus state notice filings | same |
+
+**Accredited investor** (individual, [SEC](https://www.sec.gov/resources-small-businesses/capital-raising-building-blocks/accredited-investors)):
+income over \$200,000 (\$300,000 with spouse or partner) in each of the last two years with the same expected; or net
+worth over \$1 million excluding the primary residence; or holding a Series 7, 65 or 82 license; directors and executive
+officers of the issuer also count for its own offering.
+
+| Phase | Do |
+| :--- | :--- |
+| Prepare | clean cap table and round model; data room (incorporation docs, 83(b)s, IP assignments, financials, metrics); deck; target list ranked by fit |
+| Run a tight process | batch first meetings into 2–4 weeks so interest overlaps; ask each investor about process and check size; keep a pipeline sheet |
+| Close | SAFEs close investor by investor; priced rounds close together with a lead setting terms; countersign, collect wires, update the cap table, file Form D, send executed documents |
+
+## Admin and bookkeeping minimums
+
+| Item | Minimum | Why |
+| :--- | :--- | :--- |
+| Bank account | a business account in the company's name from day one; never pay company costs from personal cards without documented reimbursement | limited liability and clean books |
+| Books | cash basis at first; **accrual** once you sell annual contracts or raise a priced round (deferred revenue, see [accounting](/finance/business/accounting/)) | investors and diligence expect GAAP-style monthly statements |
+| Monthly close | reconcile bank, categorize, produce P&L, balance sheet, cash flow ([financial statements](/finance/business/financial-statements/)) | runway numbers you can trust |
+| Board consents | written consents for stock issuances, option grants, SAFEs, 409A adoption, officer appointments | unapproved issuances are void or need ratification |
+| Cap table | in a dedicated cap-table tool or a rigorously maintained spreadsheet matched to signed documents | every financing starts with cap-table diligence |
+| Stock records | signed stock purchase agreements, 83(b) proof, option grant notices | lost 83(b) proof is painful in diligence |
+| Payroll | real payroll (withholding, payroll taxes) for founders once paid; contractors vs employees classified correctly | penalties; R&D payroll offset needs it |
+| Taxes and filings | federal corporate return every year (even with no revenue), Delaware annual report by 1 March, state registrations where you have employees | penalties accumulate silently |
+| Insurance | D&O once you have outside board members; others as contracts require | |
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+| :--- | :--- | :--- |
+| **No 83(b)** (or filed on day 31) | ordinary income tax on every vest at rising values; no capital-gains or QSBS clock | calendar day 1 of every stock purchase; file online and keep confirmation |
+| **No founder vesting** | a co-founder leaves after 4 months with 30% of the company; investors won't fund the dead equity | 4-year vest, 1-year cliff, repurchase right, from day one |
+| Missing IP assignment | the company may not own its code | assignment signed by every founder, employee and contractor |
+| **Stacking SAFEs without modeling** | "only \$250k each" at various caps adds up to 25–30% sold before the seed | a running cap table with every SAFE converted |
+| **Ignoring the pool shuffle** | headline \$12M pre is really \$9.75M | negotiate pool size against a hiring plan |
+| **Misunderstanding liquidation preferences** | a "good" \$30M exit pays common almost nothing after \$25M of stacked preference | model the waterfall at several exit values before signing |
+| Optimizing valuation over terms | high price with participating or 2× preference, or a valuation you can't grow into (down round, anti-dilution) | clean terms at a fair price |
+| **Running out of cash while "almost" raising** | forced bridge on bad terms, or death | start raising with 9+ months of runway; default-alive plan B |
+| Paying Delaware's authorized-shares invoice | tens of thousands wasted | recalculate with the assumed par method |
+| Granting options without a current 409A | §409A penalties for employees | 409A before first grants; refresh after each round |
+| Mixing personal and company money | pierced veil risk, messy diligence | separate accounts, documented reimbursements |
+| Accepting money from non-accredited friends casually | securities-law problems, rescission rights | accredited investors only unless your lawyer structures it |
+
+## Templates
+
+### Runway calculator
+
+```text
+RUNWAY CALCULATOR                         Month:  ________
+Cash in bank (all accounts)               A  ____________
+Committed but unreceived financing        B  ____________
+Monthly gross burn (3-mo avg)             C  ____________
+Monthly cash collected (3-mo avg)         D  ____________
+Net burn                                  E = C − D
+Runway, months                            F = A / E
+Runway incl. committed money              G = (A + B) / E
+Minimum cash buffer (e.g. 3 × C)          H  ____________
+Months until buffer reached               I = (A − H) / E
+Start fundraising no later than           month I − 6
+Default alive?  revenue growth g = ____ %/month
+  months to breakeven n = ln(C / D) / ln(1 + g)
+  cash needed ≈ sum of net burn over n months  → vs A
+```
+
+### 13-week cash forecast
+
+```text
+13-WEEK CASH FORECAST        Wk1  Wk2  Wk3  ...  Wk13  Total
+Opening cash                 ___  ___  ___       ___
++ Customer collections       ___  ___  ___       ___
++ Grants, refunds, financing ___  ___  ___       ___
+= Total receipts             ___  ___  ___       ___
+− Payroll, taxes, benefits   ___  ___  ___       ___
+− Contractors                ___  ___  ___       ___
+− Cloud / APIs / inference   ___  ___  ___       ___
+− Software, rent, marketing  ___  ___  ___       ___
+− Taxes, insurance, legal    ___  ___  ___       ___
+= Total payments             ___  ___  ___       ___
+Closing cash                 ___  ___  ___       ___
+Below minimum buffer? (flag) ___  ___  ___       ___
+Last week: forecast vs actual ___  reason ____________
+```
+
+### Cap table
+
+```text
+CAP TABLE (fully diluted)          As of: __________
+Holder        Class      Shares   Price  Invested  FD %
+Founder 1     Common     _______  _____  ________  ____
+Founder 2     Common     _______  _____  ________  ____
+Options       Granted    _______   409A     –      ____
+Pool          Unissued   _______    –       –      ____
+SAFE holders  (as-conv.) _______  _____  ________  ____
+Seed          Pref Seed  _______  _____  ________  ____
+Series A      Pref A     _______  _____  ________  ____
+TOTAL                    _______         ________  100%
+Liquidation preference outstanding:  $__________
+Check: sum of FD % = 100%; shares match signed documents
+```
+
+### SAFE conversion worksheet
+
+```text
+SAFE CONVERSION (post-money SAFEs, cap applies)
+1. Pre-SAFE fully diluted shares (incl. pool)  F = ________
+2. For each SAFE i: own_i = amount_i / cap_i
+   SAFE 1: ______ / ______ = ____ %
+   SAFE 2: ______ / ______ = ____ %
+   Sum S = ____ %
+3. Company Capitalization  CC = F / (1 − S) = ________
+4. Safe Price_i = cap_i / CC ;  shares_i = own_i × CC
+5. Priced round: pre-money V, new money M, pool target p
+   pool increase X solves:
+     unissued + X = p × (1 + M/V) × (CC + X)
+   price P = V / (CC + X) ; new shares N = M / P
+6. Check each SAFE: if P < Safe Price_i,
+   it converts at P instead (more shares)
+7. Post-round FD = CC + X + N ; recompute all %
+```
+
+### Fundraising checklist
+
+```text
+FUNDRAISING CHECKLIST
+[ ] Delaware C-corp in good standing; franchise tax paid
+[ ] Founder stock agreements with vesting; 83(b) proofs
+[ ] IP assignments from all founders, staff, contractors
+[ ] Cap table reconciled to signed documents
+[ ] Board consents for every issuance and grant
+[ ] Current 409A (if options granted)
+[ ] Monthly financials (accrual if annual contracts)
+[ ] Metrics: MRR/ARR, growth, NRR/GRR, churn, burn multiple
+[ ] 24-month model: base, downside, no-raise scenarios
+[ ] Round size = milestones + 18–24 months runway + buffer
+[ ] Pro forma cap table: all SAFEs converted, pool shuffle
+[ ] Waterfall at 3–5 exit values for the proposed terms
+[ ] Investor list, pipeline sheet, data room
+[ ] Securities: 506(b) vs 506(c) decided; accredited only
+[ ] After close: Form D within 15 days; state notices;
+    update cap table; send executed docs; bank wires matched
+```
+
+## References
+
+- [Y Combinator: SAFE financing documents](https://www.ycombinator.com/documents): post-money SAFE forms (cap, discount, MFN), pro rata side letter and the SAFE User Guide with conversion examples
+- [Y Combinator: The YC deal](https://www.ycombinator.com/deal): \$125k for 7% plus \$375k uncapped MFN SAFE
+- [Y Combinator: SAFE vs convertible note](https://www.ycombinator.com/safe/safe-vs-convertible-note): YC's comparison, incl. typical note interest
+- [Brian Ralston, A Guide to Seed Fundraising (YC, 2016)](https://www.ycombinator.com/library/4A-a-guide-to-seed-fundraising): round sizing and dilution guidance
+- [Paul Graham, Default Alive or Default Dead? (2015)](https://paulgraham.com/aord.html) and [Ramen Profitable (2009)](https://paulgraham.com/ramenprofitable.html)
+- [NVCA model legal documents](https://nvca.org/model-legal-documents/): standard priced-round documents, incl. weighted-average anti-dilution language
+- [IRC §83](https://www.law.cornell.edu/uscode/text/26/83), [§422](https://www.law.cornell.edu/uscode/text/26/422) and [§1202](https://www.law.cornell.edu/uscode/text/26/1202) (Cornell LII): restricted property and 83(b), ISOs, QSBS as amended in 2025
+- [Treas. Reg. §1.409A-1](https://www.law.cornell.edu/cfr/text/26/1.409A-1): 409A valuation safe harbors
+- [IRS Form 15620](https://www.irs.gov/pub/irs-pdf/f15620.pdf): the 83(b) election form; [Morrison Foerster (July 2025)](https://www.mofo.com/resources/insights/250724-say-goodbye-to-paper-cuts-section-83-b) on online filing
+- [IRS: Qualified small business payroll tax credit for increasing research activities](https://www.irs.gov/businesses/small-businesses-self-employed/qualified-small-business-payroll-tax-credit-for-increasing-research-activities)
+- [IRS Rev. Proc. 2025-28](https://www.irs.gov/pub/irs-drop/rp-25-28.pdf): §174A elections for domestic research expenditures
+- [Delaware Division of Corporations: franchise tax calculation](https://corp.delaware.gov/frtaxcalc/) and [annual report and tax](https://corp.delaware.gov/paytaxes/)
+- [SEC: Rule 506(b)](https://www.sec.gov/resources-small-businesses/exempt-offerings/private-placements-rule-506b), [Rule 506(c)](https://www.sec.gov/resources-small-businesses/exempt-offerings/general-solicitation-rule-506c), [Regulation Crowdfunding](https://www.sec.gov/resources-small-businesses/exempt-offerings/regulation-crowdfunding), [accredited investors](https://www.sec.gov/resources-small-businesses/capital-raising-building-blocks/accredited-investors)
+- [SBA: SBIR/STTR reauthorisation (13 April 2026)](https://www.sba.gov/article/2026/04/13/administrator-loeffler-applauds-sbir-sttr-reauthorization)
+- [David Skok, SaaS Metrics 2.0](https://www.forentrepreneurs.com/saas-metrics-2/): LTV:CAC, CAC payback and churn guidelines
+- [David Sacks, The Burn Multiple (Craft Ventures, 2020)](https://www.craftventures.com/articles/the-burn-multiple)
+- [Brad Feld, The Rule of 40% for a Healthy SaaS Company (2015)](https://feld.com/archives/2015/02/rule-40-healthy-saas-company/)
+- [Scale Venture Partners, SaaS Metrics: A History of the Magic Number (2020)](https://www.scalevp.com/blog/saas-metrics-a-history-of-the-magic-number)
+- [Carta, State of Private Markets: 2025 in Review](https://carta.com/data/state-of-private-markets-q4-2025/): median seed and Series A dilution
+- Brad Feld and Jason Mendelson, *Venture Deals*, 4th ed. (Wiley, 2019): term sheets explained clause by clause
