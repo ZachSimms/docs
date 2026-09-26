@@ -243,7 +243,11 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     credit: "Runs in your browser on a Godot 4 web build.",
     download: { what: "the Godot engine", megabytes: 10 },
     template: TEMPLATES.gdscript,
-    refs: [sheet("/game-dev/godot/gdscript/"), sheet("/game-dev/godot/nodes-scenes/")],
+    refs: [
+      sheet("/game-dev/godot/gdscript/"),
+      sheet("/game-dev/godot/nodes-scenes/"),
+      sheet("/game-dev/design/open-world/"),
+    ],
   },
   {
     id: "markdown",

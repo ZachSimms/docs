@@ -202,8 +202,9 @@ const TOPICS: Readonly<Record<string, Layout>> = {
     },
   },
   "game-dev": {
-    entries: ["godot/"],
+    entries: ["godot/", "design/"],
     directories: {
+      design: ["open-world"],
       godot: [
         "gdscript",
         "nodes-scenes",
