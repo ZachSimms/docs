@@ -645,7 +645,7 @@ test.describe("typescript topic and directories", () => {
         'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(151);
+    expect(hrefs).toHaveLength(157);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -1233,7 +1233,9 @@ test.describe("finance, thinking, leadership, startups and writing", () => {
       await expect(page.locator("main nav a")).toHaveText([...entries]);
     }
     await page.goto("/finance/");
-    await expect(page.locator("main nav a")).toHaveCount(6);
+    await expect(page.locator("main nav a")).toHaveText(["Personal finance/", "Business finance/"]);
+    await page.goto("/finance/business/");
+    await expect(page.locator("main nav a")).toHaveCount(5);
     await page.goto("/leadership/");
     await expect(page.locator("main nav a")).toHaveCount(6);
     await page.goto("/startups/idea-to-mvp/");
@@ -1248,7 +1250,7 @@ test.describe("finance, thinking, leadership, startups and writing", () => {
   test("HTML sheets run their live demos and money stays text, not maths", async ({ page }) => {
     await page.goto("/design/html/semantic-elements/");
     expect(await page.locator('main iframe[title^="Live demo"]').count()).toBeGreaterThanOrEqual(2);
-    await page.goto("/finance/banking/");
+    await page.goto("/finance/personal/banking/");
     await expect(page.locator("main")).toContainText("$250,000");
     await expect(page.locator("main .katex-error")).toHaveCount(0);
   });

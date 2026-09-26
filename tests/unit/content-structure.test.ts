@@ -115,15 +115,24 @@ const TOPICS: Readonly<Record<string, Layout>> = {
   economics: { entries: ["microeconomics", "macroeconomics"], directories: {} },
   cpp: { entries: ["fundamentals"], directories: {} },
   finance: {
-    entries: [
-      "money-basics",
-      "banking",
-      "credit-debt",
-      "investing",
-      "retirement-taxes",
-      "insurance-estate",
-    ],
-    directories: {},
+    entries: ["personal/", "business/"],
+    directories: {
+      personal: [
+        "money-basics",
+        "banking",
+        "credit-debt",
+        "investing",
+        "retirement-taxes",
+        "insurance-estate",
+      ],
+      business: [
+        "accounting",
+        "financial-statements",
+        "corporate-finance",
+        "valuation",
+        "startup-finance",
+      ],
+    },
   },
   thinking: {
     entries: ["first-principles", "systems-thinking", "game-theory", "mental-models/"],
@@ -165,6 +174,7 @@ const TOPICS: Readonly<Record<string, Layout>> = {
         "peter-thiel",
         "elon-musk",
         "steve-jobs",
+        "jensen-huang",
         "founders",
         "designers",
       ],

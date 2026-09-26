@@ -1,0 +1,326 @@
+---
+title: Jensen Huang
+date: 2026-09-26
+order: 6
+---
+
+What Jensen Huang, Nvidia's co-founder and only CEO, has actually said and done: the near-death bets (Sega, the
+RIVA 128, CUDA), "zero-billion-dollar markets", a flat organisation with about 60 direct reports and no one-on-ones,
+"speed of light" planning, and the "pain and suffering" line, each checked against transcripts and dated
+reporting. The reasoning method has its own sheet, [first principles](/thinking/first-principles/); conventional
+management practice is on [management](/leadership/management/); the build pipeline is
+[idea to MVP](/startups/idea-to-mvp/playbook/). Compare with [Elon Musk](/startups/advice/elon-musk/),
+[Steve Jobs](/startups/advice/steve-jobs/) and the shorter entries on [other founders](/startups/advice/founders/).
+
+## Who he is and why listen
+
+| Fact | Detail | Source |
+| :--- | :--- | :--- |
+| born | 17 February 1963, **Taipei**, Taiwan; the family moved to Tainan, then to Thailand when he was about five. Tainan is often given as his birthplace; the two biographies say Taipei | Wikipedia (citing Kim 2024, Witt 2025) |
+| childhood | sent to the US at nine (1973) with his older brother; an uncle enrolled them at the **Oneida Baptist Institute** in Kentucky, a religious reform academy he mistook for a prestigious boarding school | *New Yorker* (Witt, 2023) |
+| first job | from age 15 at a Denny's in Oregon: dishwasher, then busboy, then waiter | his own account, Stanford GSB 2024 and Stripe Sessions 2024 |
+| education | BS electrical engineering, **Oregon State University** (1984); MS electrical engineering, **Stanford** (1992), studied while working | Oregon State; Stanford GSB |
+| before Nvidia | microprocessor designer at **AMD**, then **LSI Logic**, where he ran the CoreWare division and worked with Sun engineers Chris Malachowsky and Curtis Priem | Wikipedia; Acquired 2023 |
+| Nvidia | co-founded with **Chris Malachowsky** and **Curtis Priem**; the three planned it in late 1992 at a Denny's on Berryessa Road, East San Jose; incorporated **5 April 1993**; CEO from day one, at 30 | Nvidia; *New Yorker*; Wikipedia |
+| scale (Sept 2026) | fiscal 2026 revenue \$215.9bn; first company to close above \$4 trillion (10 July 2025) and to reach \$5 trillion (29 October 2025) | Nvidia 10-K (FY2026); *Washington Post*; Reuters |
+
+**Why listen:** he has run the same company for 33 years, through at least two near-bankruptcies and a decade in
+which its main strategic bet (CUDA) cost margin with no market to show for it, and the bet then became the
+foundation of the AI industry. Few founders have explained their operating system in as much detail, on the record.
+**Why be careful:** the story is told backwards from the most spectacular timing win in tech history. Much of it
+worked because deep learning happened to need exactly what Nvidia had built, and some of his habits (public
+criticism, 60 direct reports, seven-day weeks) are documented as hard on the people around him.
+
+Quotation note: Huang says most things many times in slightly different words, and articles polish them. Quotes
+below are checked against a transcript (Stanford GSB, Stripe, Acquired, NTU) or a named reliable report; numbers
+he gives from memory (direct reports, his lowest market cap) drift between tellings, and that is flagged.
+
+## Company history as strategy lessons
+
+| Year | What happened | Lesson usually drawn | Source |
+| :--- | :--- | :--- | :--- |
+| 1993 | founded to build 3D graphics chips for PC games: a technology that cost about a million dollars in workstations, aimed at a market that barely existed | pick a hard technology *and* a market that has to be created | Stanford GSB 2024 |
+| 1995–96 | the **NV1** used quadratic surfaces; Microsoft's Direct3D standardised on triangles, leaving Nvidia incompatible, with dozens of competitors (Huang: "89 competitors") | a platform shift can make your core technology wrong overnight | GSB 2024; Wikipedia |
+| 1996 | Nvidia's Sega console chip was on the same wrong architecture; Huang told Sega's CEO to find another partner and asked to be paid anyway. Sega invested \$5m; Huang: it "gave us six months to live". He laid off more than half the company | confront the mistake early; ask for help | NTU 2023; *New Yorker* |
+| 1997 | the **RIVA 128** was designed for Direct3D, verified on an emulator and taped out once; when it shipped Nvidia had money for one month's payroll; it sold about a million units in four months | when you have one shot, simulate everything first | Acquired 2023; *New Yorker* |
+| 1999 | IPO in January; **GeForce 256** marketed as "the world's first GPU" | name the category you want to lead | Wikipedia; *New Yorker* |
+| 2006–13 | **CUDA** unveiled with the GeForce 8800 (November 2006), put on every GPU; added cost, few applications; stock down about 70% by the end of 2008 | a platform bet has to survive years of no market | Stripe 2024; *New Yorker* |
+| early 2010s | entered mobile chips (Tegra) for Android, then withdrew as modem makers swarmed in | strategic retreat is a decision, not a failure | NTU 2023 |
+| 2012 | **AlexNet** trained on two GeForce GTX 580s wins ImageNet; Huang "turned every aspect of our company" towards deep learning | stand near the tree so you catch the apple | NTU 2023; Krizhevsky et al. 2012 |
+| 2019–20 | **Mellanox** bought for \$6.9bn (announced 11 March 2019, closed 27 April 2020) | the product is the data centre, not the chip | Acquired 2023; Nvidia |
+| 2020–22 | \$40bn bid for Arm; the FTC sued to block it (December 2021) and it was abandoned (February 2022) | even market creators hit antitrust walls | FTC |
+| 2023–25 | \$1 trillion (May 2023), \$2 trillion (March 2024), \$3 trillion and briefly most valuable company (June 2024), first to \$4 trillion (July 2025) and \$5 trillion (October 2025) | the payoff of a 20-year bet | Wikipedia; *Washington Post*; Reuters |
+
+### Sega and the RIVA 128: admit it, then bet with simulation
+
+At National Taiwan University's commencement (27 May 2023) Huang told the Sega story as a lesson in humility: if
+Nvidia finished the console it would have built "inferior technology", incompatible with Windows; if it quit, it
+would run out of money. "Either way, we would be out of business." He told Sega's CEO the approach was wrong and
+still asked to be paid. "Confronting our mistake, and with humility asking for help, saved Nvidia."
+
+The RIVA 128 is the companion lesson. On Acquired (October 2023) he explained that the normal chip cycle (tape
+out, find bugs, tape out again) would have killed them, so they bought an emulator from a company that was shutting
+down, wrote and tested the whole driver stack on it, and went straight to production. His summary for founders:
+betting the farm means taking "all the risky things" from the future and pulling them in in advance; "everything in
+the future that we can simulate today, we prefetch it." The point is not courage. It is doing the verification
+before the bet, not after.
+
+### Thirty days from going out of business
+
+Stephen Witt's *New Yorker* profile (November 2023) reports that after the RIVA 128, "for years to come he opened
+staff presentations with the words 'Our company is thirty days from going out of business.'" and calls it the
+unofficial corporate motto. Huang said on *The Joe Rogan Experience* in December 2025 that he has used the phrase
+"for 33 years", and that he is "always in a state of anxiety" (as reported by *Fortune*). Read it as a deliberate
+bias against complacency, and note the cost he admits alongside it.
+
+### CUDA: a decade with no market
+
+Huang's own account at Stripe Sessions (April 2024): CUDA added "a ton of cost into our chips", there were no
+applications, customers would not pay a premium, so "your gross margins get crushed". Asked whether it was a smash
+hit: "It was an incredible disaster overnight." Asked how long it took to work: "Probably 10 years."
+
+| What he did | Why | Source |
+| :--- | :--- | :--- |
+| put CUDA on every GeForce, not just a pro line | gamers paid for the chips and built the installed base developers needed | NTU 2023 |
+| kept every chip architecturally compatible | "That's the only unnegotiable rule in our company. Everything else is negotiable." | Acquired 2023 |
+| founded GTC and courted scientists one domain at a time | seismic, CT, molecular dynamics came before AI | NTU 2023 |
+| tracked early indicators, not results | see [zero-billion-dollar markets](#zero-billion-dollar-markets) | Stanford GSB 2024 |
+| argued the board through it in words | "They had to believe the reasoning, the words," not a spreadsheet | Stripe 2024 |
+
+### The GPU as a category, and the data centre as the computer
+
+Nvidia's marketing head Dan Vivoli coined "graphics processing unit" for the 1999 GeForce: "We invented the
+category so we could be the leader in it" (*New Yorker*). Twenty years later Huang used the same move at a larger
+scale. On Acquired he said he bought Mellanox because "if you want to be a data center company, building the
+processing chip isn't the way to do it"; what defines a data centre is networking, and AI training spreads one job
+across many processors, the inverse of commodity cloud workloads. He called it "one of the best strategic decisions
+I've ever made".
+
+## Zero-billion-dollar markets
+
+The phrase is genuinely his and documented in several places. On Acquired (2023) he called it "our way of saying
+there's no market yet, but we believe there will be one". At Stripe Sessions (2024): "I'd rather be a market maker,
+market creator than a market taker," and "a zero-billion-dollar market is a good way to cause the company to think
+about how to go create something for the first time." The *New Yorker* describes it as exploratory products "which
+not only do not have competitors but don't even have obvious customers".
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| **go where there's no consumption** | position before the market forms, so few competitors are shaped for it when it arrives | Acquired 2023 | asking what job people currently don't do at all because it's too hard or costly |
+| **importance over market size** | "Is this important work? And if we didn't do it, would it happen without us?" If others will do it, let them | Stanford GSB 2024 | dropping ideas that a competent competitor will obviously build anyway |
+| **early indicators of future success** | KPIs like gross margin are results; look for the earliest evidence you're on the right road, and "decouple the result from evidence that you're doing the right thing" | Stanford GSB 2024 | defining 2–3 leading signals (repeat usage, unsolicited referrals) before revenue exists |
+| **reasoning over spreadsheets** | "I hate spreadsheets because you can make spreadsheets do whatever you want… I love words… Words are reasoning." | Stripe 2024 | writing the case for a bet as an argument, then attacking it |
+| **hard is a moat** | hard, long projects deter "less committed" rivals | Stripe 2024 | preferring the idea with a schlep in it to the weekend-clone idea |
+| **retreat to create** | leaving phones freed Nvidia to build "a zero billion dollar robotics market" | NTU 2023 | killing a crowded side-line to fund the thing only you can do |
+
+**The catch:** a zero-billion-dollar market is indistinguishable from a market that will never exist until years
+later. Nvidia could afford a decade of waiting because graphics paid the bills. A startup without a cash-generating
+core can't; for you, the lesson is the *early indicators*, not the decade. Test demand with the methods in
+[validation](/startups/idea-to-mvp/validation/) before you bet the runway on a market that isn't there.
+
+## The management system
+
+Huang describes Nvidia's organisation as something designed from first principles for what it builds. At Stanford
+GSB (March 2024): "don't worry about how other companies' org charts look… Remember what an organization is designed
+to do." On Acquired he said Nvidia is wired "much more like a computing stack" than a military chain of command.
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| **about 60 direct reports** | "NVIDIA's leadership team is 60 people… they all report to me"; the people reporting to a CEO need the least management; he estimates it removes "something like 7" layers | Stripe Sessions, April 2024 | keeping a small team flat and resisting a middle layer until it clearly pays for itself |
+| **no one-on-ones** | "I don't do one-on-ones… Almost everything that I say, I say to everybody all at the same time." He "really discourages" them for his leaders too | Stripe 2024 | discussing decisions in the team channel or meeting, not in DMs |
+| **feedback in public** | "I give you feedback right there in front of everybody… feedback is learning. For what reason are you the only person who should learn this?" | Stripe 2024 | reviewing work in the open, reasoning aloud, and being corrected in the open yourself |
+| **information isn't power** | he rejects cultures where "the information that you possess is the reason why you have power"; leaders earn their job by reasoning and helping others | Stanford GSB 2024; Acquired 2023 | sharing the numbers, the runway and the problems with everyone |
+| **Top 5 Things (T5T)** | anyone can email the few most important things on their mind; he reads them daily to "detect the weak signals" | *New Yorker* 2023; Tae Kim, *The Nvidia Way* (2024), via *Fortune* | a weekly five-bullet note from each person, read by the founders |
+| **no periodic plan** | "there is no five-year plan, there is no one-year plan, there is no plan — there is just what we are doing"; plan continuously | Sana *Strange Loop* interview, 2023 (quoted by *Tom's Hardware*) | a rolling priority list reviewed weekly instead of an annual plan |
+| **mission is the boss** | "there's a phrase in the company called 'mission is the boss'"; a mission is concrete ("Build Hopper"), and people and resources are wired to it across the org | Acquired 2023 | naming one owner and one concrete mission per project, whatever the org chart says |
+| **no reporting meetings** | "No reporting meetings… just problem meetings"; CEOs are "pinch hitters" for things "nobody else can or nobody else is" doing | Stripe 2024 | replacing status meetings with written updates; meeting only on problems and ideas |
+| **failure must be shared** | managers of a failed graphics card presented every decision behind it to a few hundred colleagues | *New Yorker* 2023 | blameless post-mortems presented to the whole team |
+| **no task beneath you** | "I used to clean toilets… you can't show me a task that's beneath me" | Stanford GSB 2024 | founders doing support, QA and sales calls themselves |
+| **torture into greatness** | he rarely fires; "I'd rather improve you than give up on you… I'd rather torture you into greatness" (tongue in cheek, he says) | Stripe 2024 | coaching hard before replacing, with a stated bar |
+| **tenure for craft** | "you can achieve operational excellence through process but craft can only be achieved with tenure" (Collison quoting him backstage; Huang agreed and expanded) | Stripe 2024 | keeping a stable core team; treating churn as lost skill |
+
+### How the numbers drift
+
+| When | Direct reports | Source |
+| :--- | :--- | :--- |
+| 2023 | "40+" (interviewer's figure; Huang didn't dispute it) | Acquired, October 2023 |
+| 2023 | "as many as 40" | *Tom's Hardware*, summarising the Sana interview, September 2023 |
+| March 2024 | "50" (interviewer's figure) | Stanford GSB View From The Top |
+| April 2024 | "60… they all report to me" (Huang) | Stripe Sessions |
+| November 2024 | about 60 | *Fortune* (Jeremy Kahn) |
+
+### What it costs
+
+Huang is candid that the design has a price. On Acquired: "The downside is the pressure on the leaders is fairly
+high," because in his system nobody is powerful merely by being closer to information. At Stripe he said 60 reports
+is not "scalable downward": lower levels "need more and more supervision". Conventional advice treats one-on-ones as
+the core of coaching and career development (see [one-on-ones](/leadership/management/#one-on-ones)); Huang's
+system assumes senior, self-directed people who want neither.
+
+## Speed of light and first principles
+
+| Principle | What it means | Source | Apply it by… |
+| :--- | :--- | :--- | :--- |
+| **speed of light** | when scheduling, estimate the absolute fastest a task could conceivably be done (the physical limit), then work backwards to an achievable plan; the benchmark is physics, not your competitors or last year | *New Yorker* 2023 (Witt's description) | asking "what would this take if nothing waited on anything?", then listing every wait that remains |
+| **first principles** | learn how something is done, then ask "given the conditions today… given the instruments, the tools… how would I redo this? How would I reinvent this whole thing?" | Stanford GSB 2024 | redesigning a process from today's tools rather than patching last year's |
+| **how hard can it be?** | "it's probably just a textbook away. You're probably one archive paper away" | Stanford GSB 2024; Acquired 2023 | giving yourself a weekend with the manual before hiring the expert |
+| **check what changed** | after an 80% share-price fall: "Did physics change? Did gravity change?… if none of those things changed, you change nothing, keep on going" | Stanford GSB 2024 | writing down the assumptions behind a bet so you can tell noise from evidence |
+| **prefetch the future** | pull every risky thing forward and simulate it before committing | Acquired 2023 | prototyping the riskiest part first; see [riskiest assumption testing](/startups/idea-to-mvp/validation/#riskiest-assumption-testing) |
+| **work backwards from the end** | "I go forward in time and look backwards" | Stanford GSB 2024 | writing the launch announcement before the spec |
+
+The "speed of light" idea is the most transferable thing on this page. Competitor benchmarks tell you how slow
+everyone is; the physical limit tells you how much of your plan is waiting, hand-offs and habit. In software the
+"physics" is small: compile, deploy and test times. Most of a two-month estimate is usually queueing, which is what
+[fixed time, variable scope](/startups/idea-to-mvp/playbook/#fixed-time-variable-scope) attacks.
+
+The Stanford GSB write-up of his View From The Top interview is titled "Jensen Huang on How to Use First-Principles
+Thinking to Drive Decisions" (published 25 April 2024; the talk itself was on 1 March 2024).
+
+## Pain, suffering and resilience
+
+### What he said, and where
+
+The line was **not** said at the GSB interview, although it is often placed there (Patrick Collison did so on stage
+at Stripe). Stanford's Institute for Economic Policy Research reports it from Huang's keynote Q&A with John Shoven
+at the **2024 SIEPR Economic Summit, 1 March 2024** (the same day as his GSB View From The Top). Asked for advice for
+Stanford students: "For all of you Stanford students, I wish upon you ample doses of pain and suffering." *Fortune*
+(13 March 2024) quotes the reasoning around it: "People with very high expectations have very low resilience—and
+unfortunately, resilience matters in success"; "One of my great advantages is that I have very low expectations";
+"Greatness comes from character and character isn't formed out of smart people—it's formed out of people who
+suffered."
+
+<YouTube id="cEg8cOx7UZk" title="Keynote by NVIDIA CEO Jensen Huang at 2024 SIEPR Economic Summit" channel="Stanford Institute for Economic Policy Research (SIEPR)" />
+
+At Stripe Sessions (April 2024) he explained it: people connect passion with happiness, but "when you want to build
+something great it's not easy to do… I don't love every day of my job… but I love the company every single second."
+Hence "I wish upon you greatness, which by my way of saying it, I wish upon you plenty of pain and suffering."
+
+| Source | Line | Take it as |
+| :--- | :--- | :--- |
+| SIEPR Summit, 1 March 2024 | "I wish upon you ample doses of pain and suffering" | resilience is built, not taught |
+| Stripe Sessions, April 2024 | "You have to suffer. You have to struggle… in order to really appreciate what you've done" | don't pick work by how pleasant each day is |
+| Acquired, October 2023 | "I wouldn't do it… building Nvidia turned out to have been a million times harder than I expected… Nobody in their right mind would do it" | the honest counterweight: he would not start again |
+| Acquired, October 2023 | "that's the superpower of an entrepreneur. They don't know how hard it is… To this day, I trick my brain into thinking, how hard can it be?" | naivety is a feature at the start |
+| *New Yorker*, 2023 | on Oneida: "Back then, you just had to toughen up and move on"; "I find that I think best when I'm under adversity… My heart rate actually goes down" | his resilience story is autobiographical |
+| NTU commencement, 2023 | the CUDA years "forged our corporate character to endure the pain and suffering that is always needed to realize a vision" | used for companies, not just people |
+
+The Acquired answer is the one to remember. Asked what he would start if he were 30 again in 2023, he said he
+wouldn't: if the founders had known "the pain and suffering, just how vulnerable you're going to feel… the
+embarrassment and the shame", nobody would start a company. The same person who wishes suffering on students also
+says the suffering would have stopped him. The support that got him through, he said, was "family, friends", and
+colleagues and early investors who "not one time gave up".
+
+## Commencement speeches
+
+| Speech | Date | Main points | Key line |
+| :--- | :--- | :--- | :--- |
+| National Taiwan University | 27 May 2023 | three near-death stories (Sega, CUDA, the mobile retreat); humility to admit mistakes and ask for help; strategic retreat and sacrifice | "Run, don't walk. Remember, either you're running for food or you are running from being food." |
+| Caltech (130th commencement) | 14 June 2024 | believe in something unconventional but reasoned; treat setbacks as opportunities; devotion to craft (a story about a gardener tending a moss garden) | "I hope you'll see setbacks as new opportunities. Your pain and suffering will strengthen your character, your resilience, and agility, and they are your ultimate superpowers." |
+
+From NTU, the passage worth keeping: "Retreat does not come easily to the brightest and most successful people like
+yourself. Yet strategic retreat, sacrifice, deciding what to give up is at the core, the very core, of success."
+From Caltech: "I hope you believe in something. Something unconventional, something unexplored. But let it be
+informed, and let it be reasoned, and dedicate yourself to making that happen."
+
+## Critiques and limits
+
+| Issue | What's documented |
+| :--- | :--- |
+| **survivorship and timing** | Nvidia nearly died in 1996–97 and, by Huang's account, was valued at a few billion dollars or less for years after CUDA. The AI payoff arrived because academic researchers chose GPUs (AlexNet, 2012), a turn Huang did not plan; he calls these moments "a diving catch" and says "You want to position yourself near the tree". The dozens of 1990s graphics start-ups that made equally bold bets are forgotten. |
+| **60 direct reports doesn't transfer** | Huang himself says it is not "scalable downward". It works for a founder-CEO with 30 years of context, very senior staff and near-total authority; most managers lack all three, and the conventional norm of regular one-on-ones exists because most people need coaching and a private channel. |
+| **public feedback can humiliate** | the *New Yorker* reports he can "lose his temper" when people fudge answers; Huang: "When the mismatch is great, then it comes out as anger." A former colleague: "I've been afraid of Jensen sometimes." Public correction teaches the room only where safety is high; elsewhere people stop speaking. |
+| **pain-and-suffering romanticism** | the line is advice to elite students with a safety net. His own evidence cuts both ways: he says he wouldn't start again, works seven days a week and is "always in a state of anxiety" (Rogan, December 2025). Suffering is a cost that sometimes comes with great work, not a method for producing it. |
+| **customer concentration** | in fiscal 2026 one direct customer was 22% of revenue and another 14% (Nvidia 10-K); the large cloud companies are also designing their own AI chips |
+| **supply concentration** | Nvidia designs but does not fabricate; its wafers come from foundries such as TSMC and Samsung, and the 10-K flags dependence on supply "from Taiwan and South Korea" |
+| **export controls and China** | US controls on advanced chips to China began in October 2022; in April 2025 a licence became required for the H20, leading to a \$4.5bn charge; US officials later said they expected 15% or more of licensed-sales revenue (10-K). China (by customer headquarters) fell from \$25.0bn (19%) of revenue in fiscal 2025 to \$19.7bn (9%) in fiscal 2026. In September 2025 China's internet regulator told major firms to stop buying Nvidia's China-specific RTX Pro 6000D. |
+| **antitrust** | FTC suit to block the Arm deal (December 2021; abandoned February 2022); French competition authority search of Nvidia's offices (September 2023); US Justice Department investigation opened June 2024; China's SAMR opened a probe in December 2024 and on 15 September 2025 said a preliminary finding showed Nvidia broke its anti-monopoly law over conditions attached to the Mellanox deal |
+| **his numbers drift** | direct reports go from 40 to 50 to 60 across a year of interviews; his low-point market cap is "just above \$1 billion" at NTU and "a couple of \$2–\$3 billion" on Acquired. Quote the source, not the meme. |
+
+**Blunt conclusion:** the strategic habits (admit the mistake, simulate before betting, track early indicators,
+benchmark against the physical limit, keep one architecture compatible for decades) are sound and cost nothing to
+copy. The organisational ones (60 reports, no one-on-ones, public critique) are tuned to one founder with unusual
+authority and an unusually senior team. The pain-and-suffering rhetoric describes his path; it is not evidence that
+suffering causes success.
+
+## What transfers to a small startup
+
+| Transfers | Doesn't transfer |
+| :--- | :--- |
+| telling a customer or partner early that your approach is wrong | a decade in a zero-billion-dollar market without a cash-generating core |
+| verifying the risky part before the big commitment (prefetch the future) | betting the company on one tape-out without the emulator |
+| early indicators of future success when revenue is too early to judge | ignoring results indefinitely because you "believe" |
+| "speed of light" estimates that expose waiting and hand-offs | 60 direct reports once you have managers who are new to managing |
+| everyone hears decisions and reasoning at the same time | public criticism without trust built first |
+| a weekly five-bullet note from everyone | reading 100 of them a day instead of doing the work |
+| one concrete mission per project as the "boss" | "no plan" as an excuse for no priorities |
+| strategic retreat from a crowded side-market | romanticising suffering for yourself or your team |
+
+## Where each piece applies
+
+| Pipeline phase | Huang idea | Where |
+| :--- | :--- | :--- |
+| Operating | mission is the boss; rolling priorities, not annual plans; decisions made in the open | [playbook](/startups/idea-to-mvp/playbook/) |
+| Ideation | zero-billion-dollar markets; "would it happen without us?"; hard problems as moats | [ideation](/startups/idea-to-mvp/ideation/) |
+| Validation | early indicators of future success; prefetch the riskiest assumption | [validation](/startups/idea-to-mvp/validation/) |
+| Product design | first principles on the workflow; work backwards from the end state | [product design](/startups/idea-to-mvp/product-design/) |
+| Building | speed-of-light estimates; one compatible architecture; simulate before committing | [building the MVP](/startups/idea-to-mvp/building-mvp/) |
+| Launch and iterate | admit a wrong approach early; strategic retreat from segments you can't win | [launch and iterate](/startups/idea-to-mvp/launch-iterate/) |
+
+## Takeaways checklist
+
+```text
+[ ] I told someone this week about a mistake in our
+    approach, and asked for help if we need it
+[ ] The riskiest part of the next big commitment was
+    tested or simulated before we committed
+[ ] Each bet has 2-3 early indicators we check weekly
+[ ] I estimated the "speed of light" for our next
+    milestone and listed every wait in the plan
+[ ] We asked "would this happen without us?" before
+    starting a new project
+[ ] Decisions and their reasoning are shared with the
+    whole team at the same time
+[ ] Everyone sends a five-bullet weekly note; I read
+    them looking for weak signals
+[ ] Each project has one concrete mission and one owner
+[ ] Our priorities are reviewed continuously, not
+    once a year
+[ ] Post-mortems are presented to everyone, without
+    blame
+[ ] I cut or retreated from one crowded side-market
+[ ] Nobody, including me, is running on anxiety alone
+```
+
+## References
+
+- [Stanford GSB, "Jensen Huang on How to Use First-Principles Thinking to Drive Decisions" (25 April 2024)](https://www.gsb.stanford.edu/insights/jensen-huang-how-use-first-principles-thinking-drive-decisions): View From The Top interview with Shantam Jain, with full transcript (founding, OpenGL reset, early indicators, 50 direct reports, first principles, org design)
+- [Stanford GSB, ENCORE Award](https://gsb.stanford.edu/alumni/featured-events/award-events/encore): dates the View From The Top appearance to 1 March 2024
+- [SIEPR, "Nvidia's Jensen Huang: The incredible future of AI" (7 March 2024)](https://siepr.stanford.edu/news/nvidias-jensen-huang-incredible-future-ai): the "ample doses of pain and suffering" line at the 2024 SIEPR Economic Summit
+- [SIEPR, "2024 SIEPR Economic Summit"](https://siepr.stanford.edu/siepr-events/summits/2024-siepr-economic-summit): summit date (1 March 2024)
+- [SIEPR, "Keynote by NVIDIA CEO Jensen Huang at 2024 SIEPR Economic Summit" (YouTube)](https://www.youtube.com/watch?v=cEg8cOx7UZk): the primary video
+- [*Fortune*, "Nvidia founder tells Stanford students their high expectations may make it hard for them to succeed" (13 March 2024)](https://fortune.com/2024/03/13/nvidia-founder-ceo-jensen_huang-stanford-students-genz-grads-low-expectations-successful/): fuller quotes on expectations and resilience
+- [Stripe Sessions, "A conversation with NVIDIA's Jensen Huang" (April 2024)](https://stripe.com/sessions/2024/a-conversation-with-nvidias-jensen-huang): with Patrick Collison; transcript covering 60 direct reports, no one-on-ones, public feedback, zero-billion-dollar markets, CUDA and tenure
+- [Acquired, "NVIDIA CEO Jensen Huang" (15 October 2023)](https://www.acquired.fm/episodes/jensen-huang): transcript; RIVA 128 emulation, "mission is the boss", Mellanox, zero-billion-dollar markets, "I wouldn't do it"
+- [*Fortune*, "Nvidia cofounder Jensen Huang says 'nobody in their right mind' would start a company" (23 October 2023)](https://fortune.com/2023/10/23/nvidia-ceo-jensen-huang-tech-startup-entrepreneur/): report of the Acquired remarks
+- [Stephen Witt, "How Jensen Huang's Nvidia Is Powering the A.I. Revolution", *The New Yorker* (27 November 2023)](https://www.newyorker.com/magazine/2023/12/04/how-jensen-huangs-nvidia-is-powering-the-ai-revolution): Oneida, the 1996 layoffs, "thirty days from going out of business", speed of light, T5T, failure must be shared, AlexNet
+- [Kevin Xu, "Jensen Huang NTU Commencement Speech 2023" (Interconnected)](https://interconnected.blog/jensen-huang-ntu-commencement-speech-2023/): full text of the 27 May 2023 address
+- [National Taiwan University, "NTU Commencement 2023"](https://www.ntu.edu.tw/english/spotlight/2023/2164_20230529.html): the university's account of the ceremony
+- [Caltech, "Caltech Honors Graduates at 130th Commencement Ceremony" (June 2024)](https://www.caltech.edu/about/news/caltech-commencement-2024): the 14 June 2024 address
+- [Nvidia Blog, "'Believe in Something Unconventional, Something Unexplored,' NVIDIA CEO Tells Caltech Grads" (June 2024)](https://blogs.nvidia.com/blog/jensen-huang-caltech-commencement-address): further quotes from the Caltech speech
+- [*Tom's Hardware*, "Jensen Huang's Unusual Nvidia Management Style Doesn't Include Long-Term Plans or Reports" (September 2023)](https://www.tomshardware.com/news/nvidia-ceo-shares-management-style-always-learn-make-no-plans): quotes the "no five-year plan" answer from Sana's *Strange Loop* interview
+- [Sana, "Leading the teams behind the world's fastest AI | Jensen Huang | Strange Loop" (YouTube, 2023)](https://www.youtube.com/watch?v=h5xY_kRKHxE): the interview with Joel Hellermark
+- [*Fortune*, "Jensen Huang's Top 5 Things emails" (13 December 2024)](https://fortune.com/2024/12/13/jensen-huang-email-nvidia-management-leadership-top-5-things-t5t/): T5T and "detect the weak signals", from Tae Kim's book
+- [Jeremy Kahn, "60 direct reports, but no 1-on-1 meetings", *Fortune* (12 November 2024)](https://fortune.com/2024/11/12/jensen-huang-nvidia-ceo-leadership-mpp/): the management system at the time of *Fortune*'s power list
+- [*Fortune*, "Nvidia CEO admits he works 7 days a week… in a constant 'state of anxiety'" (4 December 2025)](https://www.fortune.com/2025/12/04/nvidia-ceo-admits-he-works-7-days-a-week-including-holidays-in-a-constant-state-of-anxiety-out-of-fear-of-going-bankrupt): report of the *Joe Rogan Experience* remarks on "30 days"
+- Tae Kim, *The Nvidia Way: Jensen Huang and the Making of a Tech Giant* (W. W. Norton, 2024): company history, T5T, early life
+- Stephen Witt, *The Thinking Machine: Jensen Huang, Nvidia, and the World's Most Coveted Microchip* (Viking, 2025): biography; source for the Taipei birthplace
+- [Alex Krizhevsky, Ilya Sutskever and Geoffrey Hinton, "ImageNet Classification with Deep Convolutional Neural Networks" (NeurIPS 2012)](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks): AlexNet, trained on two GTX 580 GPUs
+- [Nvidia, Form 10-K for fiscal year ended 25 January 2026 (SEC)](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm): revenue, customer concentration, foundry dependence, H20 charge, China revenue
+- [Nvidia Newsroom, "NVIDIA to Acquire Mellanox for \$6.9 Billion" (11 March 2019)](https://nvidianews.nvidia.com/news/nvidia-to-acquire-mellanox-for-6-9-billion): the deal announcement
+- [FTC, "FTC Sues to Block \$40 Billion Semiconductor Chip Merger" (2 December 2021)](https://www.ftc.gov/news-events/news/press-releases/2021/12/ftc-sues-block-40-billion-semiconductor-chip-merger): the Arm challenge
+- [NBC News, "U.S. regulators open antitrust probes into Nvidia, Microsoft and OpenAI" (June 2024)](https://www.nbcnews.com/business/business-news/us-regulators-open-antitrust-probes-nvidia-microsoft-openai-rcna155910): the DOJ taking the Nvidia investigation
+- [CNBC, "China says Nvidia violated anti-monopoly law, will continue investigation" (15 September 2025)](https://www.cnbc.com/2025/09/15/china-nvidia-violated-anti-monopoly-law-will-continue-investigation.html): SAMR's preliminary finding
+- [*Washington Post*, "Nvidia becomes first \$4 trillion company at market close" (10 July 2025)](https://www.washingtonpost.com/technology/2025/07/10/nvidia-4-trillion-market-cap/): the \$4 trillion milestone
+- [Reuters, "Nvidia hits \$5 trillion valuation as AI boom powers meteoric rise" (29 October 2025)](https://www.reuters.com/business/nvidia-poised-record-5-trillion-market-valuation-2025-10-29/): the \$5 trillion milestone
+- [Wikipedia, "Jensen Huang"](https://en.wikipedia.org/wiki/Jensen_Huang) and ["Nvidia"](https://en.wikipedia.org/wiki/Nvidia): sourced timelines (birth, education, NV1, Sega's \$5m investment, RIVA 128, IPO, market-cap milestones, French and Chinese regulatory actions)
+- [Wikipedia, "GeForce 256"](https://en.wikipedia.org/wiki/GeForce_256) and ["CUDA"](https://en.wikipedia.org/wiki/CUDA): the "world's first GPU" marketing and CUDA's 2006 introduction
