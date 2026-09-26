@@ -20,7 +20,7 @@ describe("evaluate", () => {
     expect(evaluate({ fn: "sqrt", b: -1 }, -4)).toBe(2);
   });
 
-  it("labels curves with the catalogue formula unless overridden", () => {
+  it("labels curves with the catalog formula unless overridden", () => {
     expect(curveLabel({ fn: "exp" })).toBe(FUNCTIONS.exp.formula);
     expect(curveLabel({ fn: "exp", label: "custom" })).toBe("custom");
   });

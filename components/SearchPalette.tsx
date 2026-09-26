@@ -5,7 +5,9 @@
  * on `/` when no field is focused, or on the `open-search` window event fired
  * by the footer control. It lazily fetches the static `/search-index.json`,
  * ranks it with `lib/search-rank.ts` on every keystroke, and renders the
- * results as another "page" of the site laid over the current one.
+ * results as another "page" of the site laid over the current one. On the
+ * playground, a chosen result opens in the reference panel instead of
+ * navigating away from the code.
  *
  * Accessibility: `role="dialog"` + `aria-modal`, the input is a `combobox`
  * controlling a `listbox` of `option`s, the rest of the document is made
@@ -20,46 +22,19 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { BreakablePath } from "@/components/BreakablePath";
 import { padNumber } from "@/lib/format";
 import { isTypingTarget } from "@/lib/keys";
+import { isPlaygroundPath, openReference } from "@/lib/reference-panel";
+import { loadSearchIndex } from "@/lib/search-index-client";
 import { docPath, rankSearch, type SearchDoc, type SearchHit } from "@/lib/search-rank";
 import { OPEN_SEARCH_EVENT } from "./SearchLink";
 
-/** URL of the prerendered search index (see `app/search-index.json/route.ts`). */
-export const SEARCH_INDEX_URL = "/search-index.json";
+export { resetSearchIndexCache, SEARCH_INDEX_URL } from "@/lib/search-index-client";
+
 /** Hint shown in the empty search field; mirrors what `lib/search-rank.ts` matches. */
 export const SEARCH_PLACEHOLDER = "Search titles, headings and text…";
 /** Maximum results shown at once. */
 const RESULT_LIMIT = 10;
 /** DOM id of the results listbox, referenced by `aria-controls`. */
 const RESULTS_ID = "search-results";
-
-/** Module-level cache so the index is fetched once per page load, not once per open. */
-let indexCache: Promise<SearchDoc[]> | undefined;
-
-/**
- * Fetch and cache the search index.
- *
- * A failed request clears the cache so the next open retries instead of
- * remembering the failure for the rest of the session.
- *
- * @throws {Error} If the response is not OK; the rejection is cached-and-cleared as described.
- */
-function loadIndex(): Promise<SearchDoc[]> {
-  indexCache ??= fetch(SEARCH_INDEX_URL)
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`Search index request failed: ${res.status}`);
-      return (await res.json()) as SearchDoc[];
-    })
-    .catch((error: unknown) => {
-      indexCache = undefined; // allow a retry on the next open
-      throw error;
-    });
-  return indexCache;
-}
-
-/** Test seam: forget the cached index. */
-export function resetSearchIndexCache(): void {
-  indexCache = undefined;
-}
 
 /** Lifecycle of the index inside the component. */
 type IndexState = { status: "idle" | "loading" | "ready"; docs: SearchDoc[] } | { status: "error" };
@@ -84,7 +59,7 @@ function inertSiblings(dialog: HTMLElement): () => void {
 
 /**
  * The palette itself. Renders `null` while closed; see the file header for
- * behaviour. Mount exactly once, in the root layout.
+ * behavior. Mount exactly once, in the root layout.
  */
 export function SearchPalette() {
   const router = useRouter();
@@ -108,7 +83,7 @@ export function SearchPalette() {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setIndex({ status: "loading", docs: [] });
-    loadIndex()
+    loadSearchIndex()
       .then((docs) => setIndex({ status: "ready", docs }))
       .catch(() => {
         loadingRef.current = false;
@@ -180,7 +155,8 @@ export function SearchPalette() {
       const hit = hits[current];
       if (hit) {
         close();
-        router.push(hit.doc.url);
+        if (isPlaygroundPath(window.location.pathname)) openReference(hit.doc.url);
+        else router.push(hit.doc.url);
       }
     }
   };
@@ -228,13 +204,21 @@ export function SearchPalette() {
         <div id={RESULTS_ID} role="listbox" aria-label="Results" className="results">
           {hits.map((hit, i) => (
             <span key={hit.doc.url}>
-              <span>{padNumber(hits.length - 1 - i)}.</span>{"\u00a0"}
+              <span>{padNumber(hits.length - 1 - i)}.</span>
+              {"\u00a0"}
               <Link
                 id={`search-hit-${i}`}
                 role="option"
                 href={hit.doc.url}
                 aria-selected={i === current}
-                onClick={close}
+                onClick={(event) => {
+                  close();
+                  // On the playground the sheet opens beside the code instead of replacing it.
+                  if (isPlaygroundPath(window.location.pathname)) {
+                    event.preventDefault();
+                    openReference(hit.doc.url);
+                  }
+                }}
                 onMouseEnter={() => setSelected(i)}
               >
                 <i>

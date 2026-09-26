@@ -1,7 +1,7 @@
 /**
  * @file Home page (`/`): the topics as a numbered list, newest-first style
- * (first topic gets the highest number), a `v` link to every sheet, and an
- * `Info` footer link.
+ * (first topic gets the highest number), a `v` link to every sheet, and
+ * `Info` and `Playground` footer links.
  */
 import { DottedLink } from "@/components/DottedLink";
 import { NumberedList } from "@/components/NumberedList";
@@ -18,7 +18,11 @@ export default function HomePage() {
   }));
 
   return (
-    <Page title={SITE_TITLE} footer={{ href: "/info/", label: "Info" }}>
+    <Page
+      title={SITE_TITLE}
+      footer={{ href: "/info/", label: "Info" }}
+      secondaryFooter={{ href: "/playground/", label: "Playground" }}
+    >
       <NumberedList items={items} />
       <p className="v">
         <DottedLink href="/sheets/" ariaLabel="All cheatsheets">

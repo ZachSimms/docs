@@ -6,11 +6,12 @@
  * `<iframe sandbox="">` built from `srcdoc` (see `DemoFrame`), so its
  * selectors can't leak into the page and scripts never run; CSS transitions
  * and animations still do. The document and its base styles come from
- * `lib/demo.ts`.
+ * `lib/demo.ts`. With `tailwind="true"` (```` ```html demo tailwind ````) the
+ * snippet's classes are compiled by `<TailwindDemo>` instead.
  */
 
-import { DemoFrame } from "@/components/DemoFrame";
-import { DEFAULT_DEMO_HEIGHT } from "@/lib/demo";
+import { DemoFigure } from "@/components/DemoFigure";
+import { TailwindDemo } from "@/components/TailwindDemo";
 
 /** Props for {@link Demo}; strings because they come from fence meta. */
 interface DemoProps {
@@ -20,18 +21,12 @@ interface DemoProps {
   height?: string;
   /** The fence title, used in the frame's accessible name. */
   title?: string;
+  /** `"true"` when the fence has the `tailwind` flag. */
+  tailwind?: string;
 }
 
-/** Render `figure.demo > figcaption + iframe[sandbox]`. */
-export function Demo({ html, height, title }: DemoProps) {
-  return (
-    <figure className="demo">
-      <figcaption>Result</figcaption>
-      <DemoFrame
-        html={html}
-        height={height ?? String(DEFAULT_DEMO_HEIGHT)}
-        title={title ? `Live demo: ${title}` : "Live demo"}
-      />
-    </figure>
-  );
+/** Render the live result of a demo fence. */
+export function Demo({ html, height, title, tailwind }: DemoProps) {
+  if (tailwind === "true") return <TailwindDemo html={html} height={height} title={title} />;
+  return <DemoFigure html={html} height={height} title={title} />;
 }

@@ -38,7 +38,7 @@ describe("pathSegments", () => {
   });
 
   it("returns the label alone when it has no slash", () => {
-    expect(pathSegments("Maths")).toEqual(["Maths"]);
+    expect(pathSegments("Math")).toEqual(["Math"]);
     expect(pathSegments("")).toEqual([""]);
   });
 });

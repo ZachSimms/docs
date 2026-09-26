@@ -89,7 +89,7 @@ node --test "**/*.test.ts"    # Node 22+ glob
   </Tab>
 </Tabs>
 
-**Arrange, Act, Assert**: set up state, do one thing, check the outcome. One behaviour per test;
+**Arrange, Act, Assert**: set up state, do one thing, check the outcome. One behavior per test;
 name it as a sentence (`it("rejects an expired token")`). `it` and `test` are aliases.
 
 ```tree title="Where tests live"
@@ -469,7 +469,7 @@ one place. Unique values (`seq`) avoid accidental collisions in maps and databas
 
 ## Testing types
 
-Type-level behaviour (generics, overloads, inference) needs its own assertions; nothing fails at
+Type-level behavior (generics, overloads, inference) needs its own assertions; nothing fails at
 runtime when a type widens to `any`.
 
 ```ts
@@ -576,9 +576,9 @@ it("increments and saves", async () => {
 jest-dom adds DOM matchers: `toBeInTheDocument`, `toBeVisible`, `toBeDisabled`, `toHaveTextContent`,
 `toHaveValue`, `toBeChecked`, `toHaveAttribute`, `toHaveClass`, `toHaveAccessibleName`.
 
-<Callout type="warn" title="Test behaviour, not implementation">
+<Callout type="warn" title="Test behavior, not implementation">
   Don't assert on state variables, hook calls, class names used for styling or component internals.
-  Assert what a user sees and can do. A refactor that keeps behaviour should keep the tests green.
+  Assert what a user sees and can do. A refactor that keeps behavior should keep the tests green.
 </Callout>
 
 ### Setup with `bun test` + happy-dom
@@ -805,7 +805,7 @@ export default defineConfig({
 
 ## Coverage & TDD
 
-**Red, green, refactor**: write a failing test for the next small behaviour (red), write the least
+**Red, green, refactor**: write a failing test for the next small behavior (red), write the least
 code that passes (green), then clean up with the tests as a safety net (refactor). Repeat in
 minutes, not hours.
 
@@ -819,7 +819,7 @@ minutes, not hours.
 What coverage **doesn't** tell you:
 
 - a line ran, not that anything checked its result (a test with no `expect` still "covers")
-- whether the behaviour is correct, or whether a requirement is missing entirely
+- whether the behavior is correct, or whether a requirement is missing entirely
 - branch coverage misses combinations of conditions and short-circuit paths
 - 100% can be gamed; aim for a floor (e.g. 80%) and review what's uncovered
 - mutation testing (Stryker) measures whether tests catch deliberately injected bugs
@@ -890,7 +890,7 @@ it("answers over real HTTP", async () => {
 
 ### Temp directory per test
 
-When code reads or writes files: every test gets a fresh folder, removed afterwards.
+When code reads or writes files: every test gets a fresh folder, removed afterward.
 
 ```ts title="report.test.ts"
 import { afterEach, beforeEach, expect, it } from "bun:test";

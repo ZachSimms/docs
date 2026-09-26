@@ -11,7 +11,10 @@
  * ```
  * ````
  *
- * The code block stays (minus `demo` and `height=`, so rehype-pretty-code
+ * Adding `tailwind` (```` ```html demo tailwind ````) makes the snippet's
+ * classes real Tailwind utilities, compiled at build time by `<TailwindDemo>`.
+ *
+ * The code block stays (minus `demo`, `tailwind` and `height=`, so rehype-pretty-code
  * still highlights it with its title and line ranges) and an MDX JSX
  * `<Demo html="…" />` element is inserted right after it, rendered by
  * `components/Demo.tsx`. A fence is used rather than a JSX attribute because
@@ -27,6 +30,8 @@ import type { MdNode } from "./remark-file-tree";
 const DEMO_LANG = "html";
 /** Bare `demo` word in the meta. */
 const DEMO_WORD = /(^|\s)demo(?=\s|$)/;
+/** Bare `tailwind` word: compile the snippet's Tailwind classes (see `lib/tailwind-demo.ts`). */
+const TAILWIND_WORD = /(^|\s)tailwind(?=\s|$)/;
 /** `height=180` in the meta. */
 const HEIGHT = /(^|\s)height=(\d+)(?=\s|$)/;
 /** `title="…"` in the meta (kept on the code block too). */
@@ -51,10 +56,13 @@ function expand(code: MdNode): MdNode[] {
   const meta = code.meta ?? "";
   const height = HEIGHT.exec(flagsOf(meta))?.[2];
   const title = TITLE.exec(meta)?.[1];
+  const tailwind = TAILWIND_WORD.test(flagsOf(meta));
   // Drop the flags only outside quoted strings, so a title keeps its words.
   const rest = meta
     .split(/("[^"]*")/)
-    .map((part, i) => (i % 2 ? part : part.replace(DEMO_WORD, " ").replace(HEIGHT, " ")))
+    .map((part, i) =>
+      i % 2 ? part : part.replace(DEMO_WORD, " ").replace(TAILWIND_WORD, " ").replace(HEIGHT, " "),
+    )
     .join("")
     .replace(/\s+/g, " ")
     .trim();
@@ -65,6 +73,7 @@ function expand(code: MdNode): MdNode[] {
       attr("html", code.value ?? ""),
       ...(height ? [attr("height", height)] : []),
       ...(title ? [attr("title", title)] : []),
+      ...(tailwind ? [attr("tailwind", "true")] : []),
     ],
     children: [],
     ...(code.position ? { position: code.position } : {}),

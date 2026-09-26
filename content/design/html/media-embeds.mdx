@@ -262,7 +262,7 @@ and what you style.
 | WebP | lossy and lossless | yes | yes | photos and graphics; MDN cites 25–35% smaller than JPEG | Baseline widely available (since 2023) |
 | AVIF | lossy and lossless | yes | yes | photos; MDN cites about 50% smaller than JPEG; slower to encode | Baseline 2024 (January), widely available since July 2026 |
 | SVG | vector (text, gzips well) | yes | yes (SMIL, CSS) | icons, logos, diagrams, anything drawn | everywhere |
-| GIF | lossless, 256 colours | 1-bit | yes | nothing new; use `<video>` or animated WebP/AVIF | everywhere |
+| GIF | lossless, 256 colors | 1-bit | yes | nothing new; use `<video>` or animated WebP/AVIF | everywhere |
 
 - **Default in 2026:** AVIF, with WebP or JPEG fallback in `<picture>`. AVIF is now
   widely available, so the JPEG fallback matters mainly for old devices and email clients.
@@ -451,7 +451,7 @@ For synthesis, analysis and effects use the [Web Audio API](/typescript/web-apis
 ```html
 <iframe
   src="https://maps.example.com/embed?q=depot"
-  title="Map: our depot on Harbour Road"
+  title="Map: our depot on Harbor Road"
   width="600" height="400"
   loading="lazy"
   referrerpolicy="strict-origin-when-cross-origin"
@@ -517,10 +517,10 @@ Responsive frames: set `width`/`height` for the ratio, then
 
 | Method | Styleable from page CSS | Cached separately | Scripts run | Accessible name | Use for |
 | :----- | :---------------------- | :---------------- | :---------- | :-------------- | :------ |
-| Inline `<svg>` | yes (`currentColor`, custom properties, `:hover`) | no (ships with the HTML) | yes | `role="img"` + `<title>` / `aria-label` | icons that follow text colour, interactive or animated graphics, charts |
+| Inline `<svg>` | yes (`currentColor`, custom properties, `:hover`) | no (ships with the HTML) | yes | `role="img"` + `<title>` / `aria-label` | icons that follow text color, interactive or animated graphics, charts |
 | `<img src="x.svg">` | no | yes | no | `alt` | logos, illustrations, big static drawings |
 | `<svg><use href="sprite.svg#id">` | partly (`currentColor` and custom properties inherit into the `<use>` content) | yes | no | on the outer `<svg>` | many repeated icons; the sprite must be same-origin |
-| CSS `background-image` / `mask-image` | colour via `mask` + `background-color` | yes | no | none | decoration only |
+| CSS `background-image` / `mask-image` | color via `mask` + `background-color` | yes | no | none | decoration only |
 
 ```html
 <!-- meaningful standalone graphic -->
@@ -544,7 +544,7 @@ Responsive frames: set `width`/`height` for the ratio, then
 | Meaningful SVG | `role="img"` plus a name; `aria-labelledby` pointing at the `<title>` is the most reliable combination |
 | Icon-only control | name the **button** (`aria-label` or visually hidden text), hide the SVG |
 | `focusable="false"` | only mattered for IE 11; drop it |
-| `fill="currentColor"` | icons inherit the text colour, including in dark mode and forced colours |
+| `fill="currentColor"` | icons inherit the text color, including in dark mode and forced colors |
 | Untrusted SVG | never inline it: inline SVG runs scripts. `<img>` is safe |
 
 ## Canvas, `<object>`, `<embed>` & image maps
@@ -681,7 +681,7 @@ Bytes
 <ul class="thumbs" role="list">
   <li>
     <a href="/photos/41/">
-      <img src="p41-320.jpg" alt="Harbour at low tide"
+      <img src="p41-320.jpg" alt="Harbor at low tide"
         srcset="p41-320.jpg 320w, p41-640.jpg 640w"
         sizes="(min-width: 48rem) 12rem, 45vw"
         width="320" height="240" loading="lazy">
@@ -744,7 +744,7 @@ small delay if the grid is below the fold.
 ### Privacy-friendly YouTube embed
 
 `youtube-nocookie.com` is YouTube's privacy-enhanced mode: YouTube says views in it are not
-used to personalise the viewer's YouTube experience or ads outside your site. It is not
+used to personalize the viewer's YouTube experience or ads outside your site. It is not
 zero tracking, and the player still loads hundreds of kilobytes of script, so load it
 lazily. YouTube's API terms require the embed to send a `Referer`, so keep the default
 policy rather than `no-referrer`, and keep the player at least 200 × 200 px.
@@ -777,7 +777,7 @@ the usual way to avoid loading third-party content before consent.
 
 ### Accessible inline SVG icon button
 
-The button carries the name; the SVG is hidden and inherits the text colour:
+The button carries the name; the SVG is hidden and inherits the text color:
 
 ```html demo height=90 title="icon-button.html"
 <style>

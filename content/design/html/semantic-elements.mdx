@@ -16,7 +16,7 @@ and ARIA and testing in [Accessibility](/design/html/accessibility/).
 | Consumer | What the right element gives it |
 | :------- | :------------------------------ |
 | **Accessibility tree** | each element maps to a role (`<nav>` → navigation, `<button>` → button) with a name and state; screen-reader users jump by landmark, heading, list, table and link |
-| **Default behaviour** | `<button>` is focusable and fires on Enter and Space; `<a href>` opens in a new tab on middle-click; `<details>` toggles; `<label>` focuses its input. A `<div onclick>` has none of this |
+| **Default behavior** | `<button>` is focusable and fires on Enter and Space; `<a href>` opens in a new tab on middle-click; `<details>` toggles; `<label>` focuses its input. A `<div onclick>` has none of this |
 | **Search engines** | headings, `<title>`, link text, `<time>`, tables and lists help crawlers understand structure; structured data does the rest |
 | **Reader mode & translation** | Safari Reader, Firefox Reader View and translators pick the `<article>`/`<main>` body and skip `<nav>`/`<aside>`; `translate="no"` protects brand names |
 | **Default styles** | lists get markers, `<em>` italics, `<code>` monospace; they survive when CSS fails to load |
@@ -152,8 +152,8 @@ Firefox 140 and Safari 26.2, so a nested `<h1>` now renders full size. MDN notes
 | `code` | a fragment of computer code | keyboard input |
 | `kbd` | user input: keys, commands to type; nest for key combos | output |
 | `samp` | sample output from a program | input |
-| `var` | a variable in maths or code | |
-| `sub` / `sup` | typographic convention only: chemical formulae, footnote markers, French abbreviations such as Mlle | maths layout (use MathML) |
+| `var` | a variable in math or code | |
+| `sub` / `sup` | typographic convention only: chemical formulae, footnote markers, French abbreviations such as Mlle | math layout (use MathML) |
 | `time` | a date, time or duration; `datetime` holds the machine-readable value | vague spans ("soon") |
 | `data` | a machine-readable `value` for any content (`<data value="8712345">Blue mug</data>`) | dates (use `time`) |
 | `bdi` | isolates text of unknown direction (user names in RTL/LTR mixes) | |
@@ -228,7 +228,7 @@ Without `datetime`, the element's text must itself be one of these formats.
   <dl>
     <div><dt>HTML</dt><dd>Structure</dd></div>
     <div><dt>CSS</dt><dd>Presentation</dd></div>
-    <div><dt>JS</dt><dt>Wasm</dt><dd>Behaviour</dd></div>
+    <div><dt>JS</dt><dt>Wasm</dt><dd>Behavior</dd></div>
   </dl>
 </div>
 ```
@@ -243,7 +243,7 @@ Tables are for **data with rows and columns**, never for layout.
 | :------------------ | :-- |
 | `caption` | the table's title and accessible name; first child of `table` |
 | `thead`, `tbody`, `tfoot` | row groups; browsers repeat `thead` on each printed page; `tfoot` may sit after `tbody`; several `tbody`s split sections |
-| `th` | a header cell; bold and centred by default |
+| `th` | a header cell; bold and centered by default |
 | `scope="col"` / `"row"` | which cells a `th` heads; needed for row headers and anything irregular |
 | `scope="colgroup"` / `"rowgroup"` | a header spanning a group of columns or a `tbody` |
 | `headers="id1 id2"` on `td` | explicit list of header ids for complex tables where `scope` can't express it |
@@ -351,7 +351,7 @@ has no URL, it's a `<button>`.
 | `accesskey` | a character | clashes with assistive-tech shortcuts; avoid |
 | `style` | CSS declarations | blocked by strict CSP (`style-src` without `'unsafe-inline'`) |
 | `nonce` | random token | lets an inline `script`/`style` through CSP |
-| `slot`, `part`, `exportparts`, `is` | | web components; `is` (customised built-ins) is not supported in Safari |
+| `slot`, `part`, `exportparts`, `is` | | web components; `is` (customized built-ins) is not supported in Safari |
 
 Boolean attributes are true when present, whatever the value: `hidden="false"` still hides. Remove
 the attribute to turn it off.

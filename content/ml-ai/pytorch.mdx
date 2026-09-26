@@ -36,9 +36,9 @@ explicit = true             # only torch comes from here
 | `dtype` | which typed array (`Float32Array`, `Int32Array`) | ops need matching dtypes; no silent `number` |
 | `device` | a `GPUBuffer` in WebGPU: memory owned elsewhere | moving data is an explicit copy (`.to(device)`) |
 | `nn.Module` | a class with state and a `forward(x)` method | call `model(x)`, not `model.forward(x)`, so hooks run |
-| `state_dict()` | a `Record<string, Tensor>` snapshot you can serialise | holds weights only, never the class or code |
+| `state_dict()` | a `Record<string, Tensor>` snapshot you can serialize | holds weights only, never the class or code |
 | `DataLoader` | an iterator over batches (`for...of`) | synchronous; parallelism comes from worker processes |
-| `torch.compile` | V8's JIT optimising hot functions | "graph breaks" and recompiles are its deopts |
+| `torch.compile` | V8's JIT optimizing hot functions | "graph breaks" and recompiles are its deopts |
 
 ## Tensors
 
@@ -97,7 +97,7 @@ a[0, 0].item()   # Python float 1.0
 | `t.split(2)`, `t.chunk(3)` | cut into pieces | views, not copies |
 | `t.expand(4, -1)` / `t.repeat(4, 1)` | broadcast view / real copy | prefer `expand` |
 | `t.contiguous()` | copy into standard layout | fixes `view` errors |
-| `torch.einsum("bij,bjk->bik", a, b)` | named-index contractions | readable batched maths |
+| `torch.einsum("bij,bjk->bik", a, b)` | named-index contractions | readable batched math |
 
 ### Broadcasting
 
@@ -144,7 +144,7 @@ w.grad = None                       # grads accumulate!
 | API | Does |
 | :-- | :--- |
 | `requires_grad=True` / `t.requires_grad_()` | track operations on this leaf tensor |
-| `loss.backward()` | compute gradients of a scalar; frees the graph afterwards |
+| `loss.backward()` | compute gradients of a scalar; frees the graph afterward |
 | `t.grad` | accumulated gradient: **adds** on every `backward` until zeroed |
 | `opt.zero_grad()` | reset grads (sets them to `None` by default) |
 | `with torch.no_grad():` | no recording; for weight updates and eval |
@@ -189,7 +189,7 @@ n_params = sum(p.numel() for p in model.parameters())
 | `nn.MaxPool2d(k)`, `nn.AdaptiveAvgPool2d(1)` | shrink H and W | downsampling, global pooling |
 | `nn.BatchNorm1d/2d(c)` | same shape | CNNs; behaves differently in train/eval |
 | `nn.LayerNorm(d)`, `nn.RMSNorm(d)` | same shape | transformers, MLPs |
-| `nn.Dropout(p)` | same shape | regularisation; off in `eval()` |
+| `nn.Dropout(p)` | same shape | regularization; off in `eval()` |
 | `nn.Embedding(vocab, d)` | int64 `(N, L)` to `(N, L, d)` | token or category ids |
 | `nn.LSTM`, `nn.GRU` (`batch_first=True`) | `(N, L, d)` | sequences |
 | `nn.MultiheadAttention(d, heads, batch_first=True)` | `(N, L, d)` | attention |
@@ -200,15 +200,15 @@ n_params = sum(p.numel() for p in model.parameters())
 
 | Member | Does |
 | :----- | :--- |
-| `model.parameters()`, `named_parameters()` | trainable tensors, for the optimiser |
-| `model.train()` / `model.eval()` | toggle dropout and batch-norm behaviour; nothing to do with grads |
+| `model.parameters()`, `named_parameters()` | trainable tensors, for the optimizer |
+| `model.train()` / `model.eval()` | toggle dropout and batch-norm behavior; nothing to do with grads |
 | `model.to(device)` | moves parameters and buffers, in place |
 | `self.register_buffer("mask", t)` | state that moves and saves with the model but is not trained |
 | `p.requires_grad_(False)` | freeze a parameter |
 | `model.apply(fn)` | run `fn` on every sub-module (custom init) |
 | `print(model)` | the layer tree |
 
-## Losses, optimisers & schedulers
+## Losses, optimizers & schedulers
 
 | Loss | Model output | Target |
 | :--- | :----------- | :----- |
@@ -220,7 +220,7 @@ n_params = sum(p.numel() for p in model.parameters())
 | `nn.KLDivLoss(reduction="batchmean")` | log-probabilities | probabilities (distillation) |
 | `CrossEntropyLoss(weight=w, label_smoothing=0.1)` | logits | per-class weights for imbalance; smoothing curbs over-confidence |
 
-| Optimiser | Notes |
+| Optimizer | Notes |
 | :-------- | :---- |
 | `AdamW(params, lr=1e-3, weight_decay=0.01)` | the default choice; decoupled weight decay |
 | `Adam` | AdamW without decoupled decay |
@@ -350,13 +350,13 @@ acc = torch.accelerator.current_accelerator(
     check_available=True
 )
 device = acc if acc is not None else torch.device("cpu")
-model = model.to(device)            # before the optimiser
+model = model.to(device)            # before the optimizer
 ```
 
 | Rule | Why |
 | :--- | :-- |
 | Model and batch on the same device | otherwise "Expected all tensors to be on the same device" |
-| Create the optimiser after `model.to(device)` | it should hold the moved parameters |
+| Create the optimizer after `model.to(device)` | it should hold the moved parameters |
 | Create tensors on the device: `torch.zeros(3, device=device)` | avoids a CPU allocation plus a copy |
 | Avoid `.item()`, `.cpu()`, `print(t)` inside the hot loop | each one waits for the GPU |
 | MPS: no `float64` | cast to `float32` first |
@@ -365,7 +365,7 @@ model = model.to(device)            # before the optimiser
 
 ## Mixed precision
 
-Run matmuls and convolutions in 16-bit inside `torch.autocast`; keep weights and the optimiser in
+Run matmuls and convolutions in 16-bit inside `torch.autocast`; keep weights and the optimizer in
 float32. `float16` needs a `GradScaler` to stop small gradients underflowing to zero; `bfloat16`
 does not.
 
@@ -635,7 +635,7 @@ from torchvision.models import ResNet18_Weights, resnet18
 
 weights = ResNet18_Weights.DEFAULT      # downloads once
 net = resnet18(weights=weights)
-preprocess = weights.transforms()       # resize + normalise
+preprocess = weights.transforms()       # resize + normalize
 
 for p in net.parameters():
     p.requires_grad_(False)             # freeze everything

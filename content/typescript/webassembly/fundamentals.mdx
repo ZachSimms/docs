@@ -332,9 +332,9 @@ Generated bindings (wasm-bindgen, embind `--emit-tsd`, jco) ship their own `.d.t
 | :--- | :--------- |
 | Each JS ↔ Wasm call | cheap in modern engines, but not free: batch work into fewer, bigger calls |
 | Copying strings (UTF-16 ↔ UTF-8) | pass indices / handles, use JS String Builtins, or keep text on one side |
-| Marshalling objects | flatten to typed arrays or structs in memory |
+| Marshaling objects | flatten to typed arrays or structs in memory |
 | Download size | `wasm-opt -Oz`, strip custom sections, Brotli, lazy-load |
-| Compile time | `instantiateStreaming`; engines tier up (baseline then optimising) and cache |
+| Compile time | `instantiateStreaming`; engines tier up (baseline then optimizing) and cache |
 | Web API calls from Wasm | each is a round trip through a JS import |
 
 Measure: a 2× win in a kernel can vanish if every call copies a megabyte both ways.
@@ -450,7 +450,7 @@ const run = WebAssembly.promising(
 const n: number = await run(7);
 ```
 
-Standardised (phase 5); shipped in Chrome 137 and Firefox 153, listed for Safari 27. Emscripten exposes it
+Standardized (phase 5); shipped in Chrome 137 and Firefox 153, listed for Safari 27. Emscripten exposes it
 as `-sJSPI`.
 
 ## Debugging

@@ -13,7 +13,7 @@ details are in [GDScript](/game-dev/godot/gdscript/); saving Resources to disk i
 
 | Term | Meaning |
 | :--- | :------ |
-| Node | the unit of behaviour: one type (`Sprite2D`, `Timer`, `CharacterBody3D` ...) plus an optional script |
+| Node | the unit of behavior: one type (`Sprite2D`, `Timer`, `CharacterBody3D` ...) plus an optional script |
 | Scene | a saved tree of nodes (`.tscn` text or `.scn` binary); the root node's type is the scene's type |
 | Instance | a scene placed inside another scene; behaves like one node from the outside |
 | SceneTree | the running game: `get_tree()`; owns the root `Window`, the main loop, groups, timers, pausing |
@@ -149,7 +149,7 @@ func _ready() -> void:
 | `@export var target: Node2D` | drag a node in the inspector; the most robust option across scenes |
 | Groups | `get_tree().get_first_node_in_group("player")` from anywhere |
 
-<Callout type="warn" title="Node paths in initialisers">
+<Callout type="warn" title="Node paths in initializers">
 `var s = $Sprite2D` without `@onready` runs during `_init`, before the node has children, and returns
 null. Use `@onready`, or fetch inside `_ready`.
 </Callout>
@@ -439,7 +439,7 @@ servers' `set_active`). The node that opens the pause menu must itself run while
 
 ## Custom Resources
 
-Resources are the data half of Godot: shared, serialisable objects edited in the inspector and saved as `.tres`.
+Resources are the data half of Godot: shared, serializable objects edited in the inspector and saved as `.tres`.
 
 ```gdscript title="enemy_stats.gd"
 class_name EnemyStats
@@ -478,14 +478,14 @@ func _ready() -> void:
 | Nested resources | `@export var x: OtherResource` and typed arrays of resources work in the inspector |
 
 Use Resources for item definitions, enemy stats, dialogue, level metadata, input profiles: anything that is data
-rather than behaviour.
+rather than behavior.
 
 ## Composition patterns
 
 | Pattern | How |
 | :------ | :-- |
 | Component nodes | small child scenes (`HealthComponent`, `Hurtbox`, `Hitbox`) with their own script and signals |
-| Data resources | behaviour reads an `@export` Resource; designers swap `.tres` files |
+| Data resources | behavior reads an `@export` Resource; designers swap `.tres` files |
 | Scene inheritance | Scene > New Inherited Scene: a base `enemy.tscn` with variants that override properties |
 | Editable children | right-click an instance > Editable Children to tweak one instance's internals |
 | Duck typing | `if body.has_method("take_damage"): body.take_damage(1)` |

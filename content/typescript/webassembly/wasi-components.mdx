@@ -47,7 +47,7 @@ registries, and running components in Node and the browser with jco. Language de
 | Preopened directories | the host opens directories and passes handles; paths resolve only beneath them (no `..` escape) |
 | Handles, not names | components receive resources (`descriptor`, `tcp-socket`) and can only use what they were given |
 | Deny by default | network, env vars and extra files are opt-in flags in every serious runtime |
-| Virtualisation | a component can import an interface implemented by another component (a fake FS, a logger) |
+| Virtualization | a component can import an interface implemented by another component (a fake FS, a logger) |
 
 Node's `node:wasi` exposes the same options but explicitly **does not** provide a secure sandbox (see
 its docs); use Wasmtime or another runtime for untrusted code.
@@ -93,7 +93,7 @@ wasmtime compile app.wasm -o app.cwasm # AOT
 | `-S http` | provide `wasi:http` outgoing requests to `run` |
 | `-S cli` | include the `wasi:cli` imports (used with `serve`) |
 | `-S p3` | enable the WASIp3 (0.3) host APIs where not on by default |
-| `-S help`, `-W help`, `-O help`, `-C help` | list WASI, Wasm-feature, optimisation and codegen options |
+| `-S help`, `-W help`, `-O help`, `-C help` | list WASI, Wasm-feature, optimization and codegen options |
 | `-W gc`, `-W component-model-async` | toggle Wasm proposals |
 | `--invoke name` | call an export instead of `_start` / `wasi:cli/run`; components take WAVE syntax `'f("x", 1)'` |
 | `-W fuel=N`, `-W max-memory-size=N` | CPU (instruction fuel) and memory limits |
@@ -210,7 +210,7 @@ world shapes {
 | `wasm-tools print c.wasm` / `validate` | inspect and validate components too |
 | `wit-bindgen rust`, `c`, `csharp`, ... | guest bindings; in Rust usually the `wit_bindgen::generate!` macro |
 | Rust `wasm32-wasip2` target | `cargo build` emits a component directly (no extra tool) |
-| `cargo-component` | older Cargo subcommand; being deprecated in favour of the native target + wit-bindgen |
+| `cargo-component` | older Cargo subcommand; being deprecated in favor of the native target + wit-bindgen |
 | `jco transpile c.wasm -o out/` | component → ES module + core `.wasm` + `.d.ts`, for Node and browsers |
 | `jco componentize app.js -w wit -o c.wasm` | JS / TS → component (ComponentizeJS on StarlingMonkey) |
 | `jco types wit/`, `jco guest-types wit/` | TS declarations for hosts / for JS guests |
@@ -254,7 +254,7 @@ wkg oci pull ghcr.io/webassembly/wasi/http:0.2.1
 | the host is a browser page and you own the JS glue | the host is Wasmtime, Spin, wasmCloud or another component runtime |
 | you need shared memory, threads or SIMD-heavy kernels with zero-copy views | you want typed, language-neutral interfaces (WIT) instead of pointer contracts |
 | wasm-bindgen / Emscripten already give you good TypeScript bindings | you are building plugins that third parties write in other languages |
-| smallest possible download and startup matter | you want to compose parts, virtualise capabilities, or target `wasi:http` |
+| smallest possible download and startup matter | you want to compose parts, virtualize capabilities, or target `wasi:http` |
 | you need preview 1 runtimes (Node `node:wasi`, Wasmer, WAMR) | you are writing new server-side or edge code in 2026 |
 
 Components run in browsers only through `jco transpile` (JS glue over core Wasm); browsers have no
@@ -305,7 +305,7 @@ package acme:calc@0.1.0;
 
 interface ops {
   record stats { min: f64, max: f64, mean: f64 }
-  summarise: func(xs: list<f64>) -> result<stats, string>;
+  summarize: func(xs: list<f64>) -> result<stats, string>;
 }
 
 world calc {
@@ -332,7 +332,7 @@ use bindings::exports::acme::calc::ops::{Guest, Stats};
 struct Calc;
 
 impl Guest for Calc {
-    fn summarise(xs: Vec<f64>) -> Result<Stats, String> {
+    fn summarize(xs: Vec<f64>) -> Result<Stats, String> {
         if xs.is_empty() {
             return Err("empty input".into());
         }
@@ -349,7 +349,7 @@ impl Guest for Calc {
 cargo build --release --target wasm32-wasip2
 wasm-tools component wit \
   target/wasm32-wasip2/release/calc.wasm
-wasmtime run --invoke 'summarise([1.0, 5.0])' \
+wasmtime run --invoke 'summarize([1.0, 5.0])' \
   target/wasm32-wasip2/release/calc.wasm
 ```
 
@@ -366,7 +366,7 @@ npx jco transpile calc.wasm -o src/calc --name calc
 import { ops } from "./calc/calc.js";
 
 try {
-  const s = ops.summarise(new Float64Array([1, 5, 9]));
+  const s = ops.summarize(new Float64Array([1, 5, 9]));
   console.log(s.mean); // 5
 } catch (e) {
   // result<_, string> error arrives as a thrown

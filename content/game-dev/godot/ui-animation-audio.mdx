@@ -74,7 +74,7 @@ hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 ```
 
 `grow_horizontal` / `grow_vertical` decide which way a Control expands when its content outgrows its minimum
-size (for example a centred label that should grow both ways).
+size (for example a centered label that should grow both ways).
 
 ## Containers & size flags
 
@@ -86,7 +86,7 @@ placing things by hand.
 | `HBoxContainer` / `VBoxContainer` | a row / column; constant `separation`, property `alignment` |
 | `GridContainer` | `columns` wide grid; `h_separation`, `v_separation` |
 | `MarginContainer` | padding: constants `margin_left`, `margin_top`, `margin_right`, `margin_bottom` |
-| `CenterContainer` | centres children at their minimum size |
+| `CenterContainer` | centers children at their minimum size |
 | `PanelContainer` | background stylebox plus padding around one child |
 | `ScrollContainer` | scrolls one child; `horizontal_scroll_mode`, `vertical_scroll_mode` |
 | `HFlowContainer` / `VFlowContainer` | wraps like CSS flex-wrap |
@@ -101,7 +101,7 @@ placing things by hand.
 | `SIZE_FILL` (default) | fill the allotted cell |
 | `SIZE_EXPAND` | ask for extra space; shared by `size_flags_stretch_ratio` |
 | `SIZE_EXPAND_FILL` | expand and fill: the usual "take the rest" (CSS `flex: 1`) |
-| `SIZE_SHRINK_BEGIN` / `_CENTER` / `_END` | keep minimum size, align start / centre / end |
+| `SIZE_SHRINK_BEGIN` / `_CENTER` / `_END` | keep minimum size, align start / center / end |
 
 ```gdscript
 var row := HBoxContainer.new()
@@ -129,7 +129,7 @@ Pixel art: set `stretch/mode = viewport`, `scale_mode = integer`, and the defaul
 
 ## Themes & overrides
 
-A `Theme` resource holds styles per control type (colours, constants, fonts, font sizes, icons, styleboxes).
+A `Theme` resource holds styles per control type (colors, constants, fonts, font sizes, icons, styleboxes).
 Set it project-wide (Project Settings > GUI > Theme > Custom) or on any Control's `theme` property: children
 inherit it.
 
@@ -166,7 +166,7 @@ label.theme_type_variation = &"HeaderLabel"
 | `StyleBoxLine` | separators |
 | `StyleBoxEmpty` | remove a background (for example the `focus` box) |
 
-Button stylebox names: `normal`, `hover`, `pressed`, `disabled`, `focus`; colours `font_color`,
+Button stylebox names: `normal`, `hover`, `pressed`, `disabled`, `focus`; colors `font_color`,
 `font_hover_color`, `font_pressed_color`, `font_disabled_color`. The Theme editor (bottom panel) lists every item a
 type supports.
 
@@ -177,7 +177,7 @@ type supports.
 | `FontFile` | imported `.ttf`, `.otf`, `.woff`, `.woff2`; enable MSDF in import for text that scales a lot |
 | `SystemFont` | OS fonts by family name with fallbacks |
 | `FontVariation` | variable-font axes, fake bold, extra spacing, OpenType features |
-| `LabelSettings` | per-Label font, size, colour, outline, shadow in one shareable resource |
+| `LabelSettings` | per-Label font, size, color, outline, shadow in one shareable resource |
 | `Label` | plain text; `autowrap_mode`, `horizontal_alignment`, `text_overrun_behavior`, `visible_ratio` |
 | `RichTextLabel` | BBCode, images, links, effects; `bbcode_enabled`, `append_text()`, `meta_clicked` |
 
@@ -196,7 +196,7 @@ default font in the project theme or Project Settings > GUI > Theme > Custom Fon
 ## Focus & navigation
 
 Keyboard and gamepad menus work through focus: the focused Control receives `ui_accept`, and `ui_up` /
-`ui_down` / `ui_left` / `ui_right` move focus to the nearest neighbour.
+`ui_down` / `ui_left` / `ui_right` move focus to the nearest neighbor.
 
 ```gdscript
 func open_menu() -> void:
@@ -204,7 +204,7 @@ func open_menu() -> void:
     $VBox/Resume.grab_focus()   # required for gamepads
 
 func _ready() -> void:
-    # explicit neighbours when the geometry guess is wrong
+    # explicit neighbors when the geometry guess is wrong
     $VBox/Quit.focus_neighbor_bottom = ^"../Resume"
     $VBox/Resume.focus_neighbor_top = ^"../Quit"
     get_viewport().gui_focus_changed.connect(_on_focus)
@@ -237,7 +237,7 @@ func _on_focus(c: Control) -> void:
 | `ProgressBar` / `TextureProgressBar` | `Range` for health and loading; `fill_mode`, `show_percentage` |
 | `TextureRect` | image; `expand_mode`, `stretch_mode` |
 | `NinePatchRect` | scalable framed panel |
-| `ColorRect` | solid colour; fades and backgrounds |
+| `ColorRect` | solid color; fades and backgrounds |
 | `ItemList`, `Tree` | lists and hierarchies |
 | `TabBar`, `TabContainer` | tabs |
 | `AcceptDialog`, `ConfirmationDialog`, `FileDialog` | windows (`popup_centered()`) |
@@ -286,7 +286,7 @@ Animation bottom panel; key properties with the key icon next to each inspector 
 | Audio Playback | plays audio clips on an AudioStreamPlayer |
 | Animation Playback | triggers animations on another AnimationPlayer |
 
-| Update mode (value tracks) | Behaviour |
+| Update mode (value tracks) | Behavior |
 | :------------------------- | :-------- |
 | Continuous | interpolate between keys |
 | Discrete | jump at each key (sprite frames, booleans) |
@@ -568,10 +568,10 @@ func muffle(on: bool) -> void:   # e.g. while paused
 | `AudioEffectReverb` | rooms, caves (often on a send bus) |
 | `AudioEffectLowPassFilter` / `HighPassFilter` / `BandPassFilter` | muffling underwater or when paused, radio voice |
 | `AudioEffectCompressor`, `AudioEffectLimiter`, `AudioEffectHardLimiter` | control peaks on Master |
-| `AudioEffectDelay`, `AudioEffectChorus`, `AudioEffectPhaser` | colour |
+| `AudioEffectDelay`, `AudioEffectChorus`, `AudioEffectPhaser` | color |
 | `AudioEffectDistortion`, `AudioEffectPitchShift` | stylised voices |
 | `AudioEffectEQ6` / `EQ10` / `EQ21` | equalisers |
-| `AudioEffectSpectrumAnalyzer` | music visualisers |
+| `AudioEffectSpectrumAnalyzer` | music visualizers |
 | `AudioEffectRecord`, `AudioEffectCapture` | record or read mixed audio |
 
 Human hearing is logarithmic: map UI sliders (0 to 1) through `linear_to_db`, never straight to dB. Audio players

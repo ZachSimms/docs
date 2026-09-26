@@ -261,7 +261,7 @@ export type Subscription = z.infer<typeof Subscription>;
 | `201`                 | accepted                             | nothing                              |
 | `404`, `410`          | subscription expired or unsubscribed | delete it from your DB               |
 | `413`                 | payload too large (about 4 KB max)   | send an ID and fetch details in the SW |
-| `429`                 | rate limited                         | back off; honour `Retry-After`       |
+| `429`                 | rate limited                         | back off; honor `Retry-After`       |
 | `400`, `403`          | bad request or VAPID mismatch        | check keys and subject               |
 
 Errors arrive as `WebPushError` with `statusCode`, `headers`, `body` and `endpoint`.

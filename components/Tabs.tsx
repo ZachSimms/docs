@@ -93,7 +93,7 @@ function getServerSnapshot(): null {
 }
 
 /**
- * Tabbed panels. See the file header for behaviour. Keyboard on the tab
+ * Tabbed panels. See the file header for behavior. Keyboard on the tab
  * list: ←/→ move, Home/End jump, focus follows the selection.
  */
 export function Tabs({ items, children, defaultIndex = 0, persist }: TabsProps) {

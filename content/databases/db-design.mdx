@@ -8,7 +8,7 @@ Designing relational schemas for PostgreSQL 18 apps: keys, normal forms, relatio
 patterns, history, multi-tenancy, migrations and Drizzle. SQL syntax, indexes and locking details
 live in [PostgreSQL](/databases/postgres/).
 
-## Modelling process
+## Modeling process
 
 | Step | Output |
 | :--- | :----- |
@@ -18,7 +18,7 @@ live in [PostgreSQL](/databases/postgres/).
 | 4. Invariants | rules that must always hold: they become constraints |
 | 5. Access patterns | top reads and writes with their filters and sort orders: they become indexes |
 | 6. Lifecycle | create, edit, archive, delete, and whether history matters |
-| 7. Normalise to 3NF | then denormalise only where a measured access pattern needs it |
+| 7. Normalize to 3NF | then denormalise only where a measured access pattern needs it |
 
 Say each relationship as two sentences, one per direction, and map the words to columns.
 
@@ -594,7 +594,7 @@ diagrams from a live database.
 ## Recipes
 
 ### Users, orgs and memberships
-The core of most B2B SaaS schemas: people belong to many organisations with a role in each.
+The core of most B2B SaaS schemas: people belong to many organizations with a role in each.
 
 ```sql
 CREATE TABLE users (

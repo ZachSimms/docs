@@ -21,7 +21,7 @@ describe("nextTheme / isTheme", () => {
     expect(nextTheme("dark")).toBe("light");
   });
 
-  it("recognises only the two themes", () => {
+  it("recognizes only the two themes", () => {
     expect(isTheme("dark")).toBe(true);
     expect(isTheme("auto")).toBe(false);
     expect(isTheme(undefined)).toBe(false);

@@ -19,7 +19,7 @@ This sheet is about what to build, what not to, and how to keep moving.
 | Goal | the core loop working end to end for a stranger, in production, instrumented |
 | Timebox | **2–4 weeks**, hard cap **6** (the circuit breaker: at week 6, stop and reshape, don't extend) |
 | Input | one-page spec, story map with MVP slice, tested prototype, event plan, "not now" list |
-| Artefacts | deployed app at a public URL, schema and migrations, event tracking, error monitoring, smoke tests, runbook notes, pre-launch checklist, launch list |
+| Artifacts | deployed app at a public URL, schema and migrations, event tracking, error monitoring, smoke tests, runbook notes, pre-launch checklist, launch list |
 | Output | a product you'd be comfortable showing 20–50 hand-picked users next week |
 | Main traps | over-engineering, bikeshedding the stack, building auth from scratch, infrastructure procrastination, polishing before users |
 
@@ -60,7 +60,7 @@ Missing pieces are cheaper to fix now than mid-build.
 | **Choose boring technology** | use tools whose failure modes you already know; spend novelty only where it's the product | Dan McKinley, "Choose Boring Technology" (2015) |
 | **Monolith first** | one codebase, one deploy, one database; split only when a real boundary hurts | Martin Fowler, "MonolithFirst" (2015) |
 | **Do things that don't scale, in code too** | manual operations behind a clean UI; admin by SQL; onboarding by hand | Paul Graham, "Do Things That Don't Scale" (2013), applied to engineering |
-| **Vertical slices** | each change delivers user-visible behaviour through every layer | story mapping ([product design](/startups/idea-to-mvp/product-design/#user-story-mapping)) |
+| **Vertical slices** | each change delivers user-visible behavior through every layer | story mapping ([product design](/startups/idea-to-mvp/product-design/#user-story-mapping)) |
 | **Ship to production daily** | small diffs, deployed on merge, unfinished work behind flags | trunk-based development |
 | **Fixed time, variable scope** | the deadline holds; scope is what moves | Ryan Singer, *Shape Up* (2019) |
 
@@ -87,7 +87,7 @@ the product is a scheduling tool, the scheduling logic may deserve novelty; the 
 Fowler (June 2015) reports two observations: "Almost all the successful microservice stories have started with a
 monolith that got too big and was broken up", and "Almost all the cases where I've heard of a system that was built as a
 microservice system from scratch, it has ended up in serious trouble." For an MVP there's also no team to split
-services between. Organise the monolith in modules by domain (`billing/`, `rota/`, `accounts/`) so a later split is
+services between. Organize the monolith in modules by domain (`billing/`, `rota/`, `accounts/`) so a later split is
 possible, and stop there.
 
 ### Do things that don't scale, in code
@@ -119,7 +119,7 @@ The rule: **automate the second or third time the same manual task annoys you**,
 | File storage | — | S3-compatible object storage | — | **buy** |
 | Background jobs | a jobs table + a worker, or platform cron | managed job queue | — | **simplest thing your host supports** |
 | Analytics | an `events` table | product analytics tool | — | **both**: own the raw events, use a tool for dashboards |
-| Docs / help centre | — | — | a notes tool published to the web | **no-code** |
+| Docs / help center | — | — | a notes tool published to the web | **no-code** |
 
 Decision rule: build only what differentiates the product or what no vendor does acceptably. Everything else is a
 purchase, and the cost of switching later is almost always lower than the cost of building now.
@@ -205,9 +205,9 @@ The list of things that feel productive and aren't. Each one is a week you don't
 | **Custom authentication** | "it's just a users table and bcrypt" | managed auth or a vetted library; see [authentication](/typescript/backend/authentication/) for why it's never "just" that (reset flows, sessions, rate limiting, MFA, account enumeration) |
 | **Microservices** | "it'll scale" | modular monolith |
 | **Kubernetes / infra-as-code empire** | résumé-driven, feels like engineering | a PaaS and a `git push` |
-| **A design system** | components feel reusable | a component library, one type scale, one accent colour |
+| **A design system** | components feel reusable | a component library, one type scale, one accent color |
 | **An admin dashboard** | "I'll need it eventually" | DB GUI + saved SQL |
-| **Internationalisation** | "we'll go global" | one language; keep strings out of logic so i18n is possible later |
+| **Internationalization** | "we'll go global" | one language; keep strings out of logic so i18n is possible later |
 | **Perfect test coverage** | feels responsible | a handful of end-to-end smoke tests on the core loop + unit tests on money and permissions |
 | **Multi-tenancy abstractions** | "enterprise customers" | an `account_id` column on every table, filtered in every query; nothing more |
 | **Roles and permission matrices** | "teams will need it" | owner + member |
@@ -234,7 +234,7 @@ Not everything deserves the same care. Get the irreversible things right; let th
 | Data integrity | lost or corrupted data loses the customer and their trust | foreign keys, `not null`, unique constraints, transactions for multi-row writes, migrations in version control |
 | Auth and access control | a data leak between customers can end the company | vetted auth; every query scoped by `account_id`; test that user A can't read user B's data |
 | Payments | double charges, missed webhooks, wrong access after cancel | provider-hosted checkout; idempotent webhook handler; entitlement derived from provider state |
-| Backups and restore | you will delete production data once | automated daily backups (or provider PITR) **and one practised restore** |
+| Backups and restore | you will delete production data once | automated daily backups (or provider PITR) **and one practiced restore** |
 | Secrets | leaked keys are expensive and instant | env vars, never committed; rotate on leak |
 | Email deliverability | sign-in links and receipts must arrive | SPF, DKIM and DMARC set up on your sending domain |
 
@@ -370,7 +370,7 @@ work you are responsible for.
 | ask for small, reviewable diffs (one story at a time) | accept a 2,000-line change you haven't read |
 | read every line that touches auth, payments, permissions, or data deletion | trust it on security-sensitive code |
 | give it your conventions (a short project instructions file, examples of existing code) | let each session invent new patterns |
-| have it write tests for the behaviour you specify, then check the tests assert the right thing | let it write tests that mirror its own bugs |
+| have it write tests for the behavior you specify, then check the tests assert the right thing | let it write tests that mirror its own bugs |
 | verify every new dependency exists and is the package you meant | paste in packages it names without checking |
 | run the app and click through the change | assume "it compiles" means "it works" |
 | keep secrets out of prompts and pasted logs | paste `.env` contents to debug |
@@ -475,13 +475,13 @@ PHASE 3 EXIT CHECKLIST (handoff to Phase 4: Launch)
     ready to become the iteration backlog
 ```
 
-| Handoff artefact | Used in Phase 4/5 for |
+| Handoff artifact | Used in Phase 4/5 for |
 | :--- | :--- |
 | public URL + working core loop | soft launch to the interview list |
 | events table and activation query | the first cohort table and activation rate |
 | error tracking | fixing what the first users hit, same day |
 | launch list | the first invitations, sent personally |
-| "not now" list | the starting backlog, re-prioritised with real usage data |
+| "not now" list | the starting backlog, re-prioritized with real usage data |
 
 ## Recipes
 

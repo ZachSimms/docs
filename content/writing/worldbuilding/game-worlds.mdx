@@ -54,7 +54,8 @@ argues one thing through play and the opposite through story, and the contradict
 | **Instanced / mission-based** | separate maps chosen from a menu or map screen | many tactics and action games | tight design per map | the world feels like a list |
 
 Hybrids are the norm: an open world containing linear dungeons, a hub with procedural spokes, a linear game with
-optional side areas.
+optional side areas. Designing an open world in depth (landmarks, density, traversal, gating, streaming) is on
+[open-world design](/game-dev/design/open-world/).
 
 ## Spatial design: making spaces legible
 
@@ -65,13 +66,13 @@ Los Angeles mentally mapped their cities, argued that people build a **mental im
 element. A city that supports a clear image is **imageable** (or legible). Level designers borrowed the framework
 because players have to do exactly what Lynch's residents did.
 
-<Diagram src="/images/diagrams/worldbuilding-lynch-city.svg" label="A stylised map illustrating Kevin Lynch's five elements. A river curves down the left side, labelled edge: river, wall or cliff, a boundary line. Two roads cross in the middle, each labelled path. Where they meet is a circular plaza labelled node, plaza where paths meet. Two tinted areas are districts: an old town at top left with one look, one use and one name, and docks at bottom right with distinct materials and sounds. At top right a tall tower is labelled landmark, tower seen from across the map, with a dashed sightline running from the plaza to the tower." caption="Lynch's five elements on a small invented map" />
+<Diagram src="/images/diagrams/worldbuilding-lynch-city.svg" label="A stylised map illustrating Kevin Lynch's five elements. A river curves down the left side, labeled edge: river, wall or cliff, a boundary line. Two roads cross in the middle, each labeled path. Where they meet is a circular plaza labeled node, plaza where paths meet. Two tinted areas are districts: an old town at top left with one look, one use and one name, and docks at bottom right with distinct materials and sounds. At top right a tall tower is labeled landmark, tower seen from across the map, with a dashed sightline running from the plaza to the tower." caption="Lynch's five elements on a small invented map" />
 
 | Element | Lynch's meaning | In a game world | Design tips |
 | :------ | :-------------- | :-------------- | :---------- |
 | **Paths** | channels people move along: streets, walkways, canals, railways | roads, corridors, rivers, ledges, trails | make main paths wider, brighter, better lit; vary them so players can tell them apart |
 | **Edges** | linear boundaries not used as paths: shores, walls, cliffs, railway cuts | map borders, cliffs, water, walls, fog | make edges feel natural (mountains, sea) rather than invisible walls; edges also help orientation ("the sea is west") |
-| **Districts** | medium-to-large areas with a recognisable common character | zones, biomes, neighbourhoods, dungeon wings | give each a distinct palette, materials, music, enemies and name |
+| **Districts** | medium-to-large areas with a recognizable common character | zones, biomes, neighborhoods, dungeon wings | give each a distinct palette, materials, music, enemies and name |
 | **Nodes** | strategic focal points you enter: junctions, squares | hubs, crossroads, plazas, save points, camps, towns | put decisions, NPCs, shops and save points at nodes; make them readable from paths |
 | **Landmarks** | external reference points, usually seen rather than entered | towers, mountains, giant trees, statues, a volcano | place a few **global landmarks** visible from most of the map, plus local ones per district |
 
@@ -92,7 +93,7 @@ without being told to.
 | Technique | How it works | Notes |
 | :-------- | :----------- | :---- |
 | **Lighting** | players move toward light; darkness reads as danger or dead end | the strongest tool in 3D; light the exit |
-| **Colour** | a consistent accent colour marks interactables or the route | see [colour theory](/design/principles/color-theory/); keep the code consistent across the game |
+| **Color** | a consistent accent color marks interactables or the route | see [color theory](/design/principles/color-theory/); keep the code consistent across the game |
 | **Leading lines** | roads, pipes, cables, cliff edges, rows of lamps point the eye | composition from painting and photography |
 | **Affordances** | shapes that suggest actions: ledges look climbable, cracks look breakable | teach once in a safe place, then reuse |
 | **Breadcrumbs** | a trail of pickups, footprints, blood, coins | reward-driven; don't overuse |
@@ -106,15 +107,15 @@ without being told to.
 
 ### "Yellow paint" and its critics
 
-**Yellow paint** is the shorthand for brightly coloured marks on climbable ledges, ladders and breakable objects. The
+**Yellow paint** is the shorthand for brightly colored marks on climbable ledges, ladders and breakable objects. The
 debate flared around the 2023 *Resident Evil 4* remake demo and again around *Final Fantasy VII Rebirth* in 2024. Critics
-call it immersion-breaking and patronising, a patch for environments too detailed to read; defenders point to
+call it immersion-breaking and patronizing, a patch for environments too detailed to read; defenders point to
 accessibility and to players who otherwise get stuck. Middle paths:
 
 - Design readable geometry first; add markers only where playtests show confusion.
 - Integrate marks into the fiction (worn handholds, chalk marks, a faction's paint).
 - Offer a toggle or intensity setting.
-- Keep markers consistent: one colour, one meaning, everywhere.
+- Keep markers consistent: one color, one meaning, everywhere.
 
 ## Pacing and intensity
 
@@ -156,10 +157,10 @@ architecture, posters and audio logs.
 Henry Jenkins's "Game Design as Narrative Architecture" (in *First Person*, eds Wardrip-Fruin and Harrigan, MIT Press,
 2004) describes four ways game spaces carry story:
 
-| Kind | Jenkins's idea (summarised) | Design implication |
+| Kind | Jenkins's idea (summarized) | Design implication |
 | :--- | :-------------------------- | :----------------- |
 | **Evocative spaces** | spaces draw on stories and genres players already know | use genre expectations (the haunted house, the frontier town) |
-| **Enacted stories** | narrative built from the player's movement through space and localised incidents | structure the level as a journey with micro-narratives |
+| **Enacted stories** | narrative built from the player's movement through space and localized incidents | structure the level as a journey with micro-narratives |
 | **Embedded narratives** | a pre-structured story hidden in the space for the player to reconstruct | plant clues; let players assemble backstory |
 | **Emergent narratives** | stories arising from systems, not pre-scripted | build systems rich enough to produce anecdotes (*The Sims*, *Dwarf Fortress*) |
 
@@ -205,7 +206,7 @@ budget carefully, because every branch multiplies content.
 
 | Technique | What it generates | Notes |
 | :-------- | :---------------- | :---- |
-| **Noise** (Perlin, simplex) | terrain heightmaps, moisture, temperature, textures | Ken Perlin developed Perlin noise working on *Tron* and published it at SIGGRAPH 1985; simplex noise (2001) reduces grid artefacts. Layer several frequencies (octaves) for natural detail |
+| **Noise** (Perlin, simplex) | terrain heightmaps, moisture, temperature, textures | Ken Perlin developed Perlin noise working on *Tron* and published it at SIGGRAPH 1985; simplex noise (2001) reduces grid artifacts. Layer several frequencies (octaves) for natural detail |
 | **Biome from climate** | biome per tile from generated temperature and moisture | the same logic as a Whittaker diagram (see [physical world](/writing/worldbuilding/physical-world/)) |
 | **Erosion and hydrology** | rivers, valleys, deltas | simulate water flow downhill to fix the "noise mountains" look |
 | **Wave function collapse** | tile layouts that are locally similar to an example | Maxim Gumin's 2016 algorithm; used in *Caves of Qud*, *Bad North* and *Townscaper* |
@@ -224,7 +225,7 @@ consequences (history, factions) rather than only variation.
 
 | Decision | Consider |
 | :------- | :------- |
-| World size | travel time at the player's movement speed, not square kilometres |
+| World size | travel time at the player's movement speed, not square kilometers |
 | Content density | how many seconds between points of interest; empty stretches must be deliberate (mood, anticipation) |
 | Verticality | climbing, flying, layered cities: a smaller map with more vertical content can feel larger |
 | Fast travel | reduces tedium, but also removes the world between nodes; unlock after first visit; tie to in-world features |
@@ -256,7 +257,7 @@ The designer works mechanics → dynamics → aesthetics; the player experiences
 | Challenge | game as obstacle course | hostile terrain, enemies, puzzles |
 | Fellowship | game as social framework | shared spaces, co-op, guild halls |
 | Discovery | game as uncharted territory | secrets, hidden areas, lore fragments, maps |
-| Expression | game as self-discovery | housing, customisation, building, playstyle choice |
+| Expression | game as self-discovery | housing, customization, building, playstyle choice |
 | Submission | game as pastime | relaxing loops: fishing, farming, wandering |
 
 ## Level design process
@@ -318,7 +319,7 @@ Pointers only; details are on the Godot sheets.
 | World state and reputation | an autoload holding flags and faction standing; save it to disk | [resources, saving and export](/game-dev/godot/resources-saving-export/) |
 | Large worlds | threaded background loading of the next area; streaming chunks | [resources, saving and export](/game-dev/godot/resources-saving-export/) |
 | Guidance cues | lights, emissive materials, animated props, audio players placed as weenies | [UI, animation and audio](/game-dev/godot/ui-animation-audio/) |
-| Visual districts | per-area environments, colour grading, shader effects (fog, water) | [shaders](/game-dev/godot/shaders/) |
+| Visual districts | per-area environments, color grading, shader effects (fog, water) | [shaders](/game-dev/godot/shaders/) |
 
 A minimal world-state autoload for faction reputation:
 
@@ -395,7 +396,7 @@ GATES AND KEYS (gate seen before key? y/n):
 LANDMARKS: global:        local:
 NODES (decisions, NPCs, saves):
 EDGES (how bounds are shown):
-GUIDANCE: light / colour / lines / sound / UI
+GUIDANCE: light / color / lines / sound / UI
 ENVIRONMENTAL STORY VIGNETTES:
 ENEMIES AND ENCOUNTERS:
 METRICS: jump, cover height, door width

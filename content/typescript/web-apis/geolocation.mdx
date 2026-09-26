@@ -5,7 +5,7 @@ order: 17
 ---
 
 `navigator.geolocation` for one-off and continuous positions: options, the coordinate and error types,
-permissions, privacy, and distance maths. Support data is from MDN as of September 2026.
+permissions, privacy, and distance math. Support data is from MDN as of September 2026.
 
 ## Support & requirements
 
@@ -65,11 +65,11 @@ navigator.geolocation.getCurrentPosition(
 | :----------------- | :--------------- | :------------------------------------------------------------- |
 | `latitude`         | `number`         | degrees, WGS 84, −90 to 90                                     |
 | `longitude`        | `number`         | degrees, WGS 84, −180 to 180                                   |
-| `accuracy`         | `number`         | metres; radius with 95% confidence                             |
-| `altitude`         | `number \| null` | metres above the WGS 84 ellipsoid (not sea level)              |
-| `altitudeAccuracy` | `number \| null` | metres, 95% confidence                                         |
+| `accuracy`         | `number`         | meters; radius with 95% confidence                             |
+| `altitude`         | `number \| null` | meters above the WGS 84 ellipsoid (not sea level)              |
+| `altitudeAccuracy` | `number \| null` | meters, 95% confidence                                         |
 | `heading`          | `number \| null` | degrees clockwise from true north; `NaN` when `speed` is 0     |
-| `speed`            | `number \| null` | metres per second                                              |
+| `speed`            | `number \| null` | meters per second                                              |
 
 `null` means the device can't measure it, typical for `altitude`, `heading` and `speed` on laptops.
 The fields are getters on the prototype, so `{ ...pos.coords }` is `{}`. Copy the fields you need
@@ -79,7 +79,7 @@ or call `pos.toJSON()` before storing or posting a position.
 | :------------- | :----------------------- | :-------------------- |
 | 1              | ~11 km                   | region                |
 | 2              | ~1.1 km                  | town, analytics       |
-| 3              | ~110 m                   | neighbourhood         |
+| 3              | ~110 m                   | neighborhood         |
 | 4              | ~11 m                    | street, building      |
 | 5              | ~1.1 m                   | tree, door            |
 | 6              | ~0.11 m                  | more than any phone gives |
@@ -118,7 +118,7 @@ status.addEventListener("change", () => {
 
 Browsers remember the choice per origin. Safari may re-prompt per session or per day depending on
 the user's setting; Chrome embargoes an origin after repeated dismissals. iOS and Android let users
-grant **approximate** location only; the API still works, with `accuracy` in kilometres.
+grant **approximate** location only; the API still works, with `accuracy` in kilometers.
 
 ## Accuracy & battery
 
@@ -228,7 +228,7 @@ export function getPosition(
 }
 ```
 
-The underlying request can't be cancelled; abort only stops you waiting for it.
+The underlying request can't be canceled; abort only stops you waiting for it.
 
 ### Watch with cleanup
 Track movement and return a disposer, so callers can't leak the watch.
@@ -239,7 +239,7 @@ type Fix = { lat: number; lng: number; accuracy: number };
 export function watchLocation(
   onFix: (fix: Fix) => void,
   onError: (err: GeolocationPositionError) => void,
-  maxAccuracy = 100, // metres
+  maxAccuracy = 100, // meters
 ): () => void {
   const id = navigator.geolocation.watchPosition(
     ({ coords }) => {
@@ -283,12 +283,12 @@ export function useGeolocation(options?: PositionOptions) {
 ```
 
 ### Haversine distance
-Distance in metres between two points, for "2.4 km away" labels or sorting by nearest.
+Distance in meters between two points, for "2.4 km away" labels or sorting by nearest.
 
 ```ts title="haversine.ts"
 export type LatLng = { lat: number; lng: number };
 
-const R = 6_371_008.8; // mean Earth radius, metres
+const R = 6_371_008.8; // mean Earth radius, meters
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 export function distanceM(a: LatLng, b: LatLng): number {
@@ -310,7 +310,7 @@ distanceM(
 ```
 
 ### Sort places by distance
-Nearest-first list after a single fix; the maths runs on the device.
+Nearest-first list after a single fix; the math runs on the device.
 
 ```ts
 import { distanceM, type LatLng } from "./haversine.ts";
@@ -325,8 +325,8 @@ export async function nearest(places: Place[], n = 5) {
   });
   const me = { lat: coords.latitude, lng: coords.longitude };
   return places
-    .map((p) => ({ ...p, metres: distanceM(me, p) }))
-    .sort((a, b) => a.metres - b.metres)
+    .map((p) => ({ ...p, meters: distanceM(me, p) }))
+    .sort((a, b) => a.meters - b.meters)
     .slice(0, n);
 }
 ```

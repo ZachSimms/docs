@@ -38,7 +38,7 @@ Common failure patterns and fixes:
 | the API reference is a narrative tutorial | reference written as a story | generate reference from the code/spec; write tutorials separately |
 | "how to" pages start by teaching concepts | how-to mixed with tutorial | assume competence; link prerequisites |
 | nobody knows why the system works this way | missing explanation | write design docs and ADRs, link them from the docs |
-| users can't find the answer | organised by team or by feature history | organise by the four types, then by topic |
+| users can't find the answer | organized by team or by feature history | organize by the four types, then by topic |
 
 ## Docs as code
 
@@ -104,14 +104,14 @@ decides whether anyone reads further.
 | Section | Content | Required? |
 | :------ | :------ | :-------- |
 | Name + one-line description | what it does, for whom | yes |
-| Badges (optional) | build status, version, licence; a few, not a wall | optional |
+| Badges (optional) | build status, version, license; a few, not a wall | optional |
 | Why / features | the problem it solves; 3–6 key features | yes for public projects |
 | Quick start | install + the smallest working example, copy-pasteable | yes |
 | Usage | common tasks with examples; link to full docs | yes |
 | Configuration | env vars / options table with defaults | if any |
 | Development | clone, install, test, run locally | for contributors |
 | Contributing | how to report bugs, open PRs; link `CONTRIBUTING.md` | public projects |
-| Licence | name + link to `LICENSE` | public projects |
+| License | name + link to `LICENSE` | public projects |
 | Support / contact | where to ask questions | optional |
 
 Test: a new teammate on a clean machine gets from `git clone` to a running example using only the README. Time
@@ -208,7 +208,7 @@ established itself:
 | **Goals and non-goals** | a short bullet list; non-goals are things that "could reasonably be goals" but are explicitly excluded (e.g. "ACID compliance") |
 | **The actual design** | overview, then details: system-context diagram, APIs (sketched, not pasted), data storage, code or pseudo-code only for novel algorithms, degree of constraint |
 | **Alternatives considered** | other designs that would reasonably achieve similar outcomes, and the trade-offs that ruled them out; "one of the most important" sections |
-| **Cross-cutting concerns** | security, privacy, observability and whatever else your organisation standardises |
+| **Cross-cutting concerns** | security, privacy, observability and whatever else your organization standardizes |
 
 Length: "around 10-20ish pages" for a larger project; a 1–3 page "mini design doc" for incremental work. **Don't
 write one** when the solution is not ambiguous: if the doc is really an implementation manual (Ubl's
@@ -261,7 +261,7 @@ developer", in full sentences because "Bullets kill people, even PowerPoint bull
 | :---------------- | :-- | :--------- |
 | scope | one decision | a whole system or feature |
 | length | 1–2 pages | up to ~20 pages |
-| when | at the decision; immutable afterwards | before implementation; updated during it |
+| when | at the decision; immutable afterward | before implementation; updated during it |
 | lives | in the repo, next to the code | usually a shared doc, linked from the repo |
 
 ## Commit messages
@@ -295,7 +295,7 @@ Two tabs refreshing an expired token at the same time both
 sent the old refresh token; the second request failed and
 logged the user out.
 
-Serialise refreshes behind a single in-flight promise so
+Serialize refreshes behind a single in-flight promise so
 concurrent callers share one request.
 
 Fixes #482
@@ -314,7 +314,7 @@ BREAKING CHANGE: unverified accounts now receive 403 from
 POST /v1/sessions. Existing sessions are not affected.
 ```
 
-Beams's capitalised subject and Conventional Commits' lowercase `type:` prefix conflict; pick one convention per
+Beams's capitalized subject and Conventional Commits' lowercase `type:` prefix conflict; pick one convention per
 repo and enforce it with a commit-msg hook.
 
 ## Changelogs
@@ -377,7 +377,7 @@ export function applyCoupon(
 ## Error messages
 
 A good error message says **what happened, why, and what to do next**, in the user's language. The UI side
-(placement, colour, inline validation) is in [UX/UI design](/design/principles/ux-ui/).
+(placement, color, inline validation) is in [UX/UI design](/design/principles/ux-ui/).
 
 | Before | After | Why |
 | :----- | :---- | :-- |
@@ -456,7 +456,7 @@ notation- and tooling-independent.
 
 | Diagram rule | Why |
 | :----------- | :-- |
-| a title and a key/legend on every diagram | shapes and colours mean nothing without one |
+| a title and a key/legend on every diagram | shapes and colors mean nothing without one |
 | label every arrow with what flows and how ("JSON/HTTPS", "reads orders") | an unlabelled arrow is ambiguous |
 | one level of abstraction per diagram | mixing servers and classes confuses |
 | diagrams as code where possible (Mermaid, PlantUML, Structurizr) | reviewable and versioned |
@@ -486,7 +486,7 @@ school essays is a bug here.
 | descriptive link text | the link says where it goes: "the rate limits page", not "here" (WCAG 2.4.4) |
 | real heading hierarchy | one H1, then H2/H3 in order; screen-reader users navigate by headings |
 | text, not screenshots of text | code and errors must be copyable, searchable and readable by screen readers |
-| don't rely on colour alone | "the red line" fails for colour-blind readers; add labels or patterns |
+| don't rely on color alone | "the red line" fails for color-blind readers; add labels or patterns |
 | tables with header rows | and no merged-cell layouts |
 | captions and transcripts for video | and don't hide essential steps only in video |
 | plain language | helps non-native readers, cognitive accessibility and machine translation |
@@ -515,12 +515,12 @@ runnable examples, one clear purpose.
 
 | Mistake | Fix |
 | :------ | :-- |
-| docs organised by team or code structure | organise by user need (Diátaxis), then topic |
+| docs organized by team or code structure | organize by user need (Diátaxis), then topic |
 | tutorial that teaches everything | one path, visible success, link the theory |
 | "simply", "just", "easy", "obviously" | delete; they fail exactly the readers who need help |
 | steps with two actions or no expected result | one action per step; show the output |
 | future tense and passive voice in docs | present tense, second person, active |
-| examples with `foo`, `bar`, `string` | realistic values the reader can recognise |
+| examples with `foo`, `bar`, `string` | realistic values the reader can recognize |
 | screenshots of code or terminal output | text in code blocks |
 | design doc without alternatives | "Alternatives considered" is the most important section |
 | ADRs edited after the fact | supersede with a new ADR |
@@ -566,7 +566,7 @@ Full docs: [link]
 ## Contributing
 See CONTRIBUTING.md. Bugs: [issue tracker link].
 
-## Licence
+## License
 MIT - see LICENSE.
 ```
 
@@ -726,7 +726,7 @@ Action items
 
 - [Diátaxis](https://diataxis.fr/): Daniele Procida's framework; see [the compass](https://diataxis.fr/compass/) for the action/cognition × acquisition/application questions
 - [Write the Docs: Docs as Code](https://www.writethedocs.org/guide/docs-as-code/): the docs-as-code philosophy and tooling
-- [Google developer documentation style guide: highlights](https://developers.google.com/style/highlights): the core rules summarised above
+- [Google developer documentation style guide: highlights](https://developers.google.com/style/highlights): the core rules summarized above
 - [Microsoft Writing Style Guide: top 10 tips](https://learn.microsoft.com/en-us/style-guide/top-10-tips-style-voice): Microsoft's voice and style in brief
 - [Make a README](https://www.makeareadme.com/): README guidance and template
 - [Malte Ubl, "Design Docs at Google" (2020)](https://www.industrialempathy.com/posts/design-docs-at-google/): design doc sections, length and lifecycle

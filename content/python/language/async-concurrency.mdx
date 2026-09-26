@@ -111,7 +111,7 @@ asyncio.run(main())
 
 ## `TaskGroup` vs `gather`
 
-`asyncio.TaskGroup` (3.11+) is structured concurrency: every child finishes (or is cancelled)
+`asyncio.TaskGroup` (3.11+) is structured concurrency: every child finishes (or is canceled)
 before the `async with` exits. Prefer it for new code.
 
 | | `TaskGroup` | `gather(*aws)` | `gather(..., return_exceptions=True)` |
@@ -163,7 +163,7 @@ asyncio.run(main())
 
 ## Timeouts & cancellation
 
-Cancelling a task throws `asyncio.CancelledError` into it at its current `await`. It subclasses
+Canceling a task throws `asyncio.CancelledError` into it at its current `await`. It subclasses
 `BaseException`, so `except Exception` does not catch it.
 
 ```python
@@ -194,7 +194,7 @@ async def main() -> None:
     try:
         await t
     except asyncio.CancelledError:
-        print("cancelled:", t.cancelled())
+        print("canceled:", t.cancelled())
 
 asyncio.run(main())
 ```
@@ -211,7 +211,7 @@ asyncio.run(main())
 <Note kind="warning">Never swallow `CancelledError`. A task that catches it and carries on breaks
 `TaskGroup`, `timeout()` and shutdown. Catch, clean up, re-raise.</Note>
 
-## Queues & synchronisation
+## Queues & synchronization
 
 All `asyncio` primitives are for tasks on **one** loop; they are not thread-safe. Across threads
 use `queue.Queue` / `threading` primitives.
@@ -297,7 +297,7 @@ asyncio.run(main())
 
 ## Blocking code in async
 
-Anything that doesn't `await` blocks every task: `time.sleep`, `requests`, file reads, heavy maths.
+Anything that doesn't `await` blocks every task: `time.sleep`, `requests`, file reads, heavy math.
 Push it off the loop.
 
 | API | Runs `fn` in | Use |
@@ -329,7 +329,7 @@ asyncio.run(main())
 ```
 
 `to_thread` copies the current `contextvars` context into the thread. Threads can't be
-cancelled: the `await` is cancelled, the function runs to the end.
+canceled: the `await` is canceled, the function runs to the end.
 
 ## `concurrent.futures`
 
@@ -771,7 +771,7 @@ tolerate failures.
 
 - [Python docs: asyncio](https://docs.python.org/3.14/library/asyncio.html): the index of the asyncio docs
 - [Python docs: Coroutines and tasks](https://docs.python.org/3.14/library/asyncio-task.html): `TaskGroup`, `timeout`, cancellation, `to_thread`
-- [Python docs: asyncio queues](https://docs.python.org/3.14/library/asyncio-queue.html) and [synchronisation primitives](https://docs.python.org/3.14/library/asyncio-sync.html)
+- [Python docs: asyncio queues](https://docs.python.org/3.14/library/asyncio-queue.html) and [synchronization primitives](https://docs.python.org/3.14/library/asyncio-sync.html)
 - [Python docs: Developing with asyncio](https://docs.python.org/3.14/library/asyncio-dev.html): debug mode, common mistakes
 - [Python docs: concurrent.futures](https://docs.python.org/3.14/library/concurrent.futures.html): thread, process and interpreter pools
 - [Python docs: concurrent.interpreters](https://docs.python.org/3.14/library/concurrent.interpreters.html): subinterpreters (3.14)

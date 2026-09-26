@@ -95,7 +95,7 @@ $$
 $$
 \text{bandwidth} = \text{QPS} \times \text{bytes per response}
 \qquad
-\text{servers} = \frac{\text{QPS}_{\text{peak}}}{\text{QPS per server} \times \text{target utilisation}}
+\text{servers} = \frac{\text{QPS}_{\text{peak}}}{\text{QPS per server} \times \text{target utilization}}
 $$
 
 Example: 10M DAU × 20 reads = 200M reads/day ≈ 2,300 QPS avg, ~7,000 peak. At 2 KB per
@@ -143,7 +143,7 @@ Health checks: active (LB probes `/healthz`) plus passive (eject on errors). Sep
 | Reverse proxy | rendered pages, API responses | seconds |
 | Application (in-process LRU) | hot config, small lookups | seconds |
 | Distributed (Redis, Valkey, Memcached) | sessions, computed views, objects | minutes to hours |
-| Database (buffer pool, materialised views) | pages, precomputed queries | managed by DB |
+| Database (buffer pool, materialized views) | pages, precomputed queries | managed by DB |
 
 | Pattern | Read path | Write path | Trade-off |
 | :------ | :-------- | :--------- | :-------- |
@@ -158,7 +158,7 @@ Health checks: active (LB probes `/healthz`) plus passive (eject on errors). Sep
 | Stale data after write | delete (not update) the key after the DB commit; short TTL as a backstop |
 | Race: old value re-cached | versioned keys, or delay-and-delete again, or CDC-driven invalidation |
 | Stampede on expiry (dogpile) | single-flight lock per key, stale-while-revalidate, probabilistic early refresh |
-| Synchronised expiry | add jitter to TTLs (`ttl × (0.9 + 0.2 × random)`) |
+| Synchronized expiry | add jitter to TTLs (`ttl × (0.9 + 0.2 × random)`) |
 | Hot key | local in-process cache in front, replicate key across shards |
 | Cache penetration (misses for absent keys) | cache negative results briefly, Bloom filter |
 | Cold start | pre-warm from logs or a snapshot |
@@ -204,7 +204,7 @@ export async function cached(
 | Content-hashed filenames | cache forever, deploy by changing names |
 | Purge / surrogate keys (tags) | invalidate groups of objects on change |
 | Signed URLs / cookies | private content at the edge |
-| Edge compute | auth, redirects, A/B, personalisation near users |
+| Edge compute | auth, redirects, A/B, personalization near users |
 
 ## Databases
 
@@ -253,7 +253,7 @@ Pick a shard key that is in almost every query, has high cardinality, and spread
 | Hash | equality only | rarely worth it over B-tree |
 | LSM-tree (storage engine) | write-heavy workloads | compaction, read amplification |
 | Inverted (GIN) | full-text, JSONB, arrays | slow updates |
-| Geo (GiST, R-tree, geohash) | nearest, within | specialised |
+| Geo (GiST, R-tree, geohash) | nearest, within | specialized |
 | Covering / composite | index-only scans, leftmost-prefix queries | column order matters |
 
 ## Consistency
@@ -382,7 +382,7 @@ export class TokenBucket {
 | Retry budget | allow retries up to ~10% of requests, stop amplifying outages |
 | Circuit breaker | closed → open after N failures (fail fast) → half-open trial → closed |
 | Bulkhead | separate pools/queues per dependency so one slow dependency cannot exhaust all |
-| Load shedding | reject early (503/429) when queues or latency pass a threshold; prioritise critical traffic |
+| Load shedding | reject early (503/429) when queues or latency pass a threshold; prioritize critical traffic |
 | Backpressure | bounded queues; slow producers instead of buffering forever |
 | Graceful degradation | serve cached, partial or default content when a dependency is down |
 | Idempotency keys | client sends `Idempotency-Key`; server stores result per key for replays |
@@ -423,7 +423,7 @@ export async function retry<T>(
 | Method | Measure | For |
 | :----- | :------ | :-- |
 | RED | Rate, Errors, Duration | request-driven services |
-| USE | Utilisation, Saturation, Errors | resources (CPU, disk, pools) |
+| USE | Utilization, Saturation, Errors | resources (CPU, disk, pools) |
 | Four golden signals | latency, traffic, errors, saturation | SRE dashboards |
 | SLI / SLO / error budget | measured indicator, target, allowed failure | alerting and release pace |
 
@@ -478,7 +478,7 @@ index is a rebuildable projection with eventual consistency.
 | Cache vs no cache | read-heavy, tolerates staleness | write-heavy, must be fresh |
 | Monolith vs microservices | small team, evolving domain | many teams, independent deploy and scale |
 | Polling vs WebSockets/SSE | infrequent updates, simple | real-time, many updates |
-| Normalise vs denormalise | write integrity | read speed |
+| Normalize vs denormalise | write integrity | read speed |
 | Batch vs stream processing | hourly/daily results fine | seconds-level freshness |
 | Vertical vs horizontal scale | early, simple | past one machine, need redundancy |
 | Build vs buy (managed) | core differentiator | commodity (auth, queues, email) |

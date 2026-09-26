@@ -272,7 +272,7 @@ describe("DottedLink external branch", () => {
 });
 
 describe("useMDXComponents", () => {
-  it("maps anchors to inline dotted links and honours caller overrides", () => {
+  it("maps anchors to inline dotted links and honors caller overrides", () => {
     const components = useMDXComponents({ h2: () => <h2>custom</h2> });
     const A = components.a as ComponentType<{ href: string; title?: string; children: ReactNode }>;
     const H2 = components.h2 as ComponentType;
@@ -624,7 +624,7 @@ describe("SheetView", () => {
 });
 
 describe("Graph", () => {
-  it("draws one path per curve with distinct colours, axes, ticks and a legend", () => {
+  it("draws one path per curve with distinct colors, axes, ticks and a legend", () => {
     const { container } = render(
       <Graph
         title="shifts"
@@ -651,7 +651,7 @@ describe("Graph", () => {
     expect(legend[1]).toContain("f(x) + 2");
   });
 
-  it("omits the colour swatch when there is only one curve", () => {
+  it("omits the color swatch when there is only one curve", () => {
     const { container } = render(<Graph title="square" curves={[{ fn: "square" }]} />);
     expect(container.querySelectorAll("path.graph-curve")).toHaveLength(1);
     expect(container.querySelector(".graph-swatch")).toBeNull();

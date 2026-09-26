@@ -102,9 +102,9 @@ POST, multipart/form-data:
 | `type` | Value format | Mobile keyboard | Built-in validation | Browser UI and notes |
 | :----- | :----------- | :-------------- | :------------------ | :------------------- |
 | `text` | any string (newlines stripped) | standard | `minlength`, `maxlength`, `pattern` | the default for an unknown `type` |
-| `search` | any string | standard, Enter labelled "Search"/"Go" | as `text` | some browsers add a clear button and clear on <kbd>Esc</kbd>; role `searchbox` |
+| `search` | any string | standard, Enter labeled "Search"/"Go" | as `text` | some browsers add a clear button and clear on <kbd>Esc</kbd>; role `searchbox` |
 | `email` | `a@b.co`; comma list with `multiple` | adds `@` and `.` | **typeMismatch** unless it looks like an address (`a@b` passes: no TLD needed) | leading and trailing spaces trimmed |
-| `url` | absolute URL | adds `/` and `.com` | **typeMismatch** unless absolute: `example.com` fails, `https://example.com` passes | tell users to include `https://`, or use `text` and normalise on the server |
+| `url` | absolute URL | adds `/` and `.com` | **typeMismatch** unless absolute: `example.com` fails, `https://example.com` passes | tell users to include `https://`, or use `text` and normalize on the server |
 | `tel` | any string | phone keypad | none (formats vary worldwide); add `pattern` if you must | autofill fills it with `autocomplete="tel"` |
 | `password` | any string (newlines stripped) | standard, masked | as `text` | password managers key on it; add a show-password toggle |
 | `number` | decimal string; `""` if unparsable | numeric (varies by platform) | `min`, `max`, `step` (default `1`), badInput | spinner; the mouse wheel (while focused) and arrow keys change the value; big values turn into exponents. Only for **quantities**: not card numbers, postcodes, phone numbers or IDs |
@@ -114,7 +114,7 @@ POST, multipart/form-data:
 | `datetime-local` | `2026-09-26T14:30` | date and time picker | `min`, `max`, `step` | **no time zone**: send the zone separately if it matters |
 | `month` | `2026-09` | month picker | `min`, `max` | **no desktop Firefox or Safari support**: falls back to a plain text box |
 | `week` | `2026-W39` | week picker | `min`, `max` | same gaps as `month` |
-| `color` | `#rrggbb`, lowercase | colour picker | always valid | default `#000000`; `alpha` and `colorspace` attributes are Safari-only |
+| `color` | `#rrggbb`, lowercase | color picker | always valid | default `#000000`; `alpha` and `colorspace` attributes are Safari-only |
 | `checkbox` | its `value` (default `"on"`) when checked | | `required` = must be checked | `indeterminate` only settable from script; the `switch` attribute (toggle look) is Safari 17.4+ only |
 | `radio` | `value` of the checked one | | `required` on any radio makes the group required | same `name` = one group; arrow keys move and select within it |
 | `file` | a file list | file, camera or photo picker | `required` | needs `multipart/form-data`; `accept`, `multiple`, `capture`, `webkitdirectory` (Baseline 2025) |
@@ -163,7 +163,7 @@ required anyway.
 | `pattern` | `text`, `search`, `url`, `tel`, `email`, `password` | a regular expression; see below |
 | `placeholder` | text-like, `textarea` | example format only; disappears on typing and is not a label |
 | `readonly` | text-like, date types, `textarea` | focusable, selectable, **submitted**, not validated; not valid on checkboxes, radios, `select` |
-| `disabled` | every control, `fieldset`, `optgroup`, `option` | not focusable, greyed out, **not submitted**, not validated |
+| `disabled` | every control, `fieldset`, `optgroup`, `option` | not focusable, grayed out, **not submitted**, not validated |
 | `multiple` | `email`, `file`, `select` | several values |
 | `accept` | `file` | `image/*`, `.pdf`, `image/png,image/jpeg`; a hint for the picker, not a security check |
 | `capture` | `file` | `user` (front camera) or `environment` (back); mobile only, ignored on desktop |
@@ -379,7 +379,7 @@ hints; use a real combobox when choosing from the list matters.
 | `meter` | a scalar measurement in a known range | `value`, `min`, `max`, `low`, `high`, `optimum` | `meter` |
 
 Use `progress` for "uploading 40 %" and `meter` for "disk 90 % full" or a score. The browser
-colours a `meter` by which region `value` falls in relative to `optimum`. Both need a label and
+colors a `meter` by which region `value` falls in relative to `optimum`. Both need a label and
 the value in text: their visual state alone isn't reliable for everyone.
 
 ```html demo height=120 title="progress-meter.html"
@@ -437,11 +437,11 @@ makes `type="text" inputmode="numeric"` the right choice for codes, card numbers
 | `tel` | phone keypad with `*` and `#` | phone numbers (or just `type="tel"`) |
 | `email` | with `@` and `.` | emails in a `text` field |
 | `url` | with `/` and `.` | URLs in a `text` field |
-| `search` | search-optimised; Enter becomes "Search" | search boxes |
+| `search` | search-optimized; Enter becomes "Search" | search boxes |
 | `none` | no virtual keyboard | only when the page provides its own keyboard |
 
 `enterkeyhint` sets the Enter key's label: `enter`, `done`, `go`, `next`, `previous`, `search`,
-`send`. It changes only the label, not the behaviour; use `next` on fields that are not last and
+`send`. It changes only the label, not the behavior; use `next` on fields that are not last and
 `send` on a chat box. Both attributes are Baseline widely available.
 
 ## Built-in validation

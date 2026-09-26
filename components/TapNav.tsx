@@ -38,13 +38,27 @@ function ignored(target: EventTarget | null): boolean {
   return !(window.getSelection()?.isCollapsed ?? true);
 }
 
+/**
+ * Edge gestures are off inside the playground's reference panel (`<html data-embed>`)
+ * and on pages that opt out with `data-no-tap-nav` (the playground, where a double tap
+ * near the edge while editing must never navigate away).
+ */
+function gesturesOff(): boolean {
+  return (
+    document.documentElement.hasAttribute("data-embed") ||
+    document.querySelector("[data-no-tap-nav]") !== null
+  );
+}
+
 /** Act on a double tap in `zone`; returns whether anything happened. */
 function act(zone: Zone): boolean {
-  if (isOverlayOpen()) return false;
+  if (isOverlayOpen() || gesturesOff()) return false;
   const link =
     zone === "left"
       ? document.querySelector<HTMLAnchorElement>(".back-rail a")
-      : document.querySelector("nav[data-menu]")?.querySelector<HTMLAnchorElement>("a[data-active]");
+      : document
+          .querySelector("nav[data-menu]")
+          ?.querySelector<HTMLAnchorElement>("a[data-active]");
   link?.click();
   return Boolean(link);
 }

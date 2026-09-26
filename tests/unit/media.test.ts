@@ -14,7 +14,7 @@ import { parseYouTubeProps } from "@/lib/youtube";
 const CREDITED_DIR = "/images/fitness/";
 /** Longest side, in pixels, allowed for a downloaded image. */
 const MAX_SIDE = 1200;
-/** A credit line: `*Image: Artist, licence, via [Wikimedia Commons](…).*`. */
+/** A credit line: `*Image: Artist, license, via [Wikimedia Commons](…).*`. */
 const CREDIT = /^\*Image: .+, (?:public domain|CC0|\[CC[^\]]+\]\(https:\/\/creativecommons\.org\/[^)]+\)), via \[[^\]]+\]\(https:\/\/[^)]+\)\.\*$/;
 
 const label = (ref: SheetRef) => [ref.topic, ref.group, ref.slug].filter(Boolean).join("/");

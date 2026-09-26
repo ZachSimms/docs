@@ -119,7 +119,7 @@ Every three export is available as a lower-camel-case element: `Mesh` → `<mesh
   shadow-camera-far={40} />
 ```
 
-Colour maps passed as JSX props on built-in materials (`map`, `emissiveMap`, `sheenColorMap`,
+Color maps passed as JSX props on built-in materials (`map`, `emissiveMap`, `sheenColorMap`,
 `specularColorMap`, `envMap`) are tagged `SRGBColorSpace` automatically. Textures assigned in code or used
 by custom shaders need `colorSpace` set by hand.
 
@@ -204,7 +204,7 @@ const invalidate = useThree((s) => s.invalidate); // when
 | `scene`, `camera`, `raycaster` | defaults (replaceable with `set`) |
 | `size` | canvas size in CSS px |
 | `viewport` | size in world units at the camera's target distance; `dpr`, `aspect` |
-| `pointer` | normalised device coordinates of the pointer (`Vector2`) |
+| `pointer` | normalized device coordinates of the pointer (`Vector2`) |
 | `clock` | elapsed time |
 | `invalidate(frames?)` | request a frame (`frameloop="demand"`) |
 | `setDpr`, `setFrameloop`, `setSize` | runtime changes |
@@ -281,7 +281,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 | `nativeEvent` | the DOM event |
 | `stopPropagation()` | stop bubbling **and** stop the event reaching objects behind |
 
-| Behaviour | Detail |
+| Behavior | Detail |
 | :-------- | :----- |
 | Handlers | `onClick`, `onDoubleClick`, `onContextMenu`, `onWheel`, `onPointerDown/Up/Move/Over/Out/Enter/Leave/Cancel`, `onPointerMissed` |
 | Hit testing | only objects with at least one handler are raycast |
@@ -296,7 +296,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 | :----- | :--- |
 | `<OrbitControls makeDefault />` | camera controls; `makeDefault` registers them in the store for other helpers |
 | `<Environment preset="city" />` | IBL + optional `background`; presets: apartment, city, dawn, forest, lobby, night, park, studio, sunset, warehouse (fetched from a CDN); or `files="/env.hdr"` |
-| `<Stage>` | centred model + lighting + shadows in one component |
+| `<Stage>` | centered model + lighting + shadows in one component |
 | `<ContactShadows>`, `<AccumulativeShadows>` | soft ground shadows without shadow maps |
 | `<Html>` | DOM inside the scene; `transform`, `occlude`, `center`, `distanceFactor` |
 | `<Text>` | SDF text (troika); `font` url, `fontSize`, `anchorX` |
@@ -304,7 +304,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 | `<Instances>` + `<Instance>` | declarative `InstancedMesh` with per-instance props and events; `limit`, `range` |
 | `<Merged>` | instance several different meshes at once |
 | `<Bounds fit clip observe margin={1.2}>` | frame children; `useBounds().refresh(obj).fit()` to zoom to a click |
-| `<Center>`, `<Float>` | centre content; bobbing idle motion |
+| `<Center>`, `<Float>` | center content; bobbing idle motion |
 | `useGLTF`, `useTexture`, `useAnimations` | loading and `AnimationMixer` wiring (`actions[name]?.play()`) |
 | `<Detailed distances={[0, 20, 50]}>` | LOD |
 | `<AdaptiveDpr pixelated />`, `<PerformanceMonitor>` | drop quality when FPS falls |
@@ -401,7 +401,7 @@ import { OrbitControls } from
 const Orbit = extend(OrbitControls);
 // <Orbit args={[camera, gl.domElement]} />
 
-// option 2: catalogue + module augmentation
+// option 2: catalog + module augmentation
 extend({ OrbitControls });
 declare module "@react-three/fiber" {
   interface ThreeElements {
@@ -450,7 +450,7 @@ Not every drei helper works under `WebGPURenderer` (anything built on GLSL `Shad
 | Stutter every frame | `setState` in `useFrame`, or allocations per frame | refs, reuse vectors |
 | Object rebuilt on every render | `args={[...]}` array built from changing values | memoise or only change when needed |
 | Clicks go through objects | missing `stopPropagation` | call it in handlers |
-| Colours differ from vanilla | ACES tone mapping default | `flat` on `<Canvas>` or set `gl.toneMapping` |
+| Colors differ from vanilla | ACES tone mapping default | `flat` on `<Canvas>` or set `gl.toneMapping` |
 | Nothing updates in demand mode | imperative change without `invalidate()` | call it |
 | Shadows warning in console | `shadows` = PCFSoft, removed in three r182 | `shadows="percentage"` |
 
@@ -573,7 +573,7 @@ export function Grid() {
 }
 ```
 
-`onPointerOut` fires per object, not per instance: for exact "leave instance" behaviour, remember the
+`onPointerOut` fires per object, not per instance: for exact "leave instance" behavior, remember the
 last `instanceId` from `onPointerMove` and reset it there.
 
 ### Animated character with drei

@@ -5,8 +5,9 @@ order: 2
 ---
 
 Tailwind CSS v4.3 (4.3.3, July 2026): setup, CSS-first configuration, the utility and variant
-vocabulary, migrating from v3, and component patterns. The CSS behind the utilities is in
-[CSS](/design/css/css/), motion in [Animation](/design/css/animation/).
+vocabulary, live flexbox, grid, position and animation demos, migrating from v3, and component
+patterns. The CSS behind the utilities is in [CSS](/design/css/css/), motion in
+[Animation](/design/css/animation/).
 
 ## Install
 
@@ -79,7 +80,7 @@ Tailwind measured the webpack loader at about twice the speed of PostCSS in a la
 | `@plugin "@tailwindcss/typography";` | load a JS plugin |
 | `@config "./tailwind.config.js";` | load a legacy v3 config (no `corePlugins`, `safelist` or `separator`) |
 | `--spacing(4)` | theme spacing in CSS: `calc(var(--spacing) * 4)` |
-| `--alpha(var(--color-x) / 50%)` | colour with opacity via `color-mix` |
+| `--alpha(var(--color-x) / 50%)` | color with opacity via `color-mix` |
 
 ```css
 @import "tailwindcss";
@@ -147,7 +148,7 @@ const brand = getComputedStyle(document.documentElement)
   .getPropertyValue("--color-brand-500");
 ```
 
-Default colours are `oklch()` values in 26 palettes (v4.2 added `mauve`, `olive`, `mist`
+Default colors are `oklch()` values in 26 palettes (v4.2 added `mauve`, `olive`, `mist`
 and `taupe`), each with shades from 50 to 950.
 
 <Swatches title="sky-50 to sky-950 (default theme)" colors={[{ name: "50", value: "oklch(97.7% 0.013 236.62)" }, { name: "100", value: "oklch(95.1% 0.026 236.824)" }, { name: "200", value: "oklch(90.1% 0.058 230.902)" }, { name: "300", value: "oklch(82.8% 0.111 230.318)" }, { name: "400", value: "oklch(74.6% 0.16 232.661)" }, { name: "500", value: "oklch(68.5% 0.169 237.323)" }, { name: "600", value: "oklch(58.8% 0.158 241.966)" }, { name: "700", value: "oklch(50% 0.134 242.749)" }, { name: "800", value: "oklch(44.3% 0.11 240.79)" }, { name: "900", value: "oklch(39.1% 0.09 240.876)" }, { name: "950", value: "oklch(29.3% 0.066 243.157)" }]} />
@@ -180,17 +181,14 @@ classes (trimmed of its sRGB fallback), running live:
 
 ## Layout utilities
 
+Flexbox, grid and position utilities have their own sections below, with live demos.
+
 | Area | Utilities |
 | :--- | :-------- |
 | Display | `block`, `inline-block`, `flex`, `inline-flex`, `grid`, `contents`, `hidden`, `sr-only`, `flow-root` |
-| Position | `static`, `relative`, `absolute`, `fixed`, `sticky`, `inset-0`, `top-4`, `inset-s-0`, `inset-e-4` (v4.2 logical), `z-10`, `isolate` |
 | Overflow | `overflow-hidden`, `overflow-x-auto`, `overflow-clip`, `overscroll-contain` |
-| Container | `container` (`width: 100%` plus a `max-width` per breakpoint; centre with `mx-auto`) |
+| Container | `container` (`width: 100%` plus a `max-width` per breakpoint; center with `mx-auto`) |
 | Box | `box-border`, `aspect-video`, `aspect-square`, `aspect-3/2`, `object-cover`, `columns-3` |
-| Flex | `flex-row`, `flex-col`, `flex-wrap`, `flex-1`, `flex-auto`, `flex-none`, `grow`, `shrink-0`, `basis-1/3`, `order-first` |
-| Grid | `grid-cols-3`, `grid-cols-subgrid`, `col-span-2`, `col-span-full`, `col-start-2`, `grid-rows-[auto_1fr_auto]`, `grid-flow-dense`, `auto-rows-fr` |
-| Gap | `gap-4`, `gap-x-2`, `space-y-4` (prefer `gap`), `divide-y` |
-| Align | `justify-between`, `justify-center-safe`, `items-center`, `items-baseline-last`, `content-start`, `self-end`, `place-items-center`, `place-content-center` |
 | Scroll | `snap-x`, `snap-mandatory`, `snap-center`, `scroll-mt-16`, `scroll-smooth`, `scrollbar-thin`, `scrollbar-gutter-stable` (v4.3) |
 
 | Spacing & sizing | Note |
@@ -219,39 +217,542 @@ classes (trimmed of its sRGB fallback), running live:
 | `text-shadow-sm`, `text-shadow-lg`, `text-shadow-black/50` | text shadows (v4.1) |
 | `uppercase`, `italic`, `antialiased`, `whitespace-pre-wrap`, `tab-4` | misc; `tab-*` since v4.3 |
 
-| Colour | Note |
+| Color | Note |
 | :----- | :--- |
-| `bg-sky-500`, `text-gray-950`, `border-red-200` | palette colours |
+| `bg-sky-500`, `text-gray-950`, `border-red-200` | palette colors |
 | `bg-sky-500/50`, `text-black/[.35]`, `bg-brand/(--alpha)` | opacity modifier (via `color-mix`) |
-| `bg-(--brand)`, `text-[#bada55]` | a CSS variable / an arbitrary colour |
+| `bg-(--brand)`, `text-[#bada55]` | a CSS variable / an arbitrary color |
 | `bg-linear-to-r from-red-500 via-50% to-blue-500` | gradients: `bg-linear-*`, `bg-radial`, `bg-conic` |
 | `bg-linear-45`, `bg-linear-to-r/oklch` | gradient angle and interpolation space |
 | `fill-current`, `stroke-2`, `caret-pink-500`, `accent-brand-500` | SVG and form parts |
 | `scheme-dark`, `scheme-light-dark` | `color-scheme` |
-| `scrollbar-thumb-sky-700`, `scrollbar-track-sky-100` | scrollbar colours (v4.3) |
+| `scrollbar-thumb-sky-700`, `scrollbar-track-sky-100` | scrollbar colors (v4.3) |
 
 | Borders & effects | Note |
 | :---------------- | :--- |
-| `border`, `border-2`, `border-t`, `border-bs` | width (default colour is `currentColor`) |
+| `border`, `border-2`, `border-t`, `border-bs` | width (default color is `currentColor`) |
 | `rounded-xs` … `rounded-4xl`, `rounded-full`, `rounded-s-lg` | radius |
 | `ring-2 ring-brand-500 ring-offset-2`, `inset-ring` | box-shadow rings (default width is 1px) |
-| `outline-2 outline-offset-2`, `outline-hidden` | outlines; `outline-hidden` keeps one in forced-colours mode |
-| `shadow-xs` … `shadow-2xl`, `inset-shadow-sm`, `shadow-brand-500/20` | shadows, coloured shadows |
+| `outline-2 outline-offset-2`, `outline-hidden` | outlines; `outline-hidden` keeps one in forced-colors mode |
+| `shadow-xs` … `shadow-2xl`, `inset-shadow-sm`, `shadow-brand-500/20` | shadows, colored shadows |
 | `opacity-50`, `mix-blend-multiply`, `blur-sm`, `backdrop-blur-md` | filters |
-| `drop-shadow-lg`, `drop-shadow-red-500/50` | drop shadow, now with colour (v4.1) |
+| `drop-shadow-lg`, `drop-shadow-red-500/50` | drop shadow, now with color (v4.1) |
 | `mask-b-from-50%`, `mask-radial-from-40%` | masks (v4.1) |
 | `rotate-45`, `scale-95`, `translate-x-2`, `-translate-y-1/2` | individual transform properties |
 | `rotate-x-12`, `perspective-near`, `transform-3d`, `backface-hidden` | 3D transforms |
 
-| Transitions & animation | Note |
-| :---------------------- | :--- |
-| `transition`, `transition-colors`, `transition-opacity`, `transition-transform` | property sets |
+## Flexbox
+
+One-dimensional layout: `flex` on the parent, then direction, alignment and sizing classes.
+Every demo on this page is real Tailwind output, compiled from the classes shown. The CSS
+model behind it is in [CSS: Flexbox](/design/css/css/#flexbox).
+
+<Diagram src="/images/diagrams/css-flex-axes.svg" label="A row flex container with three items and leftover free space. The main axis runs left to right and is controlled by justify-content (Tailwind justify-*); the cross axis runs top to bottom and is controlled by align-items (Tailwind items-*). flex-col swaps the axes." caption="justify-* works along the main axis, items-* across it; flex-col swaps them" />
+
+| Utility | CSS |
+| :------ | :-- |
+| `flex`, `inline-flex` | `display: flex` / `inline-flex` |
+| `flex-row`, `flex-row-reverse`, `flex-col`, `flex-col-reverse` | `flex-direction` |
+| `flex-wrap`, `flex-nowrap`, `flex-wrap-reverse` | `flex-wrap` |
+| `justify-start`, `-center`, `-end`, `-between`, `-around`, `-evenly`, `-stretch` | `justify-content` (main axis) |
+| `justify-center-safe`, `justify-end-safe` | `safe center`: never pushes overflow off the start edge (v4.1) |
+| `items-start`, `-center`, `-end`, `-stretch`, `-baseline`, `-baseline-last` | `align-items` (cross axis; default `stretch`) |
+| `content-start`, `content-between`, … | `align-content`: spacing between wrapped lines |
+| `self-auto`, `self-start`, `self-center`, `self-end`, `self-stretch` | `align-self` on one item |
+| `gap-4`, `gap-x-6`, `gap-y-2` | `gap` between items (not at the edges) |
+| `flex-1` | `flex: 1`: share free space, ignoring content size |
+| `flex-auto` | `flex: auto`: grow and shrink from the content size |
+| `flex-initial` | `flex: 0 auto`: shrink but never grow (the default) |
+| `flex-none` | `flex: none`: rigid |
+| `grow`, `grow-0`, `grow-3`, `shrink`, `shrink-0` | `flex-grow`, `flex-shrink` |
+| `basis-64`, `basis-1/3`, `basis-full`, `basis-(--w)` | `flex-basis` |
+| `order-1`, `order-first`, `order-last`, `-order-1` | `order` (visual only; tab order stays the DOM order) |
+| `ms-auto` / `ml-auto` | pushes the item and everything after it to the end |
+| `min-w-0` | lets an item shrink below its content so `truncate` works |
+
+```html demo tailwind height=176 title="justify.html"
+<style>
+  i { width: 36px; height: 16px; border-radius: 3px;
+    background: var(--graph-0); }
+</style>
+<div class="grid grid-cols-[7.5rem_1fr] items-center
+  gap-1.5 font-mono text-xs">
+  <span>justify-start</span>
+  <div class="flex justify-start gap-1 rounded
+    bg-(--chip) p-1"><i></i><i></i><i></i></div>
+  <span>justify-center</span>
+  <div class="flex justify-center gap-1 rounded
+    bg-(--chip) p-1"><i></i><i></i><i></i></div>
+  <span>justify-between</span>
+  <div class="flex justify-between rounded bg-(--chip)
+    p-1"><i></i><i></i><i></i></div>
+  <span>justify-around</span>
+  <div class="flex justify-around rounded bg-(--chip)
+    p-1"><i></i><i></i><i></i></div>
+  <span>justify-evenly</span>
+  <div class="flex justify-evenly rounded bg-(--chip)
+    p-1"><i></i><i></i><i></i></div>
+</div>
+```
+
+`items-*` aligns items of different heights across the row; `baseline` lines up the text:
+
+```html demo tailwind height=150 title="items.html"
+<style>
+  .row > * { width: 44px; border-radius: 3px;
+    background: var(--graph-2); color: var(--bg);
+    text-align: center; font-size: 11px; }
+</style>
+<div class="grid grid-cols-5 gap-2 font-mono text-xs">
+  <span>start</span><span>center</span><span>end</span>
+  <span>stretch</span><span>baseline</span>
+  <div class="row flex h-24 items-start gap-1 rounded
+    bg-(--chip) p-1"><b class="h-6">a</b>
+    <b class="h-12">b</b></div>
+  <div class="row flex h-24 items-center gap-1 rounded
+    bg-(--chip) p-1"><b class="h-6">a</b>
+    <b class="h-12">b</b></div>
+  <div class="row flex h-24 items-end gap-1 rounded
+    bg-(--chip) p-1"><b class="h-6">a</b>
+    <b class="h-12">b</b></div>
+  <div class="row flex h-24 items-stretch gap-1 rounded
+    bg-(--chip) p-1"><b>a</b><b>b</b></div>
+  <div class="row flex h-24 items-baseline gap-1 rounded
+    bg-(--chip) p-1"><b class="pt-4">a</b>
+    <b class="text-lg">b</b></div>
+</div>
+```
+
+How items share the row: `flex-1` splits the free space, `flex-none` keeps its size,
+`basis-1/3` starts from a third, and `grow` takes whatever is left.
+
+```html demo tailwind height=184 title="sizing.html"
+<style>
+  .row > * { padding: 4px 6px; border-radius: 3px;
+    color: var(--bg); white-space: nowrap; }
+</style>
+<div class="space-y-2 font-mono text-xs *:flex *:gap-1
+  *:rounded *:bg-(--chip) *:p-1">
+  <div class="row">
+    <b class="flex-1 bg-(--graph-0)">flex-1</b>
+    <b class="flex-1 bg-(--graph-0)">flex-1</b>
+    <b class="flex-none bg-(--graph-1)">flex-none</b></div>
+  <div class="row"><b class="basis-1/3 bg-(--graph-3)">
+    basis-1/3</b>
+    <b class="grow bg-(--graph-2)">grow</b></div>
+  <div class="row"><b class="bg-(--graph-1)">logo</b>
+    <b class="bg-(--graph-0)">link</b>
+    <b class="ms-auto bg-(--graph-2)">ms-auto</b></div>
+  <div class="row"><b class="order-last bg-(--graph-3)">
+    1 order-last</b><b class="bg-(--graph-0)">2</b>
+    <b class="bg-(--graph-0)">3</b></div>
+</div>
+```
+
+`flex-wrap` lets items break onto new lines; `gap` spaces both directions:
+
+```html demo tailwind height=110 title="wrap.html"
+<div class="flex flex-wrap gap-2 rounded bg-(--chip) p-2
+  font-mono text-xs *:rounded *:bg-(--graph-0) *:px-2
+  *:py-1 *:text-(--bg)">
+  <span>html</span><span>css</span><span>tailwind</span>
+  <span>flexbox</span><span>grid</span><span>position</span>
+  <span>transition</span><span>animation</span>
+  <span>container queries</span><span>dark mode</span>
+</div>
+```
+
+```html title="Navbar and media object"
+<nav class="flex items-center gap-4 px-4 py-2">
+  <a class="font-bold">Logo</a>
+  <a>Docs</a><a>Blog</a>
+  <button class="ms-auto">Sign in</button>
+</nav>
+
+<article class="flex gap-3">
+  <img class="size-12 shrink-0 rounded-full" src="a.png">
+  <div class="min-w-0">
+    <h3 class="truncate font-semibold">A long title</h3>
+    <p class="line-clamp-2">Body text…</p>
+  </div>
+</article>
+```
+
+## Grid
+
+Two-dimensional layout: define columns (and optionally rows) on the parent, then place and
+span items. The CSS model is in [CSS: Grid](/design/css/css/#grid).
+
+<Diagram src="/images/diagrams/tw-grid-placement.svg" label="A four-column grid with its column lines numbered 1 to 5 across the top and -5 to -1 along the bottom. Row one: an item with col-start-2 col-span-2 runs from line 2 to line 4. Row two: col-span-full runs from line 1 to line -1. Row three: col-start-3 -col-end-1 runs from line 3 to the last line." caption="Placement: items start and end on grid lines; span-N counts tracks" />
+
+| Utility | CSS |
+| :------ | :-- |
+| `grid`, `inline-grid` | `display: grid` |
+| `grid-cols-3` | `grid-template-columns: repeat(3, minmax(0, 1fr))` |
+| `grid-cols-[14rem_1fr]`, `grid-cols-(--cols)` | any track list (`_` is a space) or a variable |
+| `grid-cols-[repeat(auto-fit,minmax(8rem,1fr))]` | as many columns as fit, no breakpoints |
+| `grid-rows-3`, `grid-rows-[auto_1fr_auto]` | `grid-template-rows` |
+| `grid-cols-subgrid`, `grid-rows-subgrid` | reuse the parent grid's tracks |
+| `col-span-2`, `col-span-full` | `grid-column: span 2 / span 2`, `1 / -1` |
+| `col-start-2`, `col-end-4`, `-col-end-1` | start and end lines (`-1` is the last line) |
+| `col-[2/4]`, `col-2` | the `grid-column` shorthand |
+| `row-span-2`, `row-start-1`, `row-end-3` | the same for rows |
+| `grid-flow-row`, `grid-flow-col`, `grid-flow-dense` | `grid-auto-flow`; `dense` backfills holes |
+| `auto-rows-fr`, `auto-rows-[minmax(4rem,auto)]`, `auto-cols-min` | size of implicit tracks |
+| `gap-4`, `gap-x-6`, `gap-y-2` | gutters between tracks |
+| `justify-items-*`, `items-*`, `place-items-center` | align every item inside its cell |
+| `justify-self-*`, `self-*`, `place-self-center` | align one item |
+| `justify-*`, `content-*`, `place-content-center` | align the whole grid inside the container |
+| `[grid-template-areas:'a_b']`, `[grid-area:a]` | named areas: arbitrary properties (no built-in utility) |
+
+```html demo tailwind height=170 title="placement.html"
+<div class="grid grid-cols-4 gap-1.5 font-mono text-xs
+  *:rounded *:bg-(--chip) *:p-2">
+  <div class="col-start-2 col-span-2 bg-(--graph-0)!
+    text-(--bg)">col-start-2 col-span-2</div>
+  <div class="col-span-full bg-(--graph-2)! text-(--bg)">
+    col-span-full</div>
+  <div class="row-span-2 bg-(--graph-3)! text-(--bg)">
+    row-span-2</div>
+  <div>4</div><div>5</div><div>6</div>
+  <div class="col-start-2 -col-end-1 bg-(--graph-1)!
+    text-(--bg)">col-start-2 -col-end-1</div>
+</div>
+```
+
+Drag the bottom-right corner of the box: `auto-fit` columns reflow without any breakpoint.
+
+```html demo tailwind height=190 title="auto-fit.html"
+<div class="h-40 w-full max-w-full resize-x overflow-auto
+  rounded border border-dashed border-(--muted) p-2">
+  <div class="grid
+    grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] gap-2
+    font-mono text-xs *:rounded *:bg-(--graph-0) *:p-2
+    *:text-(--bg)">
+    <div>1</div><div>2</div><div>3</div><div>4</div>
+    <div>5</div><div>6</div><div>7</div>
+  </div>
+</div>
+```
+
+`grid-flow-dense` moves later small items into holes left by wide ones (so the visual order
+no longer matches the DOM):
+
+```html demo tailwind height=150 title="dense.html"
+<div class="grid grid-cols-2 gap-3 font-mono text-xs">
+  <span>grid-flow-row</span><span>grid-flow-dense</span>
+  <div class="grid grid-cols-3 gap-1 *:rounded
+    *:bg-(--graph-0) *:p-1 *:text-(--bg)">
+    <b>1</b><b class="col-span-2">2 wide</b>
+    <b class="col-span-2">3 wide</b>
+    <b class="col-span-2">4 wide</b>
+    <b>5</b></div>
+  <div class="grid grid-flow-dense grid-cols-3 gap-1
+    *:rounded *:bg-(--graph-2) *:p-1 *:text-(--bg)">
+    <b>1</b><b class="col-span-2">2 wide</b>
+    <b class="col-span-2">3 wide</b>
+    <b class="col-span-2">4 wide</b>
+    <b>5</b></div>
+</div>
+```
+
+`place-items-*` aligns every item in its cell; `place-self-*` overrides one:
+
+```html demo tailwind height=130 title="place-items.html"
+<div class="grid grid-cols-3 gap-2 font-mono text-xs">
+  <span>place-items-start</span>
+  <span>place-items-center</span>
+  <span>+ place-self-end</span>
+  <div class="grid h-20 grid-cols-2 place-items-start gap-1
+    rounded bg-(--chip) p-1 *:size-6 *:rounded
+    *:bg-(--graph-3)"><i></i><i></i></div>
+  <div class="grid h-20 grid-cols-2 place-items-center gap-1
+    rounded bg-(--chip) p-1 *:size-6 *:rounded
+    *:bg-(--graph-3)"><i></i><i></i></div>
+  <div class="grid h-20 grid-cols-2 place-items-center gap-1
+    rounded bg-(--chip) p-1 *:size-6 *:rounded
+    *:bg-(--graph-3)"><i></i>
+    <i class="place-self-end bg-(--graph-1)!"></i></div>
+</div>
+```
+
+With `grid-rows-subgrid`, each card's title, body and footer line up with its neighbors',
+however long the text is:
+
+```html demo tailwind height=170 title="subgrid.html"
+<div class="grid grid-cols-3 gap-x-2 text-xs">
+  <article class="row-span-3 grid grid-rows-subgrid gap-1
+    rounded bg-(--chip) p-2">
+    <b>Short</b><p>One line.</p>
+    <a class="text-(--graph-0)">Read</a></article>
+  <article class="row-span-3 grid grid-rows-subgrid gap-1
+    rounded bg-(--chip) p-2">
+    <b>A much longer title that wraps</b><p>Two lines of
+    body text here.</p><a class="text-(--graph-0)">Read</a>
+  </article>
+  <article class="row-span-3 grid grid-rows-subgrid gap-1
+    rounded bg-(--chip) p-2">
+    <b>Mid title</b><p>Body.</p>
+    <a class="text-(--graph-0)">Read</a></article>
+</div>
+```
+
+A page shell that switches layout by its own width. The `@container` queries react to the
+box, not the window, so drag the corner to see all three layouts:
+
+```html demo tailwind height=250 title="holy-grail.html"
+<div class="@container h-56 w-full max-w-full resize-x
+  overflow-auto rounded border border-dashed
+  border-(--muted) p-1">
+  <div class="grid h-full gap-1 font-mono text-xs
+    *:rounded *:p-2 *:text-(--bg)
+    grid-rows-[auto_1fr_auto]
+    @sm:grid-cols-[6rem_1fr] @lg:grid-cols-[6rem_1fr_6rem]">
+    <header class="bg-(--graph-0) @sm:col-span-full">
+      header</header>
+    <nav class="bg-(--graph-2) max-sm:hidden">nav</nav>
+    <main class="bg-(--graph-3)">main</main>
+    <aside class="hidden bg-(--graph-1) @lg:block">
+      aside</aside>
+    <footer class="bg-(--graph-0) @sm:col-span-full">
+      footer</footer>
+  </div>
+</div>
+```
+
+## Positions
+
+`position` utilities plus `inset-*`, `top-*`, `right-*`, `bottom-*`, `left-*` offsets and
+`z-*` stacking. The CSS rules (containing blocks, stacking contexts, sticky gotchas) are in
+[CSS: Positioning](/design/css/css/#positioning-stacking--anchors).
+
+<Diagram src="/images/diagrams/tw-inset.svg" label="Two relative parent boxes. The left one is covered completely by a dashed overlay labeled absolute inset-0. The right one holds a chip in the top-left corner (top-2 left-2), one in the top-right corner (top-2 right-2), a box centered with top-1/2 left-1/2 -translate-1/2 on crosshairs, and a bar along the bottom edge (inset-x-0 bottom-0)." caption="Offsets measure from the nearest positioned ancestor" />
+
+| Utility | CSS | Offsets from |
+| :------ | :-- | :----------- |
+| `static` | `position: static` | ignores offsets and `z-*` |
+| `relative` | `position: relative` | its own place (space kept); anchors absolute children |
+| `absolute` | `position: absolute` | the nearest non-static ancestor |
+| `fixed` | `position: fixed` | the viewport (or an ancestor with a `transform` or `filter`) |
+| `sticky` | `position: sticky` | the scrolling ancestor, once scrolled past `top-*` |
+
+| Offset utility | CSS |
+| :------------- | :-- |
+| `inset-0` | `inset: 0` (all four sides) |
+| `inset-x-0`, `inset-y-0` | `inset-inline: 0`, `inset-block: 0` |
+| `top-0`, `right-4`, `bottom-2`, `left-1/2` | one side; fractions are percentages |
+| `-top-2`, `-right-2` | negative: pokes out of the parent (badges) |
+| `top-full`, `left-full` | `100%`: just past the edge (menus, tooltips) |
+| `inset-s-0`, `inset-e-4` | `inset-inline-start` / `-end`, which flip in RTL (v4.2; `start-*`/`end-*` still work) |
+| `top-[117px]`, `top-(--header-h)` | arbitrary value / variable |
+| `-translate-1/2`, `-translate-x-1/2` | center on the offset point |
+| `z-10`, `z-50`, `z-auto`, `-z-10`, `z-[5]` | `z-index` (needs a position other than `static`) |
+| `isolate` | `isolation: isolate`: a new stacking context without a `z-index` |
+
+```html demo tailwind height=170 title="offsets.html"
+<div class="relative h-36 rounded bg-(--chip) font-mono
+  text-[11px] *:absolute *:rounded *:px-1.5 *:py-0.5
+  *:text-(--bg)">
+  <span class="top-2 left-2 bg-(--graph-0)">
+    top-2 left-2</span>
+  <span class="top-2 right-2 bg-(--graph-0)">
+    top-2 right-2</span>
+  <span class="-top-2 left-1/2 bg-(--graph-1)">-top-2</span>
+  <span class="top-1/2 left-1/2 -translate-1/2
+    bg-(--graph-2)">top-1/2 left-1/2 -translate-1/2</span>
+  <span class="inset-x-0 bottom-0 rounded-t-none
+    bg-(--graph-3) text-center">inset-x-0 bottom-0</span>
+</div>
+```
+
+`sticky top-0` headers stick to the top of their scrolling box, each until its own section
+scrolls away. Scroll inside the list:
+
+```html demo tailwind height=170 title="sticky.html"
+<div class="h-36 overflow-auto rounded border
+  border-(--muted) text-sm">
+  <h4 class="sticky top-0 bg-(--graph-0) px-2
+    text-(--bg)">A</h4>
+  <p class="px-2 py-1">Ada</p><p class="px-2 py-1">Alan</p>
+  <p class="px-2 py-1">Anita</p>
+  <h4 class="sticky top-0 bg-(--graph-2) px-2
+    text-(--bg)">B</h4>
+  <p class="px-2 py-1">Barbara</p>
+  <p class="px-2 py-1">Bjarne</p>
+  <p class="px-2 py-1">Brendan</p>
+  <h4 class="sticky top-0 bg-(--graph-3) px-2
+    text-(--bg)">G</h4>
+  <p class="px-2 py-1">Grace</p>
+  <p class="px-2 py-1">Guido</p>
+  <p class="px-2 py-1">Gordon</p>
+</div>
+```
+
+`z-*` orders overlapping siblings. `isolate` makes a new stacking context, so the `z-50`
+inside it only competes with its own siblings and stays under the `z-10` box next to it:
+
+```html demo tailwind height=150 title="stacking.html"
+<div class="relative h-32 font-mono text-[11px]
+  *:absolute *:h-16 *:w-40 *:rounded *:p-1.5
+  *:text-(--bg)">
+  <div class="top-2 left-2 z-20 bg-(--graph-0)">z-20</div>
+  <div class="top-8 left-16 z-10 bg-(--graph-1)">z-10</div>
+  <div class="top-4 left-56 isolate bg-(--chip)
+    text-(--fg)!">isolate
+    <b class="absolute top-8 left-4 z-50 rounded
+      bg-(--graph-2) px-1.5 text-(--bg)">z-50</b></div>
+  <div class="top-14 left-64 z-10 bg-(--graph-3)">z-10</div>
+</div>
+```
+
+A dropdown: the menu is `absolute top-full` inside a `relative` wrapper and shows while the
+wrapper is hovered or holds focus. Hover the button:
+
+```html demo tailwind height=150 title="dropdown.html"
+<div class="group relative inline-block text-sm">
+  <button class="rounded bg-(--graph-0) px-3 py-1
+    text-(--bg)">Menu ▾</button>
+  <ul class="absolute top-full left-0 z-10 mt-1 hidden w-36
+    rounded border border-(--muted) bg-(--bg) py-1
+    shadow-lg group-hover:block group-focus-within:block
+    *:px-3 *:py-1 *:hover:bg-(--chip)">
+    <li>Profile</li><li>Settings</li><li>Sign out</li>
+  </ul>
+</div>
+```
+
+```html title="Modal overlay, badge, sticky header"
+<div class="fixed inset-0 z-50 grid place-items-center
+  bg-black/40">
+  <div class="w-full max-w-md rounded-lg bg-white
+    p-6">…</div>
+</div>
+
+<button class="relative">
+  Inbox
+  <span class="absolute -top-1 -right-2 rounded-full
+    bg-red-500 px-1.5 text-xs text-white">3</span>
+</button>
+
+<header class="sticky top-0 z-40 bg-white/80
+  backdrop-blur">…</header>
+```
+
+## Animations
+
+Transitions for state changes, `animate-*` for loops, `starting:` for entry, and
+`motion-safe:`/`motion-reduce:` to respect the user's setting. Principles, easing and
+performance are covered in [Animation](/design/css/animation/).
+
+| Utility | Note |
+| :------ | :--- |
+| `transition` | colors, opacity, shadow, transforms, filters; `150ms` with `ease-in-out` by default |
+| `transition-colors`, `transition-opacity`, `transition-transform`, `transition-all`, `transition-none` | property sets |
 | `transition-[height,opacity]` | arbitrary list |
 | `transition-discrete` | `transition-behavior: allow-discrete`, for `display` and `hidden` |
-| `duration-200`, `delay-100`, `ease-out`, `ease-in-out`, `ease-(--my-ease)` | timing |
+| `duration-75` … `duration-1000`, `duration-[2s]` | `transition-duration` |
+| `delay-150`, `delay-300` | `transition-delay` |
+| `ease-linear`, `ease-in`, `ease-out`, `ease-in-out`, `ease-(--my-ease)` | timing function (from `--ease-*`) |
 | `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` | built-in keyframes |
+| `animate-[wiggle_1s_ease-in-out_infinite]`, `animate-(--my-anim)` | arbitrary |
+| `starting:opacity-0` | `@starting-style`: the state an element enters from |
 | `motion-safe:animate-bounce`, `motion-reduce:transition-none` | reduced-motion gates |
 | `will-change-transform` | layer promotion |
+
+Hover the box. The same move with five durations, then the four easings at `duration-1000`:
+
+```html demo tailwind height=210 title="duration-ease.html"
+<div class="group grid grid-cols-[7rem_1fr] items-center
+  gap-1 rounded bg-(--chip) p-2 font-mono text-xs
+  *:even:h-3 *:even:w-8 *:even:rounded-sm
+  *:even:transition-transform
+  *:even:group-hover:translate-x-60">
+  <span>duration-150</span><i class="bg-(--graph-0)
+    duration-150"></i>
+  <span>duration-300</span><i class="bg-(--graph-0)
+    duration-300"></i>
+  <span>duration-700</span><i class="bg-(--graph-0)
+    duration-700"></i>
+  <span>ease-linear</span><i class="bg-(--graph-3)
+    duration-1000 ease-linear"></i>
+  <span>ease-in</span><i class="bg-(--graph-1)
+    duration-1000 ease-in"></i>
+  <span>ease-out</span><i class="bg-(--graph-2)
+    duration-1000 ease-out"></i>
+  <span>ease-in-out</span><i class="bg-(--graph-0)
+    duration-1000 ease-in-out"></i>
+</div>
+```
+
+<Diagram src="/images/diagrams/tw-easing.svg" label="Four easing curves plotted as progress over time. ease-linear is a straight diagonal. ease-in, cubic-bezier(.4,0,1,1), starts flat and ends steep. ease-out, cubic-bezier(0,0,.2,1), starts steep and flattens early. ease-in-out, cubic-bezier(.4,0,.2,1), is flat at both ends and steep in the middle; it is also the default for transition." caption="Tailwind's --ease-* tokens: x is time, y is progress" />
+
+The four built-in animations, live:
+
+```html demo tailwind height=110 title="built-in.html"
+<div class="flex items-end justify-around font-mono
+  text-xs *:grid *:justify-items-center *:gap-3">
+  <div><i class="size-8 animate-spin rounded-md
+    border-4 border-(--graph-0) border-t-transparent"></i>
+    animate-spin</div>
+  <div><span class="relative flex size-8"><i class="absolute
+    inset-0 animate-ping rounded-full bg-(--graph-1)/60"></i>
+    <i class="size-8 rounded-full bg-(--graph-1)"></i></span>
+    animate-ping</div>
+  <div><i class="h-8 w-20 animate-pulse rounded
+    bg-(--muted)"></i>animate-pulse</div>
+  <div><i class="size-8 animate-bounce rounded-full
+    bg-(--graph-2)"></i>animate-bounce</div>
+</div>
+```
+
+Custom animations go in `@theme`: the `--animate-*` variable creates the `animate-*` class,
+and its `@keyframes` sit inside the same block:
+
+```html demo tailwind height=100 title="custom-keyframes.html"
+<style>
+  @theme {
+    --animate-wiggle: wiggle 1s ease-in-out infinite;
+    --animate-slide: slide 2s var(--ease-in-out) infinite;
+    @keyframes wiggle {
+      0%, 100% { rotate: -6deg; }
+      50% { rotate: 6deg; }
+    }
+    @keyframes slide {
+      50% { translate: 12rem 0; }
+    }
+  }
+</style>
+<div class="flex items-center gap-8 font-mono text-xs">
+  <span class="animate-wiggle rounded bg-(--graph-3) px-2
+    py-1 text-(--bg)">animate-wiggle</span>
+  <span class="animate-slide rounded bg-(--graph-0) px-2
+    py-1 text-(--bg)">animate-slide</span>
+</div>
+```
+
+Entry transitions without JavaScript: the items switch from `hidden` to shown on hover, and
+`starting:` gives the state they fade and slide in from. `transition-discrete` lets
+`display` take part in the transition.
+
+```html demo tailwind height=160 title="starting.html"
+<div class="group rounded bg-(--chip) p-2 text-sm">
+  Hover me
+  <ul class="mt-2 space-y-1 *:hidden *:rounded
+    *:bg-(--graph-0) *:px-2 *:text-(--bg)
+    *:transition-all *:transition-discrete *:duration-300
+    *:group-hover:block *:starting:group-hover:opacity-0
+    *:starting:group-hover:-translate-x-4">
+    <li>one</li><li class="delay-75">two</li>
+    <li class="delay-150">three</li>
+  </ul>
+</div>
+```
+
+| Reduced motion | Pattern |
+| :------------- | :------ |
+| Only animate when allowed | `motion-safe:animate-bounce`, `motion-safe:transition` |
+| Switch off for people who asked | `motion-reduce:animate-none`, `motion-reduce:transition-none` |
+| Swap movement for a fade | `transition motion-safe:hover:-translate-y-1 hover:opacity-90` |
 
 ## Variants
 
@@ -368,13 +869,13 @@ templates and swaps the PostCSS plugin.
 | `transform-none` | `scale-none`, `rotate-none`, `translate-none` |
 | `start-0` / `end-0` | `inset-s-0` / `inset-e-0` (deprecated in v4.2) |
 
-| Behaviour change | Fix |
+| Behavior change | Fix |
 | :--------------- | :-- |
-| Default border colour is `currentColor` (was `gray-200`) | always add a colour: `border border-gray-200` |
+| Default border color is `currentColor` (was `gray-200`) | always add a color: `border border-gray-200` |
 | `space-*` and `divide-*` target `:not(:last-child)` | prefer `flex`/`grid` with `gap` |
 | `hover:` needs `(hover: hover)` | touch devices no longer get sticky hover |
 | Buttons use `cursor: default` | add `cursor-pointer` or a base rule |
-| Placeholder is the text colour at 50% | set `placeholder:text-gray-400` |
+| Placeholder is the text color at 50% | set `placeholder:text-gray-400` |
 | The `hidden` attribute beats display utilities | remove `hidden` to show the element |
 | No Sass, Less or Stylus | Tailwind handles imports, nesting and vendor prefixes |
 | `@apply` in CSS modules or Vue/Svelte styles | add `@reference "../app.css";` |

@@ -38,7 +38,14 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       "testing",
     ],
     directories: {
-      language: ["fundamentals", "objects", "array-methods", "string-methods", "oop", "async-promises"],
+      language: [
+        "fundamentals",
+        "objects",
+        "array-methods",
+        "string-methods",
+        "oop",
+        "async-promises",
+      ],
       "design-architecture": ["design-patterns", "software-architecture", "modules-packages"],
       "runtime-tooling": ["bun", "node", "pnpm-monorepos"],
       frontend: ["dom", "events", "forms"],
@@ -195,8 +202,9 @@ const TOPICS: Readonly<Record<string, Layout>> = {
     },
   },
   "game-dev": {
-    entries: ["godot/"],
+    entries: ["godot/", "design/"],
     directories: {
+      design: ["open-world"],
       godot: [
         "gdscript",
         "nodes-scenes",
@@ -319,7 +327,7 @@ const DESIGN_VISUALS: Readonly<Record<string, number>> = {
   "color-theory": 3,
   css: 3,
   animation: 3,
-  tailwind: 1,
+  tailwind: 20,
   "document-head": 2,
   "semantic-elements": 2,
   "forms-inputs": 2,
@@ -328,7 +336,7 @@ const DESIGN_VISUALS: Readonly<Record<string, number>> = {
   accessibility: 2,
 };
 
-/** A visual in MDX source: a colour component, a diagram or a live demo fence. */
+/** A visual in MDX source: a color component, a diagram or a live demo fence. */
 const VISUAL = /^(?:<(?:Swatches|Scale|Contrast|Diagram)\b|```html [^\n]*\bdemo\b)/gm;
 
 /** Each sheet's `##` sections are its subpages; fewer than this is a stub. */
@@ -356,7 +364,11 @@ function longCodeLines(body: string): string[] {
         : { indent: line.length - trimmed.length, lang: trimmed.slice(3).split(" ")[0] ?? "" };
       return;
     }
-    if (fence && !UNCHECKED_LANGS.has(fence.lang) && line.slice(fence.indent).length > MAX_CODE_LINE) {
+    if (
+      fence &&
+      !UNCHECKED_LANGS.has(fence.lang) &&
+      line.slice(fence.indent).length > MAX_CODE_LINE
+    ) {
       long.push(`${i + 1}: ${line.trim()}`);
     }
   });
@@ -438,6 +450,29 @@ describe("content/design", () => {
   }
 });
 
+describe("design/css/tailwind", () => {
+  const LAYOUT_SECTIONS = ["Flexbox", "Grid", "Positions", "Animations"];
+  const body = readSheetBody({ topic: "design", group: "css", slug: "tailwind" });
+  const sections = extractToc(body)
+    .filter((e) => e.depth === 2)
+    .map((e) => e.text);
+
+  it("has Flexbox, Grid, Positions and Animations sections between Style utilities and Variants", () => {
+    const start = sections.indexOf("Style utilities");
+    expect(sections.slice(start + 1, start + 1 + LAYOUT_SECTIONS.length)).toEqual(LAYOUT_SECTIONS);
+    expect(sections[start + 1 + LAYOUT_SECTIONS.length]).toBe("Variants");
+  });
+
+  it("gives each of those sections live Tailwind demos", () => {
+    for (const [i, name] of LAYOUT_SECTIONS.entries()) {
+      const from = body.indexOf(`\n## ${name}\n`);
+      const next = LAYOUT_SECTIONS[i + 1] ?? "Variants";
+      const section = body.slice(from, body.indexOf(`\n## ${next}\n`, from));
+      expect(section.match(/^```html demo tailwind\b/gm)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe("every reference sheet", () => {
   for (const sheet of ALL_SHEETS) {
     it(`${label(sheet)} has ${MIN_SECTIONS}+ sections, References last, Recipes if promised`, () => {
@@ -470,17 +505,22 @@ describe("search index", () => {
   });
 });
 
-/** Maths sheets: numbered book-style headings are kept as they are, but each ends with its sources. */
-const MATHS_SHEETS = ["math-fundamentals", "reading-graphs", "constants-units-conversions", "notation"];
+/** Math sheets: numbered book-style headings are kept as they are, but each ends with its sources. */
+const MATHS_SHEETS = [
+  "math-fundamentals",
+  "reading-graphs",
+  "constants-units-conversions",
+  "notation",
+];
 
-describe("content/maths", () => {
+describe("content/math", () => {
   it("lists its sheets in order, with the coming-soon overview last", () => {
-    expect(listTopicEntries("maths").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
+    expect(listTopicEntries("math").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
   });
 
   for (const slug of MATHS_SHEETS) {
     it(`${slug} ends with a References section and keeps code lines short`, () => {
-      const body = readSheetBody({ topic: "maths", slug });
+      const body = readSheetBody({ topic: "math", slug });
       const sections = extractToc(body).filter((e) => e.depth === 2);
       expect(sections.at(-1)?.text).toBe("References");
       expect(body.split("## References")[1]).toMatch(/^- \[.+\]\(https:\/\/.+\)/m);
@@ -490,7 +530,7 @@ describe("content/maths", () => {
 });
 
 /** Topic overviews that have no real content yet: a heading and the meme, nothing else. */
-const COMING_SOON = ["maths", "physics", "biology", "ml-ai", "python", "robotics"];
+const COMING_SOON = ["math", "physics", "biology", "ml-ai", "python", "robotics"];
 /** The shared meme on every coming-soon page. */
 const COMING_SOON_IMAGE = "/images/coming-soon.png";
 

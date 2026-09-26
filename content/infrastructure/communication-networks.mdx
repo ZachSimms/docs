@@ -22,9 +22,9 @@ Fetch-level caching and headers live in [Fetch API](/typescript/web-apis/fetch-a
 | Processing | routers, firewalls, TLS, app servers | fewer hops, faster backends |
 | Queuing | packets waiting in buffers (bufferbloat) | AQM (`fq_codel`, CAKE), BBR |
 
-Light in fibre travels at about 200,000 km/s (refractive index ~1.5), or 5 µs per km.
+Light in fiber travels at about 200,000 km/s (refractive index ~1.5), or 5 µs per km.
 
-| Route | Distance | Vacuum one-way | Fibre one-way | Fibre RTT (best case) |
+| Route | Distance | Vacuum one-way | Fiber one-way | Fiber RTT (best case) |
 | :---- | :------- | :------------- | :------------ | :-------------------- |
 | New York → San Francisco | 4,130 km | 14 ms | 21 ms | 41 ms |
 | New York → London | 5,570 km | 19 ms | 28 ms | 56 ms |
@@ -42,8 +42,8 @@ Real RTTs run 1.5 to 3 times higher because of indirect routing, queuing and the
 | over 1 s | attention drifts |
 | over 10 s | task abandoned |
 
-- **Last mile**: the access link (DSL, cable, fibre, Wi-Fi, cellular) often adds more
-  latency than the backbone. Fibre-to-the-home is ~1–5 ms, cable 10–20 ms, mobile far more.
+- **Last mile**: the access link (DSL, cable, fiber, Wi-Fi, cellular) often adds more
+  latency than the backbone. Fiber-to-the-home is ~1–5 ms, cable 10–20 ms, mobile far more.
 - **Bandwidth-delay product** (BDP) = bandwidth × RTT = bytes in flight needed to fill the
   pipe. 100 Mbit/s × 80 ms = 1 MB, so TCP windows must reach 1 MB.
 
@@ -57,7 +57,7 @@ Real RTTs run 1.5 to 3 times higher because of indirect routing, queuing and the
 | 4 | Transport | TCP, UDP, QUIC (on UDP) | segment / datagram | port |
 | 3 | Network | IPv4, IPv6, ICMP | packet | IP address |
 | 2 | Data link | Ethernet, Wi-Fi (802.11), ARP / NDP | frame | MAC |
-| 1 | Physical | copper, fibre, radio | bit | |
+| 1 | Physical | copper, fiber, radio | bit | |
 
 The TCP/IP model folds 5–7 into Application and 1–2 into Link. HTTP/3 blurs the lines:
 QUIC does transport, TLS and multiplexing in user space on top of UDP.
@@ -264,7 +264,7 @@ prefer ECDSA certificates (smaller, faster) and keep the chain short.
 
 | Network | Typical RTT to the internet | Notes |
 | :------ | :-------------------------- | :---- |
-| Wired / fibre | 1–10 ms access | stable |
+| Wired / fiber | 1–10 ms access | stable |
 | Wi-Fi 5/6/7 | +2–20 ms, spiky | shared half-duplex medium; interference, retries |
 | 3G | 100–500 ms | largely switched off |
 | 4G LTE | 30–100 ms | control-plane promotion 50–100 ms when idle |
@@ -291,7 +291,7 @@ prefer ECDSA certificates (smaller, faster) and keep the chain short.
 
 | HTTP/1.1-era hack | Today (HTTP/2+) |
 | :---------------- | :-------------- |
-| Domain sharding (`static1.`, `static2.`) | harmful: extra DNS, TCP and TLS, breaks prioritisation |
+| Domain sharding (`static1.`, `static2.`) | harmful: extra DNS, TCP and TLS, breaks prioritization |
 | Concatenating all JS/CSS into one bundle | split by route; fine-grained files cache better |
 | Image sprites | use SVG or separate images |
 | Inlining assets as `data:` URIs | only for tiny critical assets; kills caching |
@@ -354,7 +354,7 @@ S: response         <--          1 RTT to first byte (0 on resume)
 | `fetch` | request → response; streamed bodies | HTTP/1.1, 2, 3 | APIs, uploads, streaming responses | request streaming needs HTTP/2+ and `duplex: "half"` |
 | Server-Sent Events (`EventSource`) | server → client, text | HTTP | notifications, LLM tokens, live feeds | auto-reconnect with `Last-Event-ID`; 6-connection cap on HTTP/1.1 |
 | WebSocket | full duplex, messages | TCP (upgrade from HTTP/1.1; RFC 8441 on h2) | chat, collaboration, games | no built-in backpressure (`WebSocketStream` fixes it in Chromium); proxies time out idle sockets |
-| WebRTC data channel | peer to peer, reliable or not | SCTP over DTLS over UDP | P2P files, low-latency game state | needs signalling plus STUN/TURN |
+| WebRTC data channel | peer to peer, reliable or not | SCTP over DTLS over UDP | P2P files, low-latency game state | needs signaling plus STUN/TURN |
 | WebRTC media | peer to peer audio/video | SRTP over UDP | calls, conferencing | SFU for more than a few peers |
 | WebTransport | client ↔ server streams + datagrams | HTTP/3 (QUIC) | low-latency media, games, unreliable updates | Baseline since 2026 (Safari 26.4); needs an HTTP/3 server |
 

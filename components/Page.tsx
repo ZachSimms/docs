@@ -24,6 +24,8 @@ interface PageProps {
   title: string;
   /** Primary footer link; the Search control is always appended after it. */
   footer: FooterLink;
+  /** An extra link between the primary link and Search (the home page's `Playground`). */
+  secondaryFooter?: FooterLink;
   /**
    * Also pin the footer link to the top-left of the content column, fixed
    * while scrolling, so long pages can be left without scrolling to the end.
@@ -36,14 +38,21 @@ interface PageProps {
 }
 
 /**
- * Render `<main><h1/><p>-</p>…</main><footer><p><a><i>…</i></a>  Search</p></footer>`.
+ * Render `<main><h1/><p>-</p>…</main><footer><p><a><i>…</i></a>  Search</p></footer>`
+ * (with an optional second link before Search).
  *
  * The two footer controls are separated by two spaces to stay on the
  * monospace grid. With `pinFooterLink` the primary link is repeated in a fixed
  * rail at the top-left of the column (the theme toggle occupies the top-right
  * from the root layout).
  */
-export function Page({ title, footer, pinFooterLink = false, children }: PageProps) {
+export function Page({
+  title,
+  footer,
+  secondaryFooter,
+  pinFooterLink = false,
+  children,
+}: PageProps) {
   return (
     <>
       {pinFooterLink && (
@@ -62,6 +71,14 @@ export function Page({ title, footer, pinFooterLink = false, children }: PagePro
             {footer.label}
           </DottedLink>
           {"  "}
+          {secondaryFooter && (
+            <>
+              <DottedLink href={secondaryFooter.href} ariaLabel={secondaryFooter.ariaLabel}>
+                {secondaryFooter.label}
+              </DottedLink>
+              {"  "}
+            </>
+          )}
           <SearchLink />
         </p>
       </footer>

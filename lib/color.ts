@@ -1,21 +1,21 @@
 /**
- * @file Colour maths for the swatch components, run at build time.
+ * @file Color math for the swatch components, run at build time.
  *
- * Parses the CSS colour syntaxes the sheets use (hex, `rgb()`, `hsl()`,
+ * Parses the CSS color syntaxes the sheets use (hex, `rgb()`, `hsl()`,
  * `oklch()`), converts OKLCH to sRGB with Björn Ottosson's OKLab matrices,
  * computes WCAG 2 relative luminance and contrast, and builds gamut-safe
  * tonal scales. Anything it can't read throws, so a typo in a sheet fails the
  * build instead of rendering an empty chip.
  */
 
-/** A gamma-encoded sRGB colour; channels are 0–1 (may fall outside when out of gamut). */
+/** A gamma-encoded sRGB color; channels are 0–1 (may fall outside when out of gamut). */
 export interface Rgb {
   readonly r: number;
   readonly g: number;
   readonly b: number;
 }
 
-/** An OKLCH colour: lightness 0–1, chroma ≥ 0, hue in degrees. */
+/** An OKLCH color: lightness 0–1, chroma ≥ 0, hue in degrees. */
 export interface Oklch {
   readonly l: number;
   readonly c: number;
@@ -31,9 +31,9 @@ export interface ScaleStep {
   readonly step: number;
   /** Chroma actually used, after reducing it to stay in sRGB. */
   readonly chroma: number;
-  /** The colour as CSS `oklch()`. */
+  /** The color as CSS `oklch()`. */
   readonly css: string;
-  /** The same colour as `#rrggbb`. */
+  /** The same color as `#rrggbb`. */
   readonly hex: string;
 }
 
@@ -67,8 +67,8 @@ const decode = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) 
 /**
  * Convert OKLCH to gamma-encoded sRGB (no clamping).
  *
- * @param color - The OKLCH colour.
- * @returns sRGB channels; values outside 0–1 mean the colour is out of gamut.
+ * @param color - The OKLCH color.
+ * @returns sRGB channels; values outside 0–1 mean the color is out of gamut.
  */
 export function oklchToSrgb({ l, c, h }: Oklch): Rgb {
   const rad = (h * Math.PI) / 180;
@@ -93,7 +93,7 @@ function hslToSrgb(h: number, s: number, l: number): Rgb {
 }
 
 /**
- * Whether an sRGB colour is displayable (every channel within 0–1).
+ * Whether an sRGB color is displayable (every channel within 0–1).
  *
  * @param rgb - Unclamped sRGB, e.g. from {@link oklchToSrgb}.
  */
@@ -101,32 +101,32 @@ export function inGamut({ r, g, b }: Rgb): boolean {
   return [r, g, b].every((x) => x >= -GAMUT_EPSILON && x <= 1 + GAMUT_EPSILON);
 }
 
-/** Clamp to a range, as CSS does for out-of-range colour arguments. */
+/** Clamp to a range, as CSS does for out-of-range color arguments. */
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
-/** A hue in degrees, normalised into 0–360 (JS `%` keeps the sign). */
+/** A hue in degrees, normalized into 0–360 (JS `%` keeps the sign). */
 const normalizeHue = (h: number) => ((h % 360) + 360) % 360;
 
-/** The error for a colour the parser (or a browser) wouldn't accept. */
+/** The error for a color the parser (or a browser) wouldn't accept. */
 const unsupported = (input: string) =>
   new Error(
-    `Unsupported colour "${input}" (use hex, rgb(), hsl() or oklch() without alpha; ` +
+    `Unsupported color "${input}" (use hex, rgb(), hsl() or oklch() without alpha; ` +
       "commas only in rgb()/hsl(); hue without %; hsl saturation and lightness in %)",
   );
 
 /**
- * Parse a CSS colour: `#rgb`, `#rrggbb`, `rgb()`, `hsl()` or `oklch()`.
+ * Parse a CSS color: `#rgb`, `#rrggbb`, `rgb()`, `hsl()` or `oklch()`.
  *
  * Only syntax that browsers also accept is allowed, so a chip can never render
- * empty while the build reports a colour: space syntax for all three
+ * empty while the build reports a color: space syntax for all three
  * functions, comma syntax for `rgb()`/`hsl()` only, a unitless hue, and `%` on
  * `hsl()` saturation and lightness. Alpha is rejected, because contrast
- * figures for a translucent colour would depend on what's behind it.
+ * figures for a translucent color would depend on what's behind it.
  * Out-of-range arguments are clamped as CSS does.
  *
- * @param input - The CSS colour text.
- * @returns The colour as sRGB (unclamped for out-of-gamut OKLCH).
- * @throws {Error} For any other syntax, e.g. named colours or alpha.
+ * @param input - The CSS color text.
+ * @returns The color as sRGB (unclamped for out-of-gamut OKLCH).
+ * @throws {Error} For any other syntax, e.g. named colors or alpha.
  */
 export function parseColor(input: string): Rgb {
   const text = input.trim();
@@ -160,7 +160,7 @@ export function parseColor(input: string): Rgb {
 /**
  * Format as `#rrggbb`, clamping out-of-gamut channels.
  *
- * @param rgb - The sRGB colour.
+ * @param rgb - The sRGB color.
  */
 export function toHex({ r, g, b }: Rgb): string {
   return `#${[r, g, b]
@@ -171,7 +171,7 @@ export function toHex({ r, g, b }: Rgb): string {
 /**
  * WCAG 2 relative luminance (0 for black, 1 for white).
  *
- * @param rgb - The sRGB colour; clamped first.
+ * @param rgb - The sRGB color; clamped first.
  */
 export function relativeLuminance({ r, g, b }: Rgb): number {
   const [lr, lg, lb] = [r, g, b].map((x) => decode(clamp01(x)));
@@ -179,10 +179,10 @@ export function relativeLuminance({ r, g, b }: Rgb): number {
 }
 
 /**
- * WCAG 2 contrast ratio between two colours, 1 to 21 (order doesn't matter).
+ * WCAG 2 contrast ratio between two colors, 1 to 21 (order doesn't matter).
  *
- * @param a - One colour.
- * @param b - The other colour.
+ * @param a - One color.
+ * @param b - The other color.
  */
 export function contrastRatio(a: Rgb, b: Rgb): number {
   const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
@@ -224,7 +224,7 @@ const floor3 = (x: number) => Math.floor(x * 1000) / 1000;
  * that step would leave the sRGB gamut, so every chip is displayable.
  *
  * @param hue - OKLCH hue in degrees.
- * @param chroma - Target OKLCH chroma (0.1–0.2 is typical for UI colours).
+ * @param chroma - Target OKLCH chroma (0.1–0.2 is typical for UI colors).
  */
 export function tonalScale(hue: number, chroma: number): ScaleStep[] {
   return SCALE_STEPS.map((step, i) => {

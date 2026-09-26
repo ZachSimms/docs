@@ -1,0 +1,527 @@
+---
+title: Open-world design
+date: 2026-09-26
+order: 1
+---
+
+Designing a world the player can cross in any order: what counts as an open world and when not to build one, the
+pillars, landmarks and the triangle rule, density and pacing, traversal, guidance without hand-holding, gating,
+quests, systemic design, reactive world state, story, the technology (streaming, LOD, floating point, saves, with
+Godot 4.7 notes), scope, playtesting, common mistakes and a checklist. World structures, Lynch's five elements,
+weenies, environmental storytelling and lore delivery are on [game world design](/writing/worldbuilding/game-worlds/);
+engine details are on the [Godot](/game-dev/godot/gdscript/) sheets. Examples from real games cite the developers'
+own talks or interviews where possible; invented examples are marked.
+
+## What "open world" means
+
+An open world is a continuous space the player can **approach freely**: pick the order, the route and often the
+goal. Most games sit somewhere between fully linear and fully open.
+
+| Shape | What it is | Examples | Choose it when |
+| :---- | :--------- | :------- | :------------- |
+| **Open world** | one continuous map, most of it reachable early; systems keep running everywhere | *The Legend of Zelda: Breath of the Wild*, *Elden Ring*, *Skyrim* | exploration and self-set goals are the core fantasy |
+| **Open zones** | several large open regions, reached from a menu, a hub or in sequence | *Dragon Age: Inquisition*, *Metal Gear Solid V: The Phantom Pain* (Afghanistan, Central Africa) | you want freedom inside a region but control over the order of regions |
+| **Wide-linear** | a linear sequence of spaces, some of them wide open sandboxes | *Metro Exodus*, *Uncharted: The Lost Legacy* (the Western Ghats) | authored pacing matters, with bursts of freedom |
+| **Hub** | a home base with branches to levels or missions | *Super Mario Odyssey* (the Odyssey and its kingdoms) | clear structure, natural place for story and upgrades |
+| **Interconnected / metroidvania** | one connected map gated by abilities, with shortcuts | *Hollow Knight*, *Dark Souls* | mastery of one place and satisfying loops back |
+
+The table of all structures, with trade-offs, is in
+[world structures](/writing/worldbuilding/game-worlds/#world-structures).
+
+### When not to go open world
+
+| Warning sign | Why it hurts | Instead |
+| :----------- | :----------- | :------ |
+| The story needs urgency or a fixed order | the player can wander for 50 hours while "the world ends tonight" | linear or wide-linear; a hub between chapters |
+| Small team, short schedule | an open world multiplies content, testing and technical work | a dense hub or a few open zones |
+| Core mechanics need controlled spaces | precision platforming, puzzle sequences, tuned encounters | authored levels; open only between them |
+| No verb makes the space itself fun | crossing the map becomes a chore between activities | shrink the map or build traversal first |
+| "Open world" is a marketing box to tick | size without purpose reads as emptiness | pick the shape that serves the core loop |
+
+## Design pillars
+
+Three pillars recur across open-world talks and interviews. Each design decision should serve at least one.
+
+| Pillar | Meaning | Test | Real examples |
+| :----- | :------ | :--- | :------------ |
+| **Freedom** | the player chooses order, route and approach | can the player skip, reorder or solve this another way? | *Breath of the Wild* lets the player head for the final boss once the opening plateau is done; Hidetaka Miyazaki said the aim for *Elden Ring* was for players to "enjoy the game in their own way and feel liberated in this new open world" |
+| **Discovery** | the world rewards curiosity with things the player finds, not things the UI points at | would a curious player find this without a marker? | *Outer Wilds* has no upgrades or collectibles: knowledge is the only progress |
+| **Emergence** | systems interact to produce situations nobody scripted | does this rule combine with others? | the *Breath of the Wild* "chemistry engine" (see [systemic design](#systemic-design)); Dan Hay described *Far Cry 5* as an "anecdote factory" |
+
+Freedom without discovery is an empty map; discovery without freedom is a museum; emergence without the other two is
+a toy box. Write the pillars down in one line each and use them to cut features.
+
+## Landmarks and sightlines
+
+Players navigate by what they can see. The world's large shapes are its interface.
+
+### The triangle rule
+
+At CEDEC 2017, *Breath of the Wild* director Hidemaro Fujibayashi and terrain lead artist Makoto Yonezu presented the
+game's field level design, including what the team called the **triangle rule**: build terrain from triangular
+shapes (mountains, hills, rock spires).
+
+<Diagram src="/images/diagrams/open-world-triangle-rule.svg" label="A side view of terrain seen by a player standing on the left. A small, shallow hill is closest. Behind it a medium triangle hides the lower part of a tall landmark tower, so only the tower's top shows above the ridge; a dashed sightline runs from the player's eye to the tower top. An arrow up the medium triangle's slope is labeled climb, and a dashed curved arrow at its base is labeled or go around. At the right a large triangle is labeled large: seen from afar, sets a goal. A note reads: each ridge hides what lies beyond it: see a peak, choose to climb or go around, and find the rest on the way." caption="The triangle rule: every ridge is a choice and a reveal" />
+
+| What a triangle does | How | Design use |
+| :------------------- | :-- | :--------- |
+| **Offers a choice** | climb over it or walk around it | two routes from every obstacle, both leading somewhere |
+| **Hides what is behind it** | the far side stays unseen until the player commits | surprise: a camp, a shrine, a view; landmarks appear bit by bit |
+| **Draws the eye** | the peak is a natural focal point | put a reward (or a lure) on or near the top |
+| **Works at every scale** | large (seen from afar), medium (a climb), small (a bump) | Robert Yang's summary stresses clear contrast between the three sizes, used everywhere |
+
+### Gravity and height
+
+The same talk described **gravity** (引力): places that pull the player in, the way light attracts insects
+(Fujibayashi's image, as reported by Famitsu). Shrines were made visible from far off, stables offered information,
+enemy camps held useful weapons, strange rock formations invited a closer look. Height signals importance: the taller
+a structure, the more it matters.
+
+| Tool | Guideline |
+| :--- | :-------- |
+| **Global landmarks** | a few shapes visible from most of the map: a castle, a volcano, a giant tree. They orient ("the castle is north") |
+| **Local landmarks** | one per region, visible within it: a lighthouse, a ruined arch |
+| **Silhouettes** | each landmark needs a shape readable at a distance and in fog; no two alike |
+| **Verticality** | high points are vantage points: reward the climb with a view of three or more new points of interest |
+| **Lures** | smoke, light, birds, sound, a glint of loot: small gravity between big landmarks |
+| **Occlusion** | ridges, forests and buildings hide as much as they show; a fully visible map has no surprises |
+
+Weenies, sightlines in towns and Lynch's elements are on
+[game world design](/writing/worldbuilding/game-worlds/#spatial-design-making-spaces-legible).
+
+## Density and pacing
+
+Density is **time between interesting things**, not things per square kilometer. It depends on movement speed,
+sightlines and what counts as interesting.
+
+<Diagram src="/images/diagrams/open-world-activity-loop.svg" label="A loop of five stages drawn as a circle of arrows. 1 Spot: a landmark, smoke or an odd shape on the horizon. 2 Travel: movement is play. 3 Detour: gravity, a nearer pull. 4 Arrive: loot, lore or a skill. 5 Vantage: climb up, see more, which leads back to Spot. The center reads: the loop, each stop shows the next." caption="The open-world activity loop" />
+
+| Layer | Spacing guideline (rule of thumb) | Examples (invented) |
+| :---- | :-------------------------------- | :------------------ |
+| **Major** (story, dungeon, town) | one per region; visible from far away | a fortress city, a volcano temple |
+| **Minor** (camp, puzzle, side quest) | the next one visible or audible from the last | a bandit camp, a sealed door, a stranded merchant |
+| **Micro** (pickup, vignette, view) | fills the travel between minor points | a rare herb, a skeleton with a note, a waterfall view |
+| **Rest** (empty on purpose) | after intense stretches; before reveals | a quiet plain, a long valley with music |
+
+Rules:
+
+- **Something is always in view.** From anywhere, the player should see at least one thing they haven't done.
+- **Vary the rewards.** Loot, lore, a new ability, a shortcut, a view, a story: the same reward everywhere feels like a chore.
+- **Vary the activities.** A map of 200 identical camps is one activity repeated, not 200.
+- **Leave emptiness deliberately.** Quiet stretches create anticipation and make the next find matter.
+
+### Checklist fatigue and the map-reveal tower
+
+The **tower** that reveals a region's map and fills it with icons became known as the "Ubisoft tower", after the
+*Assassin's Creed* series popularized it. It solves onboarding but turns the world into a list: the player stops
+looking at the world and starts clearing icons.
+
+| Approach | Example | Effect |
+| :------- | :------ | :----- |
+| Tower reveals icons | *Assassin's Creed*, *Far Cry 3* (radio towers), *Far Cry 4* (bell towers) | clear goals; checklist feel |
+| No towers; people and exploration reveal content | *Far Cry 5* dropped towers for discovery through characters | discovery through play |
+| Tower reveals terrain only | *Breath of the Wild* towers show the land, not the points of interest | the player still has to look |
+| Map fragments, player-placed markers | *Elden Ring* map fragments show terrain; players mark what they find | the map is the player's notes |
+
+If you keep a reveal mechanic, reveal **terrain and names**, not every activity, and let the player place their own
+markers.
+
+## Traversal
+
+If moving is fun, the world between points of interest is content; if it isn't, the world is a loading screen.
+
+| Traversal | Makes the world | Watch out for |
+| :-------- | :-------------- | :------------ |
+| **Climbing anything** (*Breath of the Wild*) | every cliff is a route; the triangle rule works | a stamina limit or weather is needed to keep choices meaningful |
+| **Gliding** | height becomes distance; vantage points become launch points | flattens the map if too cheap |
+| **Mounts** (*Elden Ring*'s Torrent drew on *Sekiro*'s traversal, Miyazaki said) | big distances feel short; mounted combat | terrain the mount can't handle; summoning rules |
+| **Vehicles** | speed and spectacle | the world must be built for the speed: roads, sightlines, streaming |
+| **Grapple, swing, wall-run** (*Marvel's Spider-Man*) | a city becomes a playground | needs anchor points everywhere; hard to gate |
+| **Walking as the game** (*Death Stranding*) | terrain itself is the challenge | only works if the whole design is built around it |
+
+### Fast travel
+
+| Choice | Pros | Cons |
+| :----- | :--- | :--- |
+| Anywhere, from the start | no tedium | the world between points stops existing |
+| To discovered points only | exploration first, convenience after | backtracking is still quick |
+| From in-world places only (stables, stations) | fiction and friction | can feel arbitrary |
+| Costs something (time, currency, supplies) | a real decision | punishes players with less time |
+| None | the journey is the game | only if traversal is excellent and the map is dense |
+
+Most games unlock fast travel after discovery and tie it to a place in the world.
+
+## Guidance without hand-holding
+
+Guidance ranges from a UI arrow to nothing at all. Move toward the world end of this scale wherever playtests allow.
+
+| Level | Technique | Example |
+| :---- | :-------- | :------ |
+| **Explicit UI** | quest marker, route line, compass pip | most open worlds; reliable and accessible |
+| **Directions** | written or spoken directions: "east of the river, past the broken bridge" | *The Elder Scrolls III: Morrowind*'s journal |
+| **Diegetic pointers** | something in the world points the way | *Ghost of Tsushima*'s Guiding Wind blows toward the goal instead of a map marker; *Elden Ring*'s Sites of Grace can show golden rays toward the main path |
+| **Landmarks and gravity** | the player sees something and goes | the triangle rule, towers, smoke |
+| **Knowledge** | the player works out where to go from clues | *Outer Wilds*: the ship's log records rumors to follow up |
+
+Rules:
+
+- **Give directions that can be followed in the world.** "North of the lake" needs a lake the player can find.
+- **Record what the player learned.** A journal, map notes or a log replaces the marker without losing the player.
+- **Offer a fallback.** An optional marker or hint system keeps less experienced players playing; default it off only if playtests show most players manage.
+- **Don't let UI replace the world.** If players stare at the minimap, the landmarks aren't doing their job.
+
+The "yellow paint" debate and general guidance cues (light, color, leading lines) are on
+[game world design](/writing/worldbuilding/game-worlds/#guiding-the-player).
+
+## Progression and gating
+
+Gates decide what the player can reach when. Soft gates keep freedom; hard gates keep order.
+
+<Diagram src="/images/diagrams/open-world-gates.svg" label="A horizontal scale from soft, where the player decides when, to hard, where the designer decides when. Four gate types sit on it from left to right. Difficulty: strong enemies, cold, heat or storms; skill or gear gets you through early; example Elden Ring areas. Knowledge: a fact you learn such as a route, a timing or a password, no item to find; example Outer Wilds. Ability: a tool or a move such as a glider, grapple, swimming or a key; show the gate first; example metroidvanias. Story: locked until a plot beat happens; keeps order but costs freedom, so use few; example most story games. A note reads: most open worlds mix all four; the further right, the more the order of play is fixed." caption="Four kinds of gate, from soft to hard" />
+
+| Gate | Player experience | Design notes |
+| :--- | :---------------- | :----------- |
+| **Difficulty** (soft) | "I'm not ready yet, but I could try" | readable danger: enemy look, level shown, environmental hints; Miyazaki said players can come back later when they're at an impasse |
+| **Environment** (soft) | cold, heat, poison, darkness | a consumable or gear counters it; skilled players push through |
+| **Knowledge** | "now I understand" | the answer must be learnable in the world; log the clues |
+| **Ability** | "I need something first" | show the gate before the key so the player remembers it |
+| **Story** (hard) | "the game won't let me" | use for a few big beats; explain the lock in the fiction |
+
+### Level scaling vs fixed zones
+
+| Model | How | Pros | Cons |
+| :---- | :-- | :--- | :--- |
+| **Fixed zones** | each area has a set difficulty | the world has a shape; returning stronger feels good | players can wander into a wall |
+| **Full scaling** | enemies match the player's level | any order works | growth feels pointless; *The Elder Scrolls IV: Oblivion*'s scaling was criticized because characters who leveled through non-combat skills fell behind their enemies |
+| **Ranged zones** | a zone locks its level within a range when first entered | order flexible, growth still visible | tuning each range |
+| **Scaled with caps** | enemies scale, but types stop at a ceiling | late-game power shows | ceilings must be tuned |
+
+*Skyrim* combines the last two: dungeons have a level range, and enemy types stop getting stronger past a plateau
+(UESP's leveling notes). Whatever the model, make the **danger readable** before the fight.
+
+## Quests and content
+
+| Kind | How it's made | Strength | Weakness |
+| :--- | :------------ | :------- | :------- |
+| **Handcrafted** | written, scripted and placed by hand | memorable stories, surprises, choices | expensive; limited count |
+| **Radiant / templated** | a template filled from pools: location, target, reward | cheap, endless | *Skyrim*'s Radiant system "cannot create large, complicated, or particularly interesting quests" (UESP) |
+| **Procedural** | generated from rules, often from world state | scale, replay | sameness ("procedural oatmeal") |
+| **Systemic / emergent** | no quest: systems create a situation | the player's own stories | hard to direct or guarantee |
+
+### Main and side content
+
+| Content | Job | Guideline |
+| :------ | :-- | :-------- |
+| **Main quest** | the spine: motivation, stakes, a sense of an ending | short enough to finish; points into the world, not away from it |
+| **Side quests** | character, place and theme | *The Witcher 3*'s quest team "declared war on 'fetch quests'" (Mateusz Tomaszkiewicz, 2016): every quest needs a story |
+| **Activities** | repeatable play: races, hunts, camps, puzzles | vary them; tie rewards to progression |
+| **Collectibles** | reasons to look closely | reward with lore or ability, not just a counter |
+
+### Quest templates, made interesting
+
+| Template | Flat version | Better version (invented) |
+| :------- | :----------- | :------------------------ |
+| Fetch | bring me 10 pelts | the pelts are from wolves that aren't wolves; the hunter who asked knows |
+| Kill | clear the camp | the bandits are deserters with a reason; talk, sneak or fight |
+| Escort | follow the slow NPC | the NPC takes a shortcut that shows you a new route |
+| Investigate | follow the glowing clues | clues in the world, deduced by the player, recorded in the journal |
+| Deliver | carry a letter | reading it changes who you give it to |
+
+CD Projekt's Tomaszkiewicz, on *Cyberpunk 2077*'s quests (E3 2019): "We never fail the quest based on choices. We
+treat those things as outcomes." Consequences keep the quest going instead of resetting it.
+
+## Systemic design
+
+At GDC 2017 ("Change and Constant"), Fujibayashi, art director Satoru Takizawa and technical director Takuhiro Dohta
+described a shift from **additive** design (each object has one scripted use) to **multiplicative** design: objects
+react to the player's actions, and to each other. The team prototyped these rules in a 2D top-down version of the
+game, burning grass and cutting trees before the 3D world existed.
+
+Dohta called the result a **chemistry engine**, a "rule-based state calculator", beside the physics engine. As
+reported from the talk:
+
+| Rule | Example |
+| :--- | :------ |
+| Elements (fire, water, ice, electricity, wind) can change a material's state | fire burns grass; electricity runs through metal |
+| Elements can change each other's state | water puts out fire; fire melts ice |
+| Materials don't change each other's state | a rock doesn't change a tree |
+
+| Principle | Why | Example (invented unless noted) |
+| :-------- | :-- | :------------------------------ |
+| **Few rules, many objects** | each new object inherits every interaction | anything wooden burns, floats and can be cut |
+| **Consistent** | players plan only with rules they trust | if one metal box conducts, all metal boxes conduct |
+| **Visible** | a rule the player can't see isn't a tool | sparks on wet ground, smoke from burning grass |
+| **Shared by player and enemies** | systems cut both ways and create stories | enemies' camps burn too; lightning hits enemies holding metal |
+| **Designed puzzles have several answers** | the systems will find more anyway | a shrine that accepts any way to weigh down the plate |
+
+Emergent situations need **testing tools**: spawn anything anywhere, record-and-replay, and a way to set weather and
+time.
+
+## Reactive world state
+
+A world feels alive when it runs without the player and remembers what the player did.
+
+| Kind | What changes | Examples |
+| :--- | :----------- | :------- |
+| **Schedules** | NPCs sleep, work, travel, eat | *Majora's Mask*'s three-day cycle, where each resident follows a timetable; *Oblivion*'s Radiant AI schedules |
+| **Clocks** | events happen whether the player is there or not | *Outer Wilds*: "Everything is on its own clock," said Alex Beachum |
+| **Factions** | territory, reputation, alliances | *Far Cry 5*'s Resistance meter builds per region toward story events |
+| **Persistence** | the world keeps what the player did | burned villages stay burned; *Middle-earth: Shadow of Mordor*'s Nemesis system has orc captains remember encounters |
+| **Ecology** | predators, prey, resources move and respawn | herds migrate; overhunting thins them (invented) |
+| **Weather and time** | visibility, danger, access | fog hides landmarks; a river freezes at night (invented) |
+
+Rules:
+
+- **Show the change.** A reputation number nobody notices is wasted; guards who mention the fire are not.
+- **Budget branches.** Every persistent change multiplies later content (dialogue, art states, tests).
+- **Simulate near, fake far.** Full simulation near the player; coarse updates (or timestamps) far away.
+- **Store changes, not the world.** Save what differs from the authored start (see [save state](#save-state)).
+
+Faction design and reputation systems are on [societies and cultures](/writing/worldbuilding/societies-cultures/) and
+[game world design](/writing/worldbuilding/game-worlds/#factions-reputation-and-reactive-worlds).
+
+## Story in an open world
+
+The **urgency problem**: the story says "hurry", the structure says "wander". Players either feel guilty exploring
+or stop believing the story (the ludonarrative dissonance described on
+[game world design](/writing/worldbuilding/game-worlds/#ludonarrative-dissonance)).
+
+| Technique | How | Example |
+| :-------- | :-- | :------ |
+| **Stakes that wait** | the threat is contained, or the goal is personal and slow | *Breath of the Wild*: Zelda has held Ganon back for a century; the player chooses when to go |
+| **A real clock** | time really runs out; the structure is built around repeats | *Majora's Mask*'s three days; *Outer Wilds*' loop |
+| **Order-free story beats** | beats can be found in any order and still make sense | *Breath of the Wild*'s recovered memories |
+| **Acts with open middles** | a linear opening and ending, open regions between | many open-world RPGs |
+| **Reactive dialogue** | characters mention what the player did and in what order | flags checked in dialogue conditions |
+| **Stories in places** | local stories finish where they start; the main story threads through them | side quests that are complete short stories |
+
+Writing tips:
+
+- Write each beat to stand alone: who, where, why now.
+- Keep a **state table** of what the player may or may not know at each beat; test the odd orders.
+- Let the player's choices echo later, cheaply: a line of dialogue, a changed sign, a new NPC in town.
+
+## Technical considerations
+
+A large world has to be streamed in, drawn cheaply at a distance, kept numerically stable far from the origin, and
+saved without writing everything.
+
+| Problem | Technique | Notes |
+| :------ | :-------- | :---- |
+| The world doesn't fit in memory | **streaming**: split the world into cells or chunks; load those near the player on background threads, unload far ones | stream ahead of the player in the direction of travel; faster traversal needs a bigger radius |
+| Distant geometry costs too much | **LOD**: simpler meshes at distance; **HLOD**: one merged mesh replaces a group of objects far away | fewer draw calls; bake HLODs per cell |
+| Hidden geometry is still drawn | **occlusion culling** | works best indoors and in dense cities; weak on open terrain |
+| Jitter far from the origin | **origin shifting** (floating origin) or **double precision** | 32-bit floats lose precision as values grow |
+| Saving a huge world | **delta saves**: store only what changed, keyed by stable ids per cell | load the authored cell, then apply its deltas |
+| Hitches on arrival | preload, time-slice instancing, pool common objects | profile on the slowest target hardware |
+
+### Floating point
+
+A 32-bit float has 24 bits of precision, so the smallest step between values grows with distance from zero. Godot's
+docs give these as the **maximum recommended single-precision ranges** (in units, usually meters) before rendering or
+physics artifacts:
+
+| Game type | Range |
+| :-------- | :---- |
+| First-person 3D | 2,048 to 4,096 |
+| Third-person 3D | 4,096 to 8,192 |
+| Top-down 3D | 16,384 to 32,768 |
+| Any 3D game | 32,768 to 65,536; beyond that double precision is usually required |
+
+| Fix | How | Cost |
+| :-- | :-- | :--- |
+| **Origin shifting** | when the player passes a threshold, move the whole world back so the player is near zero | touches every system that stores positions; tricky in multiplayer (Godot's docs say so) |
+| **Double precision** | build the engine with doubles | custom engine build; slower; shaders still use 32-bit floats |
+| **Smaller world** | keep the playable area within the ranges above | often the best answer |
+
+### Save state
+
+| Store | Example |
+| :---- | :------ |
+| Global flags | main quest stage, discovered regions, time of day |
+| Per-cell deltas | `cell (3, -2): chest_07 opened, bandit_camp_2 cleared` |
+| Per-entity state for important NPCs | position, schedule step, relationship |
+| Respawn timestamps | "camp cleared at day 12" instead of simulating the camp |
+
+Give every placed object a **stable id** in the editor, never an index that changes when a designer adds a crate.
+
+### In Godot 4.7
+
+| Need | Godot 4.7 | Notes |
+| :--- | :-------- | :---- |
+| Background loading | `ResourceLoader.load_threaded_request()`, `load_threaded_get_status()`, `load_threaded_get()` | details on [threaded loading](/game-dev/godot/resources-saving-export/#threaded-loading); `load_threaded_get()` blocks if the load isn't finished |
+| Adding chunks | `add_child()` on the main thread | the active scene tree is not thread-safe; build off-tree, or use `call_deferred` from threads |
+| Automatic LOD | mesh LOD is generated on import (glTF, `.blend`, FBX) | tune with `lod_bias` per instance and the viewport's `mesh_lod_threshold` |
+| Hierarchical LOD | **visibility ranges** on `GeometryInstance3D`: `visibility_range_begin`, `visibility_range_end`, margins, fade mode, `visibility_parent` | a merged far mesh as the parent hides detailed children at distance |
+| Occlusion culling | Project Settings > Rendering > Occlusion Culling > Use Occlusion Culling, plus a baked `OccluderInstance3D` | the docs recommend LOD and visibility ranges instead for open outdoor scenes |
+| Large coordinates | engine compiled with `scons precision=double` | official builds are single precision; GDExtensions must be rebuilt |
+| Terrain | a terrain add-on such as Terrain3D (a GDExtension), or chunked meshes | Godot has no built-in 3D terrain node |
+
+A chunk streamer that keeps a square of chunk scenes around the player loaded:
+
+```gdscript
+# chunk_streamer.gd: keeps chunks near the player loaded
+extends Node3D
+
+const CHUNK_SIZE := 256.0   # meters per chunk side
+const RADIUS := 2           # chunks kept in each direction
+const PATH := "res://world/chunks/chunk_%d_%d.tscn"
+
+@export var player: Node3D
+
+var _loaded: Dictionary[Vector2i, Node3D] = {}
+var _pending: Dictionary[Vector2i, String] = {}
+
+func _process(_delta: float) -> void:
+    var wanted := _wanted(_chunk_of(player.global_position))
+    for coord in wanted:
+        if not (_loaded.has(coord) or _pending.has(coord)):
+            _request(coord)
+    _poll()
+    for coord in _loaded.keys():
+        if not wanted.has(coord):
+            _loaded[coord].queue_free()
+            _loaded.erase(coord)
+
+func _chunk_of(pos: Vector3) -> Vector2i:
+    return Vector2i(floori(pos.x / CHUNK_SIZE),
+        floori(pos.z / CHUNK_SIZE))
+
+func _wanted(center: Vector2i) -> Array[Vector2i]:
+    var out: Array[Vector2i] = []
+    for x in range(-RADIUS, RADIUS + 1):
+        for z in range(-RADIUS, RADIUS + 1):
+            out.append(center + Vector2i(x, z))
+    return out
+
+func _request(coord: Vector2i) -> void:
+    var path := PATH % [coord.x, coord.y]
+    if not ResourceLoader.exists(path):
+        return                  # sea or map edge: no chunk
+    ResourceLoader.load_threaded_request(path)
+    _pending[coord] = path
+
+func _poll() -> void:
+    for coord in _pending.keys():
+        var path: String = _pending[coord]
+        match ResourceLoader.load_threaded_get_status(path):
+            ResourceLoader.THREAD_LOAD_LOADED:
+                _pending.erase(coord)
+                var scene: PackedScene = \
+                    ResourceLoader.load_threaded_get(path)
+                var chunk := scene.instantiate() as Node3D
+                chunk.position = Vector3(coord.x, 0.0,
+                    coord.y) * CHUNK_SIZE
+                add_child(chunk)   # main thread: safe
+                _loaded[coord] = chunk
+            ResourceLoader.THREAD_LOAD_FAILED, \
+            ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+                _pending.erase(coord)
+                push_error("chunk failed: " + path)
+```
+
+Next steps for a real game: unload with a bigger radius than you load (hysteresis) so chunks don't flicker at a
+border, instance at most one chunk per frame, apply each chunk's save deltas right after `instantiate()`, and give
+distant chunks a low-detail stand-in with visibility ranges.
+
+## Scope and production
+
+An open world multiplies everything: content, bugs, test time, streaming budgets. Plan for it.
+
+| Practice | Why |
+| :------- | :-- |
+| **Vertical slice first** | one finished region proves the loop, density, traversal and tech before the map grows |
+| **Content budget per region** | count majors, minors, micros and rests per region; track them like money |
+| **Size from travel time** | set the map size from the minutes it takes to cross at each traversal speed, not from square kilometers |
+| **Tools before content** | placement, scatter, road and river tools, quest editors, debug teleport and state editing |
+| **Modular kits** | reusable building and rock pieces with a few hero assets per region |
+| **Reuse with variation** | the same camp layout with a new faction, weather, time or twist |
+| **Guard quest dependencies** | Pawel Sasko on *The Witcher 3*: "any change of asset, location or scene may cause some unexpected consequences in the quest" |
+| **Cut regions, not density** | a smaller full map beats a larger empty one |
+
+## Playtesting and telemetry
+
+| Method | Reveals | Real use |
+| :----- | :------ | :------- |
+| **Position heatmaps** | where players go and don't | *Breath of the Wild*'s early playtest heatmaps showed players sticking to roads; later ones showed paths spread across the map |
+| **Path traces** | the routes between points, backtracking, circling | spot confusing areas and unused routes |
+| **Death and stuck maps** | difficulty spikes, bad collision, soft locks | Bungie tracked where *Halo 3* testers died, "down to the square foot" (Wired, 2007) |
+| **Time between discoveries** | whether density holds up | long gaps mean empty stretches or bad sightlines |
+| **Marker and map usage** | whether landmarks work | frequent map opening means the world isn't readable |
+| **Order of completion** | whether the story holds in odd orders | test the orders players actually take |
+| **Silent observation, think-aloud** | why the numbers look the way they do | telemetry shows what, watching shows why |
+
+Log events with a position, time, and player id: `discovered`, `died`, `quest_step`, `fast_travel`, `map_opened`.
+Plot them over the map image; compare builds.
+
+## Common mistakes
+
+| Symptom | Cause | Fix |
+| :------ | :---- | :-- |
+| "It's big but empty" | map sized before content; density by area | shrink the map; space content by travel time |
+| Players follow the minimap, not the world | markers do all the guiding | landmarks, directions, diegetic cues; markers optional |
+| A map full of icons | reveal mechanic shows every activity | reveal terrain only; let players place markers |
+| Every camp feels the same | one template repeated | vary layout, faction, twist and reward |
+| Players get lost or quit early | no global landmarks; unreadable danger | global landmarks; readable gates; a guidance fallback |
+| Levels feel pointless | full level scaling | fixed or ranged zones; visible growth |
+| Story urgency rings false | "hurry" plus a map to wander | stakes that wait, a real clock, or order-free beats |
+| Systems nobody uses | rules hidden or inconsistent | show the rules in play; teach them once, safely |
+| Traversal is a chore | walking between points is the only verb | movement as play; shortcuts; better fast travel |
+| Pop-in and hitches | streaming too late, too much per frame | bigger radius, time-slicing, LOD and HLOD |
+| Jitter far from spawn | 32-bit floats far from the origin | smaller map, origin shifting or double precision |
+| Saves break after patches | saves keyed by index or scene order | stable ids; per-cell deltas; versioned saves |
+| Quests break in odd orders | untested states | state tables; automated order tests |
+
+## Checklist
+
+```text
+OPEN-WORLD BRIEF
+PILLARS (one line each): freedom / discovery / emergence
+CORE LOOP: spot -> travel -> detour -> arrive -> vantage
+WHY OPEN? (and why not linear, zones or a hub)
+MAP SIZE: minutes to cross on foot / mount / glide
+REGIONS:            name, identity, difficulty, landmark
+GLOBAL LANDMARKS (visible from most of the map):
+DENSITY PER REGION: majors / minors / micros / rests
+TRAVERSAL VERBS:    fast travel rule:
+GUIDANCE: markers? directions? diegetic cue? journal?
+GATES: difficulty / environment / knowledge / ability / story
+LEVELING: fixed / ranged / scaled (caps?)
+MAIN STORY: urgency answer; beats that work in any order
+SIDE CONTENT: handcrafted / templated / systemic mix
+SYSTEMS: rules list; what interacts with what
+REACTIVITY: schedules, factions, persistence (budget)
+TECH: chunk size, load radius, LOD/HLOD, origin, saves
+TOOLS: placement, scatter, quest editor, debug teleport
+SLICE: which region, what "done" means
+TELEMETRY EVENTS: discovered, died, stuck, map_opened
+PLAYTEST QUESTIONS: where did you go first, and why?
+```
+
+## References
+
+- [Hidemaro Fujibayashi, Satoru Takizawa and Takuhiro Dohta, "Change and Constant: Breaking Conventions with *The Legend of Zelda: Breath of the Wild*" (GDC 2017, GDC Vault)](https://www.gdcvault.com/play/1024562/Change-and-Constant-Breaking-Conventions): multiplicative design, the chemistry engine
+- ["Breath of the Wild, science, and clever little lies" (Thumbsticks, 2017)](https://www.thumbsticks.com/gdc-17-breath-of-the-wild-science-lies/): report of Dohta's part of the GDC talk, the chemistry engine's rules
+- [Zelda Universe, "Zelda Team discusses Breath of the Wild's development and 2D Zelda prototype at GDC" (2017)](https://zeldauniverse.net/2017/03/09/zelda-team-discusses-breath-of-the-wilds-development-and-2d-zelda-prototype-at-gdc/): the 2D prototype
+- [CEDEC 2017 session: "Field Level Design in *The Legend of Zelda: Breath of the Wild*" (Japanese)](https://cedec.cesa.or.jp/2017/session/GD/s59007c6395fd6.html): speakers Hidemaro Fujibayashi and Makoto Yonezu
+- [Famitsu report of the CEDEC 2017 field design talk (Japanese, 2017)](https://www.famitsu.com/news/201708/31140870.html): gravity, the triangle rule, playtest heatmaps
+- [Robert Yang, "Open world level design: spatial composition and flow in Breath of the Wild" (Radiator Blog, 2017)](https://www.blog.radiator.debacle.us/2017/10/open-world-level-design-spatial.html): English summary and critique of the CEDEC talk, three scales of triangle
+- [Nintendo Life, "Zelda: Breath of the Wild's Ingenious Design Is All About Triangles, Apparently" (2017)](https://www.nintendolife.com/news/2017/10/zelda_breath_of_the_wilds_ingenious_design_is_all_about_triangles_apparently): height as importance, towers and heatmaps
+- [Tim Turi, "An interview with FromSoftware's Hidetaka Miyazaki" (PlayStation Blog, 2022)](https://blog.playstation.com/2022/01/28/an-interview-with-fromsoftwares-hidetaka-miyazki/): freedom in *Elden Ring*, Torrent and *Sekiro*'s traversal, coming back later
+- [Alex Beachum and Loan Verneau, "Curiosity-Driven Exploration: The Design of *Outer Wilds*" (GDC 2020 announcement, Game Developer)](https://www.gamedeveloper.com/design/attend-gdc-and-learn-how-i-outer-wilds-i-nailed-curiosity-driven-game-design)
+- [Kelsey Beachum, "Sparking Curiosity-Driven Exploration Through Narrative in *Outer Wilds*" (GDC 2021, GDC Vault)](https://gdcvault.com/play/1027008/Independent-Games-Summit-Sparking-Curiosity)
+- ["Live, die, repeat: How *Outer Wilds* piques curiosity in an ambivalent solar system" (Game Developer)](https://www.gamedeveloper.com/design/live-die-repeat-how-i-outer-wilds-i-piques-curiosity-in-an-ambivalent-solar-system): knowledge as the only progression, "Everything is on its own clock"
+- [Bill Rockenbeck, "Blowing from the West: Simulating Wind in *Ghost of Tsushima*" (GDC 2021, GDC Vault)](https://gdcvault.com/play/1027124/Blowing-from-the-West-Simulating) and [Game Developer's summary](https://www.gamedeveloper.com/audio/see-how-i-ghost-of-tsushima-s-i-guiding-wind-came-to-life-at-gdc-2021): the Guiding Wind instead of a map marker
+- [MCV/DEVELOP, "The Witcher 3 quest designers talk balancing story with gameplay and declaring war on 'fetch quests'" (2016)](https://mcvuk.com/development-news/the-witcher-3-quest-designers-talk-balancing-story-with-gameplay-and-declaring-war-on-fetch-quests/): Mateusz Tomaszkiewicz and Pawel Sasko
+- [Game Developer, "From *The Witcher 3* to *Cyberpunk*: the evolution of CD Projekt's quest design" (2019)](https://www.gamedeveloper.com/design/from-i-the-witcher-3-i-to-i-cyberpunk-i-the-evolution-of-cd-projekt-s-quest-design): choices as outcomes, not failures
+- [UESP, Skyrim: Radiant](https://en.uesp.net/wiki/Skyrim:Radiant) and [Skyrim: Leveling](https://en.uesp.net/wiki/Skyrim:Leveling): radiant quests; dungeon level ranges and enemy plateaus
+- [The Elder Scrolls IV: Oblivion (Wikipedia)](https://en.wikipedia.org/wiki/The_Elder_Scrolls_IV:_Oblivion): level scaling and its criticism
+- [Radiant AI (Wikipedia)](https://en.wikipedia.org/wiki/Radiant_AI): NPC schedules and the Radiant system in *Oblivion* and *Skyrim*
+- [Open world (Wikipedia)](https://en.wikipedia.org/wiki/Open_world): definition, map-reveal towers ("Ubisoft towers"), emergent gameplay
+- [Far Cry 5 (Wikipedia)](https://en.wikipedia.org/wiki/Far_Cry_5): towers removed, the Resistance meter, Dan Hay's "anecdote factory"
+- [Clive Thompson, "Halo 3: How Microsoft Labs Invented a New Science of Play" (Wired, 2007; republished by ABC News)](https://abcnews.com/Technology/story?id=3506473&page=1): playtest tracking of where players died
+- [Floating origin (Wikipedia)](https://en.wikipedia.org/wiki/Floating_origin): origin shifting for large worlds
+- [Godot docs: Large world coordinates](https://docs.godotengine.org/en/stable/tutorials/physics/large_world_coordinates.html): precision ranges, double-precision builds, limitations
+- [Godot docs: Background loading](https://docs.godotengine.org/en/stable/tutorials/io/background_loading.html) and [Thread-safe APIs](https://docs.godotengine.org/en/stable/tutorials/performance/thread_safe_apis.html)
+- [Godot docs: Visibility ranges (HLOD)](https://docs.godotengine.org/en/stable/tutorials/3d/visibility_ranges.html), [Mesh level of detail](https://docs.godotengine.org/en/stable/tutorials/3d/mesh_lod.html) and [Occlusion culling](https://docs.godotengine.org/en/stable/tutorials/3d/occlusion_culling.html)
+- [Terrain3D (Godot Asset Library)](https://godotengine.org/asset-library/asset/3892): a GDExtension terrain add-on

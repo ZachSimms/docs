@@ -45,9 +45,9 @@ is obvious. Closing slashes on void elements (`<meta … />`) are allowed and ig
 
 | Mode | Triggered by | Effect |
 | :--- | :----------- | :----- |
-| **No-quirks** (standards) | `<!doctype html>` | modern CSS behaviour; what you want |
+| **No-quirks** (standards) | `<!doctype html>` | modern CSS behavior; what you want |
 | **Limited-quirks** ("almost standards") | some legacy doctypes, e.g. XHTML 1.0 Transitional, HTML 4.01 Transitional with a system identifier | standards, except inline images in table cells get the old line-height gaps |
-| **Quirks** | no doctype, or an old/unknown public identifier | Navigator 4 and IE5-era emulation: unitless lengths and hashless colours accepted, percentage heights and line heights computed differently, tables don't inherit font sizes, `body` fills the viewport |
+| **Quirks** | no doctype, or an old/unknown public identifier | Navigator 4 and IE5-era emulation: unitless lengths and hashless colors accepted, percentage heights and line heights computed differently, tables don't inherit font sizes, `body` fills the viewport |
 
 - Check the mode from DevTools: `document.compatMode` is `"CSS1Compat"` (standards) or
   `"BackCompat"` (quirks).
@@ -99,7 +99,7 @@ Scripts never run in these sandboxed demos, so the `<noscript>` fallback shows a
 | `name="viewport"` | `width=device-width, initial-scale=1` | see the options table below |
 | `name="description"` | 1–2 sentence summary | often used as the search snippet; Google rewrites it when it judges the page text a better match. No fixed length limit; snippets are truncated to fit the screen |
 | `name="robots"` | `noindex`, `nofollow`, `none`, `nosnippet`, `max-snippet:50`, `max-image-preview:large`, `max-video-preview:-1`, `notranslate`, `noimageindex`, `unavailable_after:2027-01-01`, `indexifembedded` | default is `all`; `name="googlebot"` targets Google only; Google no longer uses `noarchive` |
-| `name="theme-color"` | a CSS colour; add `media` for light/dark | tints browser UI in Safari (macOS, iOS) and Chrome on Android and in installed PWAs; Firefox ignores it (not Baseline) |
+| `name="theme-color"` | a CSS color; add `media` for light/dark | tints browser UI in Safari (macOS, iOS) and Chrome on Android and in installed PWAs; Firefox ignores it (not Baseline) |
 | `name="color-scheme"` | `light`, `dark`, `light dark`, `only light` | tells the browser before CSS loads which schemes the page supports, so the default canvas and form controls start dark: no white flash (Baseline widely available) |
 | `name="referrer"` | `no-referrer`, `origin`, `strict-origin-when-cross-origin` (browser default), `same-origin`, `unsafe-url`… | page-wide referrer policy; per-link `referrerpolicy` overrides it |
 | `name="keywords"` | comma list | ignored by Google; don't bother |
@@ -127,7 +127,7 @@ Scripts never run in these sandboxed demos, so the `<noscript>` fallback shows a
   interactive-widget=resizes-content">
 ```
 
-The `color-scheme` meta (or the CSS property it mirrors) switches the browser's own colours:
+The `color-scheme` meta (or the CSS property it mirrors) switches the browser's own colors:
 the canvas, form controls and scrollbars. This demo sets the property per box to show both:
 
 ```html demo height=120 title="color-scheme.html"
@@ -161,7 +161,7 @@ the canvas, form controls and scrollbars. This demo sets the property per box to
 | `modulepreload` | fetch, parse and compile a module (and optionally its graph) early | Baseline 2023; `as` defaults to `script` |
 | `prefetch` | low-priority fetch for a *likely next* navigation | not supported in Safari (behind a flag); the speculation rules API is Chromium's replacement |
 | `expect` | with `blocking="render"`, hold first paint until an element id is parsed (cross-document view transitions) | Chromium and Safari 18.2+; not Baseline |
-| `me`, `author`, `license`, `search` | identity links (IndieWeb, Mastodon verification), author page, licence, OpenSearch description | |
+| `me`, `author`, `license`, `search` | identity links (IndieWeb, Mastodon verification), author page, license, OpenSearch description | |
 
 ### Resource-hint attributes
 
@@ -319,7 +319,7 @@ sizes to a few files:
 | File | Size | Who uses it |
 | :--- | :--- | :---------- |
 | `favicon.ico` | 32×32 | older browsers, feed readers, anything requesting `/favicon.ico` directly |
-| `icon.svg` | vector | current browsers; can switch colours with `@media (prefers-color-scheme: dark)` inside the SVG |
+| `icon.svg` | vector | current browsers; can switch colors with `@media (prefers-color-scheme: dark)` inside the SVG |
 | `apple-touch-icon.png` | 180×180, opaque background | iOS/iPadOS home screen (iOS ignores `rel="icon"`) |
 | `icon-192.png`, `icon-512.png`, `icon-mask.png` | 192, 512, 512 maskable | only in the manifest, only for installable apps |
 
@@ -335,7 +335,7 @@ content inside the central safe circle (about 80 % of the canvas).
 
 ## Head order for performance
 
-Order changes how early the browser discovers and prioritises resources. Rick Viscomi's capo.js
+Order changes how early the browser discovers and prioritizes resources. Rick Viscomi's capo.js
 ranks head elements into groups; keep each group above the next:
 
 | # | Group | Elements |
@@ -456,7 +456,7 @@ ranks head elements into groups; keep each group above the next:
 The `href` must match the `@font-face` URL exactly, or the browser downloads it twice. Preload
 only the one or two faces used above the fold (usually the regular text weight).
 
-### Dark-mode-aware theme colour
+### Dark-mode-aware theme color
 
 ```html
 <meta name="color-scheme" content="light dark">
@@ -523,7 +523,7 @@ Chromium and Safari only; Firefox ignores both lines and simply navigates.
 - [capo.js: head order rules](https://rviscomi.github.io/capo.js/user/rules/): Rick Viscomi's ranking of head elements
 - [Evil Martians: How to Favicon in 2026](https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs): Andrey Sitnik's minimal favicon set, updated yearly
 - [The Open Graph protocol](https://ogp.me/): required and optional `og:` properties
-- [Google Search Central: Robots meta tag](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag): directives Google honours
+- [Google Search Central: Robots meta tag](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag): directives Google honors
 - [Google Search Central: Article structured data](https://developers.google.com/search/docs/appearance/structured-data/article): recommended properties and author markup
 - [Google Search Central: Localized versions (hreflang)](https://developers.google.com/search/docs/specialty/international/localized-versions): reciprocal alternates and `x-default`
 - [W3C: Content Security Policy Level 3](https://www.w3.org/TR/CSP3/): which directives a meta-delivered policy ignores

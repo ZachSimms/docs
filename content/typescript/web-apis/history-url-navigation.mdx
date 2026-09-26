@@ -24,7 +24,7 @@ URL.parse("x", "https://ex.com/")?.href;
 
 | Property       | Example value for `https://me:pw@ex.com:8080/a/b?x=1#h` |
 | :------------- | :------------------------------------------------------ |
-| `href`         | the whole string (serialised, normalised)               |
+| `href`         | the whole string (serialized, normalized)               |
 | `origin`       | `https://ex.com:8080` (read-only)                       |
 | `protocol`     | `https:` (with the colon)                               |
 | `username`     | `me`                                                    |
@@ -105,7 +105,7 @@ strings: `String(n)` numbers yourself.
 - `decodeURIComponent` does **not** turn `+` into a space; `URLSearchParams` does.
 - A lone surrogate (`"\uD800"`) makes `encodeURIComponent` throw `URIError`; bad `%` sequences make
   `decodeURIComponent` throw too.
-- `url.search` serialises spaces as `%20`, `url.searchParams` as `+`; touching `searchParams`
+- `url.search` serializes spaces as `%20`, `url.searchParams` as `+`; touching `searchParams`
   rewrites `search` in its own style.
 
 ## URLPattern
@@ -189,7 +189,7 @@ declare function render(p: string, s: unknown): void;
 | `popstate` event                | fires on back/forward/`go` only, never on push/replace   |
 
 - **State** is structured-cloned: no functions, DOM nodes or class instances (`DataCloneError`).
-  Browsers cap its serialised size; keep ids in state and data in `sessionStorage`.
+  Browsers cap its serialized size; keep ids in state and data in `sessionStorage`.
 - **URL** must be same-origin or it throws `SecurityError`. So does calling it too often
   (browsers rate-limit pushes).
 - `pushState` never fires `hashchange`, even for a hash-only change.

@@ -4,10 +4,10 @@ date: 2026-09-25
 order: 1
 ---
 
-Modern CSS as of September 2026: the cascade, layers, selectors, layout, colour, queries and the
+Modern CSS as of September 2026: the cascade, layers, selectors, layout, color, queries and the
 newer platform features, with their Baseline status taken from MDN. Utility-first styling is in
 [Tailwind CSS](/design/css/tailwind/), motion in [Animation](/design/css/animation/) and palettes
-in [Colour theory](/design/principles/color-theory/).
+in [Color theory](/design/principles/color-theory/).
 
 ## Cascade & specificity
 
@@ -239,7 +239,7 @@ lets you opt out of inheritance.
 | :------- | :------ |
 | `"<length>"`, `"<percentage>"`, `"<length-percentage>"` | `10px`, `50%` |
 | `"<number>"`, `"<integer>"` | `1.5`, `3` |
-| `"<color>"` | any colour; animates smoothly |
+| `"<color>"` | any color; animates smoothly |
 | `"<angle>"`, `"<time>"` | `45deg`, `200ms` |
 | `"<length>+"` / `"<length>#"` | space- / comma-separated list |
 | `"auto \| <length>"` | either one |
@@ -306,19 +306,19 @@ img, svg, video { display: block; max-width: 100%; }
 | `round()`, `mod()`, `rem()` | `round(up, 13px, 4px)` gives `16px` |
 | `sin()`, `cos()`, `atan2()` | circular layouts |
 
-## Colour
+## Color
 
 | Syntax | Note |
 | :----- | :--- |
 | `oklch(70% 0.15 250)` | lightness, chroma, hue: perceptually even; the best choice for palettes |
 | `oklch(70% 0.15 250 / 50%)` | with alpha |
-| `color(display-p3 1 0 0)` | wide-gamut colour |
+| `color(display-p3 1 0 0)` | wide-gamut color |
 | `color-mix(in oklch, var(--c) 70%, white)` | tints, shades and hover states |
 | `color-mix(in srgb, var(--c), transparent 50%)` | alpha from a token |
-| `oklch(from var(--c) calc(l + 0.1) c h)` | relative colour: lighten |
-| `oklch(from var(--c) l c calc(h + 180))` | relative colour: complement |
-| `rgb(from var(--c) r g b / 40%)` | relative colour: swap the alpha |
-| `light-dark(#fff, #111)` | picks by `color-scheme`; colours only |
+| `oklch(from var(--c) calc(l + 0.1) c h)` | relative color: lighten |
+| `oklch(from var(--c) l c calc(h + 180))` | relative color: complement |
+| `rgb(from var(--c) r g b / 40%)` | relative color: swap the alpha |
+| `light-dark(#fff, #111)` | picks by `color-scheme`; colors only |
 | `contrast-color(var(--bg))` | black or white, whichever contrasts more (Baseline 2026) |
 | `currentColor` | the element's `color` |
 | `accent-color` | tints checkboxes, radios, range and progress |
@@ -336,7 +336,7 @@ img, svg, video { display: block; max-width: 100%; }
 
 The same derivations, computed live from one token:
 
-```html demo height=100 title="relative-colour.html"
+```html demo height=100 title="relative-color.html"
 <style>
   :root { --brand: oklch(62% 0.19 255); }
   .row { display: flex; gap: 8px; font: 11px monospace; }
@@ -357,8 +357,8 @@ The same derivations, computed live from one token:
 ```
 
 `oklch` chroma above about 0.37 falls outside sRGB and gets gamut-mapped; keep chroma around
-0.1–0.2 for UI colours. Contrast rules are covered in
-[Colour theory](/design/principles/color-theory/).
+0.1–0.2 for UI colors. Contrast rules are covered in
+[Color theory](/design/principles/color-theory/).
 
 ## Flexbox
 
@@ -577,7 +577,7 @@ work in Chrome 125+, Firefox 147+ and Safari 26+. MDN still labels the whole fea
 | `position-anchor: --menu` | which anchor to use (a popover opened by `popovertarget` gets its invoker implicitly) |
 | `position-area: block-end span-inline-end` | place it in a 3×3 grid around the anchor |
 | `top: anchor(bottom)` | position against one of the anchor's edges |
-| `justify-self: anchor-center` | centre on the anchor |
+| `justify-self: anchor-center` | center on the anchor |
 | `width: anchor-size(width)` | size from the anchor |
 | `position-try-fallbacks: flip-block, flip-inline` | alternatives when it would overflow |
 | `@position-try --name { ... }` | a named custom fallback |
@@ -659,7 +659,7 @@ no longer takes its size from its children on the queried axis.
 | `(prefers-color-scheme: dark)` | OS theme |
 | `(prefers-reduced-motion: reduce)` | tone down motion |
 | `(prefers-contrast: more)` | stronger borders and text |
-| `(forced-colors: active)` | Windows high contrast; use system colours |
+| `(forced-colors: active)` | Windows high contrast; use system colors |
 | `(prefers-reduced-transparency: reduce)` | Chromium only |
 | `(hover: hover) and (pointer: fine)` | mouse-like input |
 | `(pointer: coarse)` | touch: bigger hit targets |
@@ -698,7 +698,7 @@ body { font-family: "Inter", "Inter Fallback", sans-serif; }
   as="font" type="font/woff2" crossorigin>
 ```
 
-| `font-display` | Behaviour |
+| `font-display` | Behavior |
 | :------------- | :-------- |
 | `swap` | fallback shows at once and swaps in when the font loads (body text) |
 | `optional` | uses the font only if it's already fast or cached; no layout shift |
@@ -751,7 +751,7 @@ Logical properties follow the writing mode, so RTL and vertical text work withou
 | `overscroll-behavior: contain` | stops scroll chaining and pull-to-refresh (MDN: limited availability) |
 | `scrollbar-gutter: stable` | reserves the scrollbar's space so content doesn't shift (Baseline 2024) |
 | `scrollbar-width: thin` | `auto`, `thin`, `none` (Baseline 2024) |
-| `scrollbar-color: thumb track` | scrollbar colours (Baseline 2025) |
+| `scrollbar-color: thumb track` | scrollbar colors (Baseline 2025) |
 
 ```css
 .carousel {
@@ -856,7 +856,7 @@ Details are in [Animation](/design/css/animation/).
 | Feature | Status (MDN, Sept 2026) |
 | :------ | :---------------------- |
 | Layers, nesting, `:has()`, container size queries, subgrid, `color-mix()`, `oklch()`, range media queries, `dvh`, `lh` | Baseline widely available |
-| `@property`, `light-dark()`, relative colour, `@starting-style`, `transition-behavior`, `text-wrap: balance` | Baseline 2024 |
+| `@property`, `light-dark()`, relative color, `@starting-style`, `transition-behavior`, `text-wrap: balance` | Baseline 2024 |
 | Popover, `scrollbar-color`, `content-visibility`, same-document view transitions, invoker commands | Baseline 2025 |
 | `@scope`, container style queries, `field-sizing`, `contrast-color()`, `sibling-index()` | Baseline 2026 (newly available) |
 | Anchor positioning | core in all engines; MDN: limited |

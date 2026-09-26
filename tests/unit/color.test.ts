@@ -33,9 +33,9 @@ describe("parseColor", () => {
   });
 
   it("throws on anything it cannot read, so a typo fails the build", () => {
-    expect(() => parseColor("red")).toThrow(/Unsupported colour/);
-    expect(() => parseColor("#12")).toThrow(/Unsupported colour/);
-    expect(() => parseColor("oklch(0.5 0.1)")).toThrow(/Unsupported colour/);
+    expect(() => parseColor("red")).toThrow(/Unsupported color/);
+    expect(() => parseColor("#12")).toThrow(/Unsupported color/);
+    expect(() => parseColor("oklch(0.5 0.1)")).toThrow(/Unsupported color/);
   });
 
   it("rejects syntax browsers reject too, and any alpha", () => {
@@ -50,11 +50,11 @@ describe("parseColor", () => {
       "rgba(0, 0, 0, 0.5)",
       "oklch(0.5 0.1 30%)",
     ]) {
-      expect(() => parseColor(bad), bad).toThrow(/Unsupported colour/);
+      expect(() => parseColor(bad), bad).toThrow(/Unsupported color/);
     }
   });
 
-  it("normalises negative hues and clamps out-of-range arguments like CSS", () => {
+  it("normalizes negative hues and clamps out-of-range arguments like CSS", () => {
     expect(toHex(parseColor("hsl(-120 100% 50%)"))).toBe("#0000ff");
     expect(toHex(parseColor("hsl(-360 100% 50%)"))).toBe("#ff0000");
     expect(toHex(parseColor("oklch(0.7 -0.1 30)"))).toBe(toHex(parseColor("oklch(0.7 0 30)")));
@@ -71,7 +71,7 @@ describe("oklchToSrgb / inGamut", () => {
     expect(b).toBeCloseTo(0, 2);
   });
 
-  it("flags colours outside sRGB", () => {
+  it("flags colors outside sRGB", () => {
     expect(inGamut(oklchToSrgb({ l: 0.7, c: 0.1, h: 250 }))).toBe(true);
     expect(inGamut(oklchToSrgb({ l: 0.7, c: 0.4, h: 150 }))).toBe(false);
   });
@@ -85,10 +85,10 @@ describe("contrast", () => {
   });
 
   it("is symmetric and matches a known pair", () => {
-    const grey = parseColor("#767676");
+    const gray = parseColor("#767676");
     const white = parseColor("#fff");
-    expect(contrastRatio(grey, white)).toBeCloseTo(4.54, 2);
-    expect(contrastRatio(white, grey)).toBeCloseTo(4.54, 2);
+    expect(contrastRatio(gray, white)).toBeCloseTo(4.54, 2);
+    expect(contrastRatio(white, gray)).toBeCloseTo(4.54, 2);
   });
 
   it("grades ratios for normal and large text", () => {

@@ -191,4 +191,28 @@ describe("SearchPalette", () => {
     fireEvent.change(input, { target: { value: "zzzz" } });
     expect(await screen.findByText("no results")).toBeInTheDocument();
   });
+
+  it("on the playground, opens the chosen sheet in the reference panel instead of navigating", async () => {
+    const { OPEN_REFERENCE_EVENT } = await import("@/lib/reference-panel");
+    const opened: string[] = [];
+    const onOpen = (event: Event) =>
+      opened.push((event as CustomEvent<{ url: string }>).detail.url);
+    window.addEventListener(OPEN_REFERENCE_EVENT, onOpen);
+    window.history.pushState({}, "", "/playground/");
+    try {
+      render(<SearchPalette />);
+      pressCmdK();
+      const input = await screen.findByRole("combobox");
+      await waitFor(() => expect(requested.length).toBe(1));
+      fireEvent.change(input, { target: { value: "websockets" } });
+      await screen.findByRole("option");
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(opened).toEqual(["/typescript/backend/websockets/"]);
+      expect(pushed).toEqual([]);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      window.removeEventListener(OPEN_REFERENCE_EVENT, onOpen);
+      window.history.pushState({}, "", "/");
+    }
+  });
 });

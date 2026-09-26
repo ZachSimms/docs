@@ -122,14 +122,14 @@ describe("Cards", () => {
   it("renders > links with optional descriptions", () => {
     const { container } = render(
       <Cards>
-        <Card title="Docs" href="/maths/notation/" description="symbols" />
+        <Card title="Docs" href="/math/notation/" description="symbols" />
         <Card title="KaTeX" href="https://katex.org/" />
       </Cards>,
     );
     const cards = container.querySelectorAll("nav.cards > .card");
     expect(cards).toHaveLength(2);
     expect(cards[0]).toHaveTextContent("> Docs");
-    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/maths/notation/");
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/math/notation/");
     expect(cards[0]?.querySelector(".card-desc")).toHaveTextContent("symbols");
     expect(cards[1]?.querySelector(".card-desc")).toBeNull();
     const katex = screen.getByRole("link", { name: "KaTeX (opens in a new tab)" });

@@ -5,7 +5,7 @@ order: 1
 ---
 
 Everyday PostgreSQL 18 (current minor 18.6; 19 is in beta with GA expected October 2026): psql,
-types, SQL, indexes, plans, locking, operations and TypeScript clients. Schema modelling lives in
+types, SQL, indexes, plans, locking, operations and TypeScript clients. Schema modeling lives in
 [DB design & schemas](/databases/db-design/).
 
 ## psql
@@ -529,7 +529,7 @@ collation provider, so reindex FTS indexes after `pg_upgrade` from 17 or older.
 | btree (default) | `=`, ranges, `ORDER BY`, `LIKE 'abc%'` (with `text_pattern_ops` or C collation) |
 | hash | `=` only; rarely beats btree |
 | GIN | many keys per row: `jsonb`, arrays, `tsvector`, trigrams |
-| GiST | ranges, geometry, exclusion constraints, nearest neighbour (`ORDER BY a <-> b`) |
+| GiST | ranges, geometry, exclusion constraints, nearest neighbor (`ORDER BY a <-> b`) |
 | SP-GiST | unbalanced trees: points, IP ranges, text prefixes |
 | BRIN | huge append-only tables whose order follows a column (time series); tiny |
 | HNSW / IVFFlat | vector similarity (pgvector) |
@@ -781,7 +781,7 @@ A backup you have never restored is a hope, not a backup: schedule restore tests
 | View / function | Shows |
 | :-------------- | :---- |
 | `pg_stat_activity` | one row per session: state, query, `wait_event`, `xact_start` |
-| `pg_stat_statements` | cumulative stats per normalised query (extension) |
+| `pg_stat_statements` | cumulative stats per normalized query (extension) |
 | `pg_locks`, `pg_blocking_pids(pid)` | held and awaited locks, who blocks whom |
 | `pg_stat_user_tables` | seq vs index scans, live/dead rows, vacuum times |
 | `pg_stat_user_indexes` | `idx_scan = 0`: unused index |
@@ -1035,7 +1035,7 @@ RETURNING id, payload, attempts;
 ```
 
 ### Find slow queries
-Rank normalised queries by total time spent, the best first place to optimise.
+Rank normalized queries by total time spent, the best first place to optimize.
 
 ```sql
 -- needs shared_preload_libraries = 'pg_stat_statements'
@@ -1154,4 +1154,4 @@ New writes must fill `handle` before the constraint goes on: deploy the app chan
 - [Docker Hub: postgres](https://hub.docker.com/_/postgres): image variables and the 18+ data path
 - [PostgreSQL wiki: Don't Do This](https://wiki.postgresql.org/wiki/Don%27t_Do_This): common mistakes
 - [pgvector](https://github.com/pgvector/pgvector): vector types and indexes
-- [explain.dalibo.com](https://explain.dalibo.com/): plan visualiser
+- [explain.dalibo.com](https://explain.dalibo.com/): plan visualizer

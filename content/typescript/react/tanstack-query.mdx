@@ -124,17 +124,17 @@ export function useTodo(id: string) {
 | `QueryFunctionContext` | Meaning |
 | :--------------------- | :------ |
 | `queryKey` | the key, typed as passed |
-| `signal` | `AbortSignal`; aborted when the query is cancelled |
+| `signal` | `AbortSignal`; aborted when the query is canceled |
 | `pageParam` | infinite queries only |
 | `meta` | the query's `meta` option |
 | `client` | the `QueryClient` |
 
-| Cancellation | Behaviour |
+| Cancellation | Behavior |
 | :----------- | :-------- |
 | `signal` read in `queryFn` | fetch aborts when the last observer unmounts or the key changes |
 | `signal` never read | the request finishes and the result is cached anyway |
 | `queryClient.cancelQueries({ queryKey })` | cancel now; state reverts to before the fetch |
-| `CancelledError` | thrown for cancelled fetches; not shown as an error |
+| `CancelledError` | thrown for canceled fetches; not shown as an error |
 
 ## useQuery options
 
@@ -608,7 +608,7 @@ export default async function TodosPage() {
 | `queryClient.query(opts)` | fetch and cache; resolves with data, throws on error |
 | `.catch(noop)` | prefetch only: failed queries are simply not dehydrated |
 | `queryClient.infiniteQuery(opts)` | same for infinite queries |
-| `fetchQuery`, `prefetchQuery`, `ensureQueryData` | deprecated in recent v5 in favour of `query()` |
+| `fetchQuery`, `prefetchQuery`, `ensureQueryData` | deprecated in recent v5 in favor of `query()` |
 | `staleTime` above `0` | otherwise the client refetches right after hydration |
 | One client per request | never share a module-level client on the server |
 | `cache(makeQueryClient)` from React | share one server client across Server Components in a request |

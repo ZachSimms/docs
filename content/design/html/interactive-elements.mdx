@@ -13,7 +13,7 @@ components, with Baseline status from MDN and webstatus.dev. Styling hooks for t
 
 ## Native first
 
-Every native control below ships its role, state, focus behaviour and keyboard support. The
+Every native control below ships its role, state, focus behavior and keyboard support. The
 ARIA version from the [APG](https://www.w3.org/WAI/ARIA/apg/patterns/) is a spec for what
 you must rebuild by hand.
 
@@ -36,7 +36,7 @@ you must rebuild by hand.
 Tabs, menus (`role="menu"`, application-style), trees and grids have no native element; those
 are the cases where ARIA plus JavaScript is the right tool.
 
-### Keyboard behaviour you get for free
+### Keyboard behavior you get for free
 
 | Element | Keys |
 | :------ | :--- |
@@ -340,11 +340,11 @@ panel.addEventListener("beforematch", () => {
 | Mechanism | `content-visibility: hidden`, not `display: none`: the box keeps its margins, border and padding |
 | Breaks with | `display: none`, `contents` or `inline` on the element: then it is never revealed |
 | Support | limited: Chromium 102+ and Firefox 148+, not Safari. Elsewhere it acts like plain `hidden` |
-| vs `<details>` | `<details>` gets similar find-in-page behaviour in Chromium with no JS; use `until-found` for custom accordions and tabs |
+| vs `<details>` | `<details>` gets similar find-in-page behavior in Chromium with no JS; use `until-found` for custom accordions and tabs |
 
 ## `contenteditable`
 
-| Value | Behaviour | Support |
+| Value | Behavior | Support |
 | :---- | :-------- | :------ |
 | `true` or empty | rich editing: paste keeps formatting, Ctrl+B bolds | widely available |
 | `plaintext-only` | editable text; pasted formatting is dropped, no rich shortcuts | Baseline 2025 (March) |
@@ -369,7 +369,7 @@ panel.addEventListener("beforematch", () => {
   answer.
 - Its content is not submitted with a form; copy it into a hidden input on submit or use a
   form-associated custom element.
-- Pasted rich HTML is untrusted: sanitise before saving or rendering elsewhere.
+- Pasted rich HTML is untrusted: sanitize before saving or rendering elsewhere.
 - Rich-text editors (ProseMirror, Lexical and similar) exist because `contenteditable="true"`
   behaves differently across browsers; don't build one from scratch.
 
@@ -433,7 +433,7 @@ customElements.define("copy-button", CopyButton);
 | Kind | Declared as | Used as | Support |
 | :--- | :---------- | :------ | :------ |
 | Autonomous | `class X extends HTMLElement` | `<copy-button>` | widely available |
-| Customised built-in | `class X extends HTMLButtonElement` + `define("fancy-btn", X, { extends: "button" })` | `<button is="fancy-btn">` | limited: Chromium and Firefox. MDN notes Safari does not plan to support them |
+| Customized built-in | `class X extends HTMLButtonElement` + `define("fancy-btn", X, { extends: "button" })` | `<button is="fancy-btn">` | limited: Chromium and Firefox. MDN notes Safari does not plan to support them |
 
 Because of Safari, build autonomous elements. To keep native semantics, wrap a real
 `<button>` or `<input>` inside (light or shadow DOM) rather than extending it.
@@ -604,7 +604,7 @@ customElements.define("star-rating", StarRating);
 | `formStateRestoreCallback(state, reason)` | the browser restores state (back/forward, autofill) |
 
 You still owe the keyboard support: `ElementInternals` exposes semantics, it doesn't
-implement behaviour.
+implement behavior.
 
 ## Common mistakes
 
@@ -621,7 +621,7 @@ implement behaviour.
 | Hover-only popover or tooltip | no keyboard or touch access | trigger with a button, or show on focus as well as hover |
 | `role="menu"` on a navigation dropdown | screen readers switch to application-menu mode and expect arrow keys | a list of links in a popover or `<details>` |
 | `aria-expanded` added to a `popovertarget` button | duplicates the implicit state | leave it off |
-| Customised built-ins (`is="…"`) | never works in Safari | autonomous element wrapping a native control |
+| Customized built-ins (`is="…"`) | never works in Safari | autonomous element wrapping a native control |
 | Label in the page, input in a shadow root | ids don't cross the boundary | form-associated element or keep them together |
 | `hidden="until-found"` with `display: none` on the same element | never revealed | leave `display` alone |
 
@@ -824,7 +824,7 @@ it appears in the page's heading outline.
 
 - [MDN: The Details disclosure element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/details): `open`, `name`, `toggle`
 - [MDN: ::details-content](https://developer.mozilla.org/en-US/docs/Web/CSS/::details-content): styling the panel
-- [MDN: The Dialog element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog): modal behaviour, `closedby`, focus and accessibility notes
+- [MDN: The Dialog element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog): modal behavior, `closedby`, focus and accessibility notes
 - [MDN: Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API): concepts, light dismiss, `auto`/`manual`/`hint`
 - [MDN: Using the Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using): implicit ARIA relationship and focus order
 - [MDN: Invoker Commands API](https://developer.mozilla.org/en-US/docs/Web/API/Invoker_Commands_API): `commandfor`, `command`, `CommandEvent`
@@ -832,7 +832,7 @@ it appears in the page's heading outline.
 - [MDN: inert](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/inert): what it disables
 - [MDN: hidden](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden): `until-found` and `beforematch`
 - [MDN: contenteditable](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/contenteditable): values including `plaintext-only`
-- [MDN: Using custom elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements): lifecycle callbacks, customised built-ins and Safari
+- [MDN: Using custom elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements): lifecycle callbacks, customized built-ins and Safari
 - [MDN: Using shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM): modes, slots, declarative shadow DOM
 - [MDN: ElementInternals](https://developer.mozilla.org/en-US/docs/Web/API/ElementInternals): form association, validity, default ARIA
 - [WHATWG HTML: Interactive elements](https://html.spec.whatwg.org/multipage/interactive-elements.html): `details`, `summary`, `dialog`, commands, dialog focusing steps

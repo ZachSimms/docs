@@ -7,7 +7,7 @@ order: 3
 Lighting in Three.js r18x: the light classes and their physical units, shadow maps and how to tune them,
 image-based lighting with `scene.environment` and PMREM, HDR loading, tone mapping and exposure, fog,
 baked lighting and what each choice costs. Materials that respond to light are in
-[Geometry & materials](/typescript/three-js/geometry-materials/); the loop and colour pipeline in
+[Geometry & materials](/typescript/three-js/geometry-materials/); the loop and color pipeline in
 [Fundamentals](/typescript/three-js/fundamentals/).
 
 ## Light types
@@ -51,7 +51,7 @@ Physically correct lighting is the only mode: `renderer.physicallyCorrectLights`
 | :--- | :----- |
 | `decay = 2` default | inverse-square falloff, like real light; leave it |
 | `distance = 0` default | no cut-off; a positive value adds a smooth window to zero at that range (a perf hint, not physics) |
-| Scene scale matters | point/spot intensity is candela; at 10 m, a light is 100× dimmer than at 1 m. Model in metres |
+| Scene scale matters | point/spot intensity is candela; at 10 m, a light is 100× dimmer than at 1 m. Model in meters |
 | `light.power` | point/spot/rect lights: set lumens instead (`power = 800` ≈ a 60 W bulb) |
 | Directional/ambient/hemisphere | no falloff; values around `1`–`5` with exposure 1 |
 | Old tutorials look too dark | they used legacy scaling; point/spot values in the tens to hundreds are normal now |
@@ -137,7 +137,7 @@ its target with the player, or use cascaded shadow maps (`CSM` from `three/addon
 
 ## Acne vs peter-panning
 
-| Artefact | Looks like | Cause | Fix |
+| Artifact | Looks like | Cause | Fix |
 | :------- | :--------- | :---- | :-- |
 | Shadow acne | stripes / moiré on lit surfaces | surface self-shadows due to depth quantisation | small negative `bias` (`-0.0001` … `-0.001`) or `normalBias` (`0.01` … `0.05`) |
 | Peter-panning | shadow detached from the object's base | too much bias | reduce bias; prefer `normalBias` |
@@ -221,12 +221,12 @@ renderer.toneMappingExposure = 1.0; // photographic stops
 | `LinearToneMapping` | exposure only | debugging |
 | `ReinhardToneMapping` | soft, desaturated highlights | simple scenes |
 | `CineonToneMapping` | filmic, contrasty | legacy looks |
-| `ACESFilmicToneMapping` | punchy, shifts bright colours toward yellow/white | games, cinematic |
+| `ACESFilmicToneMapping` | punchy, shifts bright colors toward yellow/white | games, cinematic |
 | `AgXToneMapping` | graceful highlight desaturation, neutral hues | HDR-heavy scenes, Blender-matching |
-| `NeutralToneMapping` | Khronos PBR Neutral: keeps base colours accurate | e-commerce, product viewers |
+| `NeutralToneMapping` | Khronos PBR Neutral: keeps base colors accurate | e-commerce, product viewers |
 | `CustomToneMapping` | your GLSL via `ShaderChunk.tonemapping_pars_fragment` | special grading |
 
-Per material: `toneMapped: false` skips it (UI colours that must match CSS exactly). Changing
+Per material: `toneMapped: false` skips it (UI colors that must match CSS exactly). Changing
 `renderer.toneMapping` at runtime recompiles materials; switch rarely.
 
 ## Fog
@@ -241,7 +241,7 @@ scene.background = new Color(0xb8c6d9);  // match it!
 | :- | :---------------------- | :------------------------ |
 | Falloff | linear from `near` to `far` | `1 - exp(-(density·d)²)` |
 | Feels | controllable, game-like | natural haze |
-| Tip | set camera `far` ≈ fog `far` to hide popping | density `0.01`–`0.05` for metre scenes |
+| Tip | set camera `far` ≈ fog `far` to hide popping | density `0.01`–`0.05` for meter scenes |
 
 Materials opt out with `fog: false`. `ShaderMaterial` needs `fog: true` plus the fog chunks
 (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`).
@@ -252,7 +252,7 @@ Real-time lights are per-frame cost; baked lighting is a texture lookup.
 
 | Technique | How |
 | :-------- | :-- |
-| Bake to base colour | bake lighting in Blender into the albedo, render with `MeshBasicMaterial`; zero lights needed |
+| Bake to base color | bake lighting in Blender into the albedo, render with `MeshBasicMaterial`; zero lights needed |
 | `lightMap` | separate baked texture on `uv1` (`texture.channel = 1`), `lightMapIntensity`; keeps PBR reflections |
 | `aoMap` | ambient occlusion; only affects indirect light (env, ambient, hemisphere) |
 | Static shadows | `shadowMap.autoUpdate = false`, then `shadowMap.needsUpdate = true` when things move |
@@ -279,7 +279,7 @@ assign it after loading.
 ## Recipes
 
 ### Studio product lighting
-Use for model viewers and configurators: neutral IBL, one key light with a soft shadow, accurate colours.
+Use for model viewers and configurators: neutral IBL, one key light with a soft shadow, accurate colors.
 
 ```ts
 import {

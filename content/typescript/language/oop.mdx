@@ -6,7 +6,7 @@ order: 5
 
 Classes, modifiers, inheritance, interfaces, generics, `this`, mixins, decorators and the
 prototype machinery underneath, as TypeScript 5.9 on an ES2022+ target sees them. Plain
-object types live in [Objects](/typescript/language/objects/); pattern catalogues in
+object types live in [Objects](/typescript/language/objects/); pattern catalogs in
 [Design patterns](/typescript/design-architecture/design-patterns/).
 
 ## Classes
@@ -14,7 +14,7 @@ object types live in [Objects](/typescript/language/objects/); pattern catalogue
 ```ts title="account.ts"
 class Account {
   readonly id: string;           // field declaration
-  balance = 0;                   // initialiser infers number
+  balance = 0;                   // initializer infers number
   owner?: string;                // optional field
   label!: string;                // definitely assigned later
 
@@ -34,7 +34,7 @@ const acc = new Account("a1", 50).deposit(25);
 
 | Member                | Syntax                                     | Notes |
 | :-------------------- | :----------------------------------------- | :---- |
-| Field                 | `name: T` / `name = value`                 | `strictPropertyInitialization` requires an initialiser, a constructor assignment, `?` or `!` |
+| Field                 | `name: T` / `name = value`                 | `strictPropertyInitialization` requires an initializer, a constructor assignment, `?` or `!` |
 | Constructor           | `constructor(a: T) {}`                     | no return type; overloads allowed |
 | Parameter property    | `constructor(private x: T) {}`             | declares and assigns in one go (TS-only syntax) |
 | Method                | `m(): R {}`                                | lives on the prototype, shared by instances |
@@ -169,10 +169,10 @@ class Dog extends Animal {
 | `noImplicitOverride` | error when an override lacks the keyword |
 | Extending built-ins | `extends Error`/`Array` works on ES2015+ targets |
 
-### Field initialisation order
+### Field initialization order
 
-1. Base class fields initialise, then the base constructor body runs.
-2. `super()` returns; derived fields initialise; the derived constructor body runs.
+1. Base class fields initialize, then the base constructor body runs.
+2. `super()` returns; derived fields initialize; the derived constructor body runs.
 
 ```ts
 class Base {
@@ -309,12 +309,12 @@ const robot = new (class {
 })();
 const all: Speaker[] = [duck, robot]; // duck typing
 
-class Kilometres {
+class Kilometers {
   #brand!: void;                      // private field
   constructor(readonly value: number) {}
 }
 // @ts-expect-error: # or private members make it nominal
-const km: Kilometres = { value: 5 };
+const km: Kilometers = { value: 5 };
 ```
 
 ### `instanceof` narrowing
@@ -459,7 +459,7 @@ class Node2 {
 
 ## Composition & mixins
 
-Favour "has-a" over "is-a": inject collaborators behind interfaces instead of growing a
+Favor "has-a" over "is-a": inject collaborators behind interfaces instead of growing a
 deep class tree.
 
 ```ts
@@ -685,7 +685,7 @@ Dog.prototype.constructor = Dog;
 | :-------- | :------ | :------ |
 | Single responsibility | one reason to change | split `ReportService` into `ReportBuilder` + `ReportMailer` |
 | Open/closed | extend without editing | new `PaymentMethod` class instead of another `switch` case |
-| Liskov substitution | subtypes honour the base contract | `Square extends Rectangle` with coupled setters breaks callers |
+| Liskov substitution | subtypes honor the base contract | `Square extends Rectangle` with coupled setters breaks callers |
 | Interface segregation | small, focused interfaces | `Readable` and `Writable`, not one `FileLike` |
 | Dependency inversion | depend on abstractions | constructor takes `Logger`, not `ConsoleLogger` |
 
@@ -712,7 +712,7 @@ await new Checkout(new Card()).total(999);
 
 ### Class that extends
 
-When a subclass is a specialised version of its base: it reuses the base's state and overrides behaviour.
+When a subclass is a specialized version of its base: it reuses the base's state and overrides behavior.
 
 ```ts
 class Animal {
@@ -954,7 +954,7 @@ When instances hold `Date`s, private state or derived fields and must cross a JS
 type OrderJSON = { id: string; total: number; at: string };
 
 class Order {
-  #notes: string[] = []; // private: never serialised
+  #notes: string[] = []; // private: never serialized
   constructor(
     readonly id: string,
     readonly total: number,

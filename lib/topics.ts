@@ -22,7 +22,7 @@ export interface Topic {
  * newest-first numbering.
  */
 export const TOPICS: readonly Topic[] = [
-  { slug: "maths", name: "Maths" },
+  { slug: "math", name: "Math" },
   { slug: "physics", name: "Physics" },
   { slug: "biology", name: "Biology" },
   { slug: "fitness", name: "Fitness" },

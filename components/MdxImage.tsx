@@ -17,7 +17,7 @@ const SIZES = "(max-width: 600px) 100vw, 64ch";
  *
  * Files under `public/` (URL paths starting with `/`) get `next/image` with
  * their real width and height, read at build time, so the layout reserves
- * space and the browser receives optimised sizes. Anything else, such as a
+ * space and the browser receives optimized sizes. Anything else, such as a
  * remote URL, falls back to a plain lazily-loaded `<img>`. An empty or
  * non-string `src` renders nothing.
  *

@@ -61,7 +61,7 @@ btn.addEventListener("click", async () => {
     });
   } catch (err) {
     if (err instanceof DOMException &&
-        err.name === "AbortError") return; // cancelled
+        err.name === "AbortError") return; // canceled
     throw err;
   }
 });
@@ -168,7 +168,7 @@ must be handled by the service worker (or the server), which then redirects with
 Native sheet where it exists, copy-to-clipboard everywhere else.
 
 ```ts
-type Shared = "shared" | "copied" | "cancelled";
+type Shared = "shared" | "copied" | "canceled";
 
 export async function shareLink(
   data: { title: string; url: string },
@@ -180,7 +180,7 @@ export async function shareLink(
       return "shared";
     } catch (err) {
       const name = err instanceof DOMException && err.name;
-      if (name === "AbortError") return "cancelled";
+      if (name === "AbortError") return "canceled";
       // NotAllowedError etc.: fall through to copy
     }
   }

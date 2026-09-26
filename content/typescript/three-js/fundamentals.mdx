@@ -6,7 +6,7 @@ order: 1
 
 Three.js (r18x, ES modules, `@types/three`) from the ground up: installing and importing, the scene /
 camera / renderer triad, the render loop, sizing and pixel ratio, the scene graph and transforms, cameras,
-controls, colour management and freeing GPU memory. Next: [Geometry & materials](/typescript/three-js/geometry-materials/),
+controls, color management and freeing GPU memory. Next: [Geometry & materials](/typescript/three-js/geometry-materials/),
 [Lights & shadows](/typescript/three-js/lights-shadows/); the raw API underneath is [WebGL](/typescript/web-apis/webgl/).
 
 ## Install & imports
@@ -18,7 +18,7 @@ npm i -D @types/three   # keep its minor = three's minor
 
 | Entry point | What it gives you |
 | :---------- | :---------------- |
-| `three` | core: `Scene`, `Mesh`, `WebGLRenderer`, maths, loaders base |
+| `three` | core: `Scene`, `Mesh`, `WebGLRenderer`, math, loaders base |
 | `three/addons/*` | examples: controls, loaders, post-processing, utils (maps to `examples/jsm/*`) |
 | `three/addons` | one barrel with every addon (convenient, heavier for dev servers) |
 | `three/webgpu` | core **plus** `WebGPURenderer`, node materials, `RenderPipeline` |
@@ -78,7 +78,7 @@ No bundler: an import map, with the version pinned in both URLs.
 | `obj.isMesh` style flags | type guards that survive duplicate copies of three; `instanceof` does not |
 | `import type { GLTF } from ".../GLTFLoader.js"` | result type of `loadAsync` |
 | `userData` is `Record<string, any>` | wrap it in your own typed accessor |
-| `ColorRepresentation` | `number \| string \| Color` for any colour parameter |
+| `ColorRepresentation` | `number \| string \| Color` for any color parameter |
 
 ```ts
 import { BoxGeometry, Mesh, MeshStandardMaterial }
@@ -217,11 +217,11 @@ Let CSS own layout (`canvas { width: 100%; height: 100%; display: block }`) and 
 | Camera looks down | its local `-Z` |
 | Screen | `+X` right, `+Y` up in NDC; DOM `clientY` grows down |
 | Angles | radians everywhere (`MathUtils.degToRad`), except `PerspectiveCamera.fov` in degrees |
-| Units | arbitrary, but **1 unit = 1 metre** matches glTF and physically based lights |
+| Units | arbitrary, but **1 unit = 1 meter** matches glTF and physically based lights |
 | Rotation order | Euler `"XYZ"` by default (`rotation.order`) |
 | Face winding | counter-clockwise = front |
 
-Blender exports glTF as `+Y` up metres, so models usually drop in at the right scale. Other tools may
+Blender exports glTF as `+Y` up meters, so models usually drop in at the right scale. Other tools may
 need `scale.setScalar(0.01)` (cm) or a `-Math.PI / 2` X rotation (Z-up sources).
 
 ## Object3D transforms
@@ -243,7 +243,7 @@ Everything in the graph (meshes, lights, cameras, groups) is an `Object3D`.
 | `renderOrder` | force draw order (mostly for transparency) |
 | `layers` | 32 bit mask; camera and raycaster only see enabled layers |
 | `frustumCulled` | `true`; set `false` for objects moved in a vertex shader |
-| `userData` | your data; copied by `clone()` and serialised by `toJSON()` |
+| `userData` | your data; copied by `clone()` and serialized by `toJSON()` |
 
 ```ts
 // position, rotation, scale are readonly references:
@@ -252,7 +252,7 @@ mesh.position.set(1, 0, -2);
 mesh.rotation.set(0, Math.PI / 4, 0);
 mesh.scale.setScalar(0.5);
 
-// quaternion from axis-angle, then slerp towards it
+// quaternion from axis-angle, then slerp toward it
 const target = new Quaternion().setFromAxisAngle(
   new Vector3(0, 1, 0), Math.PI,
 );
@@ -352,7 +352,7 @@ ratio decides whether distant surfaces fight (z-fighting).
 All controls are addons and extend the core `Controls` base: `enabled`, `connect(el)`, `disconnect()`,
 `dispose()`, `update(delta?)`.
 
-| Class | Behaviour |
+| Class | Behavior |
 | :---- | :-------- |
 | `OrbitControls` | orbit a `target`; keeps "up" up; zoom and pan |
 | `MapControls` | orbit variant: left-drag pans, for maps and top-down views |
@@ -410,14 +410,14 @@ console.log(renderer.info.programs?.length); // shaders
 Tooling: [Spector.js](https://spector.babylonjs.com/) captures raw GL calls, `lil-gui` (`three/addons/libs/lil-gui.module.min.js`)
 tweaks parameters, `Stats` (`three/addons/libs/stats.module.js`) shows FPS.
 
-## Colour management
+## Color management
 
-Since r152 colour management is on by default. Lighting maths happens in **linear** sRGB; inputs in sRGB
+Since r152 color management is on by default. Lighting math happens in **linear** sRGB; inputs in sRGB
 are converted in, output is converted back to sRGB.
 
 ```text
- hex / CSS colours ──(treated as sRGB)──┐
- colour textures (map, emissiveMap)     ├─► linear working space
+ hex / CSS colors ──(treated as sRGB)──┐
+ color textures (map, emissiveMap)     ├─► linear working space
    texture.colorSpace = SRGBColorSpace ─┘       │ lighting, blending
  data textures (normal, roughness…)             ▼
    colorSpace = NoColorSpace (default)   tone mapping
@@ -429,10 +429,10 @@ are converted in, output is converted back to sRGB.
 
 | Setting | Default | Rule |
 | :------ | :------ | :--- |
-| `ColorManagement.enabled` | `true` | leave on; `false` restores pre-r152 behaviour |
+| `ColorManagement.enabled` | `true` | leave on; `false` restores pre-r152 behavior |
 | `ColorManagement.workingColorSpace` | `LinearSRGBColorSpace` | leave it |
 | `renderer.outputColorSpace` | `SRGBColorSpace` | leave it (post-processing: see `OutputPass`) |
-| `texture.colorSpace` | `NoColorSpace` | set `SRGBColorSpace` on colour maps you load yourself |
+| `texture.colorSpace` | `NoColorSpace` | set `SRGBColorSpace` on color maps you load yourself |
 | `new Color(0xff8800)`, `"#ff8800"` | sRGB input | converted to linear on the way in |
 | `color.setRGB(r, g, b)` | linear input | pass `SRGBColorSpace` as 4th arg for sRGB |
 | `color.getHex()` / `getStyle()` | sRGB output | round-trips with the hex you set |
@@ -441,13 +441,13 @@ are converted in, output is converted back to sRGB.
 const tex = await new TextureLoader().loadAsync(
   "/albedo.jpg",
 );
-tex.colorSpace = SRGBColorSpace;  // colour data
+tex.colorSpace = SRGBColorSpace;  // color data
 const nrm = await new TextureLoader().loadAsync(
   "/normal.png",
 ); // data: leave NoColorSpace
 ```
 
-`GLTFLoader` sets colour spaces for you. The removed properties you still meet in old tutorials:
+`GLTFLoader` sets color spaces for you. The removed properties you still meet in old tutorials:
 `renderer.outputEncoding`, `texture.encoding`, `sRGBEncoding`, `renderer.physicallyCorrectLights`,
 `renderer.useLegacyLights`.
 
@@ -481,15 +481,15 @@ shared between meshes (one material on 100 meshes) must be disposed once, when n
 | Nothing at all | canvas 0×0 | CSS height on parent; `display: block`; call `setSize` |
 | Nothing at all | forgot `renderer.render` or the loop | `setAnimationLoop` |
 | Black mesh | lit material, no lights | add lights or `scene.environment`; or `MeshBasicMaterial` |
-| Black mesh | light intensity too low for physical units | point/spot in candela: try `50`–`500` at a few metres |
+| Black mesh | light intensity too low for physical units | point/spot in candela: try `50`–`500` at a few meters |
 | Black / invisible | normals missing or inverted | `computeVertexNormals()`; `side: DoubleSide` to test |
 | Plane invisible from one side | back-face culling | `side: DoubleSide` or rotate it |
 | Stretched image | aspect not updated | `camera.aspect = w/h; updateProjectionMatrix()` |
 | Blurry on HiDPI | pixel ratio 1 | `setPixelRatio(Math.min(devicePixelRatio, 2))` |
-| Washed out / too dark colours | colour space mix-up | `map.colorSpace = SRGBColorSpace`; data maps untouched |
+| Washed out / too dark colors | color space mix-up | `map.colorSpace = SRGBColorSpace`; data maps untouched |
 | Model tiny or huge | unit mismatch | measure with `new Box3().setFromObject(m)` |
 | Flicker between surfaces | z-fighting | raise `near`, `polygonOffset`, separate geometry |
-| `WebGPURenderer` throws on `render` | not initialised | `await renderer.init()` or use `setAnimationLoop` |
+| `WebGPURenderer` throws on `render` | not initialized | `await renderer.init()` or use `setAnimationLoop` |
 | "Multiple instances" warning | two versions installed, or npm plus CDN | `npm ls three`; align versions; `resolve.dedupe: ["three"]` in Vite |
 
 ## Recipes
@@ -634,7 +634,7 @@ requestRender();     // first frame
 ```
 
 ### Frame an object
-Use after loading a model of unknown size: centre it and pull the camera back to fit.
+Use after loading a model of unknown size: center it and pull the camera back to fit.
 
 ```ts
 import { Box3, Sphere, Vector3 } from "three";
@@ -661,10 +661,10 @@ export function frame(
 
 ## References
 
-- [three.js docs](https://threejs.org/docs/): API reference for every class; [manual](https://threejs.org/manual/): fundamentals, responsive design, colour management, cleanup
+- [three.js docs](https://threejs.org/docs/): API reference for every class; [manual](https://threejs.org/manual/): fundamentals, responsive design, color management, cleanup
 - [Manual: Installation](https://threejs.org/manual/#installation), [Color management](https://threejs.org/manual/#color-management), [How to dispose of objects](https://threejs.org/manual/#how-to-dispose-of-objects), [Rendering on demand](https://threejs.org/manual/#rendering-on-demand)
 - [three.js examples](https://threejs.org/examples/) and their source in [mrdoob/three.js](https://github.com/mrdoob/three.js)
 - [Migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide) and [release notes](https://github.com/mrdoob/three.js/releases): read before every upgrade
 - [@types/three](https://github.com/three-types/three-ts-types): the TypeScript definitions
-- [Discover three.js](https://discoverthreejs.com/): book-length walkthrough (some APIs predate r15x colour management)
+- [Discover three.js](https://discoverthreejs.com/): book-length walkthrough (some APIs predate r15x color management)
 - [three.js forum](https://discourse.threejs.org/): the best place to search for gotchas

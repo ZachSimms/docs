@@ -48,7 +48,7 @@ function MdxAnchor({
  * Site-wide defaults: `a`, `img`, and the authoring components available to
  * every sheet without an import: `Note`, `Callout`, `Tabs`/`Tab`,
  * `Steps`/`Step`, `Cards`/`Card`, `FileTree` for directory layouts,
- * `Graph` for function plots, `Swatches`/`Scale`/`Contrast` for colours,
+ * `Graph` for function plots, `Swatches`/`Scale`/`Contrast` for colors,
  * `Demo` for live HTML/CSS (inserted by `lib/remark-demo.ts`), `Diagram`
  * for inline SVG diagrams and `YouTube` for embedded videos.
  */

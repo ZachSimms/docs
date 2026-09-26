@@ -1,4 +1,4 @@
-/* Reproduced from williamjansson.com (home + post stylesheets merged), colours lifted into variables. */
+/* Reproduced from williamjansson.com (home + post stylesheets merged), colors lifted into variables. */
 
 :root {
   --lh: 1.5em;
@@ -87,7 +87,7 @@ html {
 }
 
 /* The column is at most 90ch and may shrink to the viewport (minimum 0, not `auto`): wide tables,
-   code and maths scroll inside their own boxes instead of widening the page on phones. */
+   code and math scroll inside their own boxes instead of widening the page on phones. */
 body {
   font: 1em/var(--lh) monospace;
   background: var(--bg);
@@ -613,7 +613,7 @@ kbd {
   }
 }
 
-/* <Swatches>/<Scale>/<Contrast>: real colour chips (fixed colours, same in both themes). */
+/* <Swatches>/<Scale>/<Contrast>: real color chips (fixed colors, same in both themes). */
 .swatches {
   margin: 0 0 var(--lh);
 }
@@ -817,7 +817,7 @@ kbd {
   stroke: var(--graph-3);
 }
 
-/* KaTeX: display maths gets the page rhythm and scrolls sideways if wide; colours follow the theme. */
+/* KaTeX: display math gets the page rhythm and scrolls sideways if wide; colors follow the theme. */
 .katex-display {
   margin: 0 0 var(--lh);
   overflow-x: auto;
@@ -829,8 +829,8 @@ kbd {
   font-size: 1.15em;
 }
 
-/* Table rows that carry maths (fractions, roots) need more vertical room,
-   and maths inside a cell is sized closer to the surrounding monospace text. */
+/* Table rows that carry math (fractions, roots) need more vertical room,
+   and math inside a cell is sized closer to the surrounding monospace text. */
 tr:has(.katex) td,
 tr:has(.katex) th {
   padding-top: 0.35em;
@@ -852,7 +852,7 @@ footer p {
 
 /* Theme toggle: a fixed rail with the same column grid as <body>, so the button
    sits on the right edge of the content column rather than the viewport. */
-/* Also the top bar: a full-width band in the page colour behind `../` and the toggle
+/* Also the top bar: a full-width band in the page color behind `../` and the toggle
    (the back rail sits on top of it), fading out over its last 1em so content scrolling
    up disappears smoothly instead of showing through the controls. */
 .theme-toggle-rail {
@@ -1164,7 +1164,7 @@ nav[data-menu] a,
   caret-color: currentColor;
 }
 
-/* Theme text colour, dimmed, so the hint follows light and dark mode. */
+/* Theme text color, dimmed, so the hint follows light and dark mode. */
 .search input::placeholder {
   color: currentColor;
   opacity: 0.5;
@@ -1251,4 +1251,14 @@ body[data-search-open] {
   .tap-flash {
     animation: none;
   }
+}
+
+/* Inside the playground's reference panel (`<html data-embed>`, set by EMBED_INIT_SCRIPT): the sheet
+   alone, without the top bar, `../`, footer or contents menu, and less top padding. */
+html[data-embed] :is(.theme-toggle-rail, .back-rail, .toc-menu, .toc-rail, footer) {
+  display: none;
+}
+
+html[data-embed] body {
+  padding: 1.25em 1.25em 0;
 }
