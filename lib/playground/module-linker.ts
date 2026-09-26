@@ -15,6 +15,7 @@
  */
 
 import { init, parse } from "es-module-lexer";
+import { esmUrl, readDependencies, type Dependencies } from "./npm";
 import { dirname, hasFile, joinPath } from "./project";
 
 /** Compile one file to JavaScript (see `transpile.ts`). */
@@ -35,6 +36,8 @@ export type Resolution =
 export interface LinkedModules {
   readonly entryUrl: string;
   readonly urls: ReadonlyMap<string, string>;
+  /** Problems with `package.json` entries that were skipped. */
+  readonly warnings: readonly string[];
 }
 
 /** Extensions tried, in order, for an extensionless relative import. */
@@ -51,11 +54,8 @@ const URL_SCHEME = /^(?:https?|data|blob):/i;
 const MEDIA_TYPES: Readonly<Record<string, string>> = {
   json: "application/json",
   svg: "image/svg+xml",
-  css: "text/css",
   txt: "text/plain",
 };
-/** CDN that serves npm packages as browser ES modules. */
-const ESM_CDN = "https://esm.sh/";
 
 /**
  * Encode text as a base64 `data:` URL.
@@ -110,19 +110,32 @@ function candidates(base: string): string[] {
  * @param from - The importing file's path.
  * @param specifier - The specifier as written.
  * @param files - The project's files.
+ * @param deps - The project's npm dependencies (read from `package.json` when omitted).
  */
 export function resolveSpecifier(
   from: string,
   specifier: string,
   files: Readonly<Record<string, string>>,
+  deps: Dependencies = readDependencies(files),
 ): Resolution {
   if (URL_SCHEME.test(specifier)) return { kind: "url", url: specifier };
   if (specifier.startsWith("node:")) {
     return { kind: "missing", reason: "Node built-ins aren't available in the browser" };
   }
+  if (specifier.startsWith("bun:")) {
+    return {
+      kind: "missing",
+      reason: "Bun's built-in modules aren't part of the browser emulation",
+    };
+  }
   const isRelative =
     specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/");
-  if (!isRelative) return { kind: "url", url: ESM_CDN + specifier };
+  if (!isRelative) {
+    const url = esmUrl(specifier, deps);
+    return url
+      ? { kind: "url", url }
+      : { kind: "missing", reason: "it isn't a valid npm package name" };
+  }
   const joined = specifier.startsWith("/")
     ? specifier.slice(1)
     : joinPath(dirname(from), specifier);
@@ -132,6 +145,18 @@ export function resolveSpecifier(
   return found ? { kind: "file", path: found } : { kind: "missing" };
 }
 
+/** A JS module that injects a stylesheet into the document (a no-op in workers). */
+function cssModule(path: string, css: string): string {
+  return `if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.dataset.file = ${JSON.stringify(path)};
+  style.textContent = ${JSON.stringify(css)};
+  document.head.append(style);
+}
+export default ${JSON.stringify(css)};
+`;
+}
+
 /** Extension of a path, lower-case, without the dot. */
 const extOf = (path: string) => path.slice(path.lastIndexOf(".") + 1).toLowerCase();
 
@@ -139,10 +164,11 @@ const extOf = (path: string) => path.slice(path.lastIndexOf(".") + 1).toLowerCas
 function createLinker(files: Readonly<Record<string, string>>, transpile: Transpile) {
   const urls = new Map<string, string>();
   const stack: string[] = [];
+  const deps = readDependencies(files);
 
   /** Resolve a specifier to the URL that should replace it, or throw. */
   function urlFor(from: string, specifier: string): string {
-    const resolved = resolveSpecifier(from, specifier, files);
+    const resolved = resolveSpecifier(from, specifier, files, deps);
     if (resolved.kind === "url") return resolved.url;
     if (resolved.kind === "file") return visit(resolved.path);
     const why = resolved.reason ? ` (${resolved.reason})` : "";
@@ -183,7 +209,10 @@ function createLinker(files: Readonly<Record<string, string>>, transpile: Transp
     const text = files[path] ?? "";
     const mediaType = MEDIA_TYPES[extOf(path)];
     let url: string;
-    if (mediaType) {
+    if (extOf(path) === "css") {
+      // `import "./styles.css"` (React-style): a module that adds the stylesheet to the page.
+      url = toDataUrl(cssModule(path, text));
+    } else if (mediaType) {
       url = toDataUrl(text, mediaType);
     } else {
       stack.push(path);
@@ -206,7 +235,7 @@ function createLinker(files: Readonly<Record<string, string>>, transpile: Transp
     }
   }
 
-  return { urls, visit, rewrite };
+  return { urls, visit, rewrite, warnings: deps.warnings };
 }
 
 /**
@@ -226,7 +255,7 @@ export async function linkModules(
   await init();
   const linker = createLinker(files, transpile);
   const entryUrl = linker.visit(entry);
-  return { entryUrl, urls: linker.urls };
+  return { entryUrl, urls: linker.urls, warnings: linker.warnings };
 }
 
 /**

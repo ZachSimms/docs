@@ -13,10 +13,16 @@ export const LANGUAGE_IDS = [
   "javascript",
   "typescript",
   "web",
+  "web-ts",
+  "react",
   "python",
+  "bun",
+  "hono",
+  "nextjs",
   "cpp",
   "rust",
   "gdscript",
+  "markdown",
 ] as const;
 
 /** One playground language. */
@@ -28,9 +34,23 @@ export type LanguageId = (typeof LANGUAGE_IDS)[number];
  * - `web`: the sandboxed live preview;
  * - `python`: Pyodide in a worker inside the runner frame;
  * - `cpp` / `rust`: Compiler Explorer (with a fallback service);
- * - `godot`: the self-hosted Godot web build in a sandboxed frame.
+ * - `godot`: the self-hosted Godot web build in a sandboxed frame;
+ * - `bun`: a worker with an emulation of Bun's APIs, driven by the HTTP panel;
+ * - `node`: a WebContainer on its own isolated page (`/playground/node/`);
+ * - `markdown`: nothing runs, the preview renders.
  */
-export type RunnerKind = "script" | "web" | "python" | "cpp" | "rust" | "godot";
+export type RunnerKind =
+  "script" | "web" | "python" | "cpp" | "rust" | "godot" | "bun" | "node" | "markdown";
+
+/** Groups of the project picker, in order. */
+export const LANGUAGE_GROUPS = ["Web", "Scripts", "Servers", "Compiled", "Game", "Notes"] as const;
+
+/** A request preset for the HTTP panel of a server project. */
+export interface HttpPreset {
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly path: string;
+  readonly body?: string;
+}
 
 /** A reference sheet suggested for a language. */
 export interface SheetRef {
@@ -42,6 +62,7 @@ export interface SheetRef {
 export interface LanguageSpec {
   readonly id: LanguageId;
   readonly label: string;
+  readonly group: (typeof LANGUAGE_GROUPS)[number];
   readonly runner: RunnerKind;
   /** Whether the program reads the stdin box. */
   readonly stdin: boolean;
@@ -55,6 +76,8 @@ export interface LanguageSpec {
   readonly template: Project;
   /** Sheets suggested when the reference panel's search is empty. */
   readonly refs: readonly SheetRef[];
+  /** Ready-made requests for the HTTP panel (server projects). */
+  readonly httpPresets?: readonly HttpPreset[];
 }
 
 /** Code sent to Compiler Explorer is kept in its logs for this many days. */
@@ -62,59 +85,88 @@ export const COMPILER_EXPLORER_LOG_DAYS = 32;
 
 const REMOTE_CREDIT = `Compiled on Compiler Explorer (godbolt.org): your code is sent there and logged for ${COMPILER_EXPLORER_LOG_DAYS} days.`;
 
-/** The languages in menu order. */
+/** A reference sheet by URL (its label is the path). */
+const sheet = (href: string): SheetRef => ({ href, label: href.replace(/^\/|\/$/g, "") });
+
+/** The languages in menu order (grouped by {@link LANGUAGE_GROUPS}). */
 export const LANGUAGES: readonly LanguageSpec[] = [
+  {
+    id: "web",
+    label: "HTML/CSS/JS",
+    group: "Web",
+    runner: "web",
+    stdin: false,
+    credit: "Live preview in a sandbox; console output shows beside it.",
+    template: TEMPLATES.web,
+    refs: [
+      sheet("/design/css/css/"),
+      sheet("/design/css/tailwind/"),
+      sheet("/typescript/frontend/dom/"),
+      sheet("/typescript/frontend/events/"),
+    ],
+  },
+  {
+    id: "web-ts",
+    label: "HTML/CSS/TS",
+    group: "Web",
+    runner: "web",
+    stdin: false,
+    credit: "Live preview in a sandbox; TypeScript is stripped in your browser, not checked.",
+    template: TEMPLATES["web-ts"],
+    refs: [
+      sheet("/typescript/frontend/dom/"),
+      sheet("/typescript/language/fundamentals/"),
+      sheet("/design/css/css/"),
+    ],
+  },
+  {
+    id: "react",
+    label: "React",
+    group: "Web",
+    runner: "web",
+    stdin: false,
+    credit: "Live preview in a sandbox; React and npm packages load from esm.sh.",
+    template: TEMPLATES.react,
+    refs: [
+      sheet("/typescript/react/react/"),
+      sheet("/typescript/react/react-hooks/"),
+      sheet("/typescript/react/typescript-react/"),
+    ],
+  },
   {
     id: "typescript",
     label: "TypeScript",
+    group: "Scripts",
     runner: "script",
     stdin: false,
     credit: "Runs in your browser (types are stripped, not checked).",
     template: TEMPLATES.typescript,
     refs: [
-      { href: "/typescript/language/fundamentals/", label: "typescript/language/fundamentals" },
-      {
-        href: "/typescript/design-architecture/modules-packages/",
-        label: "typescript/design-architecture/modules-packages",
-      },
-      { href: "/typescript/language/array-methods/", label: "typescript/language/array-methods" },
-      { href: "/typescript/language/async-promises/", label: "typescript/language/async-promises" },
+      sheet("/typescript/language/fundamentals/"),
+      sheet("/typescript/design-architecture/modules-packages/"),
+      sheet("/typescript/language/array-methods/"),
+      sheet("/typescript/language/async-promises/"),
     ],
   },
   {
     id: "javascript",
     label: "JavaScript",
+    group: "Scripts",
     runner: "script",
     stdin: false,
     credit: "Runs in your browser, in a sandbox.",
     template: TEMPLATES.javascript,
     refs: [
-      { href: "/typescript/language/fundamentals/", label: "typescript/language/fundamentals" },
-      { href: "/typescript/language/objects/", label: "typescript/language/objects" },
-      {
-        href: "/typescript/design-architecture/modules-packages/",
-        label: "typescript/design-architecture/modules-packages",
-      },
-      { href: "/typescript/language/string-methods/", label: "typescript/language/string-methods" },
-    ],
-  },
-  {
-    id: "web",
-    label: "HTML/CSS/JS",
-    runner: "web",
-    stdin: false,
-    credit: "Live preview in a sandbox; console output shows below.",
-    template: TEMPLATES.web,
-    refs: [
-      { href: "/design/css/css/", label: "design/css/css" },
-      { href: "/design/css/tailwind/", label: "design/css/tailwind" },
-      { href: "/typescript/frontend/dom/", label: "typescript/frontend/dom" },
-      { href: "/typescript/frontend/events/", label: "typescript/frontend/events" },
+      sheet("/typescript/language/fundamentals/"),
+      sheet("/typescript/language/objects/"),
+      sheet("/typescript/design-architecture/modules-packages/"),
+      sheet("/typescript/language/string-methods/"),
     ],
   },
   {
     id: "python",
     label: "Python",
+    group: "Scripts",
     runner: "python",
     stdin: true,
     stdinExample: "world",
@@ -122,44 +174,96 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     download: { what: "the Python runtime", megabytes: 6 },
     template: TEMPLATES.python,
     refs: [
-      { href: "/python/language/fundamentals/", label: "python/language/fundamentals" },
-      { href: "/python/engineering/packages/", label: "python/engineering/packages" },
-      { href: "/python/language/std-library/", label: "python/language/std-library" },
-      { href: "/python/data/numpy/", label: "python/data/numpy" },
+      sheet("/python/language/fundamentals/"),
+      sheet("/python/engineering/packages/"),
+      sheet("/python/language/std-library/"),
+      sheet("/python/data/numpy/"),
     ],
+  },
+  {
+    id: "bun",
+    label: "Bun",
+    group: "Servers",
+    runner: "bun",
+    stdin: false,
+    credit: "Bun APIs emulated in your browser; not real Bun. Send requests from the HTTP panel.",
+    template: TEMPLATES.bun,
+    refs: [sheet("/typescript/runtime-tooling/bun/"), sheet("/typescript/web-apis/fetch-api/")],
+    httpPresets: [
+      { method: "GET", path: "/" },
+      { method: "GET", path: "/time" },
+      { method: "POST", path: "/echo", body: '{ "hello": "bun" }' },
+    ],
+  },
+  {
+    id: "hono",
+    label: "Bun + Hono",
+    group: "Servers",
+    runner: "bun",
+    stdin: false,
+    credit: "Real Hono on Bun APIs emulated in your browser. Send requests from the HTTP panel.",
+    template: TEMPLATES.hono,
+    refs: [sheet("/typescript/backend/hono/"), sheet("/typescript/runtime-tooling/bun/")],
+    httpPresets: [
+      { method: "GET", path: "/" },
+      { method: "GET", path: "/users" },
+      { method: "GET", path: "/users/1" },
+      { method: "POST", path: "/users", body: '{ "name": "Grace" }' },
+    ],
+  },
+  {
+    id: "nextjs",
+    label: "Next.js",
+    group: "Servers",
+    runner: "node",
+    stdin: false,
+    credit: "Runs next dev in a WebContainer (StackBlitz) in your browser; desktop Chrome or Edge.",
+    download: { what: "Next.js and its packages", megabytes: 200 },
+    template: TEMPLATES.nextjs,
+    refs: [sheet("/typescript/react/next-js/"), sheet("/typescript/react/react/")],
   },
   {
     id: "cpp",
     label: "C++",
+    group: "Compiled",
     runner: "cpp",
     stdin: true,
     stdinExample: "21",
     credit: REMOTE_CREDIT,
     template: TEMPLATES.cpp,
-    refs: [{ href: "/cpp/fundamentals/", label: "cpp/fundamentals" }],
+    refs: [sheet("/cpp/fundamentals/")],
   },
   {
     id: "rust",
     label: "Rust",
+    group: "Compiled",
     runner: "rust",
     stdin: true,
     stdinExample: "hello from stdin",
     credit: REMOTE_CREDIT,
     template: TEMPLATES.rust,
-    refs: [{ href: "/typescript/webassembly/rust/", label: "typescript/webassembly/rust" }],
+    refs: [sheet("/typescript/webassembly/rust/")],
   },
   {
     id: "gdscript",
     label: "GDScript",
+    group: "Game",
     runner: "godot",
     stdin: false,
     credit: "Runs in your browser on a Godot 4 web build.",
     download: { what: "the Godot engine", megabytes: 10 },
     template: TEMPLATES.gdscript,
-    refs: [
-      { href: "/game-dev/godot/gdscript/", label: "game-dev/godot/gdscript" },
-      { href: "/game-dev/godot/nodes-scenes/", label: "game-dev/godot/nodes-scenes" },
-    ],
+    refs: [sheet("/game-dev/godot/gdscript/"), sheet("/game-dev/godot/nodes-scenes/")],
+  },
+  {
+    id: "markdown",
+    label: "Markdown",
+    group: "Notes",
+    runner: "markdown",
+    stdin: false,
+    credit: "Nothing runs: the preview renders your Markdown (raw HTML is shown as text).",
+    template: TEMPLATES.markdown,
+    refs: [sheet("/writing/overview/"), sheet("/design/overview/")],
   },
 ];
 
@@ -194,6 +298,7 @@ export type EditorMode =
   | "cpp"
   | "rust"
   | "gdscript"
+  | "markdown"
   | "text";
 
 /** File extension → editor mode. */
@@ -207,6 +312,8 @@ const MODES: Readonly<Record<string, EditorMode>> = {
   tsx: "tsx",
   html: "html",
   htm: "html",
+  md: "markdown",
+  markdown: "markdown",
   svg: "html",
   css: "css",
   py: "python",

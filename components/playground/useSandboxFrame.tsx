@@ -37,6 +37,8 @@ export interface SandboxFrame {
   reset(): void;
   /** Ignore messages from now on (a stopped run). */
   forget(): void;
+  /** Post a follow-up message for the current run (e.g. an HTTP panel request). */
+  post(message: Record<string, unknown>): Promise<boolean>;
 }
 
 /**
@@ -101,6 +103,15 @@ export function useSandboxFrame(
     token.current = null;
   }, []);
 
+  const post = useCallback(async (message: Record<string, unknown>) => {
+    const current = token.current;
+    if (!current) return false;
+    const target = await ready.current.promise;
+    if (token.current !== current || retired.current.has(target)) return false;
+    target.postMessage({ ...message, token: current }, "*");
+    return true;
+  }, []);
+
   const element = enabled ? (
     <iframe
       key={generation}
@@ -114,5 +125,5 @@ export function useSandboxFrame(
     />
   ) : null;
 
-  return { element, send, reset, forget };
+  return { element, send, reset, forget, post };
 }

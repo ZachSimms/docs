@@ -20,6 +20,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getLanguage, type LanguageId } from "@/lib/playground/languages";
 import { linkModules, replaceModuleUrls } from "@/lib/playground/module-linker";
+import { parseDotEnv } from "@/lib/playground/dotenv";
+import type { HttpRequestMessage, HttpResult } from "@/lib/playground/http";
 import { appendOutput, EMPTY_OUTPUT, type Output, type Stream } from "@/lib/playground/output";
 import type { Project } from "@/lib/playground/project";
 import { newRunToken, type FrameMessage } from "@/lib/playground/runtime/protocol";
@@ -42,6 +44,10 @@ export const RUN_LIMITS = {
   godot: 30_000,
   godotLoad: 180_000,
   remoteCooldown: 3_000,
+  /** An emulated Bun server with no requests for this long is stopped. */
+  serverIdle: 15 * 60_000,
+  /** One HTTP panel request may take this long. */
+  request: 10_000,
 } as const;
 
 /** Where a run is. */
@@ -56,6 +62,10 @@ export interface PlaygroundRun {
    * `_process` keep going until its frame is replaced): Stop stays enabled.
    */
   live: boolean;
+  /** The port an emulated Bun server listens on, or `null` when none is running. */
+  served: number | null;
+  /** Send an HTTP panel request to the running server. */
+  request(message: Omit<HttpRequestMessage, "id">): Promise<HttpResult>;
   /** Short status for the console bar: "loading…", "ran in 1.2 s · exit 0", … */
   status: string;
   run(language: LanguageId, project: Project, stdin: string): void;
@@ -88,6 +98,10 @@ export function usePlaygroundRun(): PlaygroundRun {
   const [wantRunner, setWantRunner] = useState(false);
   const [wantGodot, setWantGodot] = useState(false);
   const [live, setLive] = useState(false);
+  const [served, setServed] = useState<number | null>(null);
+  const pending = useRef(new Map<string, (result: HttpResult) => void>());
+  /** Re-arms the running server's idle cap (set by `run` for server projects). */
+  const rearmIdle = useRef<(() => void) | null>(null);
 
   const token = useRef<string | null>(null);
   const started = useRef(0);
@@ -152,7 +166,24 @@ export function usePlaygroundRun(): PlaygroundRun {
   useEffect(() => {
     onFrameMessage.current = (message) => {
       if (message.type === "out") emit(message.stream, message.text);
-      else if (message.type === "progress") {
+      else if (message.type === "serve") setServed(message.port);
+      else if (message.type === "response") {
+        const resolve = pending.current.get(message.id);
+        pending.current.delete(message.id);
+        resolve?.(
+          message.error !== undefined || message.status === undefined
+            ? { ok: false, error: message.error ?? "No response" }
+            : {
+                ok: true,
+                status: message.status,
+                statusText: message.statusText ?? "",
+                headers: message.headers ?? [],
+                body: message.body ?? "",
+                truncated: message.truncated ?? false,
+                ms: message.ms ?? 0,
+              },
+        );
+      } else if (message.type === "progress") {
         if (token.current !== message.token) return; // the run already finished
         if (message.text === "running") {
           // User code shares the sandbox with the relay, so it could post "running" again to
@@ -178,7 +209,8 @@ export function usePlaygroundRun(): PlaygroundRun {
   const run = useCallback(
     (language: LanguageId, project: Project, stdin: string) => {
       const spec = getLanguage(language);
-      if (spec.runner === "web") return; // the preview runs itself
+      // The preview runs itself; Markdown only previews; Next.js runs on its own page.
+      if (spec.runner === "web" || spec.runner === "markdown" || spec.runner === "node") return;
       if (
         (spec.runner === "cpp" || spec.runner === "rust") &&
         performance.now() < nextRemote.current
@@ -189,6 +221,8 @@ export function usePlaygroundRun(): PlaygroundRun {
       clearTimer();
       if (cap.current) clearTimeout(cap.current);
       abort.current?.abort();
+      setServed(null);
+      rearmIdle.current = null;
       const runToken = newRunToken();
       token.current = runToken;
       started.current = performance.now();
@@ -214,6 +248,7 @@ export function usePlaygroundRun(): PlaygroundRun {
           if (frame === "runner") runner.reset();
           else godot.reset();
           setLive(false);
+          setServed(null);
           if (token.current !== runToken) return;
           emit("stderr", `\nStopped: the run took longer than ${ms / 1000} s.\n`);
           finish("stopped", `stopped after ${ms / 1000} s`);
@@ -222,21 +257,39 @@ export function usePlaygroundRun(): PlaygroundRun {
 
       if (spec.runner !== "cpp" && spec.runner !== "rust") setLive(true);
 
-      if (spec.runner === "script") {
+      if (spec.runner === "script" || spec.runner === "bun") {
+        const server = spec.runner === "bun";
         activeFrame.current = "runner";
         setWantRunner(true);
         linkModules(project.files, project.entry, transpile)
           .then(async (linked) => {
             if (token.current !== runToken) return;
             urls.current = linked.urls;
-            armLimit(RUN_LIMITS.script, "the program");
-            armCap(RUN_LIMITS.script, "runner");
+            for (const warning of linked.warnings) emit("info", `${warning}\n`);
+            armLimit(RUN_LIMITS.script, server ? "starting the server" : "the program");
+            if (server) {
+              // A server stays up after its top level finishes; it stops when idle for too long.
+              rearmIdle.current = () => {
+                if (cap.current) clearTimeout(cap.current);
+                armCap(RUN_LIMITS.serverIdle, "runner");
+              };
+              rearmIdle.current();
+            } else armCap(RUN_LIMITS.script, "runner");
             runner.reset(); // a fresh frame per run: no state leaks between runs
             await runner.send({
               type: "run",
               token: runToken,
               kind: "js",
               entryUrl: linked.entryUrl,
+              ...(server
+                ? {
+                    bun: {
+                      files: { ...project.files },
+                      env: parseDotEnv(project.files[".env"] ?? ""),
+                      entry: project.entry,
+                    },
+                  }
+                : {}),
             });
           })
           .catch(fail);
@@ -319,6 +372,8 @@ export function usePlaygroundRun(): PlaygroundRun {
     if (activeFrame.current === "godot") godot.reset();
     activeFrame.current = null;
     setLive(false);
+    setServed(null);
+    rearmIdle.current = null;
     if (!token.current) return;
     emit("info", "\nStopped.\n");
     finish("stopped", "stopped");
@@ -331,10 +386,49 @@ export function usePlaygroundRun(): PlaygroundRun {
 
   const appendExternal = useCallback((stream: Stream, text: string) => emit(stream, text), [emit]);
 
+  const request = useCallback(
+    (message: Omit<HttpRequestMessage, "id">): Promise<HttpResult> => {
+      if (served === null)
+        return Promise.resolve({ ok: false, error: "No server is running: press Run first." });
+      rearmIdle.current?.();
+      const id = newRunToken();
+      return new Promise<HttpResult>((resolve) => {
+        const timeout = setTimeout(() => {
+          pending.current.delete(id);
+          // A handler that never answers (an endless loop) holds the worker: replace it.
+          runner.reset();
+          setServed(null);
+          setLive(false);
+          emit(
+            "stderr",
+            `\nThe request took longer than ${RUN_LIMITS.request / 1000} s; the server was stopped.\n`,
+          );
+          resolve({
+            ok: false,
+            error: `No answer within ${RUN_LIMITS.request / 1000} s (the server was stopped).`,
+          });
+        }, RUN_LIMITS.request);
+        pending.current.set(id, (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        });
+        void runner.post({ type: "request", id, ...message }).then((sent) => {
+          if (sent) return;
+          clearTimeout(timeout);
+          pending.current.delete(id);
+          resolve({ ok: false, error: "The server isn't running any more: press Run." });
+        });
+      });
+    },
+    [served, runner, emit],
+  );
+
   return {
     output,
     phase,
     live,
+    served,
+    request,
     status,
     run,
     stop,

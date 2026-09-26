@@ -193,3 +193,54 @@ describe("inherited property names in imports", () => {
     expect(resolveSpecifier("main.js", "./constructor", { "main.js": "" }).kind).toBe("missing");
   });
 });
+
+describe("npm packages", () => {
+  const base = { "main.js": 'import { Hono } from "hono";\nimport { cors } from "hono/cors";' };
+
+  it("uses package.json versions and pins React for other packages", async () => {
+    const files = {
+      "main.tsx":
+        'import confetti from "canvas-confetti";\nimport { createRoot } from "react-dom/client";\nconfetti();\ncreateRoot(document.body).render(<b />);',
+      "package.json": JSON.stringify({
+        dependencies: { react: "19.3.0", "react-dom": "19.3.0", "canvas-confetti": "^1.9.0" },
+      }),
+    };
+    const entry = fromDataUrl((await linkModules(files, "main.tsx", transpile)).entryUrl);
+    expect(entry).toContain(
+      "https://esm.sh/canvas-confetti@^1.9.0?deps=react@19.3.0,react-dom@19.3.0",
+    );
+    expect(entry).toContain("https://esm.sh/react-dom@19.3.0/client");
+    expect(entry).toContain("https://esm.sh/react@19.3.0/jsx-runtime");
+  });
+
+  it("falls back to the latest and keeps subpaths", async () => {
+    const entry = fromDataUrl((await linkModules(base, "main.js", transpile)).entryUrl);
+    expect(entry).toContain('"https://esm.sh/hono"');
+    expect(entry).toContain('"https://esm.sh/hono/cors"');
+  });
+
+  it("skips invalid package.json entries with a warning and refuses bad names", async () => {
+    const files = {
+      ...base,
+      "package.json": JSON.stringify({
+        dependencies: { hono: "4?evil=1", "../x": "1", Upper: "1" },
+      }),
+    };
+    const linked = await linkModules(files, "main.js", transpile);
+    expect(fromDataUrl(linked.entryUrl)).toContain('"https://esm.sh/hono"');
+    expect(linked.warnings).toHaveLength(3);
+    expect(resolveSpecifier("main.js", "Bad Name", files).kind).toBe("missing");
+    const bun = resolveSpecifier("main.js", "bun:sqlite", files);
+    expect(bun.kind === "missing" && bun.reason).toMatch(/emulation/);
+  });
+});
+
+describe("CSS imports", () => {
+  it("turn into a module that injects a <style>", async () => {
+    const files = { "main.js": 'import "./styles.css";', "styles.css": "body { color: red; }" };
+    const linked = await linkModules(files, "main.js", transpile);
+    const css = fromDataUrl(linked.urls.get("styles.css")!);
+    expect(css).toContain('document.createElement("style")');
+    expect(css).toContain('"body { color: red; }"');
+  });
+});

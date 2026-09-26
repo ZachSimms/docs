@@ -24,7 +24,7 @@ export const LAYOUT_BOUNDS: Readonly<
   output: { min: 96, max: 1400, initial: 280, axis: "y", label: "output height" },
   preview: { min: 160, max: 1600, initial: 560, axis: "x", label: "preview width" },
   godot: { min: 160, max: 900, initial: 320, axis: "x", label: "Godot view width" },
-  http: { min: 120, max: 1000, initial: 240, axis: "y", label: "HTTP request height" },
+  http: { min: 260, max: 1400, initial: 520, axis: "x", label: "HTTP panel width" },
 };
 
 /** Sizes on a first visit. */

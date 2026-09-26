@@ -47,10 +47,12 @@ describe("FileTree", () => {
       "shapes/__init__.py",
       "shapes/circle.py",
       "main.py",
+      "README.md",
     ]);
     expect(rows[0]).toHaveTextContent("├── data/");
     expect(rows[1]?.querySelector(".pg-tree-prefix")?.textContent).toBe("│   └── ");
-    expect(rows[5]).toHaveTextContent("└── ▶ main.py");
+    expect(rows[5]).toHaveTextContent("├── ▶ main.py");
+    expect(rows[6]).toHaveTextContent("└── README.md");
     expect(rows[5]).toHaveAttribute("aria-selected", "true");
   });
 

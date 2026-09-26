@@ -11,6 +11,7 @@
  * it may only use its parameters and browser globals.
  */
 
+import { installBunShim, type BunShimHandle, type ShimRequest } from "./bun-shim";
 import { formatConsoleArgs } from "./format";
 
 /** The worker-side view of a worker global scope (a subset, so tests can fake it). */
@@ -32,11 +33,13 @@ export interface WorkerLike {
  * @param scope - The worker's global scope (`self`).
  * @param format - {@link formatConsoleArgs}, passed in because it is serialized separately.
  * @param load - How to import the entry (`(url) => import(url)` in the worker; a fake in tests).
+ * @param bunShim - {@link installBunShim}, used when the job asks for Bun's APIs (a server project).
  */
 export function jsWorkerMain(
   scope: WorkerLike,
   format: (args: readonly unknown[]) => string,
   load: (url: string) => Promise<unknown>,
+  bunShim?: typeof installBunShim,
 ): void {
   const post = (stream: string, text: string) => scope.postMessage({ type: "out", stream, text });
   const describe = (error: unknown) =>
@@ -60,10 +63,30 @@ export function jsWorkerMain(
   scope.addEventListener("unhandledrejection", (event) =>
     post("stderr", `Uncaught (in promise) ${describe(event.reason)}\n`),
   );
+  let shim: BunShimHandle | null = null;
   scope.onmessage = async (event) => {
-    const { entryUrl } = event.data as { entryUrl: string };
+    const job = event.data as {
+      type?: string;
+      entryUrl?: string;
+      bun?: { files: Record<string, string>; env: Record<string, string>; entry: string };
+    };
+    if (job.type === "request") {
+      await shim?.handle(job as unknown as ShimRequest);
+      return;
+    }
     try {
-      await load(entryUrl);
+      if (job.bun && bunShim) {
+        shim = bunShim(
+          scope as unknown as Record<string, unknown>,
+          job.bun.files,
+          job.bun.env,
+          job.bun.entry,
+          (m) => scope.postMessage(m),
+        );
+        post("info", "Bun APIs emulated in your browser; not real Bun.\n");
+      }
+      const loaded = await load(job.entryUrl ?? "");
+      shim?.adopt(loaded);
       scope.postMessage({ type: "done", exitCode: 0 });
     } catch (error) {
       post("stderr", `${describe(error)}\n`);
@@ -267,7 +290,16 @@ export function runnerFrameMain(sources: WorkerSources): void {
       token?: string;
       entryUrl?: string;
     };
-    if (command.type !== "run" || typeof command.token !== "string") return;
+    if (typeof command.token !== "string") return;
+    if (command.type === "request") {
+      // An HTTP panel request for the running server: forward it, keeping the worker.
+      if (command.token !== token || !worker) return;
+      const { token: _unused, ...request } = command;
+      void _unused;
+      worker.postMessage(request);
+      return;
+    }
+    if (command.type !== "run") return;
     token = command.token;
     const kind = command.kind === "python" ? "python" : "js";
     if (kind === "js" || workerKind !== kind) {
@@ -306,7 +338,8 @@ const safeScript = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
  */
 export function buildRunnerSrcDoc(): string {
   const js = `const formatConsoleArgs = ${formatConsoleArgs.toString()};
-(${jsWorkerMain.toString()})(self, formatConsoleArgs, (url) => import(url));`;
+const installBunShim = ${installBunShim.toString()};
+(${jsWorkerMain.toString()})(self, formatConsoleArgs, (url) => import(url), installBunShim);`;
   const python = `(${pythonWorkerMain.toString()})(self, (indexUrl) =>
   import(indexUrl + "pyodide.mjs").then((m) => m.loadPyodide({ indexURL: indexUrl })));`;
   const sources: WorkerSources = { js, python };

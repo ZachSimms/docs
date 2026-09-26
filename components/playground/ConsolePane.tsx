@@ -30,6 +30,12 @@ interface ConsolePaneProps {
   welcome?: ReactNode;
 }
 
+/** What an empty console suggests, per runner. */
+const IDLE_HINT: Partial<Record<LanguageSpec["runner"], string>> = {
+  web: "Console output from the preview shows here.",
+  bun: "Press Run (⌘↵) to start the server, then send requests from the HTTP panel.",
+};
+
 /** Whether the browser asked to save data (Chrome's `navigator.connection.saveData`). */
 function wantsToSaveData(): boolean {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
@@ -127,7 +133,9 @@ export function ConsolePane(props: ConsolePaneProps) {
         }}
       >
         {output.chunks.length === 0 && phase === "idle" && (
-          <span className="pg-info">Press Run (⌘↵) to run the entry file.</span>
+          <span className="pg-info">
+            {IDLE_HINT[spec.runner] ?? "Press Run (⌘↵) to run the entry file."}
+          </span>
         )}
         {output.chunks.map((chunk, i) => (
           <span key={i} className={`pg-${chunk.stream}`}>

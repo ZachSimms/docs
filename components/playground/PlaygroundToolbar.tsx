@@ -8,7 +8,12 @@
 
 import { useState } from "react";
 import { DottedLink } from "@/components/DottedLink";
-import { LANGUAGES, type LanguageId, type LanguageSpec } from "@/lib/playground/languages";
+import {
+  LANGUAGE_GROUPS,
+  LANGUAGES,
+  type LanguageId,
+  type LanguageSpec,
+} from "@/lib/playground/languages";
 
 /** Props for {@link PlaygroundToolbar}. */
 interface PlaygroundToolbarProps {
@@ -46,28 +51,34 @@ export function PlaygroundToolbar(props: PlaygroundToolbarProps) {
             props.onLanguage(event.target.value as LanguageId);
           }}
         >
-          {LANGUAGES.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.label}
-            </option>
+          {LANGUAGE_GROUPS.map((group) => (
+            <optgroup key={group} label={group}>
+              {LANGUAGES.filter((l) => l.group === group).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>
-      <button
-        type="button"
-        className="link pg-run"
-        data-tour="run"
-        onClick={props.onRun}
-        disabled={running}
-        aria-keyshortcuts="Meta+Enter Control+Enter"
-      >
-        <i>▶ Run</i>
-        <span className="pg-kbd" aria-hidden="true">
-          {" "}
-          ⌘↵
-        </span>
-      </button>
-      {spec.runner !== "web" && (
+      {spec.runner !== "markdown" && (
+        <button
+          type="button"
+          className="link pg-run"
+          data-tour="run"
+          onClick={props.onRun}
+          disabled={running}
+          aria-keyshortcuts="Meta+Enter Control+Enter"
+        >
+          <i>▶ Run</i>
+          <span className="pg-kbd" aria-hidden="true">
+            {" "}
+            ⌘↵
+          </span>
+        </button>
+      )}
+      {spec.runner !== "web" && spec.runner !== "markdown" && (
         <button type="button" className="link" onClick={props.onStop} disabled={!canStop}>
           <i>Stop</i>
         </button>

@@ -15,6 +15,9 @@ export const MAX_MESSAGE_TEXT = 64 * 1024;
 
 const text = z.string().transform((s) => s.slice(0, MAX_MESSAGE_TEXT));
 
+/** Longest response body the HTTP panel shows. */
+export const MAX_RESPONSE_BODY = 256 * 1024;
+
 /** Anything a sandbox may send the page. */
 export const frameMessage = z.discriminatedUnion("type", [
   /** The frame has loaded and listens for work. */
@@ -30,6 +33,28 @@ export const frameMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("done"), token: z.string(), exitCode: z.number().int().nullable() }),
   /** Download or start-up progress, shown in place (e.g. "Loading Godot… 40%"). */
   z.object({ type: z.literal("progress"), token: z.string(), text }),
+  /** The emulated Bun server started (`port`) or stopped (`null`). */
+  z.object({
+    type: z.literal("serve"),
+    token: z.string(),
+    port: z.number().int().min(1).max(65535).nullable(),
+  }),
+  /** The answer to an HTTP panel request. */
+  z.object({
+    type: z.literal("response"),
+    token: z.string(),
+    id: z.string().max(64),
+    status: z.number().int().min(100).max(599).optional(),
+    statusText: z.string().max(200).optional(),
+    headers: z
+      .array(z.tuple([z.string().max(200), z.string().max(4096)]))
+      .max(100)
+      .optional(),
+    body: z.string().max(MAX_RESPONSE_BODY).optional(),
+    truncated: z.boolean().optional(),
+    ms: z.number().nonnegative().optional(),
+    error: z.string().max(4096).optional(),
+  }),
 ]);
 
 /** A validated message from a sandbox. */

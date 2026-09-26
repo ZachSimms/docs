@@ -41,6 +41,7 @@ describe("request builders", () => {
     expect(url).toBe("https://godbolt.org/api/compiler/g162/cmake");
     expect(body.source).toContain("add_executable(app main.cpp src/vec.cpp)");
     expect(body.files.map((f) => f.filename).sort()).toEqual([
+      "README.md",
       "include/vec.h",
       "main.cpp",
       "src/vec.cpp",

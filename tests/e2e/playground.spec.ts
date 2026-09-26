@@ -371,3 +371,63 @@ test.describe("playground: layout, zen, menu, help", () => {
     await expect(page.locator(".pg-welcome")).toHaveCount(0); // taking the tour dismisses the welcome card
   });
 });
+
+test.describe("playground: project types", () => {
+  test("React renders from esm.sh and state updates on click", async ({ page }) => {
+    test.skip(!process.env.E2E_NETWORK, "React loads from esm.sh (set E2E_NETWORK=1)");
+    await openPlayground(page, "react");
+    const preview = page.frameLocator(".pg-preview-frame");
+    await preview.getByRole("button", { name: /Clicked 1 time/ }).click({ timeout: 15_000 });
+    await expect(preview.getByRole("button", { name: /Clicked 2 times/ })).toBeVisible();
+  });
+
+  test("HTML/CSS/TS runs TypeScript modules in the preview", async ({ page }) => {
+    await openPlayground(page, "web-ts");
+    const preview = page.frameLocator(".pg-preview-frame");
+    await preview.locator("#inc").click();
+    await preview.locator("#inc").click();
+    await expect(preview.locator("#count")).toHaveText("2");
+    await expect(output(page)).toContainText("count is 2");
+  });
+
+  test("Bun (emulated) serves requests from the HTTP panel and reads project files", async ({
+    page,
+  }) => {
+    await openPlayground(page, "bun");
+    await run(page);
+    await expect(output(page)).toContainText('config: { name: "bun-playground", version: 1 }');
+    await expect(output(page)).toContainText("Hi! Listening on http://localhost:3000/");
+    const http = page.getByRole("region", { name: "HTTP requests" });
+    await http.getByRole("button", { name: "POST /echo", exact: true }).click();
+    await expect(http.locator(".pg-http-response")).toContainText('"youSent"');
+    await http.getByLabel("Path").fill("/nope");
+    await http.getByRole("button", { name: "send" }).click();
+    await expect(http.locator(".pg-http-response")).toContainText("404");
+  });
+
+  test("Bun + Hono routes, sub-apps and middleware", async ({ page }) => {
+    test.skip(!process.env.E2E_NETWORK, "Hono loads from esm.sh (set E2E_NETWORK=1)");
+    await openPlayground(page, "hono");
+    await run(page);
+    const http = page.getByRole("region", { name: "HTTP requests" });
+    await http.getByRole("button", { name: "POST /users", exact: true }).click();
+    await expect(http.locator(".pg-http-response")).toContainText("201");
+    await expect(http.locator(".pg-http-response")).toContainText('"Grace"');
+    await expect(output(page)).toContainText("POST /users → 201");
+  });
+
+  test("Markdown previews safely beside the editor", async ({ page }) => {
+    await openPlayground(page, "markdown");
+    const preview = page.frameLocator(".pg-md-preview iframe");
+    await expect(preview.locator("h1")).toHaveText("Notes");
+    await expect(preview.locator("table td").first()).toBeVisible();
+    await setCode(
+      page,
+      "# Hi\n\n<script>parent.document.title='pwned'</script>\n\n| a |\n| - |\n| 1 |",
+    );
+    await expect(preview.locator("h1")).toHaveText("Hi");
+    await expect(preview.locator("body")).toContainText("<script>");
+    await expect(page).not.toHaveTitle("pwned");
+    await expect(page.locator(".pg-md-preview iframe")).toHaveAttribute("sandbox", "");
+  });
+});

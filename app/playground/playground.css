@@ -976,3 +976,131 @@ body:has(.playground) .theme-toggle-rail {
     width: auto;
   }
 }
+
+/* ---- Server projects: the HTTP panel beside the console ---- */
+
+.playground[data-runner="bun"] .pg-out {
+  grid-template-columns: min(var(--pg-http, 520px), calc(100% - 12rem)) minmax(0, 1fr);
+}
+
+.pg-http {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  border-right: var(--pg-rule);
+}
+
+.pg-http-form {
+  display: grid;
+  gap: 0.35em;
+  padding: 0.4em 1ch;
+}
+
+.pg-http-line {
+  display: flex;
+  gap: 1ch;
+}
+
+.pg-http-line input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.1em 0.5ch;
+}
+
+.pg-http-form label {
+  display: grid;
+  grid-template-columns: 8ch minmax(0, 1fr);
+  gap: 1ch;
+}
+
+.pg-http-form textarea {
+  resize: vertical;
+  padding: 0.1em 0.5ch;
+}
+
+.pg-http-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 1.5ch;
+  margin: 0;
+}
+
+.pg-http-response {
+  padding: 0.4em 1ch;
+  border-top: var(--pg-rule);
+}
+
+.pg-http-response p {
+  margin: 0 0 0.3em;
+}
+
+.playground .pg-http-response pre {
+  margin: 0.3em 0;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+}
+
+.pg-http-error {
+  margin: 0;
+  color: var(--graph-1);
+}
+
+.pg-http-html {
+  width: 100%;
+  height: 12rem;
+  border: var(--pg-rule);
+  background: #fff;
+}
+
+/* ---- Markdown: preview beside the editor; the Markdown project has no console ---- */
+
+.playground[data-md="split"] .pg-code {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pg-md-preview {
+  min-height: 0;
+  border-left: var(--pg-rule);
+}
+
+.pg-md-preview iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.playground[data-runner="markdown"] .pg-work {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.playground[data-runner="markdown"] .pg-out {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .playground[data-runner="bun"] .pg-out {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .pg-http {
+    border-right: 0;
+    border-bottom: var(--pg-rule);
+  }
+
+  .playground[data-md="split"] .pg-code {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .pg-md-preview {
+    border-left: 0;
+    border-top: var(--pg-rule);
+  }
+}

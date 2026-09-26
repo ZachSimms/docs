@@ -121,6 +121,8 @@ export async function loadLanguage(mode: EditorMode): Promise<Extension> {
       return (await import("@codemirror/lang-cpp")).cpp();
     case "rust":
       return (await import("@codemirror/lang-rust")).rust();
+    case "markdown":
+      return (await import("@codemirror/lang-markdown")).markdown();
     case "gdscript": {
       const { gdscriptMode } = await import("@/lib/playground/gdscript-mode");
       return StreamLanguage.define(gdscriptMode);

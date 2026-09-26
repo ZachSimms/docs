@@ -38,6 +38,8 @@ import { CodeEditor, type EditorHandle } from "./CodeEditor";
 import { ConsolePane } from "./ConsolePane";
 import { FileTree, type TreeCommand } from "./FileTree";
 import { HelpPanel } from "./HelpPanel";
+import { HttpClient } from "./HttpClient";
+import { MarkdownPreview } from "./MarkdownPreview";
 import { PlaygroundToolbar } from "./PlaygroundToolbar";
 import { ReferencePanel } from "./ReferencePanel";
 import { Splitter } from "./Splitter";
@@ -87,6 +89,8 @@ export function Playground() {
   const [requested, setRequested] = useState<{ url: string; n: number } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [touring, setTouring] = useState(false);
+  /** Preview beside the editor for `.md` files (always on in the Markdown project). */
+  const [mdPreview, setMdPreview] = useState(true);
   const editor = useRef<EditorHandle | null>(null);
   const coarse = useCoarsePointer();
 
@@ -176,6 +180,15 @@ export function Playground() {
   };
 
   const chooseLanguage = (id: LanguageId) => {
+    if (getLanguage(id).runner === "node") {
+      // Next.js runs on its own cross-origin-isolated page, which needs a full page load.
+      updatePrefs({ language: id });
+      savePrefs({ ...prefs, language: id });
+      // A full page load, not client-side navigation: the isolation headers only apply to a new document.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign("/playground/node/");
+      return;
+    }
     runState.stop();
     runState.clear();
     setAskDownload(false);
@@ -244,6 +257,8 @@ export function Playground() {
 
   const endTour = useCallback(() => setTouring(false), []);
 
+  const isMarkdownFile = modeForPath(project.open) === "markdown";
+  const showMdPreview = isMarkdownFile && (spec.runner === "markdown" || mdPreview);
   const isRunning = runState.phase === "running";
   const code = project.files[project.open] ?? "";
   const indent = modeForPath(project.open) === "gdscript" ? "\t" : "  ";
@@ -278,6 +293,7 @@ export function Playground() {
       data-refs={showRefs ? "open" : "closed"}
       data-tree={prefs.treeOpen ? "open" : "closed"}
       data-zen={prefs.zen ? "on" : "off"}
+      data-md={showMdPreview ? "split" : undefined}
       style={layoutStyle(prefs.layout) as CSSProperties}
     >
       {prefs.zen ? (
@@ -331,6 +347,10 @@ export function Playground() {
                 onHide={() =>
                   pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false })
                 }
+                onPreview={(path) => {
+                  openFile(path);
+                  setMdPreview(true);
+                }}
               />
               <Splitter
                 part="tree"
@@ -381,6 +401,17 @@ export function Playground() {
               </span>
             ))}
             <span className="pg-tabs-end">
+              {isMarkdownFile && spec.runner !== "markdown" && (
+                <button
+                  type="button"
+                  className="link"
+                  aria-pressed={mdPreview}
+                  onClick={() => setMdPreview(!mdPreview)}
+                  title="Show the Markdown preview beside the editor"
+                >
+                  <i>preview</i>
+                </button>
+              )}
               <button
                 type="button"
                 className="link"
@@ -409,6 +440,7 @@ export function Playground() {
               handleRef={editor}
               onFocusChange={setEditorFocused}
             />
+            {showMdPreview && <MarkdownPreview source={code} path={project.open} />}
           </div>
           <div className="pg-out" data-tour="output">
             <Splitter
@@ -429,6 +461,22 @@ export function Playground() {
                     edge="right"
                     size={prefs.layout.preview}
                     onSize={setSize("preview")}
+                  />
+                }
+              />
+            )}
+            {spec.runner === "bun" && (
+              <HttpClient
+                key={language}
+                port={runState.served}
+                presets={spec.httpPresets ?? []}
+                send={runState.request}
+                resizer={
+                  <Splitter
+                    part="http"
+                    edge="right"
+                    size={prefs.layout.http}
+                    onSize={setSize("http")}
                   />
                 }
               />
