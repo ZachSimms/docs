@@ -5,7 +5,7 @@ order: 2
 ---
 
 Plain JavaScript objects and their typed counterparts: creating, reading, copying, iterating, locking down,
-comparing and serialising them, then the TypeScript side (shapes, index signatures, mapped types, immutability).
+comparing and serializing them, then the TypeScript side (shapes, index signatures, mapped types, immutability).
 Basic types and generics are on [Fundamentals](/typescript/language/fundamentals/).
 
 ## Creating
@@ -307,7 +307,7 @@ s.label = "x";
 | :------------------------ | :---------------------------------------------------------- |
 | Getter only               | typed `readonly`; assignment throws in strict mode          |
 | Spread / `Object.assign`  | call the getter and copy the **value**                      |
-| `JSON.stringify`          | serialises own enumerable getters on literals, not class ones (they live on the prototype) |
+| `JSON.stringify`          | serializes own enumerable getters on literals, not class ones (they live on the prototype) |
 | Different get/set types   | allowed since 5.1; the getter type need not be assignable to the setter type |
 | `Object.defineProperty`   | `{ get() {}, set(v) {} }` for accessors on existing objects |
 
@@ -331,7 +331,7 @@ s.label = "x";
 | Iteration      | via `Object.entries`             | directly iterable             |
 | Inherited keys | yes, unless `Object.create(null)` | none                         |
 | JSON           | native                           | convert with `Object.fromEntries` |
-| Hot add/delete | slower (shape changes)           | optimised for it              |
+| Hot add/delete | slower (shape changes)           | optimized for it              |
 
 ```ts
 const visits = new Map<string, number>();

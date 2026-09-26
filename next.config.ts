@@ -2,7 +2,7 @@
  * @file Next.js configuration.
  *
  * MDX is compiled by `@next/mdx`. Because the build runs on Turbopack, every
- * remark/rehype plugin is referenced by package name with JSON-serialisable
+ * remark/rehype plugin is referenced by package name with JSON-serializable
  * options (functions cannot cross into Rust). `trailingSlash` mirrors the
  * original site's URLs.
  *
@@ -17,6 +17,13 @@ import createMDX from "@next/mdx";
 const nextConfig: NextConfig = {
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
   trailingSlash: true,
+  async redirects() {
+    // The topic was renamed from "Maths" (US English): keep old links working.
+    return [
+      { source: "/maths/", destination: "/math/", permanent: true },
+      { source: "/maths/:path*", destination: "/math/:path*", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

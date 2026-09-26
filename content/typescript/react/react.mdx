@@ -75,12 +75,12 @@ surface impure code and missing cleanups.
 | Nothing renders | `null`, `undefined`, `true`, `false` |
 | `0` renders | `{count && <Badge />}` shows `0`; write `{count > 0 && ...}` |
 | Text is escaped | raw HTML needs `dangerouslySetInnerHTML={{ __html }}` (sanitize first) |
-| Lowercase vs capitalised | `<div>` is a DOM tag, `<Div>` a component in scope |
+| Lowercase vs capitalized | `<div>` is a DOM tag, `<Div>` a component in scope |
 | `key` is not a prop | the child can't read it; pass the id again if needed |
 | Comments | `{/* like this */}` |
 | `value` without `onChange` | read-only input warning; use `defaultValue` for uncontrolled |
 | Custom elements | React 19 sets matching properties, not just attributes |
-| Components as values | `const Icon = icons[name]; return <Icon />;` (capitalised variable) |
+| Components as values | `const Icon = icons[name]; return <Icon />;` (capitalized variable) |
 
 ```tsx
 import { Fragment } from "react";
@@ -277,7 +277,7 @@ export function TodoList({ items }: { items: Item[] }) {
 
 | Anti-pattern | Instead |
 | :----------- | :------ |
-| `useState(props.x)` then expecting it to follow `x` | it only initialises; read `props.x`, or reset with `key` |
+| `useState(props.x)` then expecting it to follow `x` | it only initializes; read `props.x`, or reset with `key` |
 | `useEffect(() => setFull(a + b), [a, b])` | `const full = a + b` |
 | Copying a selected object into state | store its id, look it up |
 | Expensive derivation | the React Compiler memoizes it; without it, `useMemo` |
@@ -611,7 +611,7 @@ export function App() {
 }
 ```
 
-| `<Activity>` hidden | Behaviour |
+| `<Activity>` hidden | Behavior |
 | :------------------ | :-------- |
 | DOM | kept, hidden with `display: none` |
 | State | kept |

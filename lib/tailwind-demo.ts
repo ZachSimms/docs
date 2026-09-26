@@ -27,6 +27,9 @@ const STYLE_BLOCK = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 /** Separators between candidate tokens: whitespace, quotes, angle brackets, `=` and backticks. */
 const TOKEN_SEPARATOR = /[\s"'`<>=]+/;
 
+/** At least one rule in the utilities layer of the compiled CSS. */
+const UTILITIES = /@layer utilities \{\s*[.:@\[]/;
+
 /** Tailwind's stylesheet text, read once per build. */
 let tailwindCss: Promise<string> | undefined;
 
@@ -74,7 +77,8 @@ async function loadStylesheet(id: string, base: string) {
  *
  * @param html - The fence body: markup, optionally with `<style>` blocks of Tailwind CSS.
  * @returns The markup to render and the compiled CSS (preflight, theme variables used, utilities).
- * @throws {Error} When the snippet's own CSS is invalid Tailwind (surfaces as a build error).
+ * @throws {Error} When the snippet's own CSS is invalid Tailwind, or when a snippet with
+ *   classes compiles to no utilities at all (both surface as build errors).
  */
 export async function compileTailwindDemo(html: string): Promise<DemoParts> {
   const { markup, css } = splitDemoStyles(html);
@@ -82,5 +86,11 @@ export async function compileTailwindDemo(html: string): Promise<DemoParts> {
   // hand every later demo the utilities of all the earlier ones.
   const input = `@import "tailwindcss";\n${DARK_VARIANT}\n${css}`;
   const compiler = await compile(input, { base: process.cwd(), loadStylesheet });
-  return { markup, css: compiler.build(extractCandidates(markup)) };
+  const compiled = compiler.build(extractCandidates(markup));
+  // A demo is written to show utilities: none at all means a broken setup or snippet, which
+  // should fail the build instead of rendering an unstyled frame.
+  if (/\bclass(?:Name)?=/.test(markup) && !UTILITIES.test(compiled)) {
+    throw new Error(`Tailwind demo compiled no utilities for:\n${markup.slice(0, 200)}`);
+  }
+  return { markup, css: compiled };
 }

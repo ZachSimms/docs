@@ -62,7 +62,7 @@ pin a sheet's position: ordered sheets come first (smallest `order` first), then
 
 Everything a sheet can contain is demonstrated on `/design/overview/` (`content/design/overview.mdx`):
 Markdown text styles, links and heading anchors, lists and task lists, blockquotes, the built-in `<Note>`
-component, highlighted code in any language, aligned tables, images, `<details>`, footnotes, horizontal rules, KaTeX maths,
+component, highlighted code in any language, aligned tables, images, `<details>`, footnotes, horizontal rules, KaTeX math,
 and build-time JavaScript expressions (`export const meta = …` then `{meta.updated}`).
 Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` folder.
 
@@ -70,13 +70,13 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
 
 - **Dark mode**: follows the OS preference. The moon / sun button at the top, on the right edge of the content column, overrides it
   (the icon shows the mode you would switch to) and the choice is remembered in `localStorage`.
-  Light mode uses the original site's exact colours.
+  Light mode uses the original site's exact colors.
 - **Search**: press `⌘K` / `Ctrl+K` (or `/`, or click `Search` in the footer). The palette is a page of
   the site laid over the current one: type to filter, `↑`/`↓` to move, `Enter` to open, `Esc` to close.
   The index (`/search-index.json`) is generated at build time from titles, headings and body text.
-- **Syntax highlighting**: fenced code blocks are tokenised at build time by Shiki (GitHub light/dark
+- **Syntax highlighting**: fenced code blocks are tokenized at build time by Shiki (GitHub light/dark
   themes, switched by CSS). Add a language after the opening fence: ` ```python `.
-- **Maths**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
+- **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
   with MathML alongside for screen readers. No client JavaScript.
 - **Table of contents**: on wide viewports every sheet with two or more `##`/`###` headings gets a
   contents list in the right margin; the section on screen is underlined solid.
@@ -101,7 +101,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `<Steps><Step title="…">…</Step></Steps>`                               | `01.` `02.` numbered procedure                                   |
 | `<Cards><Card title href description /></Cards>`                        | `> title` links with descriptions                                |
 | ` ```tree title="…" ` fence with a 2-space outline                       | directory tree with guide lines (`dir/` bold, `# comment` dim)  |
-| `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | colour chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
+| `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | color chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
 | ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
 | ` ```html demo tailwind ` fence                                         | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
 | `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
@@ -145,7 +145,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 - Client components: `SearchPalette.tsx`, `SearchLink.tsx`, `ThemeToggle.tsx`, `NumberedList.tsx` (list pages as
   keyboard/mouse menus), `ParentLink.tsx` (pinned `../`, Esc/←/h), `Toc.tsx`, `Tabs.tsx`
 - `components/FileTree.tsx` + `lib/file-tree.ts` + `lib/remark-file-tree.ts` (```` ```tree ```` fences)
-- `components/Swatches.tsx` + `lib/color.ts` (colour chips), `components/Demo.tsx` + `lib/remark-demo.ts`
+- `components/Swatches.tsx` + `lib/color.ts` (color chips), `components/Demo.tsx` + `lib/remark-demo.ts`
   (```` ```html demo ```` fences), `components/Diagram.tsx` + `lib/diagram.ts` (SVGs in `public/images/diagrams/`)
 - `lib/search.ts` (index builder), `lib/search-rank.ts` (isomorphic ranking), `lib/theme.ts`, `lib/images.ts`,
   `lib/keys.ts` (keyboard shortcuts), `lib/toc.ts`
@@ -186,9 +186,9 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
 
 ## Credits
 
-- **Design:** the look (layout, typography, colours and link style) and the base stylesheet in
+- **Design:** the look (layout, typography, colors and link style) and the base stylesheet in
   `app/globals.css` are reproduced from [williamjansson.com](https://williamjansson.com/) by William
-  Jansson. They remain his work; this repository only adapts them (colour variables, dark mode, tables,
+  Jansson. They remain his work; this repository only adapts them (color variables, dark mode, tables,
   code blocks and other additions).
 - **Unit circle image:** `public/images/unit_circle.jpg`, source: google images
 - **React Hook Flow Diagram:** `public/images/typescript/hook-flow.png`, © 2019 Donavon West,

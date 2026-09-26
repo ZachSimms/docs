@@ -48,7 +48,7 @@ Sources produce samples, processing nodes transform them, and everything ends at
 `ctx.destination`. Any `AudioParam` can also take a node as input (modulation).
 
 ```text
-  Oscillator ──┐                        ┌──▶ Analyser (tap)
+  Oscillator ──┐                        ┌──▶ Analyzer (tap)
                ├──▶ BiquadFilter ──▶ Gain ──▶ destination
 BufferSource ──┘         ▲
                          │ frequency (AudioParam)
@@ -239,24 +239,24 @@ declare const source: AudioNode;
 | Coordinates     | right-handed: +x right, +y up, -z forward (the default listener faces -z) |
 | Listener params | `listener.positionX` etc. are limited availability; fall back to `setPosition()` |
 
-## Visualisation
+## Visualization
 
 ```ts
 declare const track: AudioNode;
-const analyser = new AnalyserNode(ctx, {
+const analyzer = new AnalyserNode(ctx, {
   fftSize: 2048,              // power of 2, 32..32768
   smoothingTimeConstant: 0.8,
 });
-track.connect(analyser); // pass-through tap
+track.connect(analyzer); // pass-through tap
 
-const freq = new Uint8Array(analyser.frequencyBinCount);
-const wave = new Float32Array(analyser.fftSize);
-analyser.getByteFrequencyData(freq);  // 0..255 per bin
-analyser.getFloatTimeDomainData(wave); // -1..1 samples
-const hzPerBin = ctx.sampleRate / analyser.fftSize;
+const freq = new Uint8Array(analyzer.frequencyBinCount);
+const wave = new Float32Array(analyzer.fftSize);
+analyzer.getByteFrequencyData(freq);  // 0..255 per bin
+analyzer.getFloatTimeDomainData(wave); // -1..1 samples
+const hzPerBin = ctx.sampleRate / analyzer.fftSize;
 ```
 
-- `frequencyBinCount` is `fftSize / 2`; bin `i` is centred near `i * sampleRate / fftSize` Hz.
+- `frequencyBinCount` is `fftSize / 2`; bin `i` is centered near `i * sampleRate / fftSize` Hz.
 - Byte data maps `minDecibels..maxDecibels` (default -100..-30 dB) onto 0..255.
 - Read inside `requestAnimationFrame` and reuse the arrays; allocating per frame causes GC stutter.
 
@@ -339,7 +339,7 @@ to WAV, pre-render effects, draw waveforms, or unit-test graph output determinis
 - All node, param and context types are in `lib.dom`; `AudioContextState` already includes
   `"interrupted"`, so exhaustive `switch`es must handle it.
 - `webkitAudioContext` is only needed for Safari older than 14.1; drop the prefix.
-- TS 5.9+ wants `Uint8Array<ArrayBuffer>` / `Float32Array<ArrayBuffer>` for analyser buffers;
+- TS 5.9+ wants `Uint8Array<ArrayBuffer>` / `Float32Array<ArrayBuffer>` for analyzer buffers;
   `new Uint8Array(n)` already has that type.
 - Bun and Node have no Web Audio. For server-side rendering or tests use a package such as
   `node-web-audio-api`, or run in a real browser with Playwright.
@@ -448,11 +448,11 @@ export function noteOff(
 `setTargetAtTime` with `tau = time / 3` reaches ~95% in the given time. `p.value` reads the
 current automated value in current browsers.
 
-### Visualiser with canvas
+### Visualizer with canvas
 A frequency-bar display for any node in the graph.
 
 ```ts
-export function visualise(
+export function visualize(
   input: AudioNode, canvas: HTMLCanvasElement,
 ): () => void {
   const g = canvas.getContext("2d")!;

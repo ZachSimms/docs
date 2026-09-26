@@ -9,7 +9,7 @@ import { Diagram } from "@/components/Diagram";
 import { readDiagram } from "@/lib/diagram";
 
 describe("Swatches", () => {
-  it("renders one chip per colour with its name and value", () => {
+  it("renders one chip per color with its name and value", () => {
     render(
       <Swatches
         title="Brand"
@@ -36,7 +36,7 @@ describe("Swatches", () => {
     expect(container).toHaveTextContent("10%");
   });
 
-  it("rejects bad weights and unreadable colours at build time", () => {
+  it("rejects bad weights and unreadable colors at build time", () => {
     expect(() => render(<Swatches colors={["#eee"]} weights={[1, 2]} />)).toThrow(/weights/);
     expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[0, 0]} />)).toThrow(
       /positive total/,
@@ -44,7 +44,7 @@ describe("Swatches", () => {
     expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[2, -1]} />)).toThrow(
       /non-negative/,
     );
-    expect(() => render(<Swatches colors={["not-a-colour"]} />)).toThrow(/Unsupported colour/);
+    expect(() => render(<Swatches colors={["not-a-color"]} />)).toThrow(/Unsupported color/);
   });
 });
 
@@ -175,7 +175,7 @@ describe("readDiagram", () => {
 });
 
 describe("Diagram", () => {
-  it("inlines a site diagram as a labelled image with a caption", () => {
+  it("inlines a site diagram as a labeled image with a caption", () => {
     render(
       <Diagram
         src="/images/diagrams/box-model.svg"

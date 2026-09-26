@@ -2,7 +2,7 @@
  * @file Build-time search index construction.
  *
  * Server only (reads content from disk). The route handler at `/search-index.json`
- * serialises {@link buildSearchIndex} once at build time; the client palette
+ * serializes {@link buildSearchIndex} once at build time; the client palette
  * fetches that JSON and ranks it with `lib/search-rank.ts`.
  *
  * The Markdown stripping here is intentionally approximate: the goal is a

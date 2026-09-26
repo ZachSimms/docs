@@ -1,6 +1,6 @@
 /**
  * @file Starter projects: one per language, each split across files and
- * folders so imports, exports, headers and modules are there to practise with.
+ * folders so imports, exports, headers and modules are there to practice with.
  */
 
 import type { Project } from "./project";

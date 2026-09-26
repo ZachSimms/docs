@@ -30,7 +30,7 @@ export const OUTPUT_LIMITS = { maxChunks: 5000, maxChars: 1_000_000 } as const;
 /** An empty console. */
 export const EMPTY_OUTPUT: Output = { chunks: [], size: 0, truncated: false };
 
-/** ANSI CSI/OSC escape sequences (colours, cursor moves) that compilers emit. */
+/** ANSI CSI/OSC escape sequences (colors, cursor moves) that compilers emit. */
 const ANSI = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\))/g;
 
 /** Remove ANSI escape codes. */

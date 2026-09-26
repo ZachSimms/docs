@@ -5,7 +5,7 @@ import { TOPICS, getTopic, topicNumber } from "@/lib/topics";
 describe("TOPICS", () => {
   it("lists the fifteen topics in display order", () => {
     expect(TOPICS.map((t) => t.slug)).toEqual([
-      "maths",
+      "math",
       "physics",
       "biology",
       "fitness",
@@ -43,7 +43,7 @@ describe("getTopic", () => {
 
 describe("topicNumber", () => {
   it("numbers the first topic highest and the last topic 1", () => {
-    expect(topicNumber("maths")).toBe(15);
+    expect(topicNumber("math")).toBe(15);
     expect(topicNumber("physics")).toBe(14);
     expect(topicNumber("fitness")).toBe(12);
     expect(topicNumber("economics")).toBe(11);

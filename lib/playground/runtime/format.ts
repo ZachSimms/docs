@@ -1,7 +1,7 @@
 /**
  * @file Turn `console.log` arguments into text, inside the sandbox.
  *
- * This function is serialised with `toString()` into the worker's source, so
+ * This function is serialized with `toString()` into the worker's source, so
  * it must stay self-contained: no imports, no references to anything outside
  * its own body. It is also imported directly by the unit tests.
  */

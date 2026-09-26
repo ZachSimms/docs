@@ -84,7 +84,7 @@ export function CodeEditor({
   const onFocusRef = useLatest(onFocusChange);
   const wrapRef = useLatest(wrap);
 
-  /** A fresh state for a file, with every extension; its language loads afterwards. */
+  /** A fresh state for a file, with every extension; its language loads afterward. */
   const makeState = (filePath: string, doc: string): EditorState => {
     const extensions: Extension[] = [
       basicSetup,

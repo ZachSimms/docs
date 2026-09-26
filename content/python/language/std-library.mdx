@@ -42,7 +42,7 @@ installing anything. Dates live in [Dates & times](/python/language/datetime/), 
 | `shutil.which("git")` | path of an executable or `None` |
 | `shutil.disk_usage("/")` | `total`, `used`, `free` |
 | `shutil.make_archive("out", "zip", root)` | zip/tar a folder; `unpack_archive` reverses it |
-| `tempfile.TemporaryDirectory()` | `with` block: a dir deleted afterwards |
+| `tempfile.TemporaryDirectory()` | `with` block: a dir deleted afterward |
 | `tempfile.NamedTemporaryFile(delete_on_close=False)` | named temp file you can reopen by name |
 | `tempfile.mkstemp(dir=d)` | low-level `(fd, path)`; you delete it |
 
@@ -490,7 +490,7 @@ print(data["args"])  # {'q': 'py'}
 | `statistics.mean`, `fmean`, `median`, `mode` | averages |
 | `statistics.stdev`, `pstdev`, `quantiles(xs, n=4)` | spread (sample / population), quartiles |
 | `statistics.correlation`, `linear_regression` | quick analysis without NumPy |
-| `Decimal("0.10")` | exact base-10 maths for money; build from strings |
+| `Decimal("0.10")` | exact base-10 math for money; build from strings |
 | `d.quantize(Decimal("0.01"), ROUND_HALF_UP)` | round to cents |
 | `Fraction(1, 3)` | exact rationals |
 | `round(2.5)` | `2`: banker's rounding on floats |
@@ -667,14 +667,14 @@ def fib(n: int) -> int:
 
 
 @lru_cache(maxsize=1024)
-def normalise(sku: str) -> str:
+def normalize(sku: str) -> str:
     return sku.strip().upper().replace(" ", "-")
 
 
 print(fib(200))
-normalise("ab 1")
-normalise("ab 1")  # served from the cache
-print(normalise.cache_info())  # hits=1 misses=1 ...
+normalize("ab 1")
+normalize("ab 1")  # served from the cache
+print(normalize.cache_info())  # hits=1 misses=1 ...
 ```
 
 Arguments must be hashable (no lists or dicts). On methods, `@cache` keeps `self` alive; use

@@ -662,7 +662,7 @@ async def get_note(note_id: int) -> NoteOut:
 | `Field(examples=[...])`, `Body(openapi_examples={...})` | example payloads in `/docs` |
 | `generate_unique_id_function=lambda r: r.name` | clean operation ids for client generators |
 | `separate_input_output_schemas=False` | one schema per model instead of `-Input`/`-Output` |
-| `app.openapi()` | the schema as a dict; cache a customised copy in `app.openapi_schema` |
+| `app.openapi()` | the schema as a dict; cache a customized copy in `app.openapi_schema` |
 | `root_path="/api"` | behind a proxy that strips a prefix |
 
 Generate a TypeScript client from `/openapi.json` with `bunx openapi-typescript` or `@hey-api/openapi-ts`.
@@ -713,7 +713,7 @@ async def test_health_async() -> None:
 | :--- | :-- |
 | `TestClient(app)` | sync tests; the `with` form runs lifespan |
 | `AsyncClient(transport=ASGITransport(app))` | async tests that also await other things (DB checks) |
-| `app.dependency_overrides[dep] = fake` | swap auth, DB session, settings; `.clear()` afterwards |
+| `app.dependency_overrides[dep] = fake` | swap auth, DB session, settings; `.clear()` afterward |
 | `client.post(url, json=..., data=..., files=...)` | JSON, form, multipart |
 | `client.websocket_connect("/ws")` | WebSocket tests |
 

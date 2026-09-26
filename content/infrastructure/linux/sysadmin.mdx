@@ -65,14 +65,14 @@ All four distros use a merged `/usr`: `/bin`, `/sbin` and `/lib` are symlinks in
 | `id alice`, `groups alice` | UID, GID, groups |
 | `getent passwd alice` | lookup through NSS (covers LDAP/SSSD users too) |
 | `sudo -iu postgres` | login shell as another user |
-| `chage -l alice` | password ageing; `chage -E 0` expires the account |
+| `chage -l alice` | password aging; `chage -E 0` expires the account |
 
 Group changes apply at the next login (or `newgrp docker` in the current shell).
 
 | File | Holds |
 | :--- | :---- |
 | `/etc/passwd` | users: name, UID, GID, home, shell |
-| `/etc/shadow` | password hashes, ageing (root-only) |
+| `/etc/shadow` | password hashes, aging (root-only) |
 | `/etc/group` | groups and members |
 | `/etc/sudoers`, `/etc/sudoers.d/` | sudo rules |
 | `/etc/skel/` | copied into every new home |
@@ -716,7 +716,7 @@ The first minute on a slow box, in order:
 | `uptime` | load averages (1, 5, 15 min) vs `nproc`; above core count means queueing |
 | `dmesg -T \| tail`, `journalctl -k -p warning` | OOM kills, disk or NIC errors |
 | `free -h` | `available` column, not `free`; swap in use |
-| `vmstat 1 5` | `r` (runnable) above cores = CPU saturated; `si`/`so` swapping; `wa` I/O wait; `st` steal (noisy VM neighbour) |
+| `vmstat 1 5` | `r` (runnable) above cores = CPU saturated; `si`/`so` swapping; `wa` I/O wait; `st` steal (noisy VM neighbor) |
 | `mpstat -P ALL 1` | one hot core = single-threaded bottleneck |
 | `pidstat 1` | which process uses CPU |
 | `iostat -xz 1` | `%util` near 100 and high `r_await`/`w_await` = disk bound |

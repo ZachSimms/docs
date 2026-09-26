@@ -117,7 +117,7 @@ Other stack instructions: `drop` discards a value, `select` picks one of two by 
   (global $limit i32 (i32.const 100))  ;; immutable
 
   (func (export "bump") (param $by i32) (result i32)
-    (local $tmp i32) (local $f f64)    ;; zero-initialised
+    (local $tmp i32) (local $f f64)    ;; zero-initialized
     (local.set $tmp
       (i32.add (global.get $count) (local.get $by)))
     (global.set $count (local.get $tmp))
@@ -265,7 +265,7 @@ Addresses are unsigned `i32` (or `i64` with `(memory i64 1)`); out-of-bounds acc
 memories, name the memory: `(i32.load $m2 (local.get $p))` or `memory.copy $dst $src`.
 
 Active data segments (`(data (i32.const 16) ...)`) are copied at instantiation; passive ones (no
-offset) wait for `memory.init`, which is how threaded programs initialise memory once.
+offset) wait for `memory.init`, which is how threaded programs initialize memory once.
 
 ## Tables and elements
 
@@ -347,7 +347,7 @@ usually prefer an explicit exported `_initialize` / `_start` instead.
 | Shuffle | `i8x16.shuffle 0 1 ... 15`, `i8x16.swizzle` |
 | Relaxed (Wasm 3.0) | `f32x4.relaxed_madd`, `i32x4.relaxed_trunc_f32x4_s`: faster, hardware-dependent edge cases |
 
-Compilers auto-vectorise when you enable the feature (`-msimd128`, `-C target-feature=+simd128`).
+Compilers auto-vectorize when you enable the feature (`-msimd128`, `-C target-feature=+simd128`).
 
 ## References and GC
 
@@ -411,7 +411,7 @@ GC objects are collected by the host engine and are opaque to JS: export accesso
 | `throw_ref` | rethrow an `exnref` |
 
 This is the Wasm 3.0 (`exnref`) form. Older binaries use the legacy `try` / `catch` / `delegate`
-instructions, which engines still accept but which are no longer being standardised.
+instructions, which engines still accept but which are no longer being standardized.
 
 ## Tools
 
@@ -425,7 +425,7 @@ instructions, which engines still accept but which are no longer being standardi
 | Strip custom sections | `wasm-tools strip a.wasm` | `wasm-strip a.wasm` | `wasm-opt --strip-debug` |
 | Demangle names | `wasm-tools demangle` | | |
 | Interpret | | `wasm-interp a.wasm --run-all-exports` | `wasm-shell` |
-| Optimise | | | `wasm-opt -O3` / `-Oz` |
+| Optimize | | | `wasm-opt -O3` / `-Oz` |
 | C-like view | | `wasm-decompile a.wasm` | |
 | To JS | | | `wasm2js` |
 | Components | `wasm-tools component new` / `wit` | | |
@@ -434,7 +434,7 @@ instructions, which engines still accept but which are no longer being standardi
   choice for Wasm 3.0 features; by default it enables every phase-4+ proposal.
 - **wabt** is the classic kit; its `wasm-interp` is handy for quick tests. Newer proposals may need
   `--enable-*` flags or lag behind.
-- **binaryen**'s `wasm-opt` is the optimiser behind Emscripten and wasm-pack; run it on any
+- **binaryen**'s `wasm-opt` is the optimizer behind Emscripten and wasm-pack; run it on any
   toolchain output. Enable the features your output uses (`--enable-simd`, `--enable-gc`, or `-all`).
 - **wasmtime** runs `.wat` directly: `wasmtime run --invoke fact fact.wat 5`.
 

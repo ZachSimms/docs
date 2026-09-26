@@ -304,7 +304,7 @@ const fromB64 = (s: string): Uint8Array<ArrayBuffer> =>
 | `sigA === sigB` or hex string compare          | `subtle.verify("HMAC", ...)`, or `timingSafeEqual`   |
 | SHA-256 of a password                         | PBKDF2 (600k+), or Argon2id via `Bun.password`       |
 | `Math.random()` for tokens                    | `crypto.getRandomValues`                             |
-| Signing re-serialised JSON                    | sign/verify the exact bytes you received             |
+| Signing re-serialized JSON                    | sign/verify the exact bytes you received             |
 | Decrypt failure shown to the user in detail   | treat any `OperationError` as "invalid or tampered"  |
 | Extractable long-lived keys                   | `extractable: false`, store the `CryptoKey` in IndexedDB |
 | Passing base64 strings where bytes are needed | decode to `Uint8Array` first                         |
@@ -414,7 +414,7 @@ export async function verifyWebhook(
 `subtle.verify` compares in constant time, unlike `===` on hex strings.
 
 ### Ed25519 sign and verify
-Signed licence keys, tokens or messages that others verify with a published public key.
+Signed license keys, tokens or messages that others verify with a published public key.
 
 ```ts
 const { privateKey, publicKey } =
@@ -426,7 +426,7 @@ const raw = await crypto.subtle.exportKey("raw", publicKey);
 const pubB64 = new Uint8Array(raw)
   .toBase64({ alphabet: "base64url", omitPadding: true });
 
-const msg = new TextEncoder().encode("licence:acme:2027");
+const msg = new TextEncoder().encode("license:acme:2027");
 const sig = await crypto.subtle.sign(
   "Ed25519", privateKey, msg); // 64 bytes
 

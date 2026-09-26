@@ -4,8 +4,8 @@ date: 2026-09-25
 order: 1
 ---
 
-N-dimensional arrays, dtypes, indexing, broadcasting, vectorised maths, linear algebra and
-random numbers with NumPy 2.5 on Python 3.14. Labelled tables are in [pandas](/python/data/pandas/).
+N-dimensional arrays, dtypes, indexing, broadcasting, vectorized math, linear algebra and
+random numbers with NumPy 2.5 on Python 3.14. Labeled tables are in [pandas](/python/data/pandas/).
 
 ## Creating arrays
 
@@ -227,14 +227,14 @@ x + y  # ValueError: could not be broadcast (3,) (4,)
 | `(8, 1, 6)` and `(7, 1)` | `(8, 7, 6)` |
 | `(3,)` and `()` scalar | `(3,)` |
 
-## Ufuncs & vectorisation
+## Ufuncs & vectorization
 
 Universal functions run a compiled loop element by element and broadcast their inputs.
 
 | Group | Functions / operators |
 | :---- | :-------------------- |
 | Arithmetic | `+ - * / // % **`, `np.add`, `np.divide`, `np.power`, `np.negative` |
-| Maths | `np.abs`, `np.sqrt`, `np.exp`, `np.log`, `np.log1p`, `np.sin`, `np.hypot` |
+| Math | `np.abs`, `np.sqrt`, `np.exp`, `np.log`, `np.log1p`, `np.sin`, `np.hypot` |
 | Rounding | `np.round(a, 2)`, `np.floor`, `np.ceil`, `np.trunc` (`np.fix` is deprecated) |
 | Element-wise max/min | `np.maximum(a, b)`, `np.minimum`, `np.clip(a, 0, 1)` |
 | Comparison | `== != < >`, `np.isclose`, `np.allclose`, `np.array_equal` |
@@ -468,7 +468,7 @@ unpickling runs code. For tabular or cross-language data use Parquet via pandas 
 | Slice (a view) instead of fancy indexing | fancy indexing copies |
 | `np.einsum(..., optimize=True)` | picks a good contraction order |
 | `np.lib.stride_tricks.sliding_window_view` | windows with no copy |
-| Numba (`@njit`) or Cython | when a loop genuinely can't be vectorised |
+| Numba (`@njit`) or Cython | when a loop genuinely can't be vectorized |
 
 ```python
 a = np.ones((1000, 1000))
@@ -521,7 +521,7 @@ environment. Annotate public boundaries with `ArrayLike` in and `NDArray` out.
 
 ## Recipes
 
-### Normalise columns
+### Normalize columns
 Scale each feature to zero mean and unit variance, or to the range 0 to 1.
 
 ```python
@@ -635,10 +635,10 @@ np.take_along_axis(vals, order, axis=1)  # [[9 5] [8 7]]
 ## References
 
 - NumPy docs: [User guide](https://numpy.org/doc/stable/user/index.html), [API reference](https://numpy.org/doc/stable/reference/index.html), [Release notes](https://numpy.org/doc/stable/release.html) (2.4, 2.5 removals and deprecations)
-- NumPy docs: [Broadcasting](https://numpy.org/doc/stable/user/basics.broadcasting.html), [Indexing](https://numpy.org/doc/stable/user/basics.indexing.html), [Copies and views](https://numpy.org/doc/stable/user/basics.copies.html): the rules this sheet summarises
+- NumPy docs: [Broadcasting](https://numpy.org/doc/stable/user/basics.broadcasting.html), [Indexing](https://numpy.org/doc/stable/user/basics.indexing.html), [Copies and views](https://numpy.org/doc/stable/user/basics.copies.html): the rules this sheet summarizes
 - NumPy docs: [Data type promotion (NEP 50)](https://numpy.org/doc/stable/reference/arrays.promotion.html), [Data types](https://numpy.org/doc/stable/user/basics.types.html)
 - NumPy docs: [Random `Generator`](https://numpy.org/doc/stable/reference/random/generator.html), [`numpy.typing`](https://numpy.org/doc/stable/reference/typing.html), [`numpy.linalg`](https://numpy.org/doc/stable/reference/routines.linalg.html)
 - NumPy docs: [NumPy for MATLAB users](https://numpy.org/doc/stable/user/numpy-for-matlab-users.html): side-by-side idioms
 - [Python Array API standard](https://data-apis.org/array-api/latest/): the portable subset shared with PyTorch, CuPy and JAX
-- Nicolas Rougier, [From Python to Numpy](https://www.labri.fr/perso/nrougier/from-python-to-numpy/): vectorisation techniques
-- [SciPy](https://docs.scipy.org/doc/scipy/): sparse matrices, spatial distances, optimisation, statistics
+- Nicolas Rougier, [From Python to Numpy](https://www.labri.fr/perso/nrougier/from-python-to-numpy/): vectorization techniques
+- [SciPy](https://docs.scipy.org/doc/scipy/): sparse matrices, spatial distances, optimization, statistics

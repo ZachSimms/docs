@@ -72,7 +72,7 @@ describe("generateCMakeLists", () => {
 });
 
 describe("output", () => {
-  it("strips ANSI colour codes from compiler output", () => {
+  it("strips ANSI color codes from compiler output", () => {
     expect(stripAnsi("\u001b[01;31m\u001b[Kerror: \u001b[m\u001b[Kboom")).toBe("error: boom");
   });
 

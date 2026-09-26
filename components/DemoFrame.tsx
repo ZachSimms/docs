@@ -1,7 +1,7 @@
 /**
  * @file The sandboxed frame inside `<Demo>`, kept in step with the site theme.
  *
- * Client component: a `srcdoc` frame follows the OS colour scheme rather than
+ * Client component: a `srcdoc` frame follows the OS color scheme rather than
  * the page's, so the document is rebuilt with the active theme's
  * `color-scheme` whenever `useTheme` reports a change (the frame reloads,
  * which is cheap for these small snippets).

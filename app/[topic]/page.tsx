@@ -1,6 +1,6 @@
 /**
  * @file `/[topic]/`: one topic's directories and loose cheatsheets, in display order,
- * numbered within the topic. Directories are labelled with a trailing `/`.
+ * numbered within the topic. Directories are labeled with a trailing `/`.
  *
  * Statically generated for every entry in `TOPICS`; other segments 404 because
  * `dynamicParams` is `false`.

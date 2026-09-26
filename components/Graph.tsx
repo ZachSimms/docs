@@ -4,7 +4,7 @@
  * Server component (`<Graphs>` is a two-column wrapper for small plots).
  * Everything is computed at build time from `lib/graph.ts`;
  * axes and labels use `currentColor`, so they follow the theme like the rest of
- * the text. Curves are told apart by colour: `--graph-0` … `--graph-3` from the
+ * the text. Curves are told apart by color: `--graph-0` … `--graph-3` from the
  * stylesheet, with light and dark values, and a legend under the plot shows a
  * swatch of each. A plot with a single curve has nothing to tell apart, so its
  * legend is just the label with no swatch.
@@ -25,13 +25,13 @@ import {
 
 /** Props for {@link Graph}. */
 interface GraphProps {
-  /** Shorthand for a single untransformed catalogue function. */
+  /** Shorthand for a single untransformed catalog function. */
   fn?: FunctionName;
   /** Curves to draw, in legend order; at most four stroke patterns are distinct. */
   curves?: readonly Curve[];
-  /** `[xmin, xmax]`; defaults to the first curve's catalogue domain. */
+  /** `[xmin, xmax]`; defaults to the first curve's catalog domain. */
   domain?: readonly [number, number];
-  /** `[ymin, ymax]`; defaults to the first curve's catalogue range. */
+  /** `[ymin, ymax]`; defaults to the first curve's catalog range. */
   range?: readonly [number, number];
   /** Tick style: integers or multiples of π on the x-axis. */
   ticks?: "int" | "pi";
@@ -44,8 +44,8 @@ interface GraphProps {
 /** Drawing frame in SVG units; scaled to the column by CSS. */
 const FRAME: Frame = { width: 300, height: 190, pad: 18 };
 
-/** Number of distinct curve colours defined in CSS (`--graph-0` … `--graph-3`). */
-const COLOURS = 4;
+/** Number of distinct curve colors defined in CSS (`--graph-0` … `--graph-3`). */
+const COLORS = 4;
 
 /** Clamp an axis position into the window so an axis is always drawn. */
 function axisAt(window: readonly [number, number]): number {
@@ -55,7 +55,7 @@ function axisAt(window: readonly [number, number]): number {
 
 /**
  * Render the plot: axes through the origin (or the nearest edge), tick marks
- * with labels, one coloured `<path>` per curve, and a legend with matching swatches.
+ * with labels, one colored `<path>` per curve, and a legend with matching swatches.
  */
 export function Graph({ fn, curves, domain, range, ticks = "int", title, small }: GraphProps) {
   const list: readonly Curve[] = curves ?? (fn ? [{ fn }] : []);
@@ -118,7 +118,7 @@ export function Graph({ fn, curves, domain, range, ticks = "int", title, small }
           return (
             <path
               key={`${curve.fn}-${i}`}
-              className={`graph-curve graph-curve-${i % COLOURS}`}
+              className={`graph-curve graph-curve-${i % COLORS}`}
               d={toPath(segments)}
               strokeWidth="1.8"
               strokeLinecap="round"
@@ -134,7 +134,7 @@ export function Graph({ fn, curves, domain, range, ticks = "int", title, small }
           <span key={`${curve.fn}-${i}`} className="graph-legend">
             {showSwatches && (
               <>
-                <span aria-hidden="true" className={`graph-swatch graph-curve-${i % COLOURS}`}>
+                <span aria-hidden="true" className={`graph-swatch graph-curve-${i % COLORS}`}>
                   ──
                 </span>{" "}
               </>

@@ -5,7 +5,7 @@ order: 4
 ---
 
 Getting real assets on screen with Three.js r18x: the glTF / GLB pipeline with Draco, KTX2 and Meshopt
-compression, asset optimisation CLIs, loading progress, finding nodes, the animation system (mixer, clips,
+compression, asset optimization CLIs, loading progress, finding nodes, the animation system (mixer, clips,
 actions, blending), skinning and morph targets, programmatic keyframes, pointer picking with `Raycaster`,
 physics options and scene performance. Basics are in [Fundamentals](/typescript/three-js/fundamentals/);
 the React version of all this is [React Three Fiber](/typescript/three-js/react-three-fiber/).
@@ -13,13 +13,13 @@ the React version of all this is [React Three Fiber](/typescript/three-js/react-
 ## glTF workflow
 
 glTF 2.0 (`.gltf` + files, or a single binary `.glb`) is **the** format for three: PBR materials, scene
-graph, skins, morphs, animations, cameras and punctual lights, in metres with `+Y` up.
+graph, skins, morphs, animations, cameras and punctual lights, in meters with `+Y` up.
 
 ```text
  DCC tool (Blender, Maya…)
       │ export glTF 2.0 (.glb)
       ▼
- optimise: gltf-transform / gltfpack
+ optimize: gltf-transform / gltfpack
       │ dedupe, prune, weld, simplify, resize textures,
       │ Draco or Meshopt geometry, KTX2 / WebP textures
       ▼
@@ -64,7 +64,7 @@ scene.add(gltf.scene);
 | `parser` | low-level access (`parser.getDependency("material", 0)`) |
 | `userData` | glTF `extras` of the root; nodes keep theirs in `object.userData` |
 
-What `GLTFLoader` does for you: `SRGBColorSpace` on colour textures, `flipY = false` on all textures,
+What `GLTFLoader` does for you: `SRGBColorSpace` on color textures, `flipY = false` on all textures,
 `MeshStandardMaterial` / `MeshPhysicalMaterial` from glTF PBR plus extensions (`KHR_materials_*`,
 `KHR_texture_transform`, `KHR_lights_punctual`, `EXT_mesh_gpu_instancing` → `InstancedMesh`).
 
@@ -102,10 +102,10 @@ Configure the decoders **before** the first `load`, share one `GLTFLoader` app-w
 Draco and KTX2 loaders on teardown (they own web workers). Loading a compressed file without its decoder
 throws (`setMeshoptDecoder must be called before loading compressed files`).
 
-## Optimising assets
+## Optimizing assets
 
 ```bash
-# glTF Transform: one-shot web optimisation
+# glTF Transform: one-shot web optimization
 npx @gltf-transform/cli optimize in.glb out.glb \
   --compress meshopt --texture-compress webp
 npx @gltf-transform/cli optimize in.glb out.glb \
@@ -174,7 +174,7 @@ root.traverse((o) => {
 
 | Pitfall | Detail |
 | :------ | :----- |
-| Names are sanitised | whitespace becomes `_` and `[ ] . : /` are stripped (`PropertyBinding.sanitizeNodeName`): `"Wheel.001"` → `"Wheel001"` |
+| Names are sanitized | whitespace becomes `_` and `[ ] . : /` are stripped (`PropertyBinding.sanitizeNodeName`): `"Wheel.001"` → `"Wheel001"` |
 | Multi-material meshes | one glTF mesh with 2 materials becomes a `Group` of 2 `Mesh` children |
 | Duplicate names | `getObjectByName` returns the first; use paths or `userData` ids |
 | Shared materials | editing `mesh.material.color` changes every mesh using it: `mesh.material = mesh.material.clone()` |

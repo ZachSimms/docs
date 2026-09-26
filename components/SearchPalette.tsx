@@ -59,7 +59,7 @@ function inertSiblings(dialog: HTMLElement): () => void {
 
 /**
  * The palette itself. Renders `null` while closed; see the file header for
- * behaviour. Mount exactly once, in the root layout.
+ * behavior. Mount exactly once, in the root layout.
  */
 export function SearchPalette() {
   const router = useRouter();

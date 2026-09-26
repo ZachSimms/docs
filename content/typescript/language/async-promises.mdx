@@ -142,13 +142,13 @@ the handler does.
 
 | Handler | Handler does | Returned promise |
 | :------ | :----------- | :--------------- |
-| `then(onFul)` | returns a value `v` | fulfils with `v` |
+| `then(onFul)` | returns a value `v` | fulfills with `v` |
 | `then(onFul)` | returns a promise/thenable | adopts its state |
 | `then(onFul)` | throws `e` | rejects with `e` |
 | `then(onFul)` on a rejection | (not called) | passes the rejection through |
-| `catch(onRej)` | returns `v` | fulfils with `v` (recovered) |
+| `catch(onRej)` | returns `v` | fulfills with `v` (recovered) |
 | `catch(onRej)` | rethrows | rejects again |
-| `catch` on a fulfilment | (not called) | passes the value through |
+| `catch` on a fulfillment | (not called) | passes the value through |
 | `finally(fn)` | returns anything | ignored; original outcome passes through |
 | `finally(fn)` | throws / returns a rejected promise | rejects with the new reason |
 
@@ -170,9 +170,9 @@ not catch errors thrown inside `onFul`.
 
 ## async / await
 
-| Construct | Behaviour |
+| Construct | Behavior |
 | :-------- | :-------- |
-| `async function f()` | always returns a promise; `return v` fulfils, `throw` rejects |
+| `async function f()` | always returns a promise; `return v` fulfills, `throw` rejects |
 | `return v` where `v` is a promise | adopted (no double wrap): `Promise<T>`, never `Promise<Promise<T>>` |
 | `await x` | pauses the function; non-promises are wrapped with `Promise.resolve` |
 | `await` rejected promise | throws at that line |
@@ -261,12 +261,12 @@ process.on("unhandledRejection", (reason) => {
 
 ## Combinators
 
-| Method | Fulfils when | Rejects when | Result type |
+| Method | Fulfills when | Rejects when | Result type |
 | :----- | :----------- | :----------- | :---------- |
-| `Promise.all(ps)` | all fulfil | first rejection (fail fast) | tuple/array of values |
+| `Promise.all(ps)` | all fulfill | first rejection (fail fast) | tuple/array of values |
 | `Promise.allSettled(ps)` | all settle | never | `PromiseSettledResult<T>[]` |
-| `Promise.race(ps)` | first to settle fulfils | first to settle rejects | value of the winner |
-| `Promise.any(ps)` | first fulfilment | all reject: `AggregateError` | value of the first fulfilled |
+| `Promise.race(ps)` | first to settle fulfills | first to settle rejects | value of the winner |
+| `Promise.any(ps)` | first fulfillment | all reject: `AggregateError` | value of the first fulfilled |
 
 None cancels the losers: the other operations keep running. Pair with an `AbortSignal`.
 
@@ -439,7 +439,7 @@ async function search(q: string, userSignal?: AbortSignal) {
   } catch (err) {
     if (err instanceof DOMException) {
       if (err.name === "TimeoutError") return "timed out";
-      if (err.name === "AbortError") return "cancelled";
+      if (err.name === "AbortError") return "canceled";
     }
     throw err;
   }
@@ -533,7 +533,7 @@ async function runAll<T>(tasks: Task<T>[]): Promise<T[]> {
   return Promise.all(tasks.map((t) => t(ctrl.signal)));
 }
 
-function summarise<T>(rs: PromiseSettledResult<T>[]) {
+function summarize<T>(rs: PromiseSettledResult<T>[]) {
   return rs.map((r) =>
     r.status === "fulfilled" ? r.value : String(r.reason),
   );
@@ -681,7 +681,7 @@ const getUser = dedupe(
 await Promise.all([getUser("u1"), getUser("u1")]);
 ```
 
-### Initialise once
+### Initialize once
 
 When an expensive async setup (DB pool, WASM module, remote config) should run on first use only, and be retried if it failed.
 
@@ -763,7 +763,7 @@ const job = await pollUntil(
 );
 ```
 
-### Serialise with a mutex
+### Serialize with a mutex
 
 When async read-modify-write steps on shared state must not interleave (a file, a balance, a token refresh).
 
@@ -826,7 +826,7 @@ const pages = await allOrCancel(
 );
 ```
 
-### Summarise `allSettled`
+### Summarize `allSettled`
 
 When every job should run regardless of failures and you need a report of what worked (batch emails, webhooks, migrations).
 

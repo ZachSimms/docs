@@ -50,6 +50,15 @@ describe("compileTailwindDemo", () => {
     expect(css).not.toContain(".grid-cols-7");
   });
 
+  it("fails loudly when a snippet's classes compile to no utilities", async () => {
+    expect(compileTailwindDemo('<div class="not-a-utility nor-this">x</div>')).rejects.toThrow(
+      /compiled no utilities/,
+    );
+    expect((await compileTailwindDemo("<p>no classes</p>")).css).not.toContain(
+      "@layer utilities {\n  .",
+    );
+  });
+
   it("keys dark: off the frame's data-theme attribute, not the OS preference", async () => {
     const { css } = await compileTailwindDemo('<div class="dark:bg-sky-500"></div>');
     expect(css).toContain("[data-theme=dark]");

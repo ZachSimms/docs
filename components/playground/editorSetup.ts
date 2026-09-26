@@ -1,8 +1,8 @@
 /**
- * @file CodeMirror pieces for the playground editor: the site-coloured theme,
- * syntax colours, and lazy language loading per editor mode.
+ * @file CodeMirror pieces for the playground editor: the site-colored theme,
+ * syntax colors, and lazy language loading per editor mode.
  *
- * Client-only. Colours are CSS variables from `globals.css`, so the editor
+ * Client-only. Colors are CSS variables from `globals.css`, so the editor
  * follows light/dark without being reconfigured. Each language package is a
  * separate dynamic import, so the page only downloads the ones in use.
  */
@@ -15,7 +15,7 @@ import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import type { EditorMode } from "@/lib/playground/languages";
 
-/** Editor chrome: page colours, monospace type, dotted focus ring. */
+/** Editor chrome: page colors, monospace type, dotted focus ring. */
 export const editorTheme: Extension = EditorView.theme({
   "&": {
     color: "var(--fg)",
@@ -56,7 +56,7 @@ export const editorTheme: Extension = EditorView.theme({
   ".cm-foldPlaceholder": { backgroundColor: "var(--chip)", border: "none", color: "var(--fg)" },
 });
 
-/** Token colours from the site's four graph colours (each has a light and a dark value). */
+/** Token colors from the site's four graph colors (each has a light and a dark value). */
 export const highlightStyle = HighlightStyle.define([
   {
     tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword, tags.operatorKeyword],

@@ -115,7 +115,7 @@ const PAGE_LINKS = "nav[data-menu] a, .back-rail a";
 /**
  * Whether ←/→ may navigate: focus is on the page itself or on a list row or
  * the back link. Anything else focused (a tab button, a scrollable code box,
- * a summary) keeps its own arrow-key behaviour.
+ * a summary) keeps its own arrow-key behavior.
  */
 export function arrowsNavigate(): boolean {
   const focused = document.activeElement;

@@ -3,7 +3,7 @@
  *
  * The rules are: a choice stored in `localStorage` wins; otherwise the OS
  * preference applies. The stored choice is written to `<html data-theme>` and
- * the stylesheet keys its colour variables off that attribute, falling back to
+ * the stylesheet keys its color variables off that attribute, falling back to
  * `prefers-color-scheme` when it is absent.
  */
 

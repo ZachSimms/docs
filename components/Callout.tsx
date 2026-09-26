@@ -3,7 +3,7 @@
  *
  * `type` maps to a label (`info` → "note", `warn` → "warning", `error` → "error");
  * warning and error callouts get a solid instead of dotted left rule in CSS.
- * No colours, keeping the monochrome look.
+ * No colors, keeping the monochrome look.
  */
 
 import type { ReactNode } from "react";

@@ -146,7 +146,7 @@ const legacy = require("./greet.cjs") as typeof greet;
 ### esModuleInterop and the default-import confusion
 
 Node gives ESM importers `module.exports` as the default export. Bundlers and
-`esModuleInterop` additionally honour the `__esModule` flag that transpilers set, which is
+`esModuleInterop` additionally honor the `__esModule` flag that transpilers set, which is
 where code that works in a bundler breaks in Node:
 
 | CJS module looks like | `import x from "pkg"` in Node | in a bundler |
@@ -180,7 +180,7 @@ This is what makes ESM-only packages usable from CommonJS apps.
 | `module` | Implies resolution | Implied target | Use for |
 | :------- | :----------------- | :------------- | :------ |
 | `nodenext` | `nodenext` | `esnext` | Node apps and libraries; tracks latest Node (require(esm)) |
-| `node20` (5.9) | `node16` | `es2023` | pin Node 20+ behaviour, stable over TS upgrades |
+| `node20` (5.9) | `node16` | `es2023` | pin Node 20+ behavior, stable over TS upgrades |
 | `node18` (5.8) | `node16` | `es2022` | Node 18: no require(esm), allows `assert` |
 | `node16` | `node16` | `es2022` | legacy pin |
 | `preserve` (5.4) | `bundler` | none | bundlers, Bun, tsx; `import` and `require` kept as written |

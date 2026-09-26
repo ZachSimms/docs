@@ -40,7 +40,7 @@ dt.isocalendar()  # (year=2026, week=39, weekday=5)
 
 A **naive** datetime has `tzinfo=None`: it is a wall-clock reading with no instant attached. An
 **aware** one has a `tzinfo` and pins a real moment. Store and compute in aware UTC; convert to a
-local zone only for display or for calendar maths.
+local zone only for display or for calendar math.
 
 | Call | Returns |
 | :--- | :------ |
@@ -131,7 +131,7 @@ iso_z = dt.isoformat(timespec="milliseconds").replace(
 | `"milliseconds"`, `"microseconds"` | 3 or 6 fractional digits |
 
 `json.dumps` cannot encode a datetime: call `.isoformat()` yourself, pass `default=str`, or let
-Pydantic serialise it.
+Pydantic serialize it.
 
 ## strftime & strptime
 
@@ -215,7 +215,7 @@ naive.timestamp()  # ❌ assumes system local time
 | `td / timedelta(minutes=1)` | minutes (`float`) |
 | `abs(td)`, `-td`, `td * 2` | sign and scaling |
 | `str(timedelta(seconds=3725))` | `'1:02:05'` |
-| `timedelta(hours=-1)` | `-1 day, 23:00:00` (normalised: days carry the sign) |
+| `timedelta(hours=-1)` | `-1 day, 23:00:00` (normalized: days carry the sign) |
 | `dt1 < dt2`, `max(dts)` | comparisons (both aware or both naive) |
 
 `timedelta` has no months or years because they vary in length. Clamp the day yourself, or use
@@ -326,7 +326,7 @@ print(f"{(time.perf_counter() - t0) * 1000:.1f} ms")
 | `calendar.day_name[0]`, `day_abbr[0]` | `'Monday'`, `'Mon'` |
 | `calendar.Month.SEPTEMBER`, `calendar.Day.FRIDAY` | `IntEnum`s (3.12+): `9`, `4` |
 | `calendar.Calendar(firstweekday=6)` | Sunday-first calendar object |
-| `.itermonthdates(2026, 9)` | full weeks of `date`s, padded with neighbouring months |
+| `.itermonthdates(2026, 9)` | full weeks of `date`s, padded with neighboring months |
 | `.monthdatescalendar(2026, 9)` | list of weeks, each a list of 7 `date`s (for a grid UI) |
 | `calendar.timegm(t)` | UTC `struct_time` → timestamp |
 | `calendar.month(2026, 9)` | text calendar; also `uv run python -m calendar 2026 9` |

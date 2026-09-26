@@ -168,7 +168,7 @@ describe("remove", () => {
 });
 
 describe("tabs", () => {
-  it("setOpen adds a tab once; closeTab moves focus to a neighbour", () => {
+  it("setOpen adds a tab once; closeTab moves focus to a neighbor", () => {
     const a = ok(setOpen(base, "lib/math.ts"));
     const b = ok(setOpen(a, "lib/math.ts"));
     expect(b.tabs).toEqual(["main.ts", "lib/math.ts"]);

@@ -352,10 +352,10 @@ Always write the FQCN (`ansible.builtin.copy`, not `copy`); `ansible-lint` enfor
 features. Neither is idempotent by itself: add `creates`, `removes` or `changed_when`.
 
 ```yaml
-- name: Initialise database once
+- name: Initialize database once
   ansible.builtin.command:
     cmd: /opt/app/bin/migrate --init
-    creates: /var/lib/app/.initialised
+    creates: /var/lib/app/.initialized
 
 - name: Probe without reporting a change
   ansible.builtin.command:
@@ -435,7 +435,7 @@ LOG_LEVEL=debug
 | `default(omit)` | `mode: "{{ m \| default(omit) }}"` | drop the argument |
 | `mandatory` | `x \| mandatory` | fail if undefined |
 | `bool` / `int` / `string` | `"yes" \| bool` | type conversion |
-| `to_json` / `to_nice_yaml` | `cfg \| to_nice_yaml` | serialise |
+| `to_json` / `to_nice_yaml` | `cfg \| to_nice_yaml` | serialize |
 | `from_json` / `from_yaml` | `out.stdout \| from_json` | parse |
 | `map` / `select` / `reject` | `users \| map(attribute='name')` | transform lists |
 | `selectattr` | `users \| selectattr('admin')` | filter by attribute |
@@ -445,7 +445,7 @@ LOG_LEVEL=debug
 | `password_hash` | `pw \| password_hash('sha512')` | hash for `user` |
 | `b64encode` / `hash` | `s \| hash('sha256')` | encode / digest |
 | `ternary` | `ok \| ternary('up', 'down')` | inline if |
-| `ansible.utils.ipaddr` | `cidr \| ansible.utils.ipaddr('network')` | IP maths (ansible.utils) |
+| `ansible.utils.ipaddr` | `cidr \| ansible.utils.ipaddr('network')` | IP math (ansible.utils) |
 
 | Lookup | Reads |
 | :----- | :---- |
@@ -618,7 +618,7 @@ ansible-playbook site.yml -e app_version=1.4.2
 ansible-playbook site.yml -e @vars/release.yml
 ```
 
-| Tag | Behaviour |
+| Tag | Behavior |
 | :-- | :-------- |
 | `tags: [nginx]` | on task, block, role or play; inherited downward |
 | `always` | runs unless `--skip-tags always` |
@@ -720,7 +720,7 @@ First run against a fresh box: admin user with your key, key-only SSH, firewall,
         groups: sudo
         append: true
         shell: /bin/bash
-    - name: Authorised key
+    - name: Authorized key
       ansible.posix.authorized_key:
         user: deploy
         key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"

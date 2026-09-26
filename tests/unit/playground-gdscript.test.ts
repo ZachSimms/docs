@@ -33,7 +33,7 @@ describe("gdscriptMode", () => {
     expect(tokens("%Hud")[0]).toEqual(["%Hud", "variableName.special"]);
   });
 
-  it("recognises strings, StringNames, comments, built-ins and class names", () => {
+  it("recognizes strings, StringNames, comments, built-ins and class names", () => {
     expect(tokens('print(&"jump", "hi") # say it')).toEqual([
       ["print", "builtin"],
       ["(", null],

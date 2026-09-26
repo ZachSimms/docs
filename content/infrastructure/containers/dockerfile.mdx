@@ -163,7 +163,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 | Pattern | How |
 | :------ | :-- |
-| Build tools stay behind | copy only artefacts into the last stage |
+| Build tools stay behind | copy only artifacts into the last stage |
 | Pick a stage | `docker build --target test .` |
 | Unused stages | skipped entirely by BuildKit |
 | Parallelism | independent stages build concurrently |
@@ -406,7 +406,7 @@ In GitHub Actions, `docker/metadata-action` generates tags, labels and annotatio
 
 | Technique | Effect |
 | :-------- | :----- |
-| Multi-stage, copy only artefacts | no compilers, dev deps or source in the image |
+| Multi-stage, copy only artifacts | no compilers, dev deps or source in the image |
 | Slim / distroless base | tens of MB instead of hundreds |
 | Production deps only | `bun install --production`, `pnpm install --prod`, `uv sync --no-dev` |
 | Clean up in the same `RUN` | deleted files don't hide in lower layers |

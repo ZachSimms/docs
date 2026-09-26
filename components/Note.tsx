@@ -1,5 +1,5 @@
 /**
- * @file `<Note>`: a labelled aside for cheatsheets.
+ * @file `<Note>`: a labeled aside for cheatsheets.
  *
  * Registered globally in `mdx-components.tsx`, so MDX files can write
  * `<Note kind="tip">…</Note>` without importing anything. `<Callout>` is a

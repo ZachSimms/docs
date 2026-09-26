@@ -46,13 +46,13 @@ browser maps them back into range (see [Gamut](#gamut--wide-color)).
 | Property | Meaning | OKLCH channel | HSL channel |
 | :------- | :------ | :------------ | :---------- |
 | Hue | position on the wheel (red, blue…) | `h` (degrees) | `h` |
-| Chroma / saturation | colorfulness vs grey | `c` (absolute, 0 is grey) | `s` (relative to max, per hue) |
+| Chroma / saturation | colorfulness vs gray | `c` (absolute, 0 is gray) | `s` (relative to max, per hue) |
 | Lightness / value | perceived brightness | `l` (0 black, 1 white) | `l` (math average, not perceived) |
 | Temperature | warm (red–yellow) vs cool (green–blue) | hue range | hue range |
-| Tint / shade / tone | add white / add black / add grey | raise `l` / lower `l` / lower `c` | mix |
+| Tint / shade / tone | add white / add black / add gray | raise `l` / lower `l` / lower `c` | mix |
 
 Warm colors advance and feel energetic; cool colors recede and feel calm. Tint neutrals slightly
-warm or cool (chroma 0.005–0.02) to match the brand instead of using pure grey.
+warm or cool (chroma 0.005–0.02) to match the brand instead of using pure gray.
 
 <Swatches title="Hue varies (l 0.65, c 0.1)" colors={[{ name: "h 0", value: "oklch(0.65 0.1 0)" }, { name: "h 60", value: "oklch(0.65 0.1 60)" }, { name: "h 120", value: "oklch(0.65 0.1 120)" }, { name: "h 180", value: "oklch(0.65 0.1 180)" }, { name: "h 240", value: "oklch(0.65 0.1 240)" }, { name: "h 300", value: "oklch(0.65 0.1 300)" }]} />
 
@@ -91,7 +91,7 @@ whether the result works.
 | Scheme | Hues | Feel | UI use |
 | :----- | :--- | :--- | :----- |
 | Monochromatic | one hue, many `l`/`c` | calm, cohesive | product UI default: one brand hue + neutrals |
-| Analogous | 3 neighbours within ~30–60° | harmonious, low tension | gradients, illustrations, brand accents |
+| Analogous | 3 neighbors within ~30–60° | harmonious, low tension | gradients, illustrations, brand accents |
 | Complementary | opposite, 180° apart | high contrast, vibrant | one accent against the main hue; avoid equal amounts |
 | Split-complementary | base + two hues at 180° ± 30° | contrast with less tension | brand + two accents |
 | Triadic | 3 hues 120° apart | lively, balanced | illustration, playful brands; mute two of them |
@@ -121,7 +121,7 @@ whether the result works.
 
 | Role | Scale | Used for |
 | :--- | :---- | :------- |
-| Neutral (grey) | 11 steps, chroma 0–0.02 | backgrounds, surfaces, borders, text; most of the UI |
+| Neutral (gray) | 11 steps, chroma 0–0.02 | backgrounds, surfaces, borders, text; most of the UI |
 | Primary (brand) | 11 steps | primary actions, links, focus, selection |
 | Accent | 1–2 scales, used sparingly | highlights, badges, marketing |
 | Danger | red, hue ~25–30 | errors, destructive actions |
@@ -268,7 +268,7 @@ red-green types dominate.
 | Rule | Example |
 | :--- | :------ |
 | Never color alone (WCAG 1.4.1) | error = red + icon + message; required = text, not only a red asterisk |
-| Differ in lightness, not just hue | status dots at clearly different `l` survive greyscale |
+| Differ in lightness, not just hue | status dots at clearly different `l` survive grayscale |
 | Avoid red vs green as the only pair | use blue/orange, or red/blue, for good/bad |
 | Underline links in body text | or 3:1 contrast with surrounding text plus a non-color cue on hover/focus |
 | Label chart series directly | legends by color alone fail; add labels, shapes, dashes |
@@ -338,7 +338,7 @@ native controls and scrollbars follow the theme.
 | Diverging | two directions from a meaningful midpoint | two hues meeting at a light neutral | RdBu, PuOr, BrBG |
 
 Viridis and cividis are perceptually uniform, readable with color vision deficiency and in
-greyscale. Avoid rainbow ("jet") scales: their lightness goes up and down, which invents boundaries
+grayscale. Avoid rainbow ("jet") scales: their lightness goes up and down, which invents boundaries
 that aren't in the data. Encode important values with position or length first; color is the
 weakest channel.
 
@@ -446,7 +446,7 @@ One token, six colors: `color-mix()` tints and relative-syntax variants of `--c`
 </div>
 ```
 
-The interpolation space changes the result: `in srgb` mixes of blue and yellow pass through grey,
+The interpolation space changes the result: `in srgb` mixes of blue and yellow pass through gray,
 `in oklch` keeps chroma through the middle. Use `in oklab` for gradients and neutral mixes, `in oklch`
 to keep colors vivid. In relative syntax, OKLCH `l` is a number from 0 to 1, so step it by `0.05`,
 not `5%`. `contrast-color()` only picks black or white and is new: give it a fallback, and don't

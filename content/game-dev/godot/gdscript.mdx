@@ -5,7 +5,7 @@ order: 1
 ---
 
 GDScript for Godot 4.x (current stable 4.7) from a TypeScript developer's point of view: syntax, static typing,
-classes, properties, annotations, strings, signals and `await`, errors, the built-in maths types and the style
+classes, properties, annotations, strings, signals and `await`, errors, the built-in math types and the style
 guide. The node model is in [Nodes, scenes & signals](/game-dev/godot/nodes-scenes/); gameplay code in
 [Input & physics](/game-dev/godot/input-physics/).
 
@@ -147,7 +147,7 @@ lengths.assign(names.map(func(s): return s.length()))
 | :------------------ | :------ |
 | Errors at parse time | wrong method names, wrong argument types, missing returns |
 | Autocompletion | full completion for typed values, including `get_node(...) as T` |
-| Speed | typed code compiles to optimised opcodes (noticeably faster in hot loops) |
+| Speed | typed code compiles to optimized opcodes (noticeably faster in hot loops) |
 | Safe lines | the editor gutter marks lines whose types are fully known |
 | Enforce it | Project Settings > Debug > GDScript: set `untyped_declaration` to Warn or Error |
 
@@ -193,7 +193,7 @@ for key in d:
 | `PackedFloat32Array` / `PackedFloat64Array` | float | samples, heights |
 | `PackedStringArray` | String | `split()` results, file lists |
 | `PackedVector2Array` / `PackedVector3Array` | vector | polygons, lines, mesh vertices |
-| `PackedColorArray` | Color | vertex colours |
+| `PackedColorArray` | Color | vertex colors |
 | `PackedVector4Array` | Vector4 | 4.3+ |
 
 Packed arrays are contiguous and far smaller than `Array` (which stores a `Variant` per slot). Engine APIs
@@ -356,7 +356,7 @@ func describe() -> String:
 # Inner classes: namespaced under the outer script
 class Stats:                    # extends RefCounted
     var hp := 10
-    var armour := 0
+    var armor := 0
     func _init(h: int) -> void:
         hp = h
 
@@ -370,7 +370,7 @@ var e = EnemyScript.new()      # no class_name needed
 | :--- | :------- | :------ |
 | `Object` | manual `free()` | rare; low-level |
 | `RefCounted` | freed when the last reference drops (cycles leak) | plain data objects, helpers |
-| `Resource` | ref-counted, serialisable, cached by path | data assets (see [Resources](/game-dev/godot/resources-saving-export/)) |
+| `Resource` | ref-counted, serializable, cached by path | data assets (see [Resources](/game-dev/godot/resources-saving-export/)) |
 | `Node` | freed with its parent or `queue_free()` | anything in the scene tree |
 
 | Reflection | Example |
@@ -427,7 +427,7 @@ func set_speed(v: float) -> void:
 | `@export_flags_2d_physics` | collision-layer picker (`_3d_physics`, `_2d_render` ...) |
 | `@export_file("*.json")`, `@export_dir` | path pickers (`@export_global_file` for absolute paths) |
 | `@export_multiline`, `@export_placeholder("...")` | text inputs |
-| `@export_color_no_alpha` | colour picker without alpha |
+| `@export_color_no_alpha` | color picker without alpha |
 | `@export_exp_easing` | easing curve editor for a float |
 | `@export_node_path("Button")` | NodePath restricted to types; prefer `@export var b: Button` |
 | `@export_group("Movement")`, `@export_subgroup`, `@export_category` | inspector grouping |
@@ -452,12 +452,12 @@ var radius := 32.0:
     set(v):
         radius = v
         queue_redraw()   # live preview in the editor
-@export var colour := Color.TOMATO
+@export var color := Color.TOMATO
 @export var resource: Weapon            # typed resource slot
 @export var targets: Array[Node2D] = [] # node references
 
 func _draw() -> void:
-    draw_circle(Vector2.ZERO, radius, colour)
+    draw_circle(Vector2.ZERO, radius, color)
 ```
 
 In a `@tool` script, guard game-only code with `if Engine.is_editor_hint(): return`.
@@ -573,7 +573,7 @@ print_stack()            # current GDScript call stack
 breakpoint               # keyword: pause here in debugger
 ```
 
-| Tool | Behaviour |
+| Tool | Behavior |
 | :--- | :-------- |
 | `Error` enum | `OK` (0), `FAILED`, `ERR_FILE_NOT_FOUND`, `ERR_INVALID_PARAMETER`, `ERR_CANT_OPEN` ... |
 | `error_string(err)` | readable name for an `Error` |
@@ -583,7 +583,7 @@ breakpoint               # keyword: pause here in debugger
 | Nullable returns | many APIs return `null` (`get_node_or_null`, `FileAccess.open`, `load`) |
 | Result pattern | return `{ok, value}` Dictionaries or a small class when a failure needs data |
 
-## Built-in maths types
+## Built-in math types
 
 | Type | Key members |
 | :--- | :---------- |
@@ -613,14 +613,14 @@ var fwd := -global_transform.basis.z  # 3D forward
 var c := Color.WHITE.lerp(Color.RED, 0.5)
 ```
 
-Built-in maths types, `String` and `Callable` are value types (copied on assignment); `Array`, `Dictionary`
+Built-in math types, `String` and `Callable` are value types (copied on assignment); `Array`, `Dictionary`
 and Objects are references. `a.duplicate(true)` deep-copies containers.
 
-## Maths helpers
+## Math helpers
 
 | Function | Notes |
 | :------- | :---- |
-| `lerp(a, b, t)` | Variant: floats, vectors, colours; `lerpf` for typed floats |
+| `lerp(a, b, t)` | Variant: floats, vectors, colors; `lerpf` for typed floats |
 | `inverse_lerp(a, b, v)`, `remap(v, a0, a1, b0, b1)` | map between ranges |
 | `move_toward(from, to, delta)` | step by at most `delta`; vectors have their own `move_toward` |
 | `clamp(v, lo, hi)`, `clampf`, `clampi` | typed variants avoid Variant returns |
@@ -787,7 +787,7 @@ func _on_search_text_changed(t: String) -> void:
 ```
 
 ### Abstract strategy (4.5+)
-Use when several interchangeable behaviours share one contract, such as AI targeting rules.
+Use when several interchangeable behaviors share one contract, such as AI targeting rules.
 
 ```gdscript title="targeting.gd"
 @abstract
@@ -824,7 +824,7 @@ func pick(from: Node2D, all: Array) -> Node2D:
 - [Godot docs: GDScript format strings](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_format_string.html): `%` placeholders and modifiers
 - [Godot docs: GDScript style guide](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html): naming and code order
 - [Godot docs: GDScript warning system](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/warning_system.html): per-project warning levels and `@warning_ignore`
-- [Godot docs: @GlobalScope](https://docs.godotengine.org/en/stable/classes/class_@globalscope.html): maths helpers, `Error` codes, random functions
+- [Godot docs: @GlobalScope](https://docs.godotengine.org/en/stable/classes/class_@globalscope.html): math helpers, `Error` codes, random functions
 - [Godot docs: C# basics](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/index.html) and [C# API differences](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_differences.html)
 - [Godot release notes](https://godotengine.org/releases/4.7/): what changed in each 4.x release
 - [GDQuest](https://www.gdquest.com/): tutorials and a free GDScript learning app

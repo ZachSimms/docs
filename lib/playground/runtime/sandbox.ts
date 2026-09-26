@@ -2,12 +2,12 @@
  * @file The code that runs *inside* the sandbox: the runner frame's script,
  * the JS worker and the Python (Pyodide) worker.
  *
- * None of this runs on the site's origin. {@link buildRunnerSrcDoc} serialises
+ * None of this runs on the site's origin. {@link buildRunnerSrcDoc} serializes
  * these functions with `toString()` into the `srcdoc` of an
  * `<iframe sandbox="allow-scripts">` (an opaque origin with no access to the
  * site's storage, cookies or DOM). The frame starts a Worker from a URL it
  * creates itself, so user code runs off the page's main thread and can be
- * killed. Because they are serialised, each function must be self-contained:
+ * killed. Because they are serialized, each function must be self-contained:
  * it may only use its parameters and browser globals.
  */
 
@@ -30,7 +30,7 @@ export interface WorkerLike {
  * timers after that still arrives until the next run replaces the worker.
  *
  * @param scope - The worker's global scope (`self`).
- * @param format - {@link formatConsoleArgs}, passed in because it is serialised separately.
+ * @param format - {@link formatConsoleArgs}, passed in because it is serialized separately.
  * @param load - How to import the entry (`(url) => import(url)` in the worker; a fake in tests).
  */
 export function jsWorkerMain(
@@ -296,7 +296,7 @@ export function runnerFrameMain(sources: WorkerSources): void {
   parent.postMessage({ type: "ready" }, "*");
 }
 
-/** Escape `</script` so serialised code can't close the frame's script element. */
+/** Escape `</script` so serialized code can't close the frame's script element. */
 const safeScript = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
 
 /**

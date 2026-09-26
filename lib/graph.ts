@@ -1,10 +1,10 @@
 /**
- * @file Pure geometry for the `<Graph>` component: the function catalogue,
+ * @file Pure geometry for the `<Graph>` component: the function catalog,
  * the transform model `y = a·f(b·(x − h)) + k`, sampling with breaks at
  * asymptotes, and conversion to SVG path data. No DOM, no React; fully tested.
  */
 
-/** Names of the functions a graph can draw: section 1.12 of the maths sheet plus a few for the graph-reading sheet. */
+/** Names of the functions a graph can draw: section 1.12 of the math sheet plus a few for the graph-reading sheet. */
 export type FunctionName =
   | "line"
   | "identity"
@@ -21,7 +21,7 @@ export type FunctionName =
   | "exp"
   | "ln";
 
-/** A catalogue entry: the function plus a domain and range that show it well. */
+/** A catalog entry: the function plus a domain and range that show it well. */
 export interface CatalogueEntry {
   readonly f: (x: number) => number;
   readonly domain: readonly [number, number];
@@ -30,7 +30,7 @@ export interface CatalogueEntry {
   readonly formula: string;
 }
 
-/** The functions the maths sheets reference, with sensible default windows. */
+/** The functions the math sheets reference, with sensible default windows. */
 export const FUNCTIONS: Record<FunctionName, CatalogueEntry> = {
   line: { f: (x) => x / 2 + 1, domain: [-3, 3], range: [-2, 3], formula: "x/2 + 1" },
   identity: { f: (x) => x, domain: [-3, 3], range: [-3, 3], formula: "x" },
@@ -48,7 +48,7 @@ export const FUNCTIONS: Record<FunctionName, CatalogueEntry> = {
   ln: { f: Math.log, domain: [0, 8], range: [-3, 3], formula: "ln x" },
 };
 
-/** One curve: a catalogue function with an optional transform and legend label. */
+/** One curve: a catalog function with an optional transform and legend label. */
 export interface Curve {
   readonly fn: FunctionName;
   /** Vertical scale; negative reflects in the x-axis. Default 1. */
@@ -59,7 +59,7 @@ export interface Curve {
   readonly h?: number;
   /** Vertical shift (up is positive). Default 0. */
   readonly k?: number;
-  /** Legend text; defaults to the catalogue formula. */
+  /** Legend text; defaults to the catalog formula. */
   readonly label?: string;
 }
 
@@ -81,7 +81,7 @@ export type Point = readonly [number, number];
  * Sample a curve over `domain` into polyline segments.
  *
  * A new segment starts wherever the function is undefined, leaves the
- * padded range, or jumps by more than the range height between neighbouring
+ * padded range, or jumps by more than the range height between neighboring
  * samples (an asymptote), so `tan x` draws as separate branches rather than
  * vertical lines.
  *
@@ -172,8 +172,8 @@ export interface Tick {
  * Ticks for an axis window.
  *
  * `"int"` gives every integer in the window (thinned to every 2 when there are
- * more than 9); `"pi"` gives multiples of π labelled `-2π … 2π`. Zero is never
- * labelled, since the axes cross there.
+ * more than 9); `"pi"` gives multiples of π labeled `-2π … 2π`. Zero is never
+ * labeled, since the axes cross there.
  */
 export function ticks(window: readonly [number, number], kind: "int" | "pi" = "int"): Tick[] {
   const [lo, hi] = window;

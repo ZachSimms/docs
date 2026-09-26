@@ -162,7 +162,7 @@ track!.addEventListener("ended", () => {
 });
 ```
 
-| `contentHint` | Encoder favours |
+| `contentHint` | Encoder favors |
 | :------------ | :-------------- |
 | `"motion"` | frame rate (video, games) |
 | `"detail"` / `"text"` | resolution and sharpness (slides, code) |
@@ -313,13 +313,13 @@ Route the mic into Web Audio and read an `AnalyserNode`; details in
 ```ts
 const ctx = new AudioContext(); // resume() it on a click
 const source = ctx.createMediaStreamSource(stream);
-const analyser = ctx.createAnalyser();
-analyser.fftSize = 1024;
-source.connect(analyser); // not to ctx.destination: no echo
+const analyzer = ctx.createAnalyser();
+analyzer.fftSize = 1024;
+source.connect(analyzer); // not to ctx.destination: no echo
 
-const buf = new Float32Array(analyser.fftSize);
+const buf = new Float32Array(analyzer.fftSize);
 function rmsDb(): number {
-  analyser.getFloatTimeDomainData(buf);
+  analyzer.getFloatTimeDomainData(buf);
   let sum = 0;
   for (const v of buf) sum += v * v;
   const rms = Math.sqrt(sum / buf.length);
@@ -501,12 +501,12 @@ export async function micMeter(cb: (v: number) => void) {
   });
   const ctx = new AudioContext();
   await ctx.resume(); // call micMeter from a click
-  const analyser = ctx.createAnalyser();
-  ctx.createMediaStreamSource(stream).connect(analyser);
-  const buf = new Float32Array(analyser.fftSize);
+  const analyzer = ctx.createAnalyser();
+  ctx.createMediaStreamSource(stream).connect(analyzer);
+  const buf = new Float32Array(analyzer.fftSize);
   let raf = 0;
   const tick = () => {
-    analyser.getFloatTimeDomainData(buf);
+    analyzer.getFloatTimeDomainData(buf);
     const rms = Math.hypot(...buf) / Math.sqrt(buf.length);
     const db = 20 * Math.log10(rms || 1e-8);
     cb(Math.min(1, Math.max(0, (db + 60) / 60))); // -60..0

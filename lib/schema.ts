@@ -17,7 +17,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  *
  * - `title`: non-empty after trimming.
  * - `date`: either a `Date` (what the YAML parser yields for a bare `2026-09-04`)
- *   or a quoted `"YYYY-MM-DD"` string. Both normalise to the string form.
+ *   or a quoted `"YYYY-MM-DD"` string. Both normalize to the string form.
  *   Free-form strings such as `"May 5 2026"` are rejected rather than parsed in
  *   local time, which could shift the day.
  * - `order` (optional): non-negative integer. Sheets that have one are listed
@@ -32,5 +32,5 @@ export const frontmatterSchema = z.object({
   order: z.number().int().nonnegative("order must be a non-negative integer").optional(),
 });
 
-/** The parsed, normalised frontmatter: `{ title: string; date: "YYYY-MM-DD"; order?: number }`. */
+/** The parsed, normalized frontmatter: `{ title: string; date: "YYYY-MM-DD"; order?: number }`. */
 export type Frontmatter = z.infer<typeof frontmatterSchema>;

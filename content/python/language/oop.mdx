@@ -7,7 +7,7 @@ order: 4
 Classes, the data model (dunder methods), properties, inheritance and the MRO, ABCs versus
 `Protocol`, dataclasses, slots, enums, typed records and generic classes in Python 3.14.
 The TypeScript take is in [Object-oriented programming](/typescript/language/oop/); pattern
-catalogues are in [Design patterns](/python/engineering/design-patterns/).
+catalogs are in [Design patterns](/python/engineering/design-patterns/).
 
 ## Classes
 
@@ -50,7 +50,7 @@ acc = Account("zach", 50).deposit(25)
 | Property | `@property def x(self)` | computed attribute, optional setter |
 | Protected by convention | `_x` | "internal"; nothing enforces it |
 | Name-mangled | `__x` | stored as `_Cls__x`; avoids subclass clashes, not privacy |
-| Constructor | `__new__` then `__init__` | `__init__` initialises; returns `None` |
+| Constructor | `__new__` then `__init__` | `__init__` initializes; returns `None` |
 
 `self` is just the first positional parameter: `obj.m(1)` is `type(obj).m(obj, 1)`. Nothing
 is private; there are no access modifiers.
@@ -531,7 +531,7 @@ u["name"] = "Ada L."              # ok
 
 | Type | Runtime object | Mutable | Best for |
 | :--- | :------------- | :------ | :------- |
-| `@dataclass` | your class | yes (or `frozen`) | domain objects with behaviour |
+| `@dataclass` | your class | yes (or `frozen`) | domain objects with behavior |
 | `NamedTuple` | `tuple` subclass | no | small records, returning several values, CSV rows |
 | `TypedDict` | `dict` | yes | typing JSON and `**kwargs` that stay dicts |
 | Pydantic `BaseModel` | your class | yes | validating untrusted input (see [FastAPI](/python/fastapi/)) |
@@ -654,7 +654,7 @@ assert a + b == Money(Decimal("0.30"), "EUR")
 
 ### Base class with `super()` and overrides
 
-When subclasses share construction and behaviour but specialise one step.
+When subclasses share construction and behavior but specialize one step.
 
 ```python
 from typing import override

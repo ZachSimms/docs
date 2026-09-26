@@ -4,7 +4,7 @@ date: 2026-09-25
 order: 2
 ---
 
-Labelled tables with pandas 3.0: I/O, selection, dtypes, Copy-on-Write, group-by, joins,
+Labeled tables with pandas 3.0: I/O, selection, dtypes, Copy-on-Write, group-by, joins,
 reshaping and time series. The arrays underneath are covered in [NumPy](/python/data/numpy/).
 
 ## Core objects
@@ -187,7 +187,7 @@ why `df[mask]["col"] = v` does nothing.
 
 | Tool | Use for |
 | :--- | :------ |
-| `df["c"] = df["a"] * df["b"]` | vectorised arithmetic; the fastest option |
+| `df["c"] = df["a"] * df["b"]` | vectorized arithmetic; the fastest option |
 | `df.assign(c=...)` | returns a new frame; chain-friendly |
 | `pd.col("a") * pd.col("b")` | 3.0 column expression for `assign`, `loc`, `[]` (no lambda) |
 | `np.where(cond, a, b)`, `s.where(cond, other)` | two-way choice; `s.mask` is the inverse |
@@ -578,7 +578,7 @@ df["date"].dt.to_period("M").astype(str).unique().tolist()
 
 | Tip | Why |
 | :-- | :-- |
-| Vectorise; avoid `iterrows`, `apply(axis=1)` | Python per row is 100-1000x slower than column ops |
+| Vectorize; avoid `iterrows`, `apply(axis=1)` | Python per row is 100-1000x slower than column ops |
 | `itertuples()` if you must loop | much faster than `iterrows` |
 | Read only what you need: `usecols=`, `columns=`, `nrows=` | less parsing and memory |
 | `engine="pyarrow"` in `read_csv` | multithreaded parsing |
@@ -586,7 +586,7 @@ df["date"].dt.to_period("M").astype(str).unique().tolist()
 | `category` for low-cardinality text | integer codes instead of strings |
 | Downcast: `pd.to_numeric(s, downcast="integer")` | `int8`/`int32` instead of `int64` |
 | `groupby(..., sort=False, observed=True)` | skips sorting and unused categories |
-| `.to_numpy()` for heavy NumPy maths | drops index alignment overhead |
+| `.to_numpy()` for heavy NumPy math | drops index alignment overhead |
 | Build a list of frames, `pd.concat` once | appending in a loop is quadratic |
 | `chunksize=` or Polars/DuckDB when data exceeds RAM | pandas holds everything in memory |
 
@@ -600,7 +600,7 @@ df["date"].dt.to_period("M").astype(str).unique().tolist()
 | Join | `a.merge(b, on="k", how="left")` | `a.join(b, on="k", how="left")` | `LEFT JOIN b USING (k)` |
 | Sort | `sort_values("x")` | `sort("x")` | `ORDER BY x` |
 | Window | `groupby("k").x.transform("sum")` | `pl.col("x").sum().over("k")` | `SUM(x) OVER (PARTITION BY k)` |
-| Execution | eager, mostly single-threaded | lazy optimiser, multithreaded | planner in the database |
+| Execution | eager, mostly single-threaded | lazy optimizer, multithreaded | planner in the database |
 | Index | row labels, alignment | none | none (keys) |
 | Best at | exploration, ecosystem, time series | large local data, speed | data already in a database |
 

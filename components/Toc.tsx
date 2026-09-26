@@ -76,7 +76,7 @@ function currentIndex(ids: readonly string[]): number {
  * Following a link to a heading (a TOC click or any `#hash` change) pins that
  * heading as current until the reader scrolls on purpose: a short section
  * jumped to near the end of a page may never reach the reading line, and the
- * position rule alone would highlight its neighbour.
+ * position rule alone would highlight its neighbor.
  * Before hydration, and until the first scroll, the first entry is current,
  * which is also what the server renders.
  *
@@ -234,7 +234,7 @@ function TocMenu({ entries, active, parent, onChoose }: EntryLinksProps) {
     document.body.setAttribute(MENU_OPEN_ATTRIBUTE, "");
     const close = () => setOpen(false);
     const onKey = (event: KeyboardEvent) => {
-      // Search opened on top of the menu owns this Escape; the menu stays for afterwards.
+      // Search opened on top of the menu owns this Escape; the menu stays for afterward.
       if (event.key !== "Escape" || document.body.hasAttribute("data-search-open")) return;
       event.preventDefault();
       close();

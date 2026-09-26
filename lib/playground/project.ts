@@ -252,7 +252,7 @@ export function setOpen(project: Project, path: string): ProjectResult {
 }
 
 /**
- * Close a tab. Closing the open file switches to its neighbour, or to the
+ * Close a tab. Closing the open file switches to its neighbor, or to the
  * entry when no tabs are left.
  */
 export function closeTab(project: Project, path: string): Project {

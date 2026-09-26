@@ -132,7 +132,7 @@ active.limit(10).toSQL();
 
 ### Prototype
 
-New objects delegate to an existing object instead of copying behaviour. Every JS class is sugar
+New objects delegate to an existing object instead of copying behavior. Every JS class is sugar
 over this: methods live once on `Class.prototype`.
 
 ```ts
@@ -148,7 +148,7 @@ rex.name = "Rex"; // own property; describe() is shared
 rex.describe(); // "I am Rex"
 Object.getPrototypeOf(rex) === proto; // true
 
-// Copying data rather than sharing behaviour: deep clone
+// Copying data rather than sharing behavior: deep clone
 const copy = structuredClone({
   tags: ["a"],
   at: new Date(),
@@ -185,7 +185,7 @@ export const count = (): number =>
 ### Proxy
 
 Intercept operations on an object (get, set, has, delete, apply) with `Proxy`, and forward the
-default behaviour with `Reflect`.
+default behavior with `Reflect`.
 
 ```ts
 const user = { name: "Ada", age: 36 };
@@ -223,7 +223,7 @@ guarded.age = 37; // ok
 
 ### Decorator
 
-Add behaviour to a function without changing it by wrapping it. Higher-order functions keep
+Add behavior to a function without changing it by wrapping it. Higher-order functions keep
 the signature through generics.
 
 ```ts
@@ -272,7 +272,7 @@ class Api {
 
 - **Use when:** cross-cutting concerns: retry, timing, caching, auth checks.
 - **Watch out:** `@` decorators need compiling (not erasable, not in browsers or Node type
-  stripping yet); `experimentalDecorators` is the older, incompatible flavour.
+  stripping yet); `experimentalDecorators` is the older, incompatible flavor.
 
 ### Adapter
 
@@ -350,7 +350,7 @@ const line = [..."hello"].map((c, x) => ({
 
 ### Mixin
 
-Compose behaviour into classes without deep inheritance. A mixin is a function from a class to
+Compose behavior into classes without deep inheritance. A mixin is a function from a class to
 a subclass.
 
 ```ts
@@ -379,7 +379,7 @@ u.createdAt; u.tags; u.name; // all typed
 - **Watch out:** name clashes and opaque types; plain composition (a field holding a helper)
   or functions over data is usually clearer. React dropped mixins for hooks.
 
-## Behavioural
+## Behavioral
 
 Patterns for how objects communicate.
 
@@ -427,7 +427,7 @@ Built-in alternatives: `EventTarget` + `CustomEvent` (browser and Node), Node's
 
 ### Mediator and middleware
 
-A mediator centralises communication so components talk to it, not to each other. Middleware
+A mediator centralizes communication so components talk to it, not to each other. Middleware
 is a mediator shaped as a pipeline: each step can act, then call `next()`.
 
 ```ts
@@ -462,7 +462,7 @@ const handler = compose([auth, async (ctx) => {
 - **Use when:** request pipelines (Express, Koa, Hono), chat rooms, form field coordination,
   Redux middleware.
 - **Watch out:** the mediator becomes the one class that knows everything; order of middleware
-  is behaviour.
+  is behavior.
 
 ### Command
 
@@ -617,7 +617,7 @@ function transition(s: State, m: Msg): State {
 
 - **Use when:** UI flows (fetch, wizard, checkout), protocols, anything with "is it loading
   and errored at once?" bugs. Plugs straight into `useReducer`.
-- **Watch out:** big machines get hard to read; XState adds visualisation, guards, actors.
+- **Watch out:** big machines get hard to read; XState adds visualization, guards, actors.
 
 ## React component patterns
 
@@ -698,7 +698,7 @@ const View = () => (
 );
 ```
 
-- **Use when:** the consumer must control rendering (virtualised lists `renderItem`, headless
+- **Use when:** the consumer must control rendering (virtualized lists `renderItem`, headless
   UI libraries).
 - **Watch out:** nesting several render props gets deep; a hook composes flatter.
 
@@ -839,11 +839,11 @@ let you mix these per route.
 | SSG (static) | build time; served from CDN | fastest TTFB, cheap, cacheable | stale until rebuild; builds slow with many pages |
 | ISR (incremental static) | build time, then regenerated in the background after a TTL or on-demand revalidation | CDN speed with periodic freshness | briefly stale content; platform support needed |
 | Streaming SSR | server, sends HTML in chunks as `Suspense` boundaries resolve | early first byte, slow parts don't block fast ones | needs streaming-capable host; layout shift if fallbacks are poor |
-| React Server Components | server (at build or request); only client components ship JS | zero JS for server parts, direct DB access, smaller bundles | server/client boundary rules, framework-bound, serialisable props only |
+| React Server Components | server (at build or request); only client components ship JS | zero JS for server parts, direct DB access, smaller bundles | server/client boundary rules, framework-bound, serializable props only |
 | Islands | static HTML with isolated interactive widgets hydrated independently (Astro, Fresh) | minimal JS, per-island loading (`client:visible`) | cross-island state is awkward; less suited to app-like UIs |
 
 Related hydration techniques: **progressive hydration** (hydrate parts later or on visibility),
-**selective hydration** (React 18+ hydrates `Suspense` boundaries independently and prioritises
+**selective hydration** (React 18+ hydrates `Suspense` boundaries independently and prioritizes
 the ones the user interacts with), and **partial prerendering** (static shell plus streamed
 dynamic holes).
 
@@ -955,7 +955,7 @@ export function App({ route }: { route: string }) {
 
 ### List virtualization
 
-The core arithmetic every virtualiser does:
+The core arithmetic every virtualizer does:
 
 ```ts
 function visibleRange(

@@ -135,7 +135,7 @@ export function buildRustRequest(code: string, stdin: string): RemoteRequest {
  * Read a Compiler Explorer response (the CMake and the compile endpoints
  * answer in slightly different shapes).
  *
- * @throws {ServiceUnavailable} When the body isn't a recognisable response.
+ * @throws {ServiceUnavailable} When the body isn't a recognizable response.
  */
 export function parseCompilerExplorer(json: unknown): RemoteOutcome {
   const parsed = ceResponse.safeParse(json);

@@ -50,20 +50,20 @@ export function WebPreview({ project, refreshKey, onReload, onOutput }: WebPrevi
   useEffect(() => {
     const immediate = refreshKey !== lastRefresh.current;
     lastRefresh.current = refreshKey;
-    let cancelled = false;
+    let canceled = false;
     const handle = setTimeout(
       () => {
         const runToken = newRunToken();
         linkWebDocument(project.files, project.entry, transpile)
           .then(({ html, urls: linked }) => {
-            if (cancelled) return;
+            if (canceled) return;
             token.current = runToken;
             urls.current = linked;
             callbacks.current.onReload();
             setDoc(buildPreviewSrcDoc(html, runToken));
           })
           .catch((error: unknown) => {
-            if (cancelled) return;
+            if (canceled) return;
             callbacks.current.onReload();
             callbacks.current.onOutput(
               "stderr",
@@ -74,7 +74,7 @@ export function WebPreview({ project, refreshKey, onReload, onOutput }: WebPrevi
       immediate ? 0 : PREVIEW_DEBOUNCE_MS,
     );
     return () => {
-      cancelled = true;
+      canceled = true;
       clearTimeout(handle);
     };
   }, [project.files, project.entry, refreshKey]);

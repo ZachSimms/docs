@@ -2,10 +2,10 @@
  * @file The document a live `<Demo>` frame shows: the snippet plus base styles.
  *
  * Pure and shared by the server `Demo` and the client `DemoFrame`. A `srcdoc`
- * frame takes its preferred colour scheme from the OS, not from the page, so
+ * frame takes its preferred color scheme from the OS, not from the page, so
  * the frame's `color-scheme` is written into the document: `light dark` (the
  * OS preference) on the server, then the site's resolved theme once the
- * client knows it. The site's colour tokens resolve through `light-dark()`.
+ * client knows it. The site's color tokens resolve through `light-dark()`.
  *
  * Links and forms in a snippet resolve against the parent page's URL (even
  * `href="#"`), so a click would load the site inside the frame. `<base

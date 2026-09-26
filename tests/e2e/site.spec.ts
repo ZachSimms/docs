@@ -39,7 +39,7 @@ test.describe("home", () => {
     await expect(nav.locator("a")).toHaveCount(15);
     await expect(nav.locator("span").first()).toHaveText("15.");
     await expect(nav.locator("span").last()).toHaveText("01.");
-    await expect(nav.locator("a").first()).toHaveText("Maths");
+    await expect(nav.locator("a").first()).toHaveText("Math");
     await expect(nav.locator("a").last()).toHaveText("Design");
 
     await expect(page.locator("p.v a")).toHaveAttribute("href", "/sheets/");
@@ -148,7 +148,7 @@ test.describe("navigation", () => {
 });
 
 test.describe("syntax highlighting", () => {
-  test("fenced code is tokenised by Shiki with dual-theme variables; inline code keeps the chip", async ({
+  test("fenced code is tokenized by Shiki with dual-theme variables; inline code keeps the chip", async ({
     page,
   }) => {
     await page.goto("/databases/postgres/");
@@ -221,7 +221,7 @@ test.describe("dark mode", () => {
       Math.abs(box!.x + box!.width - buttonPadding - (mainBox!.x + mainBox!.width)),
     ).toBeLessThanOrEqual(2);
 
-    // Monochrome: the icon takes the text colour of the theme.
+    // Monochrome: the icon takes the text color of the theme.
     await expect(toggle.locator("svg")).toHaveCSS("color", "rgb(0, 0, 0)");
 
     await toggle.click();
@@ -366,7 +366,7 @@ test.describe("mdx showcase", () => {
     await expect(main.locator("nav.cards .card")).toHaveCount(3);
     await expect(main.getByRole("link", { name: "Notation" })).toHaveAttribute(
       "href",
-      "/maths/notation/",
+      "/math/notation/",
     );
 
     await expect(main).toContainText("This paragraph lives in _shared-snippet.mdx");
@@ -390,8 +390,8 @@ test.describe("mdx showcase", () => {
     await expect(ref).toBeInViewport();
   });
 
-  test("maths reference sheets render their tables and formulas", async ({ page }) => {
-    await page.goto("/maths/math-fundamentals/");
+  test("math reference sheets render their tables and formulas", async ({ page }) => {
+    await page.goto("/math/math-fundamentals/");
     const main = page.locator("main");
     expect(await main.locator("h2").count()).toBe(25); // 1.1–1.24 + References
     expect(await main.locator("table").count()).toBeGreaterThanOrEqual(25);
@@ -402,7 +402,7 @@ test.describe("mdx showcase", () => {
     await expect(main.locator("img")).toHaveCount(1);
     await expect(main.getByRole("img", { name: /unit circle/i })).toHaveAttribute("width", "691");
 
-    await page.goto("/maths/notation/");
+    await page.goto("/math/notation/");
     await expect(page.locator("main h2")).toHaveText([
       "Math notation",
       "Set notation",
@@ -413,7 +413,7 @@ test.describe("mdx showcase", () => {
       "References",
     ]);
 
-    await page.goto("/maths/constants-units-conversions/");
+    await page.goto("/math/constants-units-conversions/");
     await expect(page.locator("main h2")).toHaveText([
       "Fundamental constants of Nature",
       "Units",
@@ -427,7 +427,7 @@ test.describe("mdx showcase", () => {
   test("section headings are bold and a table of contents sits in the right margin", async ({
     page,
   }) => {
-    await page.goto("/maths/math-fundamentals/");
+    await page.goto("/math/math-fundamentals/");
     await expect(page.locator("main h2").first()).toHaveCSS("font-weight", "700");
     await expect(page.locator("main h1")).toHaveCSS("font-weight", "400");
 
@@ -457,10 +457,10 @@ test.describe("mdx showcase", () => {
   test("a back link stays pinned at the top-left of the column while scrolling", async ({
     page,
   }) => {
-    await page.goto("/maths/math-fundamentals/");
+    await page.goto("/math/math-fundamentals/");
     const pinned = page.locator(".back-rail a");
     await expect(pinned).toHaveText("../");
-    await expect(pinned).toHaveAttribute("href", "/maths/");
+    await expect(pinned).toHaveAttribute("href", "/math/");
 
     await page.mouse.wheel(0, 3000);
     await expect(pinned).toBeInViewport();
@@ -476,7 +476,7 @@ test.describe("mdx showcase", () => {
     ).toBeLessThanOrEqual(6);
 
     await pinned.click();
-    await expect(page).toHaveURL(/\/maths\/$/);
+    await expect(page).toHaveURL(/\/math\/$/);
     await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/");
 
     await page.goto("/");
@@ -492,8 +492,8 @@ test.describe("mdx showcase", () => {
     await expect(page.getByRole("navigation", { name: "Contents" })).toHaveCount(0);
   });
 
-  test("functions reference and transformations show coloured graphs", async ({ page }) => {
-    await page.goto("/maths/math-fundamentals/");
+  test("functions reference and transformations show colored graphs", async ({ page }) => {
+    await page.goto("/math/math-fundamentals/");
     const main = page.locator("main");
     const graphs = main.locator("figure.graph");
     expect(await graphs.count()).toBeGreaterThanOrEqual(15);
@@ -528,7 +528,7 @@ test.describe("mdx showcase", () => {
   });
 
   test("the graph-reading sheet plots every operation with several constants", async ({ page }) => {
-    await page.goto("/maths/reading-graphs/");
+    await page.goto("/math/reading-graphs/");
     const main = page.locator("main");
     await expect(main.locator("h2")).toHaveCount(11); // ten sections + References
     expect(await main.locator("figure.graph").count()).toBeGreaterThanOrEqual(20);
@@ -554,23 +554,23 @@ test.describe("mdx showcase", () => {
     for (const right of boxes) expect(right).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
   });
 
-  test("the Maths topic exists and is listed first", async ({ page }) => {
-    await page.goto("/maths/");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maths");
+  test("the Math topic exists and is listed first", async ({ page }) => {
+    await page.goto("/math/");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Math");
     await expect(page.locator("main nav a")).toHaveCount(5);
     // Frontmatter `order` puts the fundamentals first; numbering runs 00. from the top.
     await expect(page.locator("main nav a").first()).toHaveText("Math fundamentals");
     await expect(page.locator("main nav span").first()).toHaveText("00.");
     await expect(page.locator("main nav span").last()).toHaveText("04.");
     await page.getByRole("link", { name: "Math fundamentals" }).click();
-    await expect(page).toHaveURL(/\/maths\/math-fundamentals\/$/);
+    await expect(page).toHaveURL(/\/math\/math-fundamentals\/$/);
     const display = page.locator("main .katex-display");
     expect(await display.count()).toBeGreaterThanOrEqual(4);
     await expect(page.locator("main .katex-mathml math").first()).toBeAttached();
     // Rendered HTML layer is present; the raw LaTeX only survives inside the hidden MathML annotation.
     expect(await page.locator("main .katex-html").count()).toBeGreaterThanOrEqual(4);
     await expect(page.locator("main .katex-html").first()).toBeVisible();
-    // KaTeX glyphs take the theme's text colour.
+    // KaTeX glyphs take the theme's text color.
     await expect(display.first().locator(".katex")).toHaveCSS("color", "rgb(0, 0, 0)");
   });
 });
@@ -956,7 +956,7 @@ test.describe("top bar", () => {
       page.locator(".back-rail a").boundingBox(),
       page.locator(".theme-toggle").boundingBox(),
     ]);
-    // The band is painted (a gradient ending in the page colour) and reaches below both controls.
+    // The band is painted (a gradient ending in the page color) and reaches below both controls.
     expect(band.image).toContain("gradient");
     expect(band.bottom).toBeGreaterThan(back!.y + back!.height);
     expect(band.bottom).toBeGreaterThan(toggle!.y + toggle!.height);
@@ -977,7 +977,7 @@ test.describe("top bar", () => {
 
 test.describe("coming-soon pages", () => {
   test("an unwritten topic overview shows a Coming soon heading and the meme", async ({ page }) => {
-    for (const topic of ["python", "maths", "physics"]) {
+    for (const topic of ["python", "math", "physics"]) {
       await page.goto(`/${topic}/overview/`);
       const main = page.locator("main");
       await expect(main.locator("h2")).toHaveText(["Coming soon"]);
@@ -989,8 +989,8 @@ test.describe("coming-soon pages", () => {
     }
   });
 
-  test("maths sheets end with their references", async ({ page }) => {
-    await page.goto("/maths/constants-units-conversions/");
+  test("math sheets end with their references", async ({ page }) => {
+    await page.goto("/math/constants-units-conversions/");
     await expect(page.locator("main h2").last()).toHaveText("References");
     await expect(page.locator("main h2").last().locator("~ ul a").first()).toHaveAttribute(
       "href",
@@ -1000,7 +1000,7 @@ test.describe("coming-soon pages", () => {
 });
 
 test.describe("visuals", () => {
-  test("swatches, a tonal scale and a contrast pair render real colours", async ({ page }) => {
+  test("swatches, a tonal scale and a contrast pair render real colors", async ({ page }) => {
     await page.goto("/design/overview/");
     const bar = page.locator(".swatch-bar span");
     await expect(bar).toHaveCount(3);
@@ -1091,7 +1091,7 @@ test.describe("visuals", () => {
     expect(labelLeft).toBeGreaterThanOrEqual(chipLeft - 0.5);
   });
 
-  test("diagrams are inline SVG coloured by the theme palette", async ({ page }) => {
+  test("diagrams are inline SVG colored by the theme palette", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/design/overview/");
     const diagram = page.getByRole("img", { name: /box model/i });
@@ -1101,7 +1101,7 @@ test.describe("visuals", () => {
     await expect(diagram.locator("rect.d-fill-0")).toHaveCSS("fill", "rgb(88, 166, 255)");
   });
 
-  test("the design sheets use colour chips, live demos and diagrams", async ({ page }) => {
+  test("the design sheets use color chips, live demos and diagrams", async ({ page }) => {
     for (const href of ["/design/principles/color-theory/", "/design/css/css/"]) {
       await page.goto(href);
       const visuals = page.locator("main :is(.swatches, .contrast, .demo, .diagram)");
@@ -1212,7 +1212,7 @@ test.describe("economics and C++", () => {
     expect(hrefs).toEqual(["/economics/microeconomics/", "/economics/macroeconomics/"]);
   });
 
-  test("the economics sheets draw their diagrams and typeset their maths", async ({ page }) => {
+  test("the economics sheets draw their diagrams and typeset their math", async ({ page }) => {
     for (const [url, diagrams] of [
       ["/economics/microeconomics/", 3],
       ["/economics/macroeconomics/", 2],
@@ -1246,10 +1246,10 @@ const SIZES = [
   { name: "large tablet", width: 1024, height: 1366 },
 ] as const;
 
-/** Sheets with wide tables, maths, code, demos, diagrams and swatches. */
+/** Sheets with wide tables, math, code, demos, diagrams and swatches. */
 const HEAVY_SHEETS = [
   "/databases/postgres/",
-  "/maths/math-fundamentals/",
+  "/math/math-fundamentals/",
   "/python/language/fundamentals/",
   "/design/css/css/",
   "/design/principles/color-theory/",
@@ -1268,7 +1268,7 @@ async function bandBottom(page: Page): Promise<number> {
   return (band?.y ?? 0) + (band?.height ?? 0) - BAND_FADE;
 }
 
-/** Whether the element's centre is the topmost thing there (nothing covers it). */
+/** Whether the element's center is the topmost thing there (nothing covers it). */
 async function uncovered(page: Page, selector: string): Promise<boolean> {
   return page
     .locator(selector)

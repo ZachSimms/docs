@@ -103,7 +103,7 @@ create ──► created ──start──► running ──stop/kill──► e
 | `125` | `docker run` itself failed (bad flag, name taken) |
 | `126` / `127` | command not executable / not found |
 | `137` | `SIGKILL`: OOM kill (`State.OOMKilled`) or stop timeout |
-| `143` | `SIGTERM` honoured |
+| `143` | `SIGTERM` honored |
 
 ## Images, builds & registries
 
@@ -190,7 +190,7 @@ docker run --mount \
 
 ## Networking
 
-| Driver | Behaviour |
+| Driver | Behavior |
 | :----- | :-------- |
 | `bridge` (default network) | NAT'd private network; **no DNS between containers** |
 | user-defined `bridge` | same, plus embedded DNS (`127.0.0.11`): containers resolve each other by name and alias |
@@ -369,7 +369,7 @@ docker compose run --rm adminer   # run starts it anyway
 
 ### Overrides and merging
 
-| Mechanism | Behaviour |
+| Mechanism | Behavior |
 | :-------- | :-------- |
 | `compose.override.yaml` | merged over `compose.yaml` automatically |
 | `-f a.yaml -f b.yaml` | explicit list, later files win; disables auto-override |
@@ -501,7 +501,7 @@ docker logs --since 5m -t api 2>&1 | grep -i error
 
 | Tool | Platform | Notes |
 | :--- | :------- | :---- |
-| Docker Desktop | macOS, Windows, Linux | GUI, Scout, Debug, Model Runner; paid licence for larger companies |
+| Docker Desktop | macOS, Windows, Linux | GUI, Scout, Debug, Model Runner; paid license for larger companies |
 | OrbStack | macOS | fast, light drop-in Docker engine plus Linux VMs and local Kubernetes; paid for commercial use |
 | Colima | macOS, Linux | free, Lima VM running dockerd or containerd: `colima start --cpu 4 --memory 8` |
 | Podman | Linux, macOS, Windows | daemonless and rootless by default; `alias docker=podman`, `podman compose`, pods |
@@ -575,7 +575,7 @@ docker compose down -v --remove-orphans --rmi local
 ```
 
 ### Copy files out of a container or image
-Grab logs, build artefacts or a config file.
+Grab logs, build artifacts or a config file.
 
 ```sh
 docker cp api:/app/logs/app.log ./app.log

@@ -110,7 +110,7 @@ export async function verifyPassword(
 
 - **`timingSafeEqual`** compares in constant time; `===` leaks how many leading bytes matched.
 - Store the parameters with the hash (or version the prefix) and **rehash on login** when they change.
-- An optional **pepper** (secret key kept outside the DB, e.g. HMAC before hashing) adds defence if
+- An optional **pepper** (secret key kept outside the DB, e.g. HMAC before hashing) adds defense if
   only the database leaks.
 
 ### Policy, rate limiting, breach checks
@@ -514,7 +514,7 @@ export async function registerPasskey(): Promise<void> {
     publicKey,
   });
   if (!(cred instanceof PublicKeyCredential)) {
-    throw new Error("Passkey creation cancelled");
+    throw new Error("Passkey creation canceled");
   }
   await fetch("/webauthn/register/verify", {
     method: "POST",
@@ -655,9 +655,9 @@ A cross-site request forgery makes the victim's browser send a request with thei
 It matters only for cookie (ambient) authentication; `Authorization` headers are never sent
 automatically.
 
-| Defence                          | How                                                            |
+| Defense                          | How                                                            |
 | :------------------------------- | :------------------------------------------------------------- |
-| `SameSite=Lax` / `Strict`        | cookie not sent on cross-site POST / `fetch`; first line of defence |
+| `SameSite=Lax` / `Strict`        | cookie not sent on cross-site POST / `fetch`; first line of defense |
 | Fetch metadata                   | reject unsafe methods when `Sec-Fetch-Site` is `cross-site`    |
 | `Origin` check                   | unsafe methods must come from an allow-listed origin           |
 | Synchronizer / signed tokens     | per-session token in a hidden field or header (`Bun.CSRF.generate`) |
@@ -835,7 +835,7 @@ export function assertAuthed(
 - [ ] Logout and password change invalidate sessions server-side
 - [ ] JWTs: algorithm allow-list, `iss`/`aud`/`exp` checked, short-lived, refresh tokens rotated
 - [ ] OAuth: authorization code + PKCE, `state` and `nonce` checked, exact redirect URIs
-- [ ] CSRF defences for every cookie-authenticated state change
+- [ ] CSRF defenses for every cookie-authenticated state change
 - [ ] Authorization checked server-side on every request, deny by default
 - [ ] Reset tokens random, single-use, hashed, expiring within an hour
 - [ ] MFA available (passkeys or TOTP), with backup codes and step-up for sensitive changes

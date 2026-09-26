@@ -1,9 +1,9 @@
 /**
- * @file Colour chips for the design sheets: `<Swatches>`, `<Scale>` and `<Contrast>`.
+ * @file Color chips for the design sheets: `<Swatches>`, `<Scale>` and `<Contrast>`.
  *
- * Server components with no client JS. Colours are the author's fixed values
+ * Server components with no client JS. Colors are the author's fixed values
  * and look the same in both site themes, as real swatches should; every value
- * goes through `lib/color.ts` at build time, so an unreadable colour fails the
+ * goes through `lib/color.ts` at build time, so an unreadable color fails the
  * build instead of rendering an empty chip.
  *
  * @example
@@ -15,7 +15,7 @@
 import type { ReactNode } from "react";
 import { contrastRatio, parseColor, tonalScale, wcagLevel, type WcagLevel } from "@/lib/color";
 
-/** A colour given as a bare CSS value or with a display name. */
+/** A color given as a bare CSS value or with a display name. */
 export type SwatchColor = string | { readonly name: string; readonly value: string };
 
 /** A chip ready to draw: its CSS background and the lines printed under it. */
@@ -27,15 +27,15 @@ interface Chip {
 
 /** Props for {@link Swatches}. */
 interface SwatchesProps {
-  /** The colours, in order: hex, `rgb()`, `hsl()` or `oklch()`. */
+  /** The colors, in order: hex, `rgb()`, `hsl()` or `oklch()`. */
   colors: readonly SwatchColor[];
-  /** Optional proportions (one per colour) drawn as a bar above the chips, e.g. 60-30-10. */
+  /** Optional proportions (one per color) drawn as a bar above the chips, e.g. 60-30-10. */
   weights?: readonly number[];
   /** Caption above the chips; also the list's accessible name. */
   title?: string;
 }
 
-/** Normalise a {@link SwatchColor} into a chip, validating the value. */
+/** Normalize a {@link SwatchColor} into a chip, validating the value. */
 function toChip(color: SwatchColor): Chip {
   const { name, value } = typeof color === "string" ? { name: undefined, value: color } : color;
   parseColor(value);
@@ -65,7 +65,7 @@ function ChipList({
           ))}
         </div>
       )}
-      <ul aria-label={title ?? "Colour swatches"}>
+      <ul aria-label={title ?? "Color swatches"}>
         {chips.map((chip, i) => (
           <li key={i}>
             <span className="swatch-chip" style={{ background: chip.css }} aria-hidden="true" />
@@ -82,10 +82,10 @@ function ChipList({
 }
 
 /**
- * A row of colour chips, each labelled with its name (if any) and value.
+ * A row of color chips, each labeled with its name (if any) and value.
  *
- * @throws {Error} At build time for an unreadable colour, or when `weights`
- *   doesn't have one non-negative entry per colour with a positive total.
+ * @throws {Error} At build time for an unreadable color, or when `weights`
+ *   doesn't have one non-negative entry per color with a positive total.
  */
 export function Swatches({ colors, weights, title }: SwatchesProps) {
   if (weights && weights.length !== colors.length) {
@@ -119,9 +119,9 @@ export function Scale({ hue, chroma, title }: ScaleProps) {
 
 /** Props for {@link Contrast}. */
 interface ContrastProps {
-  /** Text colour. */
+  /** Text color. */
   fg: string;
-  /** Background colour. */
+  /** Background color. */
   bg: string;
   /** Sample text; defaults to a pangram. */
   children?: ReactNode;
@@ -137,7 +137,7 @@ const formatRatio = (ratio: number) => (Math.floor(ratio * 100) / 100).toFixed(2
  * Sample text in `fg` on `bg`, captioned with the WCAG 2 contrast ratio and its
  * grade for normal and large text.
  *
- * @throws {Error} At build time for an unreadable colour.
+ * @throws {Error} At build time for an unreadable color.
  */
 export function Contrast({ fg, bg, children }: ContrastProps) {
   const ratio = contrastRatio(parseColor(fg), parseColor(bg));

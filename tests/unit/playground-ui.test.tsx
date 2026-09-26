@@ -313,7 +313,7 @@ describe("sandbox frames", () => {
 });
 
 describe("reference panel helpers", () => {
-  it("recognise the playground path and site-relative sheet URLs only", () => {
+  it("recognize the playground path and site-relative sheet URLs only", () => {
     expect(isPlaygroundPath("/playground/")).toBe(true);
     expect(isPlaygroundPath("/playground")).toBe(true);
     expect(isPlaygroundPath("/python/")).toBe(false);

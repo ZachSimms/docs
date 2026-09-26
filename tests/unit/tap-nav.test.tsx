@@ -174,7 +174,7 @@ describe("TapNav", () => {
     }
   });
 
-  it("forgets a pending tap when the touch is cancelled", () => {
+  it("forgets a pending tap when the touch is canceled", () => {
     const clicks = page();
     const text = document.getElementById("text")!;
     tap(text, 20);

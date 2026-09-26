@@ -286,7 +286,7 @@ try {
   if (err.name === "TimeoutError") {
     // took longer than 5 s
   } else if (err.name === "AbortError") {
-    // cancelled by the user or by code
+    // canceled by the user or by code
   } else if (err instanceof TypeError) {
     // network failure
   } else throw err;
@@ -438,7 +438,7 @@ Anything else (a JSON `Content-Type`, an `Authorization` header, `PUT`) first se
 | `Access-Control-Expose-Headers`       | response headers JS may read beyond the safelist          |
 | `Vary: Origin`                        | when the allowed origin is echoed per request             |
 
-| `mode`        | Behaviour                                                             |
+| `mode`        | Behavior                                                             |
 | :------------ | :-------------------------------------------------------------------- |
 | `cors`        | default; cross-origin allowed if the server opts in                   |
 | `same-origin` | cross-origin requests reject with `TypeError`                         |
@@ -705,7 +705,7 @@ if (r.ok) {
 }
 ```
 
-Extensions worth adding: honour `Retry-After` on 429/503, pass an `Idempotency-Key` to make `POST`
+Extensions worth adding: honor `Retry-After` on 429/503, pass an `Idempotency-Key` to make `POST`
 retryable, accept a caller `signal` via `AbortSignal.any`, and inject `fetch` itself so tests can
 swap it; see [Testing](/typescript/testing/#mocking-the-network).
 
@@ -811,7 +811,7 @@ function upload(
 }
 ```
 
-### Honour `Retry-After` on 429 and 503
+### Honor `Retry-After` on 429 and 503
 
 When an API rate-limits you and says how long to wait.
 

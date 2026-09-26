@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { frontmatterSchema } from "@/lib/schema";
 
 describe("frontmatterSchema", () => {
-  it("accepts a YAML Date and normalises it to YYYY-MM-DD", () => {
+  it("accepts a YAML Date and normalizes it to YYYY-MM-DD", () => {
     const parsed = frontmatterSchema.parse({ title: "T", date: new Date(Date.UTC(2026, 8, 4)) });
     expect(parsed.date).toBe("2026-09-04");
   });

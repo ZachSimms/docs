@@ -7,7 +7,7 @@ order: 4
 Compiling C and C++ to WebAssembly with Emscripten, from the TypeScript side: `emcc` basics, output
 modes and the settings that matter, calling C from JS (`ccall`, `cwrap`, heap views), embind with
 generated `.d.ts`, JS from C, file systems, main loops, SDL/WebGL, pthreads, CMake, debugging and
-optimisation, plus wasi-sdk for builds without JS. Background is in
+optimization, plus wasi-sdk for builds without JS. Background is in
 [Fundamentals](/typescript/webassembly/fundamentals/).
 
 ## Install emsdk
@@ -467,26 +467,26 @@ Pass the exception flag at **both** compile and link time.
 | `-sSTACK_OVERFLOW_CHECK=2` | detects shadow stack overflow on every call |
 | `-fsanitize=address` | AddressSanitizer: out-of-bounds, use-after-free, leaks |
 | `-fsanitize=undefined` | UBSan: overflow, bad shifts, null dereference |
-| `--profiling` / `--profiling-funcs` | keep function names in optimised builds for profilers |
+| `--profiling` / `--profiling-funcs` | keep function names in optimized builds for profilers |
 | `EMCC_DEBUG=1` | log and keep the compiler's intermediate files |
 
 Debug builds (`-O0`) enable `ASSERTIONS` by default, which catches most mistakes (missing exports,
 calling before the runtime is ready, `ccall` type mismatches).
 
-## Optimisation
+## Optimization
 
 | Flag | Effect |
 | :--- | :----- |
-| `-O0` | no optimisation, fastest compile, assertions on |
+| `-O0` | no optimization, fastest compile, assertions on |
 | `-O1`, `-O2` | normal release; `-O2` runs the full Binaryen pipeline |
 | `-O3` | more inlining and speed, bigger and slower to build |
 | `-Os`, `-Oz` | size-focused; `-Oz` smallest |
-| `-flto` | link-time optimisation across translation units |
+| `-flto` | link-time optimization across translation units |
 | `--closure 1` | Google Closure Compiler minifies the JS glue (needs Java on some platforms) |
 | `-sEVAL_CTORS` | run static constructors at compile time |
 | `-sMINIMAL_RUNTIME` | tiny glue without most runtime features |
 | `-sFILESYSTEM=0`, `-sENVIRONMENT=web` | drop unused runtime code |
-| `-msimd128` | enable Wasm SIMD (auto-vectorisation, `wasm_simd128.h`); SSE / NEON intrinsics headers are partly emulated |
+| `-msimd128` | enable Wasm SIMD (auto-vectorization, `wasm_simd128.h`); SSE / NEON intrinsics headers are partly emulated |
 
 Use the same `-O` level at compile and link time: the link step runs `wasm-opt`, and settings such
 as `-flto` or `-pthread` must match across all objects.
@@ -651,7 +651,7 @@ emrun --no-browser --port 8080 work.html
 
 - [Emscripten documentation](https://emscripten.org/docs/): [emcc reference](https://emscripten.org/docs/tools_reference/emcc.html), [settings reference](https://emscripten.org/docs/tools_reference/settings_reference.html), [download and install](https://emscripten.org/docs/getting_started/downloads.html)
 - Emscripten: [interacting with code](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html), [embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html), [`emscripten.h` API](https://emscripten.org/docs/api_reference/emscripten.h.html), [File System API](https://emscripten.org/docs/api_reference/Filesystem-API.html), [packaging files](https://emscripten.org/docs/porting/files/packaging_files.html)
-- Emscripten: [pthreads](https://emscripten.org/docs/porting/pthreads.html), [Asyncify and JSPI](https://emscripten.org/docs/porting/asyncify.html), [building projects](https://emscripten.org/docs/compiling/Building-Projects.html), [debugging](https://emscripten.org/docs/porting/Debugging.html), [optimising code](https://emscripten.org/docs/optimizing/Optimizing-Code.html)
+- Emscripten: [pthreads](https://emscripten.org/docs/porting/pthreads.html), [Asyncify and JSPI](https://emscripten.org/docs/porting/asyncify.html), [building projects](https://emscripten.org/docs/compiling/Building-Projects.html), [debugging](https://emscripten.org/docs/porting/Debugging.html), [optimizing code](https://emscripten.org/docs/optimizing/Optimizing-Code.html)
 - [Emscripten ChangeLog](https://github.com/emscripten-core/emscripten/blob/main/ChangeLog.md): read it before upgrading
 - [MDN: Compiling C/C++ to Wasm](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/C_to_Wasm), [Chrome DevTools: debug C/C++ Wasm](https://developer.chrome.com/docs/devtools/wasm)
 - [wasi-sdk](https://github.com/WebAssembly/wasi-sdk), [WebAssembly spec](https://webassembly.github.io/spec/)

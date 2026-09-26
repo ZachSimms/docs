@@ -32,7 +32,7 @@ path per project.
 | Prefix injected | `#version 300 es`, precision, matrices, `position`/`normal`/`uv`, defines | only `#version` handling |
 | `gl_FragColor`, `texture2D` | work (macro-mapped to GLSL ES 3.00) | write your own `out vec4` |
 | `#include <chunk>` | yes | yes, but you declare what chunks need |
-| Tone mapping / colour space | only if you include the chunks | never |
+| Tone mapping / color space | only if you include the chunks | never |
 | Fog, lights, shadows | opt-in (`fog: true`, `lights: true` + `UniformsLib`) | manual |
 | Use for | most custom effects | full control, porting existing shaders |
 
@@ -161,7 +161,7 @@ mat.customProgramCacheKey = () => "wave-v1";
 | `beginnormal_vertex` | `objectNormal`; fix normals after displacing |
 | `project_vertex` | `mvPosition`, `gl_Position` |
 | `worldpos_vertex` | `worldPosition` (shadows, env) |
-| `color_fragment` / `map_fragment` | `diffuseColor`: tint or replace base colour |
+| `color_fragment` / `map_fragment` | `diffuseColor`: tint or replace base color |
 | `emissivemap_fragment` | `totalEmissiveRadiance` |
 | `normal_fragment_maps` | perturb `normal` |
 | `opaque_fragment` | writes `gl_FragColor` from `outgoingLight` |
@@ -215,14 +215,14 @@ Put `FXAAPass` **after** `OutputPass` (it expects sRGB input).
 | :------------ | :----- |
 | `RenderPass` | draws the scene; first pass |
 | `UnrealBloomPass` | HDR bloom |
-| `OutputPass` | tone mapping + colour space; last before AA |
+| `OutputPass` | tone mapping + color space; last before AA |
 | `FXAAPass`, `SMAAPass`, `TAARenderPass`, `SSAARenderPass` | anti-aliasing (composer bypasses canvas MSAA) |
 | `GTAOPass`, `SAOPass`, `SSAOPass` | ambient occlusion |
 | `SSRPass` | screen-space reflections |
 | `OutlinePass` | selection outlines |
 | `BokehPass` | depth of field |
 | `FilmPass`, `GlitchPass`, `AfterimagePass`, `DotScreenPass`, `HalftonePass` | stylised |
-| `LUTPass` | colour grading with a 3D LUT |
+| `LUTPass` | color grading with a 3D LUT |
 | `RenderPixelatedPass` | pixel-art look |
 | `ShaderPass(shader)` | your full-screen GLSL (`tDiffuse` is the input) |
 
@@ -257,7 +257,7 @@ renderer.setAnimationLoop(() => {
 | API | Use |
 | :-- | :-- |
 | `WebGLRenderTarget(w, h, opts)` | `samples`, `type`, `format`, `depthBuffer`, `depthTexture`, `count` (MRT) |
-| `rt.texture` | the colour output; linear data, no sRGB conversion applied |
+| `rt.texture` | the color output; linear data, no sRGB conversion applied |
 | `rt.depthTexture = new DepthTexture(w, h)` | sample depth later (soft particles, fog) |
 | `rt.setSize(w, h)` | on resize; also rebuilds MSAA buffers |
 | `WebGLCubeRenderTarget` + `CubeCamera` | dynamic reflections / env maps |
@@ -294,7 +294,7 @@ renderer.setAnimationLoop(() => {
 | :--- | :----- |
 | Import from `three/webgpu` | it re-exports core (shared `three.core.js` since r171, so addons importing `three` still work) |
 | TSL from `three/tsl` | `Fn`, `uniform`, `uv`, `time`, `color`, … |
-| Initialise first | `render()` before `init()` throws; `setAnimationLoop` awaits `init()` itself |
+| Initialize first | `render()` before `init()` throws; `setAnimationLoop` awaits `init()` itself |
 | `renderAsync()`, `clearAsync()`, `hasFeatureAsync()` | deprecated since r181: `await init()`, then use the sync versions |
 | `computeAsync()` | still fine when you need to await a compute pass |
 | `PCFSoftShadowMap` | removed; `PCFShadowMap` with `shadow.radius` |
@@ -311,12 +311,12 @@ WGSL (WebGPU) or GLSL (WebGL2 fallback). You assign nodes to **slots** on `*Node
 
 | Slot | Replaces |
 | :--- | :------- |
-| `colorNode` | base colour (`vec3`/`vec4`) |
+| `colorNode` | base color (`vec3`/`vec4`) |
 | `opacityNode`, `alphaTestNode` | alpha |
 | `positionNode` | local vertex position (displacement) |
 | `normalNode` | normal |
 | `emissiveNode`, `roughnessNode`, `metalnessNode`, `aoNode` | PBR inputs |
-| `outputNode` | final colour after lighting |
+| `outputNode` | final color after lighting |
 | `fragmentNode`, `vertexNode` | whole stage (unlit, full control) |
 | `castShadowNode`, `receivedShadowNode`, `depthNode`, `mrtNode` | advanced |
 
@@ -351,7 +351,7 @@ amp.value = 0.1;
 | Geometry | `positionLocal`, `positionWorld`, `normalLocal`, `normalWorld`, `normalView`, `uv()`, `attribute("name")` |
 | Scene | `cameraPosition`, `modelWorldMatrix`, `screenUV`, `instanceIndex` |
 | Time | `time`, `deltaTime` (seconds, updated per render) |
-| Maths (chainable) | `.add()`, `.sub()`, `.mul()`, `.div()`, `sin`, `cos`, `mix`, `smoothstep`, `clamp`, `length`, `dot`, `normalize` |
+| Math (chainable) | `.add()`, `.sub()`, `.mul()`, `.div()`, `sin`, `cos`, `mix`, `smoothstep`, `clamp`, `length`, `dot`, `normalize` |
 | Textures | `texture(tex, uv())`, `texture(tex).sample(uv)` |
 | Noise / hash | `hash(seed)`, `mx_noise_float(p)` (MaterialX noise) |
 | Variables | `.toVar()`, `.assign()`, `.addAssign()`, `varying(node)` |
@@ -598,7 +598,7 @@ renderer.setAnimationLoop(() => pipeline.render());
 
 - [three.js docs](https://threejs.org/docs/): `ShaderMaterial`, `WebGLRenderTarget`, `EffectComposer`, `WebGPURenderer`, `RenderPipeline`; [TSL reference](https://threejs.org/docs/#TSL)
 - Manual: [Post processing](https://threejs.org/manual/#post-processing), [How to use post-processing](https://threejs.org/manual/#how-to-use-post-processing), [Render targets](https://threejs.org/manual/#rendertargets), [Uniform types](https://threejs.org/manual/#uniform-types), [WebGPURenderer](https://threejs.org/manual/#webgpurenderer), [WebGPU post-processing](https://threejs.org/manual/#webgpu-postprocessing)
-- [Three.js Shading Language wiki](https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language): TSL concepts and the node catalogue
+- [Three.js Shading Language wiki](https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language): TSL concepts and the node catalog
 - Examples: [ShaderMaterial](https://threejs.org/examples/#webgl_shader), [modified material](https://threejs.org/examples/#webgl_materials_modified), [unreal bloom](https://threejs.org/examples/#webgl_postprocessing_unreal_bloom), [render to texture](https://threejs.org/examples/#webgl_rtt), [WebGPU bloom](https://threejs.org/examples/#webgpu_postprocessing_bloom), [compute particles](https://threejs.org/examples/#webgpu_compute_particles), [TSL editor](https://threejs.org/examples/#webgpu_tsl_editor)
 - [Migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide): r181 async deprecations, r183 `RenderPipeline`
 - [pmndrs/postprocessing](https://github.com/pmndrs/postprocessing): merged-effect alternative to `EffectComposer`

@@ -12,7 +12,7 @@ import { formatConsoleArgs } from "./format";
 
 /**
  * Runs first inside the preview: forwards console output and errors to the
- * parent. Serialised with `toString()`, so it must be self-contained.
+ * parent. Serialized with `toString()`, so it must be self-contained.
  *
  * @param token - The current preview run's token.
  * @param format - {@link formatConsoleArgs}.
@@ -36,7 +36,7 @@ export function previewShim(token: string, format: (args: readonly unknown[]) =>
   );
 }
 
-/** Escape `</script` so serialised code can't close its script element. */
+/** Escape `</script` so serialized code can't close its script element. */
 const safeScript = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
 
 /**

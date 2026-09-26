@@ -217,7 +217,7 @@ describe("pythonWorkerMain", () => {
 });
 
 describe("buildRunnerSrcDoc", () => {
-  it("is a single script whose serialised code can't close its own tag", () => {
+  it("is a single script whose serialized code can't close its own tag", () => {
     const doc = buildRunnerSrcDoc();
     expect(doc.startsWith("<!doctype html>")).toBe(true);
     expect(doc.match(/<\/script>/g)).toHaveLength(1);

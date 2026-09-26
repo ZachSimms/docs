@@ -59,7 +59,7 @@ void vertex() {
 }
 
 void fragment() {
-    // COLOR = TEXTURE sample x vertex colour x modulate
+    // COLOR = TEXTURE sample x vertex color x modulate
     vec3 c = mix(COLOR.rgb, tint.rgb, amount);
     COLOR.rgb = c * wave(TIME + world_pos.x * 0.01);
 }
@@ -103,8 +103,8 @@ Omitted processor functions keep Godot's defaults. Write shaders in the built-in
 | :------- | :---- | :------ |
 | `VERTEX` | vertex (inout) | local position (world with `world_vertex_coords`) |
 | `UV` | vertex, fragment | 0 to 1 texture coordinates |
-| `COLOR` | vertex | vertex colour times `modulate` and `self_modulate` |
-| `COLOR` | fragment (inout) | incoming: vertex `COLOR` times the `TEXTURE` sample; output colour |
+| `COLOR` | vertex | vertex color times `modulate` and `self_modulate` |
+| `COLOR` | fragment (inout) | incoming: vertex `COLOR` times the `TEXTURE` sample; output color |
 | `TEXTURE` | fragment | the node's texture (`sampler2D`) |
 | `TEXTURE_PIXEL_SIZE` | fragment | `1.0 / texture size` (one texel in UV units) |
 | `SCREEN_UV` | fragment | 0 to 1 across the viewport |
@@ -135,10 +135,10 @@ with `hint_screen_texture` / `hint_depth_texture` instead (see [Screen & depth](
 | `INSTANCE_ID`, `INSTANCE_CUSTOM`, `VERTEX_ID` | vertex | instancing data |
 | `VIEW` | fragment | direction from the fragment to the camera (view space) |
 | `SCREEN_UV`, `FRAGCOORD`, `FRONT_FACING` | fragment | screen position, facing |
-| `ALBEDO` | fragment (out) | base colour (`vec3`) |
+| `ALBEDO` | fragment (out) | base color (`vec3`) |
 | `ALPHA`, `ALPHA_SCISSOR_THRESHOLD` | fragment (out) | transparency; scissor for cutouts without sorting |
 | `METALLIC`, `ROUGHNESS`, `SPECULAR` | fragment (out) | PBR parameters (0 to 1) |
-| `EMISSION` | fragment (out) | glow colour (HDR; drives Glow) |
+| `EMISSION` | fragment (out) | glow color (HDR; drives Glow) |
 | `NORMAL_MAP`, `NORMAL_MAP_DEPTH` | fragment (out) | tangent-space normal map sample and strength |
 | `AO`, `AO_LIGHT_AFFECT` | fragment (out) | ambient occlusion |
 | `RIM`, `RIM_TINT`, `CLEARCOAT`, `CLEARCOAT_GLOSS`, `ANISOTROPY`, `SSS_STRENGTH`, `BACKLIGHT` | fragment (out) | advanced PBR |
@@ -199,8 +199,8 @@ void process() {            // every frame per particle
 | `sky` | `EYEDIR`, `SKY_COORDS`, `POSITION`, `LIGHT0_DIRECTION`, `LIGHT0_COLOR`, `LIGHT0_ENERGY`, `RADIANCE`, `AT_CUBEMAP_PASS`; outputs `COLOR`, `ALPHA`, `FOG` |
 | `fog` | `WORLD_POSITION`, `OBJECT_POSITION`, `UVW`, `SIZE`, `SDF`; outputs `DENSITY`, `ALBEDO`, `EMISSION` |
 
-Most particle effects need no shader: `ParticleProcessMaterial` covers emission shapes, curves, colour ramps and
-turbulence, and can be converted to a ShaderMaterial to customise.
+Most particle effects need no shader: `ParticleProcessMaterial` covers emission shapes, curves, color ramps and
+turbulence, and can be converted to a ShaderMaterial to customize.
 
 ```gdshader title="gradient_sky.gdshader"
 shader_type sky;
@@ -220,7 +220,7 @@ void sky() {
 
 ```gdshader
 uniform float speed = 1.0;                    // default
-uniform vec4 colour : source_color;           // sRGB picker
+uniform vec4 color : source_color;           // sRGB picker
 uniform float fade : hint_range(0.0, 1.0, 0.01) = 1.0;
 uniform int mode : hint_enum("Add", "Mul") = 0;
 uniform sampler2D tex : source_color, filter_nearest,
@@ -236,7 +236,7 @@ group_uniforms;
 
 | Hint | Use |
 | :--- | :-- |
-| `source_color` | colour or albedo texture: converted from sRGB, colour picker in the inspector |
+| `source_color` | color or albedo texture: converted from sRGB, color picker in the inspector |
 | `hint_range(min, max[, step])` | slider for float / int |
 | `hint_enum("A", "B")` | int dropdown |
 | `hint_normal` | normal map (no sRGB, normal-map compression) |
@@ -247,8 +247,8 @@ group_uniforms;
 | `hint_screen_texture`, `hint_depth_texture`, `hint_normal_roughness_texture` | screen buffers |
 | `instance_index(n)` | fixed slot for an instance uniform |
 
-Colours without `source_color` are treated as linear data, so a picked colour looks washed out or too dark:
-always add `source_color` to colour uniforms and albedo textures.
+Colors without `source_color` are treated as linear data, so a picked color looks washed out or too dark:
+always add `source_color` to color uniforms and albedo textures.
 
 ## Global & instance uniforms
 
@@ -329,7 +329,7 @@ void fragment() {
     vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, d);
     vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
     view.xyz /= view.w;
-    float scene_depth = -view.z;         // metres
+    float scene_depth = -view.z;         // meters
     float my_depth = -VERTEX.z;          // view space
     float edge = clamp(scene_depth - my_depth, 0.0, 1.0);
     ALBEDO = vec3(1.0);
@@ -384,7 +384,7 @@ $Mesh.set_surface_override_material(0, m.duplicate())
 | `ORMMaterial3D` | same, with one packed Occlusion/Roughness/Metallic texture |
 | `ShaderMaterial` | your `.gdshader` or a `VisualShader` |
 | `CanvasItemMaterial` | 2D blend modes, light mode, particle sprite-sheet animation, no code |
-| `ParticleProcessMaterial` | GPU particle behaviour without code |
+| `ParticleProcessMaterial` | GPU particle behavior without code |
 | `PanoramaSkyMaterial`, `ProceduralSkyMaterial`, `PhysicalSkyMaterial` | sky without code |
 
 | Tip | Detail |
@@ -415,7 +415,7 @@ to text, so pick one form per effect.
 | `iTime` (Shadertoy) | `TIME` |
 | `iResolution` | `1.0 / SCREEN_PIXEL_SIZE` (2D) or `VIEWPORT_SIZE` (3D) |
 | texture origin bottom-left | UV origin top-left, y down (2D) |
-| manual lighting | automatic PBR; `light()` to customise, `unshaded` to skip |
+| manual lighting | automatic PBR; `light()` to customize, `unshaded` to skip |
 
 Porting Shadertoy: put the body in a `canvas_item` `fragment()` on a full-rect `ColorRect`, replace
 `fragCoord / iResolution.xy` with `UV` (flip y if needed) and write the result to `COLOR`.
@@ -424,11 +424,11 @@ Porting Shadertoy: put the body in a `canvas_item` `fragment()` on a full-rect `
 
 | Tip | Why |
 | :-- | :-- |
-| Visualise intermediates | `COLOR = vec4(UV, 0.0, 1.0);` or `ALBEDO = NORMAL * 0.5 + 0.5;` to see what a value holds |
+| Visualize intermediates | `COLOR = vec4(UV, 0.0, 1.0);` or `ALBEDO = NORMAL * 0.5 + 0.5;` to see what a value holds |
 | Prefer `unshaded` for effects | skips the lighting cost for sprites, UI and VFX that do not need lights |
 | Watch 2D overdraw | large transparent quads stacked on each other cost fill rate, especially on mobile and Web |
 | Each screen-texture reader copies the screen | share one `BackBufferCopy` or one post-process pass instead of many readers |
-| `discard` and `DEPTH` writes | disable early depth test optimisations; use `ALPHA_SCISSOR_THRESHOLD` for cutouts in 3D |
+| `discard` and `DEPTH` writes | disable early depth test optimizations; use `ALPHA_SCISSOR_THRESHOLD` for cutouts in 3D |
 | Uniform branches are cheap | `if (mode == 1)` on a uniform is coherent across pixels; data-dependent branches are not |
 | Fewer dependent texture reads | reading a texture at coordinates computed from another texture is slower |
 | Compatibility renderer | Web and old GPUs: fewer features (no `hint_normal_roughness_texture`, no compute shaders) on an OpenGL backend |

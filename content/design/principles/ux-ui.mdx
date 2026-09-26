@@ -5,7 +5,7 @@ order: 1
 ---
 
 Heuristics, laws, layout, type, states, forms, feedback, accessibility (WCAG 2.2 AA) and design
-tokens, as a checklist for building and reviewing interfaces. Palettes and contrast maths live in
+tokens, as a checklist for building and reviewing interfaces. Palettes and contrast math live in
 [Color theory](/design/principles/color-theory/); the CSS side is in [CSS](/design/css/css/).
 
 ## Usability heuristics
@@ -20,10 +20,10 @@ UI alone, then merge findings and rate severity.
 | 3 | User control and freedom | a clear exit from any state | undo, cancel, back, close on `Esc` |
 | 4 | Consistency and standards | same thing, same name, same look; follow platform conventions | logo links home, blue underlined links |
 | 5 | Error prevention | design the error out before messaging it | disable impossible dates, confirm destructive actions, constraints |
-| 6 | Recognition rather than recall | options visible, not memorised | recent searches, autocomplete, visible labels |
+| 6 | Recognition rather than recall | options visible, not memorized | recent searches, autocomplete, visible labels |
 | 7 | Flexibility and efficiency | accelerators for experts that novices can ignore | keyboard shortcuts, ⌘K palette, bulk actions |
 | 8 | Aesthetic and minimalist design | every extra element competes with the useful ones | one primary action per view |
-| 9 | Recognise, diagnose, recover from errors | plain-language cause and a fix | "Card expired. Use another card or update the date." |
+| 9 | Recognize, diagnose, recover from errors | plain-language cause and a fix | "Card expired. Use another card or update the date." |
 | 10 | Help and documentation | searchable, task-focused, in context | inline hints, tooltips, docs linked from the screen |
 
 Severity scale: 0 not a problem, 1 cosmetic, 2 minor, 3 major (fix before release), 4 catastrophe.
@@ -53,7 +53,7 @@ Severity scale: 0 not a problem, 1 cosmetic, 2 minor, 3 major (fix before releas
 | Principle | Perception | UI use |
 | :-------- | :--------- | :----- |
 | Proximity | near things belong together | less space inside a group than between groups |
-| Similarity | same colour, shape or size means same kind | all links styled alike; all destructive actions red |
+| Similarity | same color, shape or size means same kind | all links styled alike; all destructive actions red |
 | Common region | a shared boundary makes a group | cards, panels, fieldsets |
 | Uniform connectedness | connected elements relate | lines in steppers, timelines |
 | Closure | the mind completes partial shapes | icons, cropped carousels hinting more content |
@@ -73,7 +73,7 @@ ranking obvious. The squint test: blur the screen and check that the primary thi
 | :---- | :------- | :----- | :--- |
 | Size | larger | smaller | use a type scale, not ad-hoc sizes |
 | Weight | 600–700 | 400 | two or three weights are enough |
-| Colour | saturated, high contrast | grey, lower contrast | de-emphasise secondary text with colour, not smaller size |
+| Color | saturated, high contrast | gray, lower contrast | de-emphasize secondary text with color, not smaller size |
 | Spacing | more whitespace around | tight | space isolates and elevates |
 | Contrast | dark on light / light on dark | muted | the only lever that also affects legibility |
 | Position | top-left (LTR), above the fold | bottom, trailing | F and Z scan patterns |
@@ -102,7 +102,7 @@ Destructive actions are only red when they are the primary action of that view.
 </div>
 ```
 
-Size and weight make the amount primary, muted colour demotes the eyebrow and body, and the only
+Size and weight make the amount primary, muted color demotes the eyebrow and body, and the only
 saturated element is the one action.
 
 ## Layout, spacing & responsive
@@ -240,10 +240,10 @@ Every interactive component needs a design for each state that applies.
 | State | Trigger | Visual | Code / a11y |
 | :---- | :------ | :----- | :---------- |
 | Default | resting | base style | semantic element (`button`, `a`, `input`) |
-| Hover | pointer over | subtle bg or colour shift | `@media (hover: hover)` so touch doesn't stick |
-| Focus visible | keyboard focus | 2 px+ outline, 3:1 against neighbours | `:focus-visible`; never `outline: none` without a replacement |
+| Hover | pointer over | subtle bg or color shift | `@media (hover: hover)` so touch doesn't stick |
+| Focus visible | keyboard focus | 2 px+ outline, 3:1 against neighbors | `:focus-visible`; never `outline: none` without a replacement |
 | Active / pressed | pointer or key down | darker, slight inset or scale | `:active`; toggles use `aria-pressed` |
-| Selected / checked | chosen | fill, check mark, not colour alone | `aria-selected`, `aria-checked`, `aria-current="page"` |
+| Selected / checked | chosen | fill, check mark, not color alone | `aria-selected`, `aria-checked`, `aria-current="page"` |
 | Disabled | not available | reduced contrast, no pointer | `disabled`; prefer `aria-disabled="true"` plus a reason when users must discover why |
 | Loading | work in progress | spinner or skeleton, keep size stable | `aria-busy="true"`; block double submit |
 | Empty | no data yet | explanation + next action | see below |
@@ -280,7 +280,7 @@ The five pointer and keyboard states side by side; the real `:hover`, `:focus-vi
 </div>
 ```
 
-Disabled controls are exempt from contrast rules but still need to be recognisable. Don't disable a
+Disabled controls are exempt from contrast rules but still need to be recognizable. Don't disable a
 submit button to signal invalid input: let the user press it and show what's missing.
 
 ### Empty, error & onboarding states
@@ -330,7 +330,7 @@ multi-screen tour. Delay sign-up until the user has seen value, and let them ski
 | "Enter an email address like name@example.com" | "Invalid input" |
 | "Password must be at least 12 characters" | "Password error" |
 | Place under the field, keep the typed value | clear the field |
-| Icon + text + colour | red border only |
+| Icon + text + color | red border only |
 | Say how to fix it | blame ("You entered a wrong date") |
 
 ```html
@@ -416,7 +416,7 @@ code so they can be translated; leave ~30% extra room for longer languages like 
 | :- | :---- | :---------- | :---------- |
 | 1.1.1 Non-text content | A | text alternative for images and icons; `alt=""` for decoration | screen reader or alt-text audit |
 | 1.3.1 Info and relationships | A | structure in markup: headings, lists, labels, tables | turn off CSS, still makes sense |
-| 1.4.1 Use of colour | A | colour is never the only signal | greyscale screenshot |
+| 1.4.1 Use of color | A | color is never the only signal | grayscale screenshot |
 | 1.4.3 Contrast (minimum) | AA | text 4.5:1; large text (24 px, or 18.66 px bold) 3:1 | contrast checker |
 | 1.4.4 Resize text | AA | usable at 200% text size | browser zoom 200% |
 | 1.4.10 Reflow | AA | no 2D scrolling at 320 CSS px width | 400% zoom on 1280 px |
@@ -538,10 +538,10 @@ pad(5);
 
 | Concern | Do |
 | :------ | :- |
-| Background | near-black (`#121212`-ish) or dark grey, not only `#000`; pure black smears on OLED scroll |
+| Background | near-black (`#121212`-ish) or dark gray, not only `#000`; pure black smears on OLED scroll |
 | Text | off-white (~87% white) for body, lower for secondary; avoid pure white on pure black (halation) |
 | Elevation | higher surfaces are lighter; shadows barely show on dark |
-| Colour | lighter, less saturated tints of brand colours; saturated colours vibrate on dark |
+| Color | lighter, less saturated tints of brand colors; saturated colors vibrate on dark |
 | Contrast | re-check every pair; a passing light-mode pair often fails when mapped |
 | Images | dim bright images slightly, swap logos and illustrations |
 | Form controls | `color-scheme: light dark` so scrollbars and inputs follow |
@@ -566,7 +566,7 @@ Dark mode is a second semantic theme, not `filter: invert()`. Palette-building d
 | Cognitive walkthrough | can a first-time user learn the flow | new flows | 2–4 reviewers |
 | A/B test | which variant performs better | live product | power-calculated, often thousands |
 | Analytics and session replay | where users drop off | live product | all traffic |
-| Diary study | behaviour over days or weeks | long journeys | 10–15 |
+| Diary study | behavior over days or weeks | long journeys | 10–15 |
 
 Metrics: task success rate, time on task, error rate, SUS (System Usability Scale; ~68 is average),
 and single ease question (SEQ). Five users per round finds most problems in one flow; run several
@@ -580,7 +580,7 @@ small rounds rather than one big one.
 - [ ] Every interactive element has hover, focus-visible, active, disabled and loading states
 - [ ] Empty, error, loading, offline and no-permission states are designed
 - [ ] Text contrast is at least 4.5:1 (3:1 large); UI and focus indicators at least 3:1
-- [ ] Colour is never the only signal (icons, text, patterns too)
+- [ ] Color is never the only signal (icons, text, patterns too)
 - [ ] Full keyboard path works, focus is visible and never hidden under sticky UI
 - [ ] Targets are at least 24 px (44–48 px on touch), with space between them
 - [ ] Forms have visible labels, helpful errors, `autocomplete`, and allow paste
@@ -624,7 +624,7 @@ button has it permanently so you can see it.
 ```
 
 ### Motion only for those who want it
-Opt in to animation instead of stripping it out afterwards. See [Animation](/design/css/animation/).
+Opt in to animation instead of stripping it out afterward. See [Animation](/design/css/animation/).
 
 ```css
 .card { transition: none; }
@@ -795,7 +795,7 @@ export async function optimistic<S>(
 - Nielsen Norman Group: [10 usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/), [Response time limits](https://www.nngroup.com/articles/response-times-3-important-limits/), [Why you only need to test with 5 users](https://www.nngroup.com/articles/why-you-only-need-to-test-with-5-users/)
 - [Laws of UX](https://lawsofux.com/): one page per law with sources
 - [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) and [Material Design 3](https://m3.material.io/): platform conventions, target sizes, components
-- [Refactoring UI](https://www.refactoringui.com/): hierarchy, spacing and colour for developers
+- [Refactoring UI](https://www.refactoringui.com/): hierarchy, spacing and color for developers
 - [web.dev: Web Vitals](https://web.dev/articles/vitals): INP, LCP, CLS thresholds
 - [GOV.UK Design System](https://design-system.service.gov.uk/): tested patterns for forms, errors and validation
 - [Butterick's Practical Typography](https://practicaltypography.com/): line length, spacing, font choice

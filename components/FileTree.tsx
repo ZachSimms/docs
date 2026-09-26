@@ -31,7 +31,7 @@ interface FileTreeProps {
 /**
  * Render `figure.file-tree > figcaption? + pre > code > span[data-line]*`.
  * Directory names are `.ft-dir` (bold), guide characters `.ft-guide` and
- * comments `.ft-comment` (both dimmed). The figure is labelled "File tree"
+ * comments `.ft-comment` (both dimmed). The figure is labeled "File tree"
  * (plus the title) and the guide glyphs are hidden from screen readers.
  *
  * @throws {Error} At build time, if the outline is badly indented (see `parseTree`).

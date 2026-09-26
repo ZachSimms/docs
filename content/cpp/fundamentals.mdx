@@ -6,7 +6,7 @@ order: 1
 
 Core modern C++ (C++23, with the C++17/20 features it builds on) for someone who already writes TypeScript
 or Python: the toolchain, types, value semantics, references and pointers, RAII, classes, move semantics,
-templates, the standard library and the undefined behaviour that bites. Compare with
+templates, the standard library and the undefined behavior that bites. Compare with
 [Python fundamentals](/python/language/fundamentals/) and
 [TypeScript fundamentals](/typescript/language/fundamentals/).
 
@@ -21,7 +21,7 @@ Assignment copies, the compiler decides memory layout at build time, and nothing
 | `b = a` | both names share one object | `b` is an independent copy (unless `a` is a reference or pointer) |
 | Memory | garbage collector | scope-based: destructors run at `}` (RAII) |
 | Types | checked (TS) or ignored (Py) at runtime | fixed at compile time; no runtime type info by default |
-| Errors | exceptions, runtime checks everywhere | exceptions **or** `std::expected`; most misuse is *undefined behaviour*, not an error |
+| Errors | exceptions, runtime checks everywhere | exceptions **or** `std::expected`; most misuse is *undefined behavior*, not an error |
 | Generics | erased (TS) / duck typing (Py) | templates: a separate compiled copy per type |
 | Build | interpreter / bundler | preprocess → compile each `.cpp` → link into a native binary |
 | "Zero-cost" | no | you do not pay at runtime for features you do not use |
@@ -40,7 +40,7 @@ g++ -std=c++23 -Wall -Wextra -Wpedantic -Wconversion \
     -g -fsanitize=address,undefined main.cpp -o main
 ./main
 
-# Optimised release build
+# Optimized release build
 clang++ -std=c++23 -O2 -DNDEBUG main.cpp -o main
 ```
 
@@ -49,7 +49,7 @@ clang++ -std=c++23 -O2 -DNDEBUG main.cpp -o main
 | `-std=c++23` | language version (`c++20`, `c++17`); MSVC: `/std:c++latest` |
 | `-Wall -Wextra -Wpedantic` | the warnings you want; add `-Werror` in CI |
 | `-Wconversion -Wsign-conversion` | catch silent narrowing and signed/unsigned mixing |
-| `-O0` / `-O2` / `-O3` | optimisation level; `-O0 -g` for debugging |
+| `-O0` / `-O2` / `-O3` | optimization level; `-O0 -g` for debugging |
 | `-g` | debug symbols for `gdb` / `lldb` |
 | `-fsanitize=address,undefined` | AddressSanitizer + UBSan: out-of-bounds, use-after-free, overflow |
 | `-fsanitize=thread` | ThreadSanitizer: data races (not combinable with ASan) |
@@ -192,19 +192,19 @@ const int n = read_int();   // runtime value, never changes
 | `const` | cannot be modified through this name |
 | `constexpr` | variable: known at compile time; function: *may* run at compile time |
 | `consteval` | function *must* run at compile time (C++20) |
-| `constinit` | static variable initialised at compile time, still mutable (C++20) |
+| `constinit` | static variable initialized at compile time, still mutable (C++20) |
 | `auto` | deduce the type from the initializer |
 | `decltype(expr)` | the declared type of an expression |
 | `using Id = std::uint64_t;` | type alias (prefer over `typedef`) |
 | `enum class Dir { up, down };` | scoped, strongly typed enum; `std::to_underlying(d)` (C++23) gives the integer |
 
-## Initialisation and conversions
+## Initialization and conversions
 
-Uninitialised locals of built-in type hold garbage, and reading them is undefined behaviour. Always initialise.
+Uninitialised locals of built-in type hold garbage, and reading them is undefined behavior. Always initialize.
 
 ```cpp
 int a;            // indeterminate: reading it is UB
-int b{};          // 0  (value-initialised)
+int b{};          // 0  (value-initialized)
 int c{7};         // brace init: refuses narrowing
 int d = 7.9;      // compiles, d == 7 (silent truncation)
 // int e{7.9};    // error: narrowing conversion
@@ -234,9 +234,9 @@ Arithmetic gotchas (unlike Python):
 | Expression | Result | Why |
 | :--------- | :----- | :-- |
 | `7 / 2` | `3` | integer division truncates |
-| `-7 / 2`, `-7 % 2` | `-3`, `-1` | truncates **towards zero**; Python gives `-4` and `1` |
+| `-7 / 2`, `-7 % 2` | `-3`, `-1` | truncates **toward zero**; Python gives `-4` and `1` |
 | `7 / 2.0` | `3.5` | one `double` operand promotes the other |
-| `INT_MAX + 1` | undefined behaviour | signed overflow is UB, not wrap-around |
+| `INT_MAX + 1` | undefined behavior | signed overflow is UB, not wrap-around |
 | `0u - 1` | `4294967295` | unsigned arithmetic wraps modulo 2ⁿ |
 | `-1 < 0u` | `false` | `-1` converts to a huge unsigned; use `std::cmp_less(-1, 0u)` |
 | `v.size() - 1` on empty `v` | huge number | `size()` is unsigned; use `std::ssize(v) - 1` |
@@ -311,7 +311,7 @@ How to pass parameters:
 | `T*` | optional in-out (may be `nullptr`) | yes |
 
 Return by value. Copies of returned locals are elided or moved automatically; never write
-`return std::move(local);`, it blocks the optimisation.
+`return std::move(local);`, it blocks the optimization.
 
 ```cpp
 std::vector<int> evens(int n) {
@@ -351,7 +351,7 @@ std::function<int(int)> f = add_base;  // type-erased holder
 | `[x]`, `[&x]` | `x` by copy, by reference |
 | `[=]`, `[&]` | everything used, by copy / by reference |
 | `[this]`, `[*this]` | the object by pointer / by copy |
-| `[y = expr]` | new member initialised from `expr` (use for moves) |
+| `[y = expr]` | new member initialized from `expr` (use for moves) |
 | `mutable` | copied captures may be modified |
 
 A lambda capturing by reference must not outlive what it references: returning `[&]` lambdas or storing them
@@ -409,7 +409,7 @@ v.push_back(4);            // may reallocate: `first` dangles
 
 ## RAII and smart pointers
 
-**Resource Acquisition Is Initialisation**: acquire a resource in a constructor, release it in the
+**Resource Acquisition Is Initialization**: acquire a resource in a constructor, release it in the
 destructor. Destructors run on every exit from a scope, including `return` and exceptions, so cleanup cannot be
 forgotten. It is Python's `with` and TypeScript's `using`, applied to everything automatically.
 
@@ -489,8 +489,8 @@ Account a{"ada", 500};
 
 | Feature | Note |
 | :------ | :--- |
-| Member initializer list `: a_{x}` | initialises members; assignment in the body would construct then overwrite |
-| Initialisation order | members are initialised in **declaration order**, whatever the list says |
+| Member initializer list `: a_{x}` | initializes members; assignment in the body would construct then overwrite |
+| Initialization order | members are initialized in **declaration order**, whatever the list says |
 | `explicit` | blocks implicit conversions; put it on single-argument constructors |
 | `const` member function | callable on const objects; cannot change members (except `mutable` ones) |
 | `= default` / `= delete` | ask for the compiler version / forbid (e.g. copying) |
@@ -758,9 +758,9 @@ else if (r.error() == ParseErr::empty) { /* ... */ }
 Throw by value, catch by `const&`. Exceptions cost almost nothing on the happy path and a lot when thrown, so never use
 them for ordinary control flow. Code is exception-safe when every resource is owned by an RAII object.
 
-## Undefined behaviour and pitfalls
+## Undefined behavior and pitfalls
 
-Undefined behaviour (UB) means the standard places *no* requirements on the program. The optimiser assumes UB
+Undefined behavior (UB) means the standard places *no* requirements on the program. The optimizer assumes UB
 never happens, so the result is not "a crash" but anything: wrong answers, deleted checks, security holes,
 code that works in debug and fails in release.
 
@@ -770,8 +770,8 @@ code that works in debug and fails in release.
 | use after free / dangling | returned reference to a local, view into a temporary | ASan, Clang `-Wdangling`, GCC `-Wdangling-reference` |
 | signed integer overflow | `INT_MAX + 1` | UBSan, `-ftrapv`, wider types |
 | null pointer dereference | `*p` when `p == nullptr` | UBSan, check first |
-| reading uninitialised memory | `int x; f(x);` | `-Wall`, MemorySanitizer, always initialise |
-| data race | two threads, one writing, no synchronisation | TSan, `std::mutex`, `std::atomic` |
+| reading uninitialised memory | `int x; f(x);` | `-Wall`, MemorySanitizer, always initialize |
+| data race | two threads, one writing, no synchronization | TSan, `std::mutex`, `std::atomic` |
 | shift by width or more | `1 << 32` for a 32-bit `int` | UBSan |
 | strict aliasing violation | reading a `float` through an `int*` | `std::bit_cast`, `std::memcpy` |
 | modifying a string literal | `char* s = (char*)"hi"; s[0] = 'H';` | never cast away const |
@@ -789,7 +789,7 @@ Other traps that are legal but wrong:
 | object slicing | pass polymorphic objects by reference or pointer |
 | forgetting a virtual destructor | `virtual ~Base() = default;` |
 | `auto` hiding a copy: `auto x = v[0];` for a big type | `const auto&` |
-| static initialisation order across `.cpp` files | function-local `static` or `constinit` |
+| static initialization order across `.cpp` files | function-local `static` or `constinit` |
 
 Threads, briefly:
 

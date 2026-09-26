@@ -31,7 +31,7 @@ export interface Sheet {
   readonly slug: string;
   /** Frontmatter title. */
   readonly title: string;
-  /** Frontmatter date, normalised to `YYYY-MM-DD`. */
+  /** Frontmatter date, normalized to `YYYY-MM-DD`. */
   readonly date: string;
   /**
    * Optional explicit position from frontmatter. Ordered sheets are listed
@@ -53,7 +53,7 @@ export interface Group {
   readonly slug: string;
   /** `index.mdx` title. */
   readonly title: string;
-  /** `index.mdx` date, normalised to `YYYY-MM-DD`. */
+  /** `index.mdx` date, normalized to `YYYY-MM-DD`. */
   readonly date: string;
   /** Optional position among the topic's directories and loose sheets. */
   readonly order?: number;
@@ -117,7 +117,7 @@ export function isPartial(fileName: string): boolean {
  * Read and validate the frontmatter of one MDX file.
  *
  * @param fullPath - Absolute path of the file.
- * @returns The parsed, normalised frontmatter.
+ * @returns The parsed, normalized frontmatter.
  * @throws {Error} If the file cannot be read, or its frontmatter fails
  *   {@link frontmatterSchema}. The message names the file and the failing fields.
  */

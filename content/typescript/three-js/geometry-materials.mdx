@@ -5,8 +5,8 @@ order: 2
 ---
 
 What a mesh is made of in Three.js r18x: `BufferGeometry` and its attributes, the built-in shapes, custom
-and merged geometry, instancing with `InstancedMesh` and `BatchedMesh`, the material catalogue and its
-shared properties, PBR maps, textures and colour spaces, points, lines and sprites. Setup is in
+and merged geometry, instancing with `InstancedMesh` and `BatchedMesh`, the material catalog and its
+shared properties, PBR maps, textures and color spaces, points, lines and sprites. Setup is in
 [Fundamentals](/typescript/three-js/fundamentals/); lighting in [Lights & shadows](/typescript/three-js/lights-shadows/);
 custom shaders in [Shaders & post-processing](/typescript/three-js/shaders-postprocessing/).
 
@@ -35,7 +35,7 @@ uploads each once.
 | `normal` | 3 | lighting; missing = black lit materials |
 | `uv` | 2 | texture coordinates (channel 0) |
 | `uv1`, `uv2`, `uv3` | 2 | extra UV sets; pick with `texture.channel` |
-| `color` | 3 or 4 | per-vertex colour; needs `vertexColors: true` |
+| `color` | 3 or 4 | per-vertex color; needs `vertexColors: true` |
 | `tangent` | 4 | normal maps without derivatives; `computeTangents()` |
 | `skinIndex`, `skinWeight` | 4 | skinning (from glTF) |
 
@@ -173,7 +173,7 @@ Merged objects cannot be moved, hidden or picked individually. When they must be
 
 ## InstancedMesh
 
-One geometry + one material drawn `count` times with per-instance matrices (and optional colours): one
+One geometry + one material drawn `count` times with per-instance matrices (and optional colors): one
 draw call for thousands of objects.
 
 ```ts
@@ -218,7 +218,7 @@ Hiding one instance: scale it to zero, or swap it with the last and decrement `c
 ## BatchedMesh
 
 Many **different** geometries sharing one material, drawn with multi-draw (`WEBGL_multi_draw`) where
-available. Per-instance matrices, colours and visibility; per-instance frustum culling and sorting.
+available. Per-instance matrices, colors and visibility; per-instance frustum culling and sorting.
 
 ```ts
 import { BatchedMesh, Matrix4 } from "three";
@@ -254,13 +254,13 @@ material, merging for static geometry that never changes.
 
 | Material | Lighting model | Relative cost | Use for |
 | :------- | :------------- | :------------ | :------ |
-| `MeshBasicMaterial` | none (unlit) | lowest | UI, baked lighting, flat colour, video |
+| `MeshBasicMaterial` | none (unlit) | lowest | UI, baked lighting, flat color, video |
 | `MeshLambertMaterial` | diffuse only (per-pixel in current releases) | low | matte things, mobile |
 | `MeshPhongMaterial` | Blinn-Phong, `shininess`, `specular` | low–mid | glossy look without PBR |
 | `MeshToonMaterial` | stepped diffuse via `gradientMap` | low–mid | cel shading |
 | `MeshStandardMaterial` | PBR metal/roughness | mid | **default choice**; what glTF uses |
 | `MeshPhysicalMaterial` | PBR + clearcoat, transmission, sheen, iridescence, anisotropy, dispersion | high | car paint, glass, fabric |
-| `MeshMatcapMaterial` | colour looked up from a matcap by normal | low | sculpt previews; ignores lights |
+| `MeshMatcapMaterial` | color looked up from a matcap by normal | low | sculpt previews; ignores lights |
 | `MeshNormalMaterial` | view-space normal → RGB | low | debugging |
 | `MeshDepthMaterial` | depth | low | shadow and depth passes |
 | `MeshDistanceMaterial` | distance to a point | low | point-light shadow internals |
@@ -292,7 +292,7 @@ one glass object costs a whole extra pass. With `WebGPURenderer` use the `*NodeM
 | `flatShading` | `false` | faceted look from derivatives |
 | `vertexColors` | `false` | multiply by the `color` attribute |
 | `fog` | `true` | respond to `scene.fog` |
-| `toneMapped` | `true` | `false` for UI or colours that must match exactly |
+| `toneMapped` | `true` | `false` for UI or colors that must match exactly |
 | `polygonOffset` + `polygonOffsetFactor/Units` | off | decals, coplanar overlays |
 | `visible` | `true` | hides every mesh using this material |
 | `clippingPlanes` | `null` | needs `renderer.localClippingEnabled = true` |
@@ -304,9 +304,9 @@ particles, and `renderOrder` when you know the order.
 
 ## PBR maps
 
-| Map | Colour space | Channel read | Notes |
+| Map | Color space | Channel read | Notes |
 | :-- | :----------- | :----------- | :---- |
-| `map` | `SRGBColorSpace` | RGB(A) | base colour × `color` |
+| `map` | `SRGBColorSpace` | RGB(A) | base color × `color` |
 | `emissiveMap` | `SRGBColorSpace` | RGB | × `emissive` × `emissiveIntensity`; set `emissive` non-black |
 | `normalMap` | data (none) | RGB | tangent space; `normalScale` (`Vector2`; flip Y with `-1` for DirectX maps) |
 | `roughnessMap` | data | **G** | × `roughness` |
@@ -314,7 +314,7 @@ particles, and `renderOrder` when you know the order.
 | `aoMap` | data | **R** | × `aoMapIntensity`; indirect light only |
 | `bumpMap` | data | R | cheap height-based normals; `bumpScale` |
 | `displacementMap` | data | R | moves vertices; needs dense geometry |
-| `alphaMap` | data | **G** | greyscale opacity; set `transparent` or `alphaTest` |
+| `alphaMap` | data | **G** | grayscale opacity; set `transparent` or `alphaTest` |
 | `lightMap` | data (linear) | RGB | baked light; `lightMapIntensity` |
 | `envMap` | per texture | | overrides `scene.environment` for this material |
 
@@ -329,7 +329,7 @@ const [albedo, orm, normal] = await Promise.all([
   tl.loadAsync("/crate/orm.jpg"),
   tl.loadAsync("/crate/normal.png"),
 ]);
-albedo.colorSpace = SRGBColorSpace; // only colour maps
+albedo.colorSpace = SRGBColorSpace; // only color maps
 const mat = new MeshStandardMaterial({
   map: albedo,
   normalMap: normal,
@@ -351,7 +351,7 @@ tex.anisotropy =               // sharp at grazing angles
 
 | Property | Default | Notes |
 | :------- | :------ | :---- |
-| `colorSpace` | `NoColorSpace` | `SRGBColorSpace` for colour, leave for data |
+| `colorSpace` | `NoColorSpace` | `SRGBColorSpace` for color, leave for data |
 | `wrapS` / `wrapT` | `ClampToEdgeWrapping` | `RepeatWrapping`, `MirroredRepeatWrapping` |
 | `repeat`, `offset`, `rotation`, `center` | 1, 0, 0, 0 | UV transform; repeat > 1 needs `RepeatWrapping` |
 | `magFilter` | `LinearFilter` | `NearestFilter` for pixel art |
@@ -392,7 +392,7 @@ tex.colorSpace = SRGBColorSpace;
 ```
 
 Encode with the KTX-Software `toktx` / `ktx create` CLIs or `gltf-transform` (see
-[Models](/typescript/three-js/models-animation/#optimising-assets)).
+[Models](/typescript/three-js/models-animation/#optimizing-assets)).
 
 ## Points
 
@@ -475,7 +475,7 @@ use `troika-three-text` or HTML overlays (`CSS2DRenderer` addon).
 
 ## Recipes
 
-### Instanced forest with colours
+### Instanced forest with colors
 Use for any crowd of identical meshes (trees, rocks, bullets): one draw call, pickable per instance.
 
 ```ts
@@ -537,7 +537,7 @@ export function mergeByMaterial(root: Object3D): Mesh[] {
 ```
 
 ### Typed PBR texture set
-Use to load a material from a folder of maps with the right colour spaces and sampling in one call.
+Use to load a material from a folder of maps with the right color spaces and sampling in one call.
 
 ```ts
 import {

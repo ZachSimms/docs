@@ -1,5 +1,5 @@
 ---
-title: Numerical weather modelling
+title: Numerical weather modeling
 date: 2026-09-25
 order: 2
 ---
@@ -8,12 +8,12 @@ How numerical weather prediction (NWP) turns observations into forecasts: the eq
 time stepping, physics parameterisations, data assimilation, ensembles and verification, with the
 operational systems as of September 2026. Basic mechanics and fluids are in
 [physics fundamentals](/physics/fundamentals/); constants in
-[constants, units and conversions](/maths/constants-units-conversions/).
+[constants, units and conversions](/math/constants-units-conversions/).
 
 ## What NWP is
 
 NWP solves an initial-value problem: estimate the current state of the atmosphere, then step the
-fluid equations forward on a computer. Global centres run the whole cycle every 6 hours (00, 06,
+fluid equations forward on a computer. Global centers run the whole cycle every 6 hours (00, 06,
 12, 18 UTC); rapid-update regional systems run it every hour.
 
 ```text
@@ -105,7 +105,7 @@ $$
 | hypsometric thickness      | $\Delta z = \dfrac{R_d \bar T_v}{g}\ln\dfrac{p_1}{p_2}$          | always (hydrostatic)              |
 | beta effect                | $\beta = \dfrac{\partial f}{\partial y} = \dfrac{2\Omega\cos\varphi}{a}$ | drives Rossby waves       |
 
-The hydrostatic approximation filters sound waves travelling vertically and is accurate while
+The hydrostatic approximation filters sound waves traveling vertically and is accurate while
 horizontal scales far exceed vertical ones. Below roughly 10 km grid spacing, and certainly at
 convection-permitting 1–4 km, models solve the full **non-hydrostatic** equations (ICON, UM,
 FV3, WRF). IFS at 9 km still runs hydrostatic.
@@ -133,7 +133,7 @@ IFS uses 137 hybrid sigma-pressure levels from the surface to 0.01 hPa (about 80
 | spectral transform       | expand fields in spherical harmonics; physics on a grid, derivatives in spectral space | exact derivatives; semi-implicit solve is trivial | IFS                  |
 | finite and spectral element | local polynomial basis on each element                              | high order, scales on many cores                      | LFRic (mixed finite element) |
 
-Centred second-order differences, with error $O(\Delta x^2)$:
+Centered second-order differences, with error $O(\Delta x^2)$:
 
 $$
 \frac{\partial q}{\partial x}\bigg|_i \approx \frac{q_{i+1} - q_{i-1}}{2\Delta x},
@@ -146,7 +146,7 @@ $$
 | Grid                             | Shape                                          | Pole problem                  | Used by                             |
 | :------------------------------- | :--------------------------------------------- | :---------------------------- | :---------------------------------- |
 | regular latitude-longitude       | rectangles; meridians converge                 | yes: tiny $\Delta x$ near poles limits time step | UM (ENDGame)          |
-| reduced (octahedral) Gaussian    | fewer points per latitude towards the poles    | avoided                       | IFS TCo1279 (about 6.6 million points per level) |
+| reduced (octahedral) Gaussian    | fewer points per latitude toward the poles    | avoided                       | IFS TCo1279 (about 6.6 million points per level) |
 | cubed sphere                     | cube projected onto the sphere, 6 panels       | none; slight panel-edge seams | GFS FV3 (C768), LFRic               |
 | icosahedral triangles            | refined icosahedron                            | none; near-uniform            | ICON                                |
 | Voronoi hexagons                 | dual of the icosahedral mesh                   | none; supports smooth refinement | MPAS                             |
@@ -157,7 +157,7 @@ $$
 Where variables sit on the grid changes how well gravity waves and geostrophic adjustment are
 represented. $h$ is a mass or pressure point.
 
-| Grid | $u$, $v$ placement                                     | Behaviour                                         | Used by                     |
+| Grid | $u$, $v$ placement                                     | Behavior                                         | Used by                     |
 | :--- | :----------------------------------------------------- | :------------------------------------------------ | :-------------------------- |
 | A    | both at $h$ points                                     | simple; decoupled checkerboard modes, poor adjustment | spectral grid space, some ML grids |
 | B    | both at cell corners                                   | good at coarse resolution                         | older models                |
@@ -265,7 +265,7 @@ $$
 | :------------- | :---------------------------------------------- | :------------------------------------------------ |
 | 25–50 km       | older global, ensembles, ML models (0.25°)      | synoptic highs, lows, fronts                      |
 | 9–13 km        | current global deterministic                    | mesoscale systems, major terrain                  |
-| 4–10 km        | convective "grey zone"                          | storms half-resolved: parameterise with care      |
+| 4–10 km        | convective "gray zone"                          | storms half-resolved: parameterise with care      |
 | 1.5–3 km       | convection-permitting regional                  | individual storms, squall lines; no deep-convection scheme |
 | 100 m and below | large-eddy simulation (LES)                    | boundary-layer turbulence                          |
 
@@ -283,7 +283,7 @@ tendencies of $T$, $q$, $\vec v$ and condensate back into the dynamics.
 | shallow convection           | trade cumulus, boundary-layer clouds                      | mass-flux or eddy-diffusivity mass-flux (EDMF)        |
 | cloud microphysics           | droplets and ice form and fall on micron scales           | bulk single or double moment: Thompson (HRRR), GFDL (GFS) |
 | radiation                    | line-by-line absorption is far too costly                 | correlated-k: RRTMG, ecRad (IFS); called every hour or so, not every step |
-| boundary layer, turbulence   | eddies of metres to a kilometre                           | K-profile, TKE closures, MYNN-EDMF, sa-TKE-EDMF       |
+| boundary layer, turbulence   | eddies of meters to a kilometer                           | K-profile, TKE closures, MYNN-EDMF, sa-TKE-EDMF       |
 | surface layer                | fluxes between ground and first level                     | Monin–Obukhov similarity                              |
 | land surface                 | soil moisture and temperature, snow, vegetation           | Noah, Noah-MP, RUC LSM, ECLand                        |
 | orographic gravity wave drag | sub-grid mountains exert drag aloft                       | Lott–Miller type with blocking                        |
@@ -308,7 +308,7 @@ forecast) and the observations $\mathbf{y}$, weighted by their error covariances
 | $M_{0 \to i}$          | forecast model from the start of the window to time $i$              |
 | $\mathbf{K}$           | gain matrix                                                           |
 
-3D-Var minimises one cost function at a single analysis time:
+3D-Var minimizes one cost function at a single analysis time:
 
 $$
 J(\mathbf{x}) = \tfrac12(\mathbf{x} - \mathbf{x}_b)^\mathsf{T}\mathbf{B}^{-1}(\mathbf{x} - \mathbf{x}_b)
@@ -334,13 +334,13 @@ $$
 | Method                  | Background errors $\mathbf{B}$                        | Needs                                          | Used by                    |
 | :---------------------- | :---------------------------------------------------- | :--------------------------------------------- | :------------------------- |
 | optimal interpolation   | static, local                                         | little                                         | historical, surface analyses |
-| 3D-Var                  | static (climatological)                               | minimiser                                      | many regional systems      |
+| 3D-Var                  | static (climatological)                               | minimizer                                      | many regional systems      |
 | 4D-Var (incremental)    | static, evolved implicitly over the window            | tangent-linear and adjoint models              | IFS, UM (both hybrid)      |
-| EnKF, LETKF             | from an ensemble of forecasts, flow-dependent         | 20–100 members, localisation, inflation        | ICON ensemble, GFS ensemble |
+| EnKF, LETKF             | from an ensemble of forecasts, flow-dependent         | 20–100 members, localization, inflation        | ICON ensemble, GFS ensemble |
 | hybrid EnVar, 4DEnVar   | blend $\beta_c^2\mathbf{B}_\text{clim} + \beta_e^2(\mathbf{P}_e \circ \mathbf{L})$ | ensemble; no adjoint for 4DEnVar | GFS (4DEnVar), ICON (3DEnVar), HRRR |
 
 $\mathbf{P}_e = \dfrac{1}{N-1}\mathbf{X}'\mathbf{X}'^\mathsf{T}$ is the ensemble covariance
-from perturbations $\mathbf{X}'$; $\mathbf{L}$ localises it (Schur product $\circ$) to kill
+from perturbations $\mathbf{X}'$; $\mathbf{L}$ localizes it (Schur product $\circ$) to kill
 spurious long-range correlations from a small ensemble.
 
 | Observation type                        | Measures                                  |
@@ -402,7 +402,7 @@ ICON 13 km → 6.5 km Europe nest). A new run needs spin-up time for clouds and 
 
 Status on 25 September 2026.
 
-| Model | Centre | Type | Grid and core | $\Delta x$ | Levels | Data assimilation | Notes |
+| Model | Center | Type | Grid and core | $\Delta x$ | Levels | Data assimilation | Notes |
 | :---- | :----- | :--- | :------------ | :--------- | :----- | :---------------- | :---- |
 | IFS (Cycle 50r1) | ECMWF | global physics | spectral, TCo1279 octahedral, hydrostatic SISL | 9 km | 137 | hybrid 4D-Var with ensemble DA | 50r1 live since 12 May 2026; 15-day control (formerly HRES) plus 50 members, all at 9 km; coupled ocean and sea ice |
 | GFS v16 | NOAA NCEP | global physics | FV3 finite volume, cubed sphere C768 | 13 km | 127 | hybrid 4DEnVar (GDAS) | 4 runs a day to 16 days; v17 (C1152, about 9 km, coupled ocean, ice, waves) proposed for October 2026 |
@@ -441,8 +441,8 @@ Compare forecasts $f_i$ with observations or analyses $o_i$, $N$ pairs, climatol
 | critical success index   | $a/(a + b + c)$                                 | 1       |
 
 High-resolution precipitation suffers the **double penalty** (a storm slightly displaced counts as
-a miss and a false alarm), so use neighbourhood scores such as the fractions skill score. Probability
-forecasts also need reliability diagrams and ROC curves. WeatherBench 2 standardises these
+a miss and a false alarm), so use neighborhood scores such as the fractions skill score. Probability
+forecasts also need reliability diagrams and ROC curves. WeatherBench 2 standardizes these
 scores for comparing ML and physics models.
 
 ## Worked examples

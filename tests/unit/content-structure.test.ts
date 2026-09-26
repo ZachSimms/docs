@@ -234,7 +234,7 @@ const DESIGN_VISUALS: Readonly<Record<string, number>> = {
   tailwind: 20,
 };
 
-/** A visual in MDX source: a colour component, a diagram or a live demo fence. */
+/** A visual in MDX source: a color component, a diagram or a live demo fence. */
 const VISUAL = /^(?:<(?:Swatches|Scale|Contrast|Diagram)\b|```html [^\n]*\bdemo\b)/gm;
 
 /** Each sheet's `##` sections are its subpages; fewer than this is a stub. */
@@ -402,7 +402,7 @@ describe("search index", () => {
   });
 });
 
-/** Maths sheets: numbered book-style headings are kept as they are, but each ends with its sources. */
+/** Math sheets: numbered book-style headings are kept as they are, but each ends with its sources. */
 const MATHS_SHEETS = [
   "math-fundamentals",
   "reading-graphs",
@@ -410,14 +410,14 @@ const MATHS_SHEETS = [
   "notation",
 ];
 
-describe("content/maths", () => {
+describe("content/math", () => {
   it("lists its sheets in order, with the coming-soon overview last", () => {
-    expect(listTopicEntries("maths").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
+    expect(listTopicEntries("math").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
   });
 
   for (const slug of MATHS_SHEETS) {
     it(`${slug} ends with a References section and keeps code lines short`, () => {
-      const body = readSheetBody({ topic: "maths", slug });
+      const body = readSheetBody({ topic: "math", slug });
       const sections = extractToc(body).filter((e) => e.depth === 2);
       expect(sections.at(-1)?.text).toBe("References");
       expect(body.split("## References")[1]).toMatch(/^- \[.+\]\(https:\/\/.+\)/m);
@@ -427,7 +427,7 @@ describe("content/maths", () => {
 });
 
 /** Topic overviews that have no real content yet: a heading and the meme, nothing else. */
-const COMING_SOON = ["maths", "physics", "biology", "ml-ai", "python", "robotics", "writing"];
+const COMING_SOON = ["math", "physics", "biology", "ml-ai", "python", "robotics", "writing"];
 /** The shared meme on every coming-soon page. */
 const COMING_SOON_IMAGE = "/images/coming-soon.png";
 
