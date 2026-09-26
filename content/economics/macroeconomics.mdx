@@ -1,0 +1,437 @@
+---
+title: Macroeconomics
+date: 2026-09-26
+order: 2
+---
+
+The economy as a whole: how output, prices and employment are measured, what drives long-run growth, how money
+and banks work, why economies boom and slump, and what fiscal and monetary policy can and cannot do. Individual
+markets, costs and market failure are in [microeconomics](/economics/microeconomics/). Live data for every
+series here is on [FRED](https://fred.stlouisfed.org/).
+
+## Measuring output
+
+**Gross domestic product (GDP)**: the market value of all final goods and services produced within a country in
+a period. Three approaches give the same total (up to a statistical discrepancy):
+
+| Approach | Sums | Formula |
+| :------- | :--- | :------ |
+| expenditure | spending on final output | $Y = C + I + G + NX$ |
+| income | incomes earned producing it | compensation of employees + gross operating surplus + mixed income + taxes on production less subsidies |
+| production | value added by every producer | output minus intermediate consumption |
+
+| Component | Includes | Excludes |
+| :-------- | :------- | :------- |
+| $C$ consumption | household goods and services | purchases of existing homes |
+| $I$ investment | business equipment and structures, **new** housing, change in inventories | buying shares or bonds (financial, not real, investment) |
+| $G$ government purchases | public wages, equipment, infrastructure | **transfers** (pensions, benefits): no output is bought |
+| $NX = X - M$ net exports | exports minus imports | |
+
+Also excluded from GDP: intermediate goods (double counting), second-hand sales, unpaid household work, most
+illegal activity, leisure and environmental damage. GDP measures production, not welfare.
+
+| Measure | Definition |
+| :------ | :--------- |
+| nominal GDP | valued at current prices |
+| real GDP | valued at base-year (chained) prices: tracks quantities |
+| GDP deflator | $\dfrac{\text{nominal GDP}}{\text{real GDP}} \times 100$ |
+| GNI / GNP | GDP + income earned abroad by residents − income earned here by non-residents |
+| GDP per capita | GDP / population: the usual living-standards proxy |
+| PPP-adjusted GDP | converted at purchasing-power-parity rates rather than market exchange rates, for cross-country comparison |
+| potential output $Y^*$ | output with resources at normal utilisation, without accelerating inflation |
+| output gap | $\dfrac{Y - Y^*}{Y^*}$: positive in a boom, negative in a slump |
+
+Growth rates: $g = \dfrac{Y_t - Y_{t-1}}{Y_{t-1}}$. Quarterly rates are often **annualised**:
+$(1 + g_q)^4 - 1$ (the US convention; the UK and euro area headline quarter-on-quarter rates unannualised).
+
+## Inflation and prices
+
+**Inflation**: the rate of increase in the general price level, $\pi_t = \dfrac{P_t - P_{t-1}}{P_{t-1}}$.
+
+| Index | What | Note |
+| :---- | :--- | :--- |
+| CPI | fixed basket bought by urban consumers | headline US inflation (BLS); overstates cost-of-living changes (substitution, new goods, quality bias) |
+| core CPI | CPI excluding food and energy | less noisy signal of trend |
+| PCE price index | all personal consumption, weights update as spending shifts | the Federal Reserve's target measure (BEA) |
+| HICP | harmonised index across the EU | the ECB's target measure |
+| GDP deflator | all domestically produced goods | includes investment and government; excludes imports |
+| PPI | prices received by producers | often leads consumer prices |
+
+| Relation | Formula |
+| :------- | :------ |
+| real value | $\text{real} = \dfrac{\text{nominal}}{P} \times 100$ (with $P$ an index, base 100) |
+| Fisher equation | $(1 + i) = (1 + r)(1 + \pi^e)$, so $i \approx r + \pi^e$ |
+| ex post real rate | $r = i - \pi$ (actual inflation) |
+| quantity equation | $MV = PY$, so $\%\Delta M + \%\Delta V \approx \%\Delta P + \%\Delta Y$ |
+| quantity theory | with $V$ stable and $Y$ set by real factors, money growth drives inflation in the long run |
+
+| Cost of inflation | Mechanism |
+| :---------------- | :-------- |
+| shoe-leather | effort spent holding less cash |
+| menu costs | resetting prices |
+| relative-price distortion | prices change at different times, misallocating resources |
+| tax distortions | taxes on **nominal** capital gains and interest rise with inflation |
+| redistribution | **unexpected** inflation shifts wealth from lenders to borrowers and hurts fixed-income earners |
+| uncertainty | harder long-term planning and contracting |
+
+**Deflation** is not the cure: falling prices raise the real burden of debt (debt deflation, Fisher 1933),
+push real rates up when nominal rates cannot go below zero, and reward postponing purchases. **Hyperinflation**
+(conventionally above 50% a month, Cagan 1956) is almost always the result of printing money to finance
+government deficits.
+
+## Unemployment and the labour market
+
+| Measure | Definition |
+| :------ | :--------- |
+| labour force | employed + unemployed (actively looking in the last four weeks, available to work) |
+| unemployment rate | $u = \dfrac{U}{E + U}$ |
+| participation rate | $\dfrac{E + U}{\text{working-age population}}$ |
+| employment-to-population ratio | $\dfrac{E}{\text{working-age population}}$ |
+| discouraged workers | want work but stopped searching: **not** counted as unemployed |
+| U-3 / U-6 | US official rate / broad rate adding marginally attached and involuntary part-time workers |
+
+| Type | Cause | Policy |
+| :--- | :---- | :----- |
+| frictional | time to match workers and jobs | better information, job boards |
+| structural | skills or location mismatch; wages above market-clearing (unions, minimum wages, efficiency wages) | retraining, mobility |
+| cyclical | too little aggregate demand in a downturn | fiscal and monetary stimulus |
+| seasonal | predictable yearly patterns | none; data are seasonally adjusted |
+
+The **natural rate** $u^*$ = frictional + structural: unemployment when output is at potential. The NAIRU
+(non-accelerating inflation rate of unemployment) is its operational twin.
+
+**Okun's law** (an empirical rule, not a law): each percentage point of unemployment above the natural rate goes
+with output roughly 2% below potential (Okun's original 1962 estimate was about 3%).
+
+$$
+\frac{Y - Y^*}{Y^*} \approx -2\,(u - u^*)
+$$
+
+## Long-run growth
+
+Over decades, growth in output per person dominates everything else: at 2% a year living standards double in
+about 35 years.
+
+$$
+\text{doubling time} \approx \frac{70}{g\ (\text{in } \%)} \qquad \text{(rule of 70)}
+$$
+
+Production function (Cobb–Douglas, capital share $\alpha \approx \tfrac13$):
+
+$$
+Y = A\,K^{\alpha} L^{1-\alpha}
+\qquad\Rightarrow\qquad
+g_Y = g_A + \alpha\,g_K + (1 - \alpha)\,g_L
+$$
+
+**Growth accounting** splits output growth into capital, labour and the residual $g_A$, **total factor
+productivity** (TFP): technology, organisation, institutions.
+
+**Solow model** (per worker $k = K/L$, $y = f(k)$, saving rate $s$, depreciation $\delta$, population growth
+$n$):
+
+| Result | Formula / statement |
+| :----- | :------------------ |
+| capital accumulation | $\Delta k = s f(k) - (\delta + n)k$ |
+| steady state | $s f(k^*) = (\delta + n)k^*$ |
+| higher saving | raises the **level** of $k^*$ and $y^*$, not the long-run growth rate |
+| golden rule | consumption per worker is maximised where $f'(k) = \delta + n$ |
+| sustained growth | only from technological progress ($g_A > 0$) |
+| conditional convergence | poorer countries with similar fundamentals grow faster towards their own steady state |
+
+Endogenous growth models (Romer 1990) make technology the product of deliberate R&D with non-rival ideas, so
+policy (education, research, competition, property rights) can change the growth **rate**. Institutions
+(secure property rights, rule of law, constraints on elites) are the deepest determinant in most empirical work
+(Acemoglu, Johnson and Robinson).
+
+## Saving, investment and finance
+
+National saving is income not spent on consumption or government purchases:
+
+$$
+S = Y - C - G = \underbrace{(Y - T - C)}_{\text{private}} + \underbrace{(T - G)}_{\text{public}}
+$$
+
+| Identity | Meaning |
+| :------- | :------ |
+| closed economy: $S = I$ | saving finances investment |
+| open economy: $S - I = NX$ | a country saving more than it invests lends abroad and runs a trade surplus |
+| twin deficits | a larger budget deficit ($T - G$ falls) lowers $S$; with $I$ unchanged, $NX$ must fall |
+
+**Loanable funds**: saving supplies and investment demands funds; the real interest rate clears the market. A
+larger government deficit shifts supply left, raising $r$ and **crowding out** private investment (strongest
+when the economy is at full employment, weakest in a slump with idle saving).
+
+| Asset | Relation |
+| :---- | :------- |
+| bond price vs yield | move **opposite**: $P = \sum \dfrac{C}{(1 + y)^t} + \dfrac{F}{(1 + y)^T}$ |
+| term structure | long rates ≈ average expected short rates + term premium; an inverted yield curve has preceded most US recessions |
+| stock price | present value of expected future dividends |
+
+## Money and banking
+
+| Function of money | Meaning |
+| :---------------- | :------ |
+| medium of exchange | accepted in payment; avoids the double coincidence of wants |
+| unit of account | prices quoted in it |
+| store of value | holds purchasing power over time (imperfectly under inflation) |
+
+| Aggregate | Contents |
+| :-------- | :------- |
+| monetary base (M0) | currency + bank reserves at the central bank |
+| M1 | currency + demand and other liquid deposits |
+| M2 | M1 + small time deposits + retail money-market funds |
+
+**How money is created.** The textbook **money multiplier** ($1/rr$ for reserve ratio $rr$) says banks lend out
+reserves. In practice commercial banks create deposits when they lend, limited by profitable demand for loans,
+capital requirements and regulation, not by reserves (McLeay, Radia and Thomas 2014). The US reserve requirement
+has been **zero** since March 2020, and the Federal Reserve runs an **ample-reserves** system.
+
+| Central-bank tool | How it works |
+| :---------------- | :----------- |
+| policy rate | Fed: target range for the federal funds rate; ECB: deposit facility rate; BoE: Bank Rate |
+| interest on reserve balances (IORB) | the main lever in an ample-reserves system: banks won't lend overnight below it |
+| overnight reverse repo (ON RRP) | floor for rates paid to non-banks (money-market funds) |
+| open-market operations | buying or selling government securities |
+| discount window / standing repo | lender of last resort to solvent banks (Bagehot: lend freely, against good collateral, at a penalty rate) |
+| quantitative easing (QE) / tightening (QT) | large-scale asset purchases or run-off to move long-term rates |
+| forward guidance | signalling the future path of rates |
+
+| Central bank | Inflation target |
+| :----------- | :--------------- |
+| Federal Reserve (US) | 2% PCE inflation over the longer run; dual mandate with maximum employment |
+| European Central Bank | 2% HICP, symmetric, over the medium term |
+| Bank of England | 2% CPI, set by the government |
+
+## Aggregate demand and supply
+
+<Diagram src="/images/diagrams/econ-ad-as.svg" label="Price level on the vertical axis, real GDP on the horizontal. A downward-sloping aggregate demand curve AD crosses an upward-sloping short-run aggregate supply curve SRAS on a vertical long-run aggregate supply line LRAS at potential output Y-star and price level P-zero, labelled E-zero, the long-run equilibrium. A dashed AD-prime to the right crosses SRAS at E-one, with higher output Y-one and higher price level P-one: a short-run boom with a positive output gap." caption="AD–AS: a demand shock moves the economy from E₀ to a short-run boom at E₁" />
+
+| Curve | Slope | Why | Shifts with |
+| :---- | :---- | :-- | :---------- |
+| AD | down | higher prices cut real wealth, raise interest rates and make exports dearer | $C$, $I$, $G$, $T$, $NX$, money supply, confidence, foreign demand |
+| SRAS | up | sticky wages and prices: higher prices raise profit margins in the short run | wages, input prices (oil), productivity, expected inflation, supply shocks |
+| LRAS | vertical at $Y^*$ | in the long run prices and wages adjust fully; output set by $K$, $L$, $A$ | capital, labour force, technology, institutions |
+
+| Shock | Short run | Long run (no policy response) |
+| :---- | :-------- | :---------------------------- |
+| AD ↓ (confidence falls) | output ↓, prices ↓ (or disinflation), unemployment ↑: recession | wages fall, SRAS shifts right, back to $Y^*$ at a lower price level (slowly) |
+| AD ↑ (stimulus, boom) | output ↑ above $Y^*$, prices ↑ | wages rise, SRAS shifts left, back to $Y^*$ at a higher price level |
+| SRAS ↓ (oil shock) | **stagflation**: output ↓ and prices ↑ | policy dilemma: stimulating output worsens inflation |
+| LRAS ↑ (productivity) | output ↑, prices ↓ | higher potential output |
+
+**IS–LM** (short run, fixed prices): the IS curve is combinations of $Y$ and $r$ where goods-market spending
+equals output; the LM curve (or, in modern versions, a monetary-policy rule setting $r$) closes the model.
+Fiscal expansion shifts IS right; monetary expansion shifts LM right or lowers the policy rate.
+
+## Fiscal policy
+
+| Tool | Effect on AD |
+| :--- | :----------- |
+| government purchases $G$ | direct: $\Delta Y = \text{multiplier} \times \Delta G$ |
+| taxes $T$ | indirect via disposable income: smaller effect than $G$ per unit |
+| transfers | like tax cuts; larger effect when paid to people who spend it |
+| automatic stabilisers | progressive taxes and unemployment benefits cushion cycles with no new law |
+
+Simple Keynesian multipliers (fixed prices and interest rates, marginal propensity to consume MPC):
+
+| Multiplier | Formula | MPC = 0.8 |
+| :--------- | :------ | :-------: |
+| spending | $\dfrac{1}{1 - MPC}$ | 5 |
+| lump-sum tax | $\dfrac{-MPC}{1 - MPC}$ | −4 |
+| balanced budget ($\Delta G = \Delta T$) | $1$ | 1 |
+| with income tax $t$ and imports $m$ | $\dfrac{1}{1 - MPC(1 - t) + m}$ | smaller |
+
+The textbook numbers are far too large. Leakages to taxes, imports and saving, crowding out through interest
+rates and monetary offset shrink them: empirical estimates for US government purchases mostly fall around 0.6
+to 1, possibly higher when interest rates are stuck at zero (Ramey 2019).
+
+| Concept | Formula / meaning |
+| :------ | :---------------- |
+| budget deficit | $G + \text{transfers} + \text{interest} - T$ |
+| primary balance | the budget balance **excluding** interest payments |
+| cyclically adjusted balance | the balance if output were at potential |
+| debt dynamics | $\Delta b \approx (r - g)\,b - s$: debt-to-GDP $b$ rises if the interest rate $r$ exceeds growth $g$ and the primary surplus $s$ is too small |
+| Ricardian equivalence | if households foresee future taxes, debt-financed tax cuts are saved, not spent (a benchmark; rarely holds fully) |
+
+Policy lags: **inside** lags (recognising and legislating) are long for fiscal policy; **outside** lags
+(effect on the economy) are long for monetary policy.
+
+## Monetary policy
+
+Transmission from the policy rate to the economy: short-term market rates → loan and mortgage rates, bond yields
+and asset prices (wealth effect) → exchange rate (net exports) → credit supply → expectations. The effect on
+inflation takes roughly one to two years.
+
+**Taylor rule** (Taylor 1993), a description of how the Fed set rates and a benchmark for judging policy:
+
+$$
+i = r^* + \pi + 0.5\,(\pi - \pi^*) + 0.5\,\frac{Y - Y^*}{Y^*} \times 100
+$$
+
+with $r^*$ the neutral real rate (Taylor used 2%) and $\pi^*$ the inflation target (2%). Inflation above target
+raises the nominal rate **more** than one-for-one (the Taylor principle), so the real rate rises.
+
+| Problem | Meaning | Response |
+| :------ | :------ | :------- |
+| zero (effective) lower bound | nominal rates can't go much below zero because cash pays 0% | QE, forward guidance, negative rates (ECB, BoJ, SNB), fiscal policy |
+| liquidity trap | more money is hoarded, not spent | fiscal policy matters more |
+| time inconsistency | a promise of low inflation is tempting to break later | central-bank independence, inflation targets, rules |
+| unanchored expectations | expected inflation feeds into wages and prices | credibility, acting early |
+| financial stability | low rates can feed asset bubbles and leverage | macroprudential tools (capital buffers, loan-to-value limits) |
+
+## Phillips curve and expectations
+
+The original Phillips curve (Phillips 1958, wage data for the UK) showed lower unemployment with higher wage
+inflation. Friedman (1968) and Phelps (1967) argued the trade-off is only temporary; the **expectations-augmented
+Phillips curve**:
+
+$$
+\pi = \pi^e - \beta\,(u - u^*) + \varepsilon
+$$
+
+| Implication | Meaning |
+| :---------- | :------ |
+| short run | lower unemployment only by surprising people with inflation above expectations |
+| long run | vertical at $u^*$: no permanent trade-off |
+| supply shocks $\varepsilon$ | shift the curve up: higher inflation at every unemployment rate (1970s stagflation) |
+| sacrifice ratio | output lost (% of a year's GDP) per percentage point of lasting disinflation |
+| anchored expectations | a credible target keeps $\pi^e$ near 2%, flattening the curve and making shocks transitory |
+
+Expectation schemes: **adaptive** ($\pi^e_t = \pi_{t-1}$) versus **rational** (using all available
+information, including the policy regime). Under rational expectations only unexpected policy moves real
+variables (Lucas critique: estimated relationships change when policy changes).
+
+## Business cycles
+
+<Diagram src="/images/diagrams/econ-business-cycle.svg" label="Real GDP over time: a wavy line oscillating around a rising dashed trend line labelled potential output. Peaks and troughs are marked. The stretches from each peak down to the next trough are shaded as recessions; the rises from trough to peak are expansions." caption="Business cycle: expansions and recessions around potential output (schematic)" />
+
+| Phase | Output | Unemployment | Inflation |
+| :---- | :----- | :----------- | :-------- |
+| expansion | rising | falling | typically rising late in the expansion |
+| peak | at its highest, above trend | at its lowest | often at its highest |
+| recession / contraction | falling | rising | falling (with a lag) |
+| trough | at its lowest | at or near its highest | low |
+
+"Two consecutive quarters of falling real GDP" is a rule of thumb. In the US, the NBER's Business Cycle Dating
+Committee dates recessions as "a significant decline in economic activity that is spread across the economy and
+lasts more than a few months", judged on employment, income, spending and production.
+
+| Indicator | Type | Examples |
+| :-------- | :--- | :------- |
+| leading | turns before the economy | yield-curve slope, building permits, new orders, initial jobless claims, stock prices, consumer expectations |
+| coincident | moves with it | payroll employment, industrial production, real income, retail sales |
+| lagging | turns after | unemployment duration, inflation, loan rates |
+| Sahm rule | real-time recession signal | 3-month average unemployment rate 0.5 percentage points or more above its low of the previous 12 months |
+
+| Theory | Driver of cycles |
+| :----- | :--------------- |
+| Keynesian / New Keynesian | demand shocks with sticky prices and wages |
+| real business cycle | technology (supply) shocks with flexible prices |
+| monetarist | unstable money growth |
+| financial accelerator / Minsky | credit booms and busts amplify shocks via balance sheets |
+
+## The open economy
+
+| Account (BPM6) | Records |
+| :------------- | :------ |
+| current account (CA) | trade in goods and services + primary income + secondary income (transfers) |
+| capital account (KA) | capital transfers, non-produced non-financial assets (small) |
+| financial account (FA) | net acquisition of foreign assets minus net incurrence of liabilities |
+| identity | $CA + KA = FA$ (plus net errors and omissions): a current-account deficit is financed by net borrowing from abroad |
+
+| Exchange-rate concept | Formula / meaning |
+| :-------------------- | :---------------- |
+| nominal rate $e$ | price of foreign currency in home currency (conventions vary: check which way round) |
+| real exchange rate | $\varepsilon = \dfrac{e\,P^*}{P}$: price of foreign goods in terms of home goods |
+| purchasing power parity | in the long run $e \approx P / P^*$; relative PPP: depreciation ≈ inflation differential |
+| uncovered interest parity | $i \approx i^* + \text{expected depreciation of the home currency}$ |
+| Marshall–Lerner | a depreciation improves the trade balance if export and import demand elasticities sum above 1 (after a J-curve lag) |
+
+**The impossible trinity** (Mundell–Fleming): a country can have at most two of fixed exchange rate, free
+capital movement and independent monetary policy.
+
+| Choice | Gives up | Example |
+| :----- | :------- | :------ |
+| float + open capital + own policy | fixed rate | US, UK, euro area as a whole |
+| peg + open capital | own monetary policy | Hong Kong dollar board, Denmark |
+| peg + own policy | free capital flows | China (managed, with capital controls) |
+
+## Worked examples
+
+### GDP by expenditure
+
+$C = 14{,}000$, $I = 3{,}500$, $G = 4{,}000$, exports $2{,}500$, imports $3{,}000$ (billions):
+
+$$
+Y = 14{,}000 + 3{,}500 + 4{,}000 + (2{,}500 - 3{,}000) = 21{,}000
+$$
+
+If real GDP is $19{,}800$, the deflator is $21{,}000 / 19{,}800 \times 100 = 106.1$.
+
+### Unemployment and participation
+
+Employed 160 million, unemployed 8 million, working-age population 270 million:
+
+$$
+u = \frac{8}{168} = 4.8\%, \qquad \text{participation} = \frac{168}{270} = 62.2\%
+$$
+
+If 2 million unemployed give up searching: $u = 6/166 = 3.6\%$ while nobody found a job. Participation falls
+to $166/270 = 61.5\%$.
+
+### Real interest rate
+
+A loan at 7% when inflation turns out to be 4%: $r \approx 3\%$ (exactly $1.07/1.04 - 1 = 2.9\%$). Had
+inflation been expected at 2% but come in at 4%, the lender lost about 2 points of expected real return to the
+borrower.
+
+### Multiplier
+
+MPC 0.75, government spends an extra 100:
+
+$$
+\Delta Y = \frac{1}{1 - 0.75} \times 100 = 400
+$$
+
+A 100 lump-sum tax cut instead: $\dfrac{0.75}{0.25} \times 100 = 300$. Both together (balanced budget): 100.
+
+### Taylor rule
+
+Inflation 3%, target 2%, output 1% below potential, $r^* = 2\%$:
+
+$$
+i = 2 + 3 + 0.5(3 - 2) + 0.5(-1) = 5\%
+$$
+
+### Solow steady state
+
+$y = k^{0.5}$, $s = 0.2$, $\delta = 0.05$, $n = 0$:
+
+$$
+0.2\sqrt{k^*} = 0.05\,k^* \Rightarrow \sqrt{k^*} = 4 \Rightarrow k^* = 16,\ y^* = 4,\ c^* = 0.8 \times 4 = 3.2
+$$
+
+Golden rule: $f'(k) = 0.5k^{-0.5} = 0.05$ gives $k = 100$, $y = 10$, needing $s = \delta k / y = 0.5$, and
+$c = 5$: a higher saving rate here raises long-run consumption.
+
+### Doubling time
+
+Real GDP per person growing at 1.5% a year doubles in about $70 / 1.5 \approx 47$ years; at 3.5%, in 20.
+
+## References
+
+- [OpenStax: Principles of Macroeconomics 3e](https://openstax.org/details/books/principles-macroeconomics-3e): free introductory textbook
+- [CORE Econ: The Economy 2.0](https://www.core-econ.org/the-economy/): free, modern, data-driven introduction
+- [FRED, Federal Reserve Bank of St. Louis](https://fred.stlouisfed.org/): data for GDP, inflation, unemployment, rates and more
+- [BEA: NIPA Handbook](https://www.bea.gov/resources/methodologies/nipa-handbook): how US GDP is measured
+- [BLS: How the Government Measures Unemployment](https://www.bls.gov/cps/cps_htgm.htm): labour-force definitions
+- [Federal Reserve: Monetary policy](https://www.federalreserve.gov/monetarypolicy.htm): goals, tools and the policy framework
+- [Bank of England: Money creation in the modern economy (2014)](https://www.bankofengland.co.uk/quarterly-bulletin/2014/q1/money-creation-in-the-modern-economy): McLeay, Radia and Thomas on how banks create money
+- [NBER: Business Cycle Dating](https://www.nber.org/research/business-cycle-dating): US recession dates and definition
+- [IMF: Balance of Payments Manual, 6th ed. (BPM6)](https://www.imf.org/external/pubs/ft/bop/2007/bopman6.htm): balance-of-payments accounting
+- [Taylor (1993), Discretion versus policy rules in practice](https://doi.org/10.1016/0167-2231(93)90009-L), *Carnegie-Rochester Conference Series on Public Policy* 39: the Taylor rule
+- [Solow (1956), A Contribution to the Theory of Economic Growth](https://doi.org/10.2307/1884513), *Quarterly Journal of Economics* 70(1): the Solow model
+- [Ramey (2019), Ten Years After the Financial Crisis](https://doi.org/10.1257/jep.33.2.89), *Journal of Economic Perspectives* 33(2): fiscal multiplier evidence
+- N. Gregory Mankiw, *Macroeconomics* (Worth): intermediate text for growth, AD–AS and policy
+- [Microeconomics](/economics/microeconomics/): the companion sheet

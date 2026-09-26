@@ -101,6 +101,8 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       "recovery-mobility": ["running-warmup-drills", "stretching-recovery"],
     },
   },
+  economics: { entries: ["microeconomics", "macroeconomics"], directories: {} },
+  cpp: { entries: ["fundamentals"], directories: {} },
 };
 
 /** Loose entry that is a topic's coming-soon page, not a reference sheet (checked further down). */
@@ -172,6 +174,7 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "fitness/nutrition/vitamins-minerals",
   "fitness/recovery-mobility/running-warmup-drills",
   "fitness/recovery-mobility/stretching-recovery",
+  "cpp/fundamentals",
 ]);
 
 /** Visual components or live demos each design sheet must use at least this many times. */
@@ -344,7 +347,7 @@ describe("content/maths", () => {
 });
 
 /** Topic overviews that have no real content yet: a heading and the meme, nothing else. */
-const COMING_SOON = ["maths", "physics", "biology", "ml-ai", "python", "cpp", "robotics", "writing"];
+const COMING_SOON = ["maths", "physics", "biology", "ml-ai", "python", "robotics", "writing"];
 /** The shared meme on every coming-soon page. */
 const COMING_SOON_IMAGE = "/images/coming-soon.png";
 

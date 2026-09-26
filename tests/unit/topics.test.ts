@@ -3,12 +3,13 @@ import { describe, expect, it } from "bun:test";
 import { TOPICS, getTopic, topicNumber } from "@/lib/topics";
 
 describe("TOPICS", () => {
-  it("lists the thirteen topics in display order", () => {
+  it("lists the fourteen topics in display order", () => {
     expect(TOPICS.map((t) => t.slug)).toEqual([
       "maths",
       "physics",
       "biology",
       "fitness",
+      "economics",
       "ml-ai",
       "typescript",
       "databases",
@@ -28,6 +29,7 @@ describe("TOPICS", () => {
     expect(getTopic("databases")?.name).toBe("Databases");
     expect(getTopic("infrastructure")?.name).toBe("Infrastructure");
     expect(getTopic("fitness")?.name).toBe("Fitness");
+    expect(getTopic("economics")?.name).toBe("Economics");
   });
 });
 
@@ -39,9 +41,10 @@ describe("getTopic", () => {
 
 describe("topicNumber", () => {
   it("numbers the first topic highest and the last topic 1", () => {
-    expect(topicNumber("maths")).toBe(13);
-    expect(topicNumber("physics")).toBe(12);
-    expect(topicNumber("fitness")).toBe(10);
+    expect(topicNumber("maths")).toBe(14);
+    expect(topicNumber("physics")).toBe(13);
+    expect(topicNumber("fitness")).toBe(11);
+    expect(topicNumber("economics")).toBe(10);
     expect(topicNumber("typescript")).toBe(8);
     expect(topicNumber("infrastructure")).toBe(6);
     expect(topicNumber("design")).toBe(1);
