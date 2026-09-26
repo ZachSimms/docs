@@ -1,7 +1,7 @@
 /** Unit tests for `components/TapNav.tsx`: touch double taps on the screen edges act like ← and →. */
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { TapNav } from "@/components/TapNav";
+import { FLASH_MS, TapNav } from "@/components/TapNav";
 
 /** Window width in the test DOM; the edge zones are its outer quarters. */
 const WIDTH = 400;
@@ -123,7 +123,61 @@ describe("TapNav", () => {
     tap(text, 20);
     tap(text, 20);
     expect(document.querySelector(".tap-flash")).not.toBeNull();
-    await act(() => new Promise((r) => setTimeout(r, 450)));
+    await act(() => new Promise((r) => setTimeout(r, FLASH_MS + 300)));
     expect(document.querySelector(".tap-flash")).toBeNull();
+  });
+
+  it("doesn't let a tap that closes an overlay start a double tap", () => {
+    const clicks = page();
+    const text = document.getElementById("text")!;
+    document.body.setAttribute("data-toc-open", ""); // the first tap closes the menu...
+    tap(text, 20);
+    document.body.removeAttribute("data-toc-open");
+    tap(text, 20); // ...so this is only a first tap
+    expect(clicks).toEqual([]);
+  });
+
+  it("ignores taps while text is selected", () => {
+    const clicks = page();
+    const text = document.getElementById("text")!;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    window.getSelection()!.addRange(range);
+    try {
+      tap(text, 20);
+      tap(text, 20);
+      expect(clicks).toEqual([]);
+    } finally {
+      window.getSelection()!.removeAllRanges();
+    }
+  });
+
+  it("forgets a pending tap when the touch is cancelled", () => {
+    const clicks = page();
+    const text = document.getElementById("text")!;
+    tap(text, 20);
+    fireEvent.pointerCancel(text, { pointerType: "touch", isPrimary: true, bubbles: true });
+    tap(text, 20);
+    expect(clicks).toEqual([]);
+  });
+
+  it("measures the edges against the visible area while pinch-zoomed", () => {
+    const clicks = page();
+    const text = document.getElementById("text")!;
+    // Zoomed 3x, panned to the left third of the page: visible x runs 0–133 of 400.
+    Object.defineProperty(window, "visualViewport", {
+      value: { offsetLeft: 0, width: 133 },
+      configurable: true,
+    });
+    try {
+      tap(text, 65); // the visible middle: not an edge
+      tap(text, 65);
+      expect(clicks).toEqual([]);
+      tap(text, 10); // the visible left edge
+      tap(text, 10);
+      expect(clicks).toEqual(["up"]);
+    } finally {
+      Object.defineProperty(window, "visualViewport", { value: undefined, configurable: true });
+    }
   });
 });

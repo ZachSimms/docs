@@ -30,7 +30,36 @@ describe("DottedLink", () => {
         ext
       </DottedLink>,
     );
-    expect(screen.getByRole("link", { name: "ext" })).toHaveClass("inline");
+    expect(screen.getByRole("link", { name: /^ext/ })).toHaveClass("inline");
+  });
+
+  it("opens other sites in a new tab, safely, and says so to screen readers", () => {
+    render(<DottedLink href="https://developer.mozilla.org/">MDN</DottedLink>);
+    const link = screen.getByRole("link", { name: "MDN (opens in a new tab)" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link.querySelector("i")).toHaveTextContent(/^MDN$/);
+    expect(link.querySelector(".sr-only")).toHaveTextContent("(opens in a new tab)");
+  });
+
+  it("treats protocol-relative URLs as other sites too", () => {
+    render(<DottedLink href="//example.com/x">x</DottedLink>);
+    expect(screen.getByRole("link", { name: /^x/ })).toHaveAttribute("target", "_blank");
+  });
+
+  it("keeps internal, hash and mailto links in the same tab", () => {
+    render(
+      <>
+        <DottedLink href="/typescript/">internal</DottedLink>
+        <DottedLink href="#section">hash</DottedLink>
+        <DottedLink href="mailto:me@example.com">mail</DottedLink>
+      </>,
+    );
+    for (const name of ["internal", "hash", "mail"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link).not.toHaveAttribute("target");
+      expect(link.querySelector(".sr-only")).toBeNull();
+    }
   });
 });
 
@@ -225,8 +254,11 @@ describe("DottedLink external branch", () => {
         <DottedLink href="//example.com/">rel</DottedLink>
       </>,
     );
-    expect(screen.getByRole("link", { name: "abs" })).toHaveAttribute("rel", "noopener");
-    expect(screen.getByRole("link", { name: "rel" })).toHaveAttribute("href", "//example.com/");
+    expect(screen.getByRole("link", { name: /^abs/ })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    expect(screen.getByRole("link", { name: /^rel/ })).toHaveAttribute("href", "//example.com/");
   });
 
   it("applies aria-label when provided", () => {

@@ -132,7 +132,9 @@ describe("Cards", () => {
     expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/maths/notation/");
     expect(cards[0]?.querySelector(".card-desc")).toHaveTextContent("symbols");
     expect(cards[1]?.querySelector(".card-desc")).toBeNull();
-    expect(screen.getByRole("link", { name: "KaTeX" })).toHaveAttribute("rel", "noopener");
+    const katex = screen.getByRole("link", { name: "KaTeX (opens in a new tab)" });
+    expect(katex).toHaveAttribute("rel", "noopener noreferrer");
+    expect(katex).toHaveAttribute("target", "_blank");
   });
 });
 

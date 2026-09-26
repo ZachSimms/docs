@@ -11,8 +11,9 @@
  *   nothing when no row is highlighted.
  *
  * Taps on interactive elements, inside boxes that scroll sideways (code,
- * tables, diagrams), with text selected or while search or the contents menu
- * is open are ignored. A `<` or `>` flashes at the edge when a gesture acts.
+ * tables, diagrams), with text selected, or that start while search or the
+ * contents menu is open are ignored. The edges are measured against the
+ * visible area, so they stay at the screen's edges while pinch-zoomed. A `<` or `>` flashes at the edge when a gesture acts.
  */
 
 "use client";
@@ -62,12 +63,21 @@ export function TapNav() {
     let down: TapPoint | null = null;
     let last: Tap | null = null;
 
+    // Positions are taken relative to the visible area, so the edges are where the reader
+    // sees them even while pinch-zoomed (clientX is relative to the whole layout viewport).
     const point = (event: PointerEvent): TapPoint => ({
-      x: event.clientX,
+      x: event.clientX - (window.visualViewport?.offsetLeft ?? 0),
       y: event.clientY,
       t: event.timeStamp,
     });
     const onDown = (event: PointerEvent) => {
+      // A touch that starts over an open overlay (search, the contents menu) belongs to it:
+      // the tap that closes the menu must not become the first half of a double tap.
+      if (isOverlayOpen()) {
+        down = null;
+        last = null;
+        return;
+      }
       down = event.pointerType === "touch" && event.isPrimary ? point(event) : null;
     };
     const onCancel = () => {
@@ -79,7 +89,7 @@ export function TapNav() {
       down = null;
       if (event.pointerType !== "touch" || !start) return;
       const up = point(event);
-      const zone = tapZone(up.x, window.innerWidth);
+      const zone = tapZone(up.x, window.visualViewport?.width ?? window.innerWidth);
       if (!zone || !isTap(start, up) || ignored(event.target)) {
         last = null;
         return;
@@ -93,13 +103,16 @@ export function TapNav() {
       }
     };
 
-    window.addEventListener("pointerdown", onDown, { passive: true });
-    window.addEventListener("pointerup", onUp, { passive: true });
-    window.addEventListener("pointercancel", onCancel, { passive: true });
+    // Capture phase: runs before an overlay's own outside-press handler closes it (the
+    // browser flushes React's update between listeners), so `isOverlayOpen()` still sees it.
+    const options = { capture: true, passive: true } as const;
+    window.addEventListener("pointerdown", onDown, options);
+    window.addEventListener("pointerup", onUp, options);
+    window.addEventListener("pointercancel", onCancel, options);
     return () => {
-      window.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("pointerdown", onDown, options);
+      window.removeEventListener("pointerup", onUp, options);
+      window.removeEventListener("pointercancel", onCancel, options);
     };
   }, []);
 

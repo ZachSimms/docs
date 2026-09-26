@@ -10,6 +10,18 @@ async function hydrated(page: Page) {
   await expect(page.locator(".theme-toggle")).toHaveAttribute("data-target", /./);
 }
 
+/**
+ * Wait until React has run the passive effects of the page just rendered
+ * (a frame, then a task): after a client-side navigation the new page's DOM
+ * appears before its effects add the key listeners, and a key pressed in
+ * between is lost.
+ */
+async function effectsFlushed(page: Page) {
+  await page.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => setTimeout(done, 0))),
+  );
+}
+
 test.describe("home", () => {
   test("lists the twelve topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
@@ -427,7 +439,9 @@ test.describe("mdx showcase", () => {
     await toc.locator("a", { hasText: "1.16 Trigonometric identities" }).click();
     await expect(page).toHaveURL(/#116-trigonometric-identities$/);
     await expect(page.locator('h2[id="116-trigonometric-identities"]')).toBeInViewport();
-    await expect(toc.locator('a[aria-current="location"]')).toHaveText("1.16 Trigonometric identities");
+    await expect(toc.locator('a[aria-current="location"]')).toHaveText(
+      "1.16 Trigonometric identities",
+    );
 
     await page.setViewportSize({ width: 900, height: 800 });
     await expect(toc).toBeHidden();
@@ -682,7 +696,10 @@ test.describe("file trees", () => {
     await expect(tree.locator(".ft-dir").first()).toHaveCSS("font-weight", "700");
     const [treeBg, preBg] = await Promise.all([
       tree.locator("pre").evaluate((el) => getComputedStyle(el).backgroundColor),
-      page.locator("main pre:not(.file-tree pre)").first().evaluate((el) => getComputedStyle(el).backgroundColor),
+      page
+        .locator("main pre:not(.file-tree pre)")
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
     ]);
     expect(treeBg).toBe(preBg);
   });
@@ -718,7 +735,10 @@ test.describe("keyboard", () => {
     await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
 
     // After each step, wait for the new page's pinned ../ (the Esc handler) before pressing again.
-    const backTo = (href: string) => expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
+    const backTo = async (href: string) => {
+      await expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
+      await effectsFlushed(page);
+    };
     await backTo("/typescript/language/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
@@ -766,7 +786,10 @@ test.describe("arrow keys move in and out of levels", () => {
     await hydrated(page);
     const active = page.locator("main nav a[data-active]");
     // Wait for each new page's pinned ../ before pressing keys, so its handlers are mounted.
-    const backTo = (href: string) => expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
+    const backTo = async (href: string) => {
+      await expect(page.locator(".back-rail a")).toHaveAttribute("href", href);
+      await effectsFlushed(page);
+    };
 
     await page.keyboard.press("ArrowDown");
     await expect(active).toHaveText("Language/");
@@ -944,7 +967,6 @@ test.describe("coming-soon pages", () => {
   });
 });
 
-
 test.describe("visuals", () => {
   test("swatches, a tonal scale and a contrast pair render real colours", async ({ page }) => {
     await page.goto("/design/overview/");
@@ -1035,7 +1057,9 @@ test.describe("visuals", () => {
     await expect
       .poll(() => chart.evaluate((img: HTMLImageElement) => img.naturalWidth))
       .toBeGreaterThan(0);
-    await expect(page.locator("main a[href='https://github.com/donavon/hook-flow']").first()).toBeVisible();
+    await expect(
+      page.locator("main a[href='https://github.com/donavon/hook-flow']").first(),
+    ).toBeVisible();
   });
 });
 
@@ -1095,11 +1119,14 @@ async function bandBottom(page: Page): Promise<number> {
 
 /** Whether the element's centre is the topmost thing there (nothing covers it). */
 async function uncovered(page: Page, selector: string): Promise<boolean> {
-  return page.locator(selector).first().evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return hit !== null && (hit === el || el.contains(hit));
-  });
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit !== null && (hit === el || el.contains(hit));
+    });
 }
 
 for (const size of SIZES) {
@@ -1164,7 +1191,8 @@ for (const size of SIZES) {
           );
           return { vw, left: main.left, right: main.right, width: main.width, blocks, codes };
         });
-        if (size.width < 800) expect(Math.abs(m.left - (m.vw - m.right)), url).toBeLessThanOrEqual(1);
+        if (size.width < 800)
+          expect(Math.abs(m.left - (m.vw - m.right)), url).toBeLessThanOrEqual(1);
         for (const b of m.blocks) {
           expect(b.left, `${url} ${b.tag}`).toBeGreaterThanOrEqual(m.left - 1);
           expect(b.right, `${url} ${b.tag}`).toBeLessThanOrEqual(m.right + 1);
@@ -1334,13 +1362,15 @@ test.describe("touch edge gestures", () => {
   test("left edge goes up a level; right edge re-enters the row you left", async ({ page }) => {
     await page.goto("/typescript/language/oop/");
     await hydrated(page);
+    // The flash lasts 400ms: start waiting for it before tapping, not after the navigation.
+    const flash = page.waitForSelector(".tap-flash-left");
     await doubleTap(page, 12);
+    await flash;
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
     await expect(page.locator("main nav[data-menu] a[data-active]")).toHaveAttribute(
       "href",
       "/typescript/language/oop/",
     );
-    await expect(page.locator(".tap-flash-left")).toBeVisible();
     await doubleTap(page, 378);
     await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
   });
@@ -1356,6 +1386,17 @@ test.describe("touch edge gestures", () => {
     await page.waitForTimeout(500);
     await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
     await expect(page.locator(".tap-flash")).toHaveCount(0);
+  });
+
+  test("a double tap that closes the contents menu doesn't also go up", async ({ page }) => {
+    await page.goto("/typescript/language/oop/");
+    await hydrated(page);
+    await page.getByRole("button", { name: "Table of contents" }).click();
+    await expect(page.locator("#toc-menu-panel")).toBeVisible();
+    await doubleTap(page, 20, 800);
+    await expect(page.locator("#toc-menu-panel")).toBeHidden();
+    await page.waitForTimeout(400);
+    await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
   });
 
   test("a double tap on a link just follows the link", async ({ page }) => {
@@ -1376,5 +1417,35 @@ test.describe("mouse", () => {
     await page.mouse.dblclick(10, 600);
     await page.waitForTimeout(300);
     await expect(page).toHaveURL(/\/typescript\/language\/oop\/$/);
+  });
+});
+
+test.describe("external links", () => {
+  test("reference links open in a new tab; links within the site don't", async ({ page }) => {
+    await page.goto("/typescript/web-apis/fetch-api/");
+    const refs = page.locator("h2#references ~ ul a");
+    expect(await refs.count()).toBeGreaterThan(3);
+    for (const target of await refs.evaluateAll((els) =>
+      els.map((a) => a.getAttribute("target")),
+    )) {
+      expect(target).toBe("_blank");
+    }
+    const internal = page.locator('main a[href^="/"]');
+    expect(await internal.count()).toBeGreaterThan(0);
+    for (const target of await internal.evaluateAll((els) =>
+      els.map((a) => a.getAttribute("target")),
+    )) {
+      expect(target).toBeNull();
+    }
+
+    // Clicking one opens a new tab and leaves this page where it was.
+    // Stub other sites for every tab in this context, so the popup never hits the network.
+    await page
+      .context()
+      .route(/^https?:\/\/(?!localhost)/, (route) => route.fulfill({ body: "stub" }));
+    const popup = page.context().waitForEvent("page");
+    await refs.first().click();
+    await (await popup).close();
+    await expect(page).toHaveURL(/\/typescript\/web-apis\/fetch-api\/$/);
   });
 });
