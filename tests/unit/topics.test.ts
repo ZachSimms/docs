@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { TOPICS, getTopic, topicNumber } from "@/lib/topics";
 
 describe("TOPICS", () => {
-  it("lists the fourteen topics in display order", () => {
+  it("lists the fifteen topics in display order", () => {
     expect(TOPICS.map((t) => t.slug)).toEqual([
       "maths",
       "physics",
@@ -16,6 +16,7 @@ describe("TOPICS", () => {
       "infrastructure",
       "python",
       "cpp",
+      "game-dev",
       "robotics",
       "writing",
       "design",
@@ -30,6 +31,7 @@ describe("TOPICS", () => {
     expect(getTopic("infrastructure")?.name).toBe("Infrastructure");
     expect(getTopic("fitness")?.name).toBe("Fitness");
     expect(getTopic("economics")?.name).toBe("Economics");
+    expect(getTopic("game-dev")?.name).toBe("Game dev");
   });
 });
 
@@ -41,12 +43,13 @@ describe("getTopic", () => {
 
 describe("topicNumber", () => {
   it("numbers the first topic highest and the last topic 1", () => {
-    expect(topicNumber("maths")).toBe(14);
-    expect(topicNumber("physics")).toBe(13);
-    expect(topicNumber("fitness")).toBe(11);
-    expect(topicNumber("economics")).toBe(10);
-    expect(topicNumber("typescript")).toBe(8);
-    expect(topicNumber("infrastructure")).toBe(6);
+    expect(topicNumber("maths")).toBe(15);
+    expect(topicNumber("physics")).toBe(14);
+    expect(topicNumber("fitness")).toBe(12);
+    expect(topicNumber("economics")).toBe(11);
+    expect(topicNumber("typescript")).toBe(9);
+    expect(topicNumber("infrastructure")).toBe(7);
+    expect(topicNumber("game-dev")).toBe(4);
     expect(topicNumber("design")).toBe(1);
   });
 

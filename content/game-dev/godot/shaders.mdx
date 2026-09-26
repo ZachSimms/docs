@@ -1,0 +1,584 @@
+---
+title: Shaders
+date: 2026-09-26
+order: 5
+---
+
+The Godot 4.x shading language (`.gdshader`): shader types, render modes, processor functions, built-ins per
+type, uniforms and hints, screen and depth textures, varyings, global and instance uniforms, driving parameters
+from GDScript, materials, visual shaders and how it differs from GLSL. For raw GLSL see
+[WebGL](/typescript/web-apis/webgl/); tweening shader parameters is in
+[UI, animation & audio](/game-dev/godot/ui-animation-audio/#tweens).
+
+## Shader types
+
+| `shader_type` | Applies to | Processor functions |
+| :------------ | :--------- | :------------------ |
+| `canvas_item` | 2D: `Sprite2D`, `Control`, `Polygon2D`, `TileMapLayer` ... (any CanvasItem `material`) | `vertex()`, `fragment()`, `light()` |
+| `spatial` | 3D meshes: `MeshInstance3D`, `CSG*`, `GPUParticles3D` draw passes | `vertex()`, `fragment()`, `light()` |
+| `particles` | `GPUParticles2D` / `3D` process material | `start()`, `process()` |
+| `sky` | `Sky` resource in a `WorldEnvironment` | `sky()` |
+| `fog` | `FogVolume` nodes (volumetric fog, Forward+ only) | `fog()` |
+
+```text
+ GDScript / inspector
+   ShaderMaterial ── shader: .gdshader
+        │  set_shader_parameter("u", v)
+        ▼
+ vertex()    once per vertex: move VERTEX, set varyings
+        │    (canvas_item: local space; spatial: model space)
+        ▼
+ rasterise   varyings interpolated
+        ▼
+ fragment()  once per pixel: COLOR (2D) or ALBEDO,
+        │    ROUGHNESS, NORMAL_MAP ... (3D)
+        ▼
+ light()     once per pixel per light (optional):
+             LIGHT (2D) or DIFFUSE_LIGHT / SPECULAR_LIGHT (3D)
+```
+
+## Anatomy of a shader
+
+```gdshader title="tint.gdshader"
+shader_type canvas_item;          // required, first
+render_mode blend_mix, unshaded;  // optional flags
+
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float amount : hint_range(0.0, 1.0) = 0.5;
+
+varying vec2 world_pos;           // vertex -> fragment
+
+const float PI_2 = 6.2831853;
+
+float wave(float x) {             // helper functions
+    return 0.5 + 0.5 * sin(x * PI_2);
+}
+
+void vertex() {
+    world_pos = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
+}
+
+void fragment() {
+    // COLOR = TEXTURE sample x vertex colour x modulate
+    vec3 c = mix(COLOR.rgb, tint.rgb, amount);
+    COLOR.rgb = c * wave(TIME + world_pos.x * 0.01);
+}
+```
+
+Omitted processor functions keep Godot's defaults. Write shaders in the built-in editor (errors inline, and
+4.7 adds inline previews) or any editor with a `.gdshader` plugin; `.gdshaderinc` files hold shared code for
+`#include "res://shaders/common.gdshaderinc"`.
+
+## Render modes
+
+| `canvas_item` mode | Effect |
+| :----------------- | :----- |
+| `blend_mix` (default), `blend_add`, `blend_sub`, `blend_mul`, `blend_premul_alpha`, `blend_disabled` | blending |
+| `unshaded` | ignore 2D lights |
+| `light_only` | draw only where lit (light-reveal effects) |
+| `skip_vertex_transform` | transform `VERTEX` yourself |
+| `world_vertex_coords` | `VERTEX` is in world space in `vertex()` |
+
+| `spatial` mode | Effect |
+| :------------- | :----- |
+| `blend_*` | as above (transparent pipeline except `blend_mix` with no `ALPHA`) |
+| `unshaded` | no lighting: output is `ALBEDO` (plus `EMISSION`) |
+| `cull_back` (default), `cull_front`, `cull_disabled` | face culling; disabled for foliage and double-sided cards |
+| `depth_draw_opaque` (default), `depth_draw_always`, `depth_draw_never` | depth writes |
+| `depth_prepass_alpha` | transparent objects that still sort correctly |
+| `depth_test_disabled` | draw on top (x-ray, gizmos) |
+| `diffuse_burley` (default), `diffuse_lambert`, `diffuse_lambert_wrap`, `diffuse_toon` | diffuse model |
+| `specular_schlick_ggx` (default), `specular_toon`, `specular_disabled` | specular model |
+| `shadows_disabled`, `ambient_light_disabled`, `fog_disabled` | per-material opt-outs |
+| `shadow_to_opacity` | shadow catcher for AR / compositing |
+| `vertex_lighting` | per-vertex lighting (retro look, low-end) |
+| `world_vertex_coords`, `skip_vertex_transform` | vertex space control |
+| `alpha_to_coverage`, `alpha_to_coverage_and_one` | MSAA-friendly cutouts |
+| `wireframe` | debug |
+| `particle_trails` | for trail meshes |
+
+## CanvasItem built-ins
+
+| Built-in | Stage | Meaning |
+| :------- | :---- | :------ |
+| `VERTEX` | vertex (inout) | local position (world with `world_vertex_coords`) |
+| `UV` | vertex, fragment | 0 to 1 texture coordinates |
+| `COLOR` | vertex | vertex colour times `modulate` and `self_modulate` |
+| `COLOR` | fragment (inout) | incoming: vertex `COLOR` times the `TEXTURE` sample; output colour |
+| `TEXTURE` | fragment | the node's texture (`sampler2D`) |
+| `TEXTURE_PIXEL_SIZE` | fragment | `1.0 / texture size` (one texel in UV units) |
+| `SCREEN_UV` | fragment | 0 to 1 across the viewport |
+| `SCREEN_PIXEL_SIZE` | fragment | `1.0 / viewport size` |
+| `FRAGCOORD` | fragment | window pixel coordinates |
+| `NORMAL`, `NORMAL_MAP`, `NORMAL_MAP_DEPTH` | fragment | normal for 2D lighting |
+| `MODEL_MATRIX`, `CANVAS_MATRIX`, `SCREEN_MATRIX` | vertex | local to world, world to canvas, canvas to clip |
+| `INSTANCE_CUSTOM` | vertex | per-instance data (MultiMesh, particles) |
+| `POINT_COORD`, `POINT_SIZE` | | point primitives |
+| `LIGHT`, `LIGHT_COLOR`, `LIGHT_ENERGY`, `LIGHT_POSITION`, `LIGHT_DIRECTION`, `SHADOW_MODULATE` | light | per-light inputs and output |
+| `TIME`, `PI`, `TAU`, `E` | all | global time (seconds) and constants |
+
+<Callout type="info" title="No SCREEN_TEXTURE in 4.x">
+Godot 3's `SCREEN_TEXTURE`, `DEPTH_TEXTURE` and `NORMAL_TEXTURE` built-ins are gone. Declare a sampler uniform
+with `hint_screen_texture` / `hint_depth_texture` instead (see [Screen & depth](#screen--depth-textures)).
+</Callout>
+
+## Spatial built-ins
+
+| Built-in | Stage | Meaning |
+| :------- | :---- | :------ |
+| `VERTEX` | vertex: model space; fragment: view space | position |
+| `NORMAL`, `TANGENT`, `BINORMAL` | vertex: model; fragment: view space | frame |
+| `UV`, `UV2`, `COLOR` | vertex, fragment | mesh attributes |
+| `POSITION` | vertex (out) | override clip-space position |
+| `MODEL_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX`, `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX` | all | transforms |
+| `NODE_POSITION_WORLD`, `CAMERA_POSITION_WORLD`, `CAMERA_DIRECTION_WORLD` | all | handy world positions |
+| `INSTANCE_ID`, `INSTANCE_CUSTOM`, `VERTEX_ID` | vertex | instancing data |
+| `VIEW` | fragment | direction from the fragment to the camera (view space) |
+| `SCREEN_UV`, `FRAGCOORD`, `FRONT_FACING` | fragment | screen position, facing |
+| `ALBEDO` | fragment (out) | base colour (`vec3`) |
+| `ALPHA`, `ALPHA_SCISSOR_THRESHOLD` | fragment (out) | transparency; scissor for cutouts without sorting |
+| `METALLIC`, `ROUGHNESS`, `SPECULAR` | fragment (out) | PBR parameters (0 to 1) |
+| `EMISSION` | fragment (out) | glow colour (HDR; drives Glow) |
+| `NORMAL_MAP`, `NORMAL_MAP_DEPTH` | fragment (out) | tangent-space normal map sample and strength |
+| `AO`, `AO_LIGHT_AFFECT` | fragment (out) | ambient occlusion |
+| `RIM`, `RIM_TINT`, `CLEARCOAT`, `CLEARCOAT_GLOSS`, `ANISOTROPY`, `SSS_STRENGTH`, `BACKLIGHT` | fragment (out) | advanced PBR |
+| `DEPTH` | fragment (out) | custom depth (disables early-z) |
+| `LIGHT`, `LIGHT_COLOR`, `ATTENUATION`, `DIFFUSE_LIGHT`, `SPECULAR_LIGHT` | light | per-light (`LIGHT_COLOR` includes energy times PI) |
+
+```gdshader
+shader_type spatial;
+
+uniform sampler2D albedo_tex : source_color,
+    filter_linear_mipmap_anisotropic;
+uniform sampler2D normal_tex : hint_normal;
+uniform float rough : hint_range(0.0, 1.0) = 0.6;
+
+void fragment() {
+    ALBEDO = texture(albedo_tex, UV).rgb;
+    NORMAL_MAP = texture(normal_tex, UV).rgb;
+    ROUGHNESS = rough;
+    METALLIC = 0.0;
+    // world-space normal from the view-space one
+    vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+    EMISSION = vec3(0.2, 0.6, 1.0) * max(wn.y, 0.0) * 0.2;
+}
+
+void light() {            // replaces built-in lighting
+    float ndl = max(dot(NORMAL, LIGHT), 0.0);
+    float toon = step(0.5, ndl);   // two-band toon
+    DIFFUSE_LIGHT += toon * ATTENUATION * LIGHT_COLOR / PI;
+}
+```
+
+## Particles, sky & fog
+
+```gdshader title="particles.gdshader"
+shader_type particles;
+uniform float spread = 2.0;
+
+void start() {              // when a particle (re)spawns
+    uint s = NUMBER;        // per-particle seed
+    float a = float(s % 360u) * 0.01745;
+    VELOCITY = vec3(cos(a), 4.0, sin(a)) * spread;
+    COLOR = vec4(1.0);
+    CUSTOM.y = 0.0;         // our own age counter
+    TRANSFORM = EMISSION_TRANSFORM;
+}
+
+void process() {            // every frame per particle
+    VELOCITY.y -= 9.8 * DELTA;
+    TRANSFORM[3].xyz += VELOCITY * DELTA;
+    CUSTOM.y += DELTA / LIFETIME;   // 0 -> 1 over life
+    COLOR.a = 1.0 - CUSTOM.y;
+}
+```
+
+| Type | Key built-ins |
+| :--- | :------------ |
+| `particles` | `TRANSFORM`, `VELOCITY`, `COLOR`, `CUSTOM`, `ACTIVE`, `LIFETIME`, `DELTA`, `NUMBER`, `INDEX`, `EMISSION_TRANSFORM`, `RANDOM_SEED` |
+| `sky` | `EYEDIR`, `SKY_COORDS`, `POSITION`, `LIGHT0_DIRECTION`, `LIGHT0_COLOR`, `LIGHT0_ENERGY`, `RADIANCE`, `AT_CUBEMAP_PASS`; outputs `COLOR`, `ALPHA`, `FOG` |
+| `fog` | `WORLD_POSITION`, `OBJECT_POSITION`, `UVW`, `SIZE`, `SDF`; outputs `DENSITY`, `ALBEDO`, `EMISSION` |
+
+Most particle effects need no shader: `ParticleProcessMaterial` covers emission shapes, curves, colour ramps and
+turbulence, and can be converted to a ShaderMaterial to customise.
+
+```gdshader title="gradient_sky.gdshader"
+shader_type sky;
+uniform vec3 top : source_color = vec3(0.2, 0.4, 0.9);
+uniform vec3 horizon : source_color = vec3(0.9, 0.8, 0.7);
+
+void sky() {
+    float t = clamp(EYEDIR.y, 0.0, 1.0);
+    COLOR = mix(horizon, top, pow(t, 0.5));
+    // sun disc from the first DirectionalLight3D
+    float sun = dot(EYEDIR, LIGHT0_DIRECTION);
+    COLOR += LIGHT0_COLOR * smoothstep(0.998, 1.0, sun);
+}
+```
+
+## Uniforms & hints
+
+```gdshader
+uniform float speed = 1.0;                    // default
+uniform vec4 colour : source_color;           // sRGB picker
+uniform float fade : hint_range(0.0, 1.0, 0.01) = 1.0;
+uniform int mode : hint_enum("Add", "Mul") = 0;
+uniform sampler2D tex : source_color, filter_nearest,
+    repeat_enable;
+uniform sampler2D mask : hint_default_white;
+uniform float weights[4];                     // arrays
+
+group_uniforms Wind;                          // inspector
+uniform float wind_strength = 0.1;
+uniform float wind_speed = 1.0;
+group_uniforms;
+```
+
+| Hint | Use |
+| :--- | :-- |
+| `source_color` | colour or albedo texture: converted from sRGB, colour picker in the inspector |
+| `hint_range(min, max[, step])` | slider for float / int |
+| `hint_enum("A", "B")` | int dropdown |
+| `hint_normal` | normal map (no sRGB, normal-map compression) |
+| `hint_default_white`, `hint_default_black`, `hint_default_transparent` | what an empty sampler reads as |
+| `hint_anisotropy`, `hint_roughness_*` | special texture roles |
+| `filter_nearest`, `filter_linear`, `filter_*_mipmap`, `filter_*_mipmap_anisotropic` | sampling filter (pixel art: `filter_nearest`) |
+| `repeat_enable`, `repeat_disable` | wrap or clamp (scrolling textures need `repeat_enable`) |
+| `hint_screen_texture`, `hint_depth_texture`, `hint_normal_roughness_texture` | screen buffers |
+| `instance_index(n)` | fixed slot for an instance uniform |
+
+Colours without `source_color` are treated as linear data, so a picked colour looks washed out or too dark:
+always add `source_color` to colour uniforms and albedo textures.
+
+## Global & instance uniforms
+
+| Kind | Declared | Set from | Use |
+| :--- | :------- | :------- | :-- |
+| Regular | `uniform float x;` | the material: `set_shader_parameter` | per material (shared by every node using it) |
+| Instance | `instance uniform vec4 tint : source_color;` | the node: `set_instance_shader_parameter` | per node without duplicating materials; scalars and vectors only, 16 per shader |
+| Global | `global uniform vec3 player_pos;` | Project Settings > Shader Globals, or `RenderingServer` | one value for every shader (wind, player position, time of day) |
+
+```gdscript
+# Instance uniform on a GeometryInstance3D
+$Crate.set_instance_shader_parameter("tint", Color.RED)
+
+# Global uniform (declare it in Project Settings first)
+func _process(_d: float) -> void:
+    RenderingServer.global_shader_parameter_set(
+        "player_pos", $Player.global_position)
+```
+
+Instance uniforms are the fix for "I changed one enemy's material and all of them flashed", without
+`duplicate()` or Local to Scene.
+
+## Varyings, consts & functions
+
+| Feature | Syntax / note |
+| :------ | :------------ |
+| Varying | `varying vec3 world_pos;` written in `vertex()`, read in `fragment()` or `light()` |
+| Interpolation | `varying flat int id;` (no interpolation), `smooth` (default) |
+| Constants | `const float K = 2.0;` (any type except samplers) |
+| Functions | defined before use; `in`, `out`, `inout` parameters; overloads allowed |
+| Structs | `struct Hit { float d; vec3 n; };` global scope |
+| Arrays | `float a[3] = float[](1.0, 2.0, 3.0);`, uniform arrays |
+| Preprocessor | `#define`, `#ifdef`, `#if`, `#include` (`.gdshaderinc`) |
+| Discard | `discard;` in `fragment()` (cutouts; costs early-z on some GPUs) |
+| Derivatives | `dFdx`, `dFdy`, `fwidth` for anti-aliased edges |
+| Texture functions | `texture`, `textureLod`, `texelFetch`, `textureSize` |
+
+```gdshader
+shader_type spatial;
+varying vec3 world_pos;
+
+void vertex() {
+    world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+void fragment() {
+    // world-space checkerboard, independent of UVs
+    vec3 cell = floor(world_pos);
+    float c = mod(cell.x + cell.y + cell.z, 2.0);
+    ALBEDO = mix(vec3(0.2), vec3(0.8), c);
+}
+```
+
+## Screen & depth textures
+
+```gdshader title="blur_under.gdshader (2D)"
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture,
+    filter_linear_mipmap;
+uniform float blur : hint_range(0.0, 5.0) = 2.0;
+
+void fragment() {
+    // mipmapped screen texture: cheap frosted-glass blur
+    COLOR = textureLod(screen_tex, SCREEN_UV, blur);
+}
+```
+
+```gdshader title="depth_fade.gdshader (3D)"
+shader_type spatial;
+render_mode unshaded, blend_mix;
+uniform sampler2D depth_tex : hint_depth_texture,
+    repeat_disable, filter_nearest;
+
+void fragment() {
+    float d = textureLod(depth_tex, SCREEN_UV, 0.0).r;
+    // Forward+ / Mobile (reverse-Z). Compatibility:
+    // vec3 ndc = vec3(SCREEN_UV, d) * 2.0 - 1.0;
+    vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, d);
+    vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+    view.xyz /= view.w;
+    float scene_depth = -view.z;         // metres
+    float my_depth = -VERTEX.z;          // view space
+    float edge = clamp(scene_depth - my_depth, 0.0, 1.0);
+    ALBEDO = vec3(1.0);
+    ALPHA = 1.0 - edge;      // foam where water meets ground
+}
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Screen texture | copy of what was drawn so far; `canvas_item` and `spatial` |
+| Transparent-only (3D) | the screen texture in 3D contains opaque geometry only; other transparent objects are missing |
+| Overlapping 2D readers | the copy happens once per canvas; add a `BackBufferCopy` node between effects that must see each other |
+| Depth texture | 3D only; non-linear, reconstruct with `INV_PROJECTION_MATRIX` as above |
+| Normal-roughness | `hint_normal_roughness_texture`, Forward+ only |
+| Full-screen post effect | a `ColorRect` (full rect) in a `CanvasLayer` with a `canvas_item` shader reading the screen texture |
+
+## Parameters from GDScript
+
+```gdscript
+@onready var mat := $Sprite2D.material as ShaderMaterial
+
+func _ready() -> void:
+    mat.set_shader_parameter("amount", 0.5)
+    mat.set_shader_parameter("tex", preload("res://n.png"))
+    print(mat.get_shader_parameter("amount"))
+
+func flash() -> void:
+    var t := create_tween()
+    t.tween_property(mat, "shader_parameter/amount",
+        0.0, 0.25).from(1.0)
+
+# 3D mesh: material slots
+var m := $Mesh.get_active_material(0) as ShaderMaterial
+$Mesh.set_surface_override_material(0, m.duplicate())
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Name | `set_shader_parameter` (Godot 3 was `set_shader_param`) |
+| Property path | `"shader_parameter/<name>"` works with tweens, AnimationPlayer tracks and `set()` |
+| Sharing | materials are Resources: every node using the same material sees the change |
+| Per-node options | instance uniforms; Resource > Local to Scene on the material; `material.duplicate()` |
+| Textures | pass `Texture2D` resources (`NoiseTexture2D`, `GradientTexture1D`, `ViewportTexture` ...) |
+| CanvasItem | `material` property; `use_parent_material` lets children share the parent's |
+| GeometryInstance3D | `material_override` (all surfaces), `material_overlay` (extra pass), `set_surface_override_material(i, m)` |
+
+## Materials
+
+| Material | Use |
+| :------- | :-- |
+| `StandardMaterial3D` | PBR in the inspector: albedo, metallic, roughness, normal, emission, transparency, billboard, triplanar, proximity fade |
+| `ORMMaterial3D` | same, with one packed Occlusion/Roughness/Metallic texture |
+| `ShaderMaterial` | your `.gdshader` or a `VisualShader` |
+| `CanvasItemMaterial` | 2D blend modes, light mode, particle sprite-sheet animation, no code |
+| `ParticleProcessMaterial` | GPU particle behaviour without code |
+| `PanoramaSkyMaterial`, `ProceduralSkyMaterial`, `PhysicalSkyMaterial` | sky without code |
+
+| Tip | Detail |
+| :-- | :----- |
+| See the generated code | right-click a StandardMaterial3D > Convert to ShaderMaterial |
+| Multi-pass | `next_pass` on any material draws the mesh again (inverted-hull outlines) |
+| Sorting | `render_priority` orders transparent materials |
+| Stutter | ubershaders (4.4+) hide first-use compilation; the shader baker (4.5+) precompiles at export |
+
+## Visual shaders
+
+`VisualShader` is a node-graph resource for the same shader types. Create it via ShaderMaterial > New
+VisualShader. Useful for artists and quick iteration; an `Expression` node accepts inline shader code, and
+`VisualShaderNodeCustom` scripts (`@tool` + `class_name`) add reusable nodes. There is no automatic conversion
+to text, so pick one form per effect.
+
+## Differences from GLSL
+
+| GLSL | Godot shading language |
+| :--- | :--------------------- |
+| `#version`, `precision` headers | `shader_type` first; precision qualifiers optional |
+| `in` / `out` attributes, `gl_Position` | built-ins: `VERTEX`, `UV`, `NORMAL`, `POSITION` |
+| `out vec4 fragColor` / `gl_FragColor` | `COLOR` (2D) or `ALBEDO` + `ALPHA` (3D) |
+| `gl_FragCoord` | `FRAGCOORD` |
+| `uniform` set with `gl.uniform*` | `uniform` with hints and defaults, set with `set_shader_parameter` |
+| `varying` (old) / `out`-`in` pairs | `varying` |
+| implicit `int` to `float` in some drivers | never: write `1.0`, cast with `float(i)` |
+| `iTime` (Shadertoy) | `TIME` |
+| `iResolution` | `1.0 / SCREEN_PIXEL_SIZE` (2D) or `VIEWPORT_SIZE` (3D) |
+| texture origin bottom-left | UV origin top-left, y down (2D) |
+| manual lighting | automatic PBR; `light()` to customise, `unshaded` to skip |
+
+Porting Shadertoy: put the body in a `canvas_item` `fragment()` on a full-rect `ColorRect`, replace
+`fragCoord / iResolution.xy` with `UV` (flip y if needed) and write the result to `COLOR`.
+
+## Performance & debugging
+
+| Tip | Why |
+| :-- | :-- |
+| Visualise intermediates | `COLOR = vec4(UV, 0.0, 1.0);` or `ALBEDO = NORMAL * 0.5 + 0.5;` to see what a value holds |
+| Prefer `unshaded` for effects | skips the lighting cost for sprites, UI and VFX that do not need lights |
+| Watch 2D overdraw | large transparent quads stacked on each other cost fill rate, especially on mobile and Web |
+| Each screen-texture reader copies the screen | share one `BackBufferCopy` or one post-process pass instead of many readers |
+| `discard` and `DEPTH` writes | disable early depth test optimisations; use `ALPHA_SCISSOR_THRESHOLD` for cutouts in 3D |
+| Uniform branches are cheap | `if (mode == 1)` on a uniform is coherent across pixels; data-dependent branches are not |
+| Fewer dependent texture reads | reading a texture at coordinates computed from another texture is slower |
+| Compatibility renderer | Web and old GPUs: fewer features (no `hint_normal_roughness_texture`, no compute shaders) on an OpenGL backend |
+| Pre-warm new materials | show them once during a loading screen; ubershaders (4.4+) and the shader baker (4.5+) reduce first-use hitches |
+| Profile | Debugger > Visual Profiler for GPU time per pass; Monitors for draw calls |
+
+## Recipes
+
+### Flash white on hit
+Use for damage feedback on sprites; tween `amount` from 1 to 0. Enable Local to Scene on the material, or
+use an instance uniform, so only the hit enemy flashes.
+
+```gdshader title="flash.gdshader"
+shader_type canvas_item;
+uniform vec4 flash_color : source_color = vec4(1.0);
+uniform float amount : hint_range(0.0, 1.0) = 0.0;
+
+void fragment() {
+    // COLOR already holds texture x modulate
+    COLOR.rgb = mix(COLOR.rgb, flash_color.rgb, amount);
+}
+```
+
+```gdscript
+func hit() -> void:
+    var m := $Sprite2D.material as ShaderMaterial
+    create_tween().tween_property(
+        m, "shader_parameter/amount", 0.0, 0.2).from(1.0)
+```
+
+### Dissolve
+Use for deaths, teleports and burning paper; assign a `NoiseTexture2D` to `noise` and animate `progress`.
+
+```gdshader title="dissolve.gdshader"
+shader_type canvas_item;
+uniform sampler2D noise : repeat_enable;
+uniform float progress : hint_range(0.0, 1.0) = 0.0;
+uniform float edge : hint_range(0.0, 0.2) = 0.05;
+uniform vec4 edge_color : source_color =
+    vec4(1.0, 0.5, 0.1, 1.0);
+
+void fragment() {
+    float n = texture(noise, UV).r;
+    if (n < progress) {
+        discard;
+    }
+    // glowing rim just above the cut-off
+    float rim = 1.0 - step(progress + edge, n);
+    COLOR.rgb = mix(COLOR.rgb, edge_color.rgb, rim);
+}
+```
+
+### Outline for 2D sprites
+Use for selection and interaction highlights; the texture needs a transparent border at least `width` pixels
+wide.
+
+```gdshader title="outline.gdshader"
+shader_type canvas_item;
+uniform vec4 line_color : source_color = vec4(1.0);
+uniform float width : hint_range(0.0, 8.0) = 1.0;
+
+void fragment() {
+    vec2 o = TEXTURE_PIXEL_SIZE * width;
+    float a = texture(TEXTURE, UV + vec2(o.x, 0.0)).a;
+    a = max(a, texture(TEXTURE, UV - vec2(o.x, 0.0)).a);
+    a = max(a, texture(TEXTURE, UV + vec2(0.0, o.y)).a);
+    a = max(a, texture(TEXTURE, UV - vec2(0.0, o.y)).a);
+    vec4 outline = vec4(line_color.rgb, a * line_color.a);
+    COLOR = mix(outline, COLOR, COLOR.a);  // inside wins
+}
+```
+
+### Water with scrolling UVs
+Use for 2D water, lava or force fields: scroll a noise texture and use it to distort what is behind.
+
+```gdshader title="water2d.gdshader"
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture,
+    filter_linear;
+uniform sampler2D noise : repeat_enable, filter_linear;
+uniform vec2 scroll = vec2(0.05, 0.02);
+uniform float distortion : hint_range(0.0, 0.05) = 0.01;
+uniform vec4 tint : source_color = vec4(0.2, 0.5, 0.8, 0.5);
+
+void fragment() {
+    vec2 n = texture(noise, UV + TIME * scroll).rg - 0.5;
+    vec2 n2 = texture(noise, UV * 1.7 - TIME * scroll).rg;
+    vec2 off = (n + n2 - 0.5) * distortion;
+    vec3 under = texture(screen_tex, SCREEN_UV + off).rgb;
+    COLOR = vec4(mix(under, tint.rgb, tint.a), 1.0);
+}
+```
+
+### Vertex wind sway
+Use for grass, leaves and flags in 3D; UV.y is 0 at the top of the quad, so the base stays planted.
+
+```gdshader title="foliage.gdshader"
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D albedo_tex : source_color,
+    filter_linear_mipmap;
+uniform float strength = 0.15;
+uniform float speed = 1.5;
+uniform vec2 wind_dir = vec2(1.0, 0.0);
+
+void vertex() {
+    vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    float t = TIME * speed + w.x * 0.4 + w.z * 0.3;
+    float sway = sin(t) + 0.5 * sin(t * 2.3);
+    float weight = 1.0 - UV.y;         // 0 at the root
+    VERTEX.xz += wind_dir * sway * strength * weight;
+}
+
+void fragment() {
+    vec4 c = texture(albedo_tex, UV);
+    ALBEDO = c.rgb;
+    ALPHA = c.a;
+    ALPHA_SCISSOR_THRESHOLD = 0.5;     // no sorting cost
+}
+```
+
+For 2D the same idea works in a `canvas_item` `vertex()`:
+`VERTEX.x += sin(TIME + VERTEX.y) * k * (1.0 - UV.y);`. Make `wind_dir` a `global uniform` (declared in
+Project Settings > Shader Globals) to drive every plant from one script.
+
+### Full-screen grayscale
+Use for pause screens, death states and flashbacks: a `ColorRect` (full rect, mouse Ignore) in a top
+`CanvasLayer`.
+
+```gdshader title="grayscale.gdshader"
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture,
+    filter_linear;
+uniform float amount : hint_range(0.0, 1.0) = 1.0;
+
+void fragment() {
+    vec3 c = texture(screen_tex, SCREEN_UV).rgb;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    COLOR = vec4(mix(c, vec3(l), amount), 1.0);
+}
+```
+
+## References
+
+- [Godot docs: Introduction to shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/introduction_to_shaders.html) and [Shading language](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/shading_language.html)
+- [Godot docs: CanvasItem shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/canvas_item_shader.html) and [Spatial shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/spatial_shader.html)
+- [Godot docs: Particle shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/particle_shader.html), [Sky shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/sky_shader.html), [Fog shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/fog_shader.html)
+- [Godot docs: Screen-reading shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/screen-reading_shaders.html): screen, depth and normal-roughness textures
+- [Godot docs: Converting GLSL to Godot shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/converting_glsl_to_godot_shaders.html)
+- [Godot docs: Visual shaders](https://docs.godotengine.org/en/stable/tutorials/shaders/visual_shaders.html)
+- [Godot docs: Standard Material 3D](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html)
+- [Godot Shaders](https://godotshaders.com/): community library of ready-made effects
+- [The Book of Shaders](https://thebookofshaders.com/): fragment shader fundamentals that transfer directly

@@ -1,0 +1,592 @@
+---
+title: Text format (WAT)
+date: 2026-09-26
+order: 2
+---
+
+The WebAssembly text format for reading compiler output and writing small modules by hand:
+S-expression syntax, types and numeric instructions, control flow, calls, memory, tables, imports and
+exports, SIMD, references and exceptions, and the tools that convert and inspect binaries. The JS side
+is in [Fundamentals](/typescript/webassembly/fundamentals/).
+
+## Syntax basics
+
+```wasm title="add.wat"
+(module
+  ;; line comment            (; block comment ;)
+  (func $add (export "add") (param $a i32) (param $b i32)
+    (result i32)
+    local.get $a
+    local.get $b
+    i32.add)
+)
+```
+
+| Element | Syntax | Notes |
+| :------ | :----- | :---- |
+| S-expression | `(keyword field*)` | every module field is a parenthesised list |
+| Identifier | `$name` | symbolic name for an index; any index can also be written as a number |
+| Line comment | `;; text` | to end of line |
+| Block comment | `(; text ;)` | nests |
+| Integers | `42`, `-1`, `0xff`, `1_000_000` | sign and signedness chosen by the instruction, not the literal |
+| Floats | `1.5`, `0x1p-3`, `inf`, `-inf`, `nan`, `nan:0x200000` | hex floats are exact |
+| Strings | `"hi\n"`, `"\00\ff"`, `"\u{1F600}"` | `\hh` byte escapes; used for names and data |
+| Annotations | `(@name "x")`, `(@custom "sec" "bytes")` | custom annotation syntax (Wasm 3.0); tools may ignore |
+| File extensions | `.wat` (module), `.wast` (spec test scripts) | `.wast` adds `assert_return` etc. |
+
+`wasm` fences on this site highlight WAT. The binary format is canonical: WAT is for people and
+tests, and `wasm-tools print` / `wasm2wat` regenerate it from any `.wasm`.
+
+## Module fields
+
+| Field | Example | Binary section |
+| :---- | :------ | :------------- |
+| `type` | `(type $bin (func (param i32 i32) (result i32)))` | type |
+| `import` | `(import "env" "log" (func $log (param i32)))` | import |
+| `func` | `(func $f (param i32) (result i32) ...)` | function + code |
+| `table` | `(table $t 4 funcref)` | table |
+| `memory` | `(memory $m 1 16)` | memory (min / max pages) |
+| `global` | `(global $g (mut i32) (i32.const 0))` | global |
+| `tag` | `(tag $err (param i32))` | tag |
+| `export` | `(export "add" (func $add))` | export |
+| `start` | `(start $init)` | start |
+| `elem` | `(elem (i32.const 0) $f $g)` | element |
+| `data` | `(data (i32.const 16) "hello")` | data |
+
+Inline shorthands save repetition: `(func (export "f") ...)`, `(memory (export "memory") 1)`,
+`(func $log (import "env" "log") (param i32))`, and `(memory (data "abc"))` sizes a memory to its data.
+
+Index spaces: imported items come **before** defined ones, so the first defined function is not
+index 0 if the module imports a function. Names avoid this bookkeeping.
+
+## Folded vs flat instructions
+
+```wasm
+;; flat (stack) form: what the binary encodes
+local.get $x
+i32.const 1
+i32.add
+local.set $x
+
+;; folded form: operands nested, evaluated left to right
+(local.set $x
+  (i32.add (local.get $x) (i32.const 1)))
+
+;; mixed is fine: folded expressions just push values
+(i32.add (local.get $x) (i32.const 1))
+local.set $x
+```
+
+Both forms compile to identical bytes. `wasm-tools print -f` (fold) and `wasm2wat --fold-exprs`
+produce the folded form. Validation tracks a typed operand stack: every block must leave exactly its
+declared result types, which is why the compiler inserts `drop` after unused results.
+
+## Types and numeric instructions
+
+| Group | Instructions (`i32.` shown; `i64.` identical) |
+| :---- | :------------------------------------------- |
+| Constants | `i32.const 7`, `i64.const -1`, `f32.const 1.5`, `f64.const 0x1p-1` |
+| Arithmetic | `add`, `sub`, `mul`, `div_s`, `div_u`, `rem_s`, `rem_u` (divide by zero traps) |
+| Bitwise | `and`, `or`, `xor`, `shl`, `shr_s`, `shr_u`, `rotl`, `rotr` |
+| Bit counting | `clz`, `ctz`, `popcnt` |
+| Tests | `eqz` (returns `i32` 0 / 1) |
+| Comparison | `eq`, `ne`, `lt_s`, `lt_u`, `gt_s`, `gt_u`, `le_s`, `le_u`, `ge_s`, `ge_u` |
+| Sign extension | `i32.extend8_s`, `i32.extend16_s`, `i64.extend32_s` |
+| Float arithmetic | `f64.add`, `sub`, `mul`, `div`, `sqrt`, `min`, `max`, `abs`, `neg`, `copysign` |
+| Float rounding | `ceil`, `floor`, `trunc`, `nearest` (ties to even) |
+| Float comparison | `eq`, `ne`, `lt`, `gt`, `le`, `ge` (no `_s` / `_u`) |
+
+| Conversion | Meaning |
+| :--------- | :------ |
+| `i32.wrap_i64` | keep the low 32 bits |
+| `i64.extend_i32_s` / `_u` | widen, sign or zero extend |
+| `i32.trunc_f64_s` / `_u` | float to int; **traps** on NaN or overflow |
+| `i32.trunc_sat_f64_s` / `_u` | saturating: NaN → 0, clamps (what JS-like code wants) |
+| `f64.convert_i32_s` / `_u` | int to float |
+| `f32.demote_f64`, `f64.promote_f32` | float width |
+| `i32.reinterpret_f32`, `f32.reinterpret_i32` | same bits, other type |
+
+Other stack instructions: `drop` discards a value, `select` picks one of two by an `i32` condition
+(`(select (result externref) ...)` for reference types), `nop` does nothing, `unreachable` traps.
+
+## Locals and globals
+
+```wasm
+(module
+  (global $count (mut i32) (i32.const 0))
+  (global $limit i32 (i32.const 100))  ;; immutable
+
+  (func (export "bump") (param $by i32) (result i32)
+    (local $tmp i32) (local $f f64)    ;; zero-initialised
+    (local.set $tmp
+      (i32.add (global.get $count) (local.get $by)))
+    (global.set $count (local.get $tmp))
+    local.get $tmp)                    ;; result
+)
+```
+
+| Instruction | Effect |
+| :---------- | :----- |
+| `local.get $x` | push a local (params are locals 0..n-1) |
+| `local.set $x` | pop into a local |
+| `local.tee $x` | set and keep the value on the stack |
+| `global.get $g` / `global.set $g` | globals; `set` only on `(mut ...)` |
+
+Locals are declared at the top of a function, after params and results. Non-nullable reference
+locals must be set before use (validation checks this).
+
+## Control flow
+
+| Construct | Branch target (`br`) | Notes |
+| :-------- | :------------------- | :---- |
+| `block $l ... end` | jumps to the **end** | a forward `break` |
+| `loop $l ... end` | jumps to the **start** | a `continue`; falls out at `end` |
+| `if (result t) ... else ... end` | end of the `if` | condition is an `i32` popped first |
+| `br $l` | unconditional | label name or depth (0 = innermost) |
+| `br_if $l` | pops `i32`; branches if non-zero | common loop test |
+| `br_table $a $b $default` | pops an index | a jump table (`switch`) |
+| `return` | leave the function | values on top of the stack are the results |
+| `unreachable` | trap | marks impossible paths (`panic`, `abort`) |
+
+```wasm
+(module
+  ;; n! with a loop: block = break target, loop = continue
+  (func (export "fact") (param $n i32) (result i64)
+    (local $acc i64)
+    (local.set $acc (i64.const 1))
+    (block $done
+      (loop $next
+        (br_if $done (i32.le_s (local.get $n) (i32.const 1)))
+        (local.set $acc
+          (i64.mul (local.get $acc)
+                   (i64.extend_i32_u (local.get $n))))
+        (local.set $n (i32.sub (local.get $n) (i32.const 1)))
+        (br $next)))
+    local.get $acc)
+
+  ;; if / else with a result value
+  (func (export "sign") (param $x i32) (result i32)
+    (if (result i32) (i32.lt_s (local.get $x) (i32.const 0))
+      (then (i32.const -1))
+      (else (i32.const 1))))
+)
+```
+
+```wasm
+;; switch via br_table: 0 → 10, 1 → 20, other → 99
+(func $pick (param $i i32) (result i32)
+  (block $default
+    (block $one
+      (block $zero
+        (br_table $zero $one $default (local.get $i)))
+      (return (i32.const 10)))    ;; after $zero
+    (return (i32.const 20)))      ;; after $one
+  i32.const 99)
+```
+
+Blocks can take parameters and return several values (multi-value): `(block (param i32) (result i32 i32) ...)`.
+
+## Calls
+
+| Instruction | Use |
+| :---------- | :-- |
+| `call $f` | direct call; arguments popped in order, results pushed |
+| `call_indirect $table (type $sig)` | pops an `i32` table index; traps if the slot is null or the signature differs |
+| `return_call $f` | tail call (Wasm 3.0): reuses the frame, no stack growth |
+| `return_call_indirect` | tail call through a table |
+| `call_ref $sig` | call a typed function reference (Wasm 3.0) |
+| `return_call_ref $sig` | tail call a function reference |
+| `ref.func $f` | a `funcref` to `$f` (needs `$f` declared in an `elem`, or exported) |
+
+```wasm
+(module
+  (type $binop (func (param i32 i32) (result i32)))
+  (table $ops 2 funcref)
+  (elem (table $ops) (i32.const 0) func $add $mul)
+  (func $add (type $binop)
+    (i32.add (local.get 0) (local.get 1)))
+  (func $mul (type $binop)
+    (i32.mul (local.get 0) (local.get 1)))
+
+  ;; apply(op, a, b): op 0 = add, 1 = mul
+  (func (export "apply")
+    (param $op i32) (param $a i32) (param $b i32)
+    (result i32)
+    (call_indirect $ops (type $binop)
+      (local.get $a) (local.get $b) (local.get $op)))
+)
+```
+
+This is how C function pointers and Rust `dyn Trait` vtables compile: the "pointer" is a table index.
+
+## Memory instructions
+
+```wasm
+(module
+  (memory (export "memory") 1 100)   ;; 64 KiB .. 6.25 MiB
+  (data (i32.const 0) "Hello, Wasm!")
+  (data $blob "\01\02\03\04")         ;; passive segment
+
+  (func (export "sum") (param $p i32) (param $n i32)
+    (result i32)
+    (local $acc i32) (local $end i32)
+    (local.set $end
+      (i32.add (local.get $p)
+               (i32.shl (local.get $n) (i32.const 2))))
+    (block $out
+      (loop $go
+        (br_if $out
+          (i32.ge_u (local.get $p) (local.get $end)))
+        (local.set $acc
+          (i32.add (local.get $acc)
+                   (i32.load (local.get $p))))
+        (local.set $p (i32.add (local.get $p) (i32.const 4)))
+        (br $go)))
+    local.get $acc)
+)
+```
+
+| Instruction | Effect |
+| :---------- | :----- |
+| `i32.load offset=8 align=4` | read at `address + offset`; `align` is a hint (power of two, bytes) |
+| `i32.load8_s` / `load8_u` / `load16_s` / `load16_u` | narrow load with sign or zero extension |
+| `i64.load32_u` | 32 bits into an `i64` |
+| `i32.store`, `i32.store8`, `i64.store32`, `f64.store` | pop address then value |
+| `memory.size` | current size in pages |
+| `memory.grow` | pops delta pages, pushes the old size or `-1` on failure |
+| `memory.fill` | `(dest, byte, len)`; bulk memory |
+| `memory.copy` | `(dest, src, len)`; overlapping is allowed (`memmove`) |
+| `memory.init $seg` | copy from a passive data segment |
+| `data.drop $seg` | free a passive segment |
+| `v128.load`, `v128.store` | 16-byte SIMD access |
+
+Addresses are unsigned `i32` (or `i64` with `(memory i64 1)`); out-of-bounds access traps. The static
+`offset=` is added without wrap-around, so compilers fold struct field offsets into it. With several
+memories, name the memory: `(i32.load $m2 (local.get $p))` or `memory.copy $dst $src`.
+
+Active data segments (`(data (i32.const 16) ...)`) are copied at instantiation; passive ones (no
+offset) wait for `memory.init`, which is how threaded programs initialise memory once.
+
+## Tables and elements
+
+| Form | Meaning |
+| :--- | :------ |
+| `(table $t 10 funcref)` | 10 null function references |
+| `(table $h 0 externref)` | table of host values, grown at runtime |
+| `(elem (i32.const 0) $f $g)` | active: fill slots 0 and 1 of table 0 |
+| `(elem $e func $f $g)` | passive segment, used by `table.init` |
+| `(elem declare func $f)` | declarative: only allows `ref.func $f` |
+| `table.get $t` / `table.set $t` | read / write a slot |
+| `table.size`, `table.grow`, `table.fill`, `table.copy` | like the memory versions |
+| `table.init $t $e`, `elem.drop $e` | bulk from a segment |
+| `ref.null func`, `ref.null extern`, `ref.is_null` | null references |
+
+## Imports, exports, start
+
+```wasm
+(module
+  ;; imports come first in each index space
+  (import "env" "log" (func $log (param i32)))
+  (import "env" "memory" (memory 1))
+  (import "env" "base" (global $base i32))
+  (import "env" "tbl" (table 4 funcref))
+
+  (global $ready (mut i32) (i32.const 0))
+
+  (func $init
+    (global.set $ready (i32.const 1))
+    (call $log (global.get $base)))
+  (start $init)       ;; runs during instantiation
+
+  (func (export "ready") (result i32) (global.get $ready))
+  (export "ready_flag" (global $ready))
+)
+```
+
+```ts
+const { instance } = await WebAssembly.instantiate(bytes, {
+  env: {
+    log: console.log,
+    memory: new WebAssembly.Memory({ initial: 1 }),
+    base: 42, // immutable i32 global: a plain number
+    tbl: new WebAssembly.Table({
+      element: "anyfunc", initial: 4,
+    }),
+  },
+});
+```
+
+The `start` function takes no params, returns nothing and runs before `instantiate` resolves; it
+cannot call exports that JS has not seen yet, and a trap there rejects instantiation. Toolchains
+usually prefer an explicit exported `_initialize` / `_start` instead.
+
+## SIMD taste
+
+```wasm
+(module
+  (memory (export "memory") 1)
+  ;; out[i] = a[i] * b[i] for 4 floats at a time
+  (func (export "mul4") (param $a i32) (param $b i32)
+    (param $out i32)
+    (v128.store (local.get $out)
+      (f32x4.mul (v128.load (local.get $a))
+                 (v128.load (local.get $b)))))
+
+  ;; horizontal: lane extraction
+  (func (export "lane2") (param $p i32) (result f32)
+    (f32x4.extract_lane 2 (v128.load (local.get $p))))
+)
+```
+
+| Instruction family | Examples |
+| :----------------- | :------- |
+| Constants and splat | `v128.const i32x4 1 2 3 4`, `f32x4.splat`, `i8x16.splat` |
+| Lane access | `i32x4.extract_lane 0`, `f32x4.replace_lane 3` |
+| Arithmetic | `i32x4.add`, `f32x4.mul`, `f64x2.sqrt`, `i16x8.add_sat_s` |
+| Compare and select | `f32x4.lt`, `v128.bitselect`, `v128.any_true`, `i32x4.all_true` |
+| Shuffle | `i8x16.shuffle 0 1 ... 15`, `i8x16.swizzle` |
+| Relaxed (Wasm 3.0) | `f32x4.relaxed_madd`, `i32x4.relaxed_trunc_f32x4_s`: faster, hardware-dependent edge cases |
+
+Compilers auto-vectorise when you enable the feature (`-msimd128`, `-C target-feature=+simd128`).
+
+## References and GC
+
+```wasm
+(module
+  (type $point (struct (field $x (mut f64))
+                       (field $y (mut f64))))
+  (type $bytes (array (mut i8)))
+
+  (func (export "make") (param f64 f64) (result anyref)
+    (struct.new $point (local.get 0) (local.get 1)))
+
+  (func (export "x") (param $p anyref) (result f64)
+    (struct.get $point $x
+      (ref.cast (ref $point) (local.get $p))))
+
+  (func (export "buf") (param $n i32) (result i32)
+    (array.len
+      (array.new $bytes (i32.const 0) (local.get $n))))
+)
+```
+
+| Instruction | Meaning |
+| :---------- | :------ |
+| `struct.new $t`, `struct.get $t $f`, `struct.set $t $f` | allocate and access GC structs |
+| `array.new $t`, `array.new_fixed $t n`, `array.get`, `array.set`, `array.len` | GC arrays |
+| `ref.i31`, `i31.get_s` / `i31.get_u` | unboxed small integers as references |
+| `ref.test (ref $t)`, `ref.cast (ref $t)` | type test / checked downcast (cast traps) |
+| `br_on_cast`, `br_on_null`, `br_on_non_null` | branch on the dynamic type or nullness |
+| `ref.as_non_null` | trap on null, otherwise narrow the type |
+| `any.convert_extern`, `extern.convert_any` | move references between the JS and GC hierarchies |
+
+GC objects are collected by the host engine and are opaque to JS: export accessor functions.
+
+## Exceptions
+
+```wasm
+(module
+  (tag $oops (export "oops") (param i32))
+
+  (func $risky (param $x i32)
+    (if (i32.lt_s (local.get $x) (i32.const 0))
+      (then (throw $oops (local.get $x)))))
+
+  ;; returns the payload if $risky threw, else 0
+  (func (export "check") (param $x i32) (result i32)
+    (block $caught (result i32)
+      (try_table (catch $oops $caught)
+        (call $risky (local.get $x)))
+      (i32.const 0)))
+)
+```
+
+| Syntax | Meaning |
+| :----- | :------ |
+| `(tag $t (param ...))` | exception type; export it to test for it from JS |
+| `throw $t` | throw with the payload on the stack |
+| `try_table (catch $t $l) ...` | on `$t`, branch to `$l` with the payload |
+| `(catch_ref $t $l)` | also pass an `exnref` for rethrowing |
+| `(catch_all $l)`, `(catch_all_ref $l)` | any exception, including JS ones |
+| `throw_ref` | rethrow an `exnref` |
+
+This is the Wasm 3.0 (`exnref`) form. Older binaries use the legacy `try` / `catch` / `delegate`
+instructions, which engines still accept but which are no longer being standardised.
+
+## Tools
+
+| Task | wasm-tools (Bytecode Alliance) | wabt | binaryen |
+| :--- | :----------------------------- | :--- | :------- |
+| WAT → Wasm | `wasm-tools parse a.wat -o a.wasm` | `wat2wasm a.wat -o a.wasm` | `wasm-as a.wat` |
+| Wasm → WAT | `wasm-tools print a.wasm` | `wasm2wat a.wasm` | `wasm-dis a.wasm` |
+| Validate | `wasm-tools validate --features all a.wasm` | `wasm-validate a.wasm` | (on load) |
+| Sections / headers | `wasm-tools objdump a.wasm` | `wasm-objdump -h` / `-x` | |
+| Disassemble with offsets | `wasm-tools print -p` / `wasm-tools dump` | `wasm-objdump -d` | |
+| Strip custom sections | `wasm-tools strip a.wasm` | `wasm-strip a.wasm` | `wasm-opt --strip-debug` |
+| Demangle names | `wasm-tools demangle` | | |
+| Interpret | | `wasm-interp a.wasm --run-all-exports` | `wasm-shell` |
+| Optimise | | | `wasm-opt -O3` / `-Oz` |
+| C-like view | | `wasm-decompile a.wasm` | |
+| To JS | | | `wasm2js` |
+| Components | `wasm-tools component new` / `wit` | | |
+
+- **wasm-tools** follows the newest proposals fastest (it is the Wasmtime parser) and is the safest
+  choice for Wasm 3.0 features; by default it enables every phase-4+ proposal.
+- **wabt** is the classic kit; its `wasm-interp` is handy for quick tests. Newer proposals may need
+  `--enable-*` flags or lag behind.
+- **binaryen**'s `wasm-opt` is the optimiser behind Emscripten and wasm-pack; run it on any
+  toolchain output. Enable the features your output uses (`--enable-simd`, `--enable-gc`, or `-all`).
+- **wasmtime** runs `.wat` directly: `wasmtime run --invoke fact fact.wat 5`.
+
+## Reading compiled output
+
+```bash
+# sizes and imports / exports at a glance
+wasm-tools objdump app.wasm
+wasm-tools print app.wasm | grep -E '^\s*\((import|export)'
+
+# one function, folded, with byte offsets
+wasm-tools print -f -p app.wasm | less
+
+# where did the bytes go? (see also twiggy for Rust)
+wasm-opt --func-metrics app.wasm -o /dev/null | head
+
+# producers: which compiler and version built it
+wasm-tools metadata show app.wasm
+```
+
+| You see | It usually means |
+| :------ | :--------------- |
+| `(import "wbg" "__wbg_...")` | wasm-bindgen glue imports |
+| `(import "env" "emscripten_...")`, `invoke_*` | Emscripten runtime; `invoke_*` wraps calls for JS-based exceptions or `setjmp` |
+| `(import "wasi_snapshot_preview1" ...)` | WASI preview 1 syscalls |
+| `(global $__stack_pointer (mut i32) ...)` | LLVM shadow stack for address-taken locals |
+| `__heap_base`, `__data_end` | linker symbols bounding static data |
+| `call_indirect` everywhere | function pointers, trait objects, vtables |
+| `unreachable` after a call | a panic / abort path the compiler proved never returns |
+
+## Recipes
+
+### Hello world with a JS import
+Use as the smallest end-to-end test of a toolchain and loader.
+
+```wasm title="hello.wat"
+(module
+  (import "env" "log" (func $log (param i32 i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "Hello from WAT")
+  (func (export "main")
+    (call $log (i32.const 0) (i32.const 14)))
+)
+```
+
+```ts
+const res = await fetch("/hello.wasm");
+const bytes = await res.arrayBuffer();
+let mem!: WebAssembly.Memory;
+const { instance } = await WebAssembly.instantiate(bytes, {
+  env: {
+    log: (ptr: number, len: number) => console.log(
+      new TextDecoder().decode(
+        new Uint8Array(mem.buffer, ptr, len)),
+    ),
+  },
+});
+mem = instance.exports.memory as WebAssembly.Memory;
+(instance.exports.main as () => void)();
+```
+
+### Compile WAT in Node
+Use for unit tests of hand-written snippets; the `wabt` npm package is wabt compiled to Wasm.
+
+```ts
+import initWabt from "wabt";
+
+const wabt = await initWabt();
+const src = `(module (func (export "sq")
+  (param i32) (result i32)
+  (i32.mul (local.get 0) (local.get 0))))`;
+const mod = wabt.parseWat("sq.wat", src);
+const { buffer } = mod.toBinary({});
+const { instance } = await WebAssembly.instantiate(buffer);
+const sq = instance.exports.sq as (x: number) => number;
+console.log(sq(12)); // 144
+```
+
+### A bump allocator
+Use when hand-written modules must accept strings or arrays from JS (`alloc` then write then call).
+
+```wasm
+(module
+  (memory (export "memory") 1)
+  (global $top (mut i32) (i32.const 1024)) ;; after data
+
+  (func (export "alloc") (param $n i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $top))
+    ;; round up to 8 bytes
+    (global.set $top
+      (i32.and (i32.add (i32.add (local.get $p)
+                                 (local.get $n))
+                        (i32.const 7))
+               (i32.const -8)))
+    ;; grow if needed: pages = ceil(top / 65536)
+    (if (i32.gt_u (global.get $top)
+          (i32.shl (memory.size) (i32.const 16)))
+      (then (drop (memory.grow (i32.const 1)))))
+    local.get $p)
+
+  (func (export "reset") (global.set $top (i32.const 1024)))
+)
+```
+
+### Fill and copy memory fast
+Use bulk-memory instructions instead of byte loops (`memset` / `memmove` compile to these).
+
+```wasm
+(module
+  (memory (export "memory") 1)
+  (func (export "clear") (param $p i32) (param $n i32)
+    (memory.fill
+      (local.get $p) (i32.const 0) (local.get $n)))
+  (func (export "move")
+    (param $dst i32) (param $src i32) (param $n i32)
+    (memory.copy
+      (local.get $dst) (local.get $src) (local.get $n)))
+)
+```
+
+### Tail-recursive loop
+Use `return_call` for recursion that must not overflow the stack (Wasm 3.0 tail calls).
+
+```wasm
+(module
+  (func $sum (export "sum") (param $n i64) (param $acc i64)
+    (result i64)
+    (if (result i64) (i64.eqz (local.get $n))
+      (then (local.get $acc))
+      (else
+        (return_call $sum
+          (i64.sub (local.get $n) (i64.const 1))
+          (i64.add (local.get $acc) (local.get $n))))))
+)
+```
+
+### Round-trip a binary
+Use to check what a toolchain really emitted or to patch a module by hand.
+
+```bash
+wasm-tools print app.wasm -o app.wat   # binary → text
+$EDITOR app.wat
+wasm-tools parse app.wat -o app2.wasm  # text → binary
+wasm-tools validate app2.wasm
+wasm-opt -Oz app2.wasm -o app.min.wasm
+ls -l app.wasm app.min.wasm
+```
+
+## References
+
+- [WebAssembly core spec: text format](https://webassembly.github.io/spec/core/text/index.html), [full spec](https://webassembly.github.io/spec/core/)
+- MDN: [Understanding the text format](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Understanding_the_text_format), [instruction reference](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference), [control flow](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow), [memory](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Memory), [numeric](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric)
+- [webassembly.org: feature status](https://webassembly.org/features/), [Wasm 3.0 announcement](https://webassembly.org/news/2025-09-17-wasm-3.0/)
+- Tools: [wasm-tools](https://github.com/bytecodealliance/wasm-tools), [wabt](https://github.com/WebAssembly/wabt), [binaryen](https://github.com/WebAssembly/binaryen), [Wasmtime CLI](https://docs.wasmtime.dev/cli-options.html)

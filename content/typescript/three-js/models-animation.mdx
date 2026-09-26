@@ -1,0 +1,601 @@
+---
+title: Models, animation & picking
+date: 2026-09-26
+order: 4
+---
+
+Getting real assets on screen with Three.js r18x: the glTF / GLB pipeline with Draco, KTX2 and Meshopt
+compression, asset optimisation CLIs, loading progress, finding nodes, the animation system (mixer, clips,
+actions, blending), skinning and morph targets, programmatic keyframes, pointer picking with `Raycaster`,
+physics options and scene performance. Basics are in [Fundamentals](/typescript/three-js/fundamentals/);
+the React version of all this is [React Three Fiber](/typescript/three-js/react-three-fiber/).
+
+## glTF workflow
+
+glTF 2.0 (`.gltf` + files, or a single binary `.glb`) is **the** format for three: PBR materials, scene
+graph, skins, morphs, animations, cameras and punctual lights, in metres with `+Y` up.
+
+```text
+ DCC tool (Blender, Maya…)
+      │ export glTF 2.0 (.glb)
+      ▼
+ optimise: gltf-transform / gltfpack
+      │ dedupe, prune, weld, simplify, resize textures,
+      │ Draco or Meshopt geometry, KTX2 / WebP textures
+      ▼
+ GLTFLoader (+ DRACOLoader, KTX2Loader, MeshoptDecoder)
+      │ gltf.scene: Group   gltf.animations: AnimationClip[]
+      ▼
+ scene.add(gltf.scene); AnimationMixer(gltf.scene)
+```
+
+| Format | Loader | Verdict |
+| :----- | :----- | :------ |
+| glTF / GLB | `GLTFLoader` | use this; convert everything else to it |
+| FBX | `FBXLoader` | legacy; convert in Blender |
+| OBJ + MTL | `OBJLoader`, `MTLLoader` | geometry only, no PBR, no animation |
+| USDZ | `USDZLoader`, `USDLoader` | partial; exporting to USDZ for AR is more common |
+| STL, PLY | `STLLoader`, `PLYLoader` | 3D printing, scans |
+| Gaussian splats | `SPLATLoader`, `KSPLATLoader`, `SPZLoader` (recent addons) | check the examples for the current API |
+
+## GLTFLoader
+
+```ts
+import { GLTFLoader } from
+  "three/addons/loaders/GLTFLoader.js";
+import type { GLTF } from
+  "three/addons/loaders/GLTFLoader.js";
+
+const loader = new GLTFLoader();
+const gltf: GLTF = await loader.loadAsync(
+  "/models/robot.glb",
+  (e) => console.log(`${e.loaded} / ${e.total} bytes`),
+);
+scene.add(gltf.scene);
+```
+
+| `GLTF` field | Contents |
+| :----------- | :------- |
+| `scene` | the default scene as a `Group` |
+| `scenes` | all scenes in the file |
+| `animations` | `AnimationClip[]` |
+| `cameras` | exported cameras |
+| `asset` | generator, version, copyright |
+| `parser` | low-level access (`parser.getDependency("material", 0)`) |
+| `userData` | glTF `extras` of the root; nodes keep theirs in `object.userData` |
+
+What `GLTFLoader` does for you: `SRGBColorSpace` on colour textures, `flipY = false` on all textures,
+`MeshStandardMaterial` / `MeshPhysicalMaterial` from glTF PBR plus extensions (`KHR_materials_*`,
+`KHR_texture_transform`, `KHR_lights_punctual`, `EXT_mesh_gpu_instancing` → `InstancedMesh`).
+
+## Compression decoders
+
+| Compression | Shrinks | Loader wiring | Decoder files |
+| :---------- | :------ | :------------ | :------------ |
+| Draco (`KHR_draco_mesh_compression`) | geometry, very small | `setDRACOLoader(draco)` | wasm + js in `examples/jsm/libs/draco/` |
+| Meshopt (`EXT_meshopt_compression`) | geometry **and** animation; fast decode | `setMeshoptDecoder(MeshoptDecoder)` | bundled module, nothing to host |
+| KTX2 / Basis (`KHR_texture_basisu`) | textures stay compressed in VRAM | `setKTX2Loader(ktx2)` | transcoder in `examples/jsm/libs/basis/` |
+| WebP / AVIF (`EXT_texture_webp` / `_avif`) | download size only | built in | browser decodes |
+| Quantisation (`KHR_mesh_quantization`) | vertex precision | built in | none |
+
+```ts
+import { DRACOLoader } from
+  "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from
+  "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from
+  "three/addons/libs/meshopt_decoder.module.js";
+
+const draco = new DRACOLoader()
+  .setDecoderPath("/draco/");     // copied from libs/draco
+const ktx2 = new KTX2Loader()
+  .setTranscoderPath("/basis/")   // copied from libs/basis
+  .detectSupport(renderer);       // needs the renderer
+
+const loader = new GLTFLoader()
+  .setDRACOLoader(draco)
+  .setKTX2Loader(ktx2)
+  .setMeshoptDecoder(MeshoptDecoder);
+```
+
+Configure the decoders **before** the first `load`, share one `GLTFLoader` app-wide, and `dispose()` the
+Draco and KTX2 loaders on teardown (they own web workers). Loading a compressed file without its decoder
+throws (`setMeshoptDecoder must be called before loading compressed files`).
+
+## Optimising assets
+
+```bash
+# glTF Transform: one-shot web optimisation
+npx @gltf-transform/cli optimize in.glb out.glb \
+  --compress meshopt --texture-compress webp
+npx @gltf-transform/cli optimize in.glb out.glb \
+  --compress draco --texture-compress ktx2
+npx @gltf-transform/cli inspect out.glb   # size report
+
+# gltfpack (meshoptimizer): fast, Meshopt-based
+gltfpack -i in.glb -o out.glb -cc -tc
+```
+
+| Tool / flag | Does |
+| :---------- | :--- |
+| `gltf-transform optimize` | dedup, prune, weld, simplify, resize, compress in one command |
+| `--compress draco \| meshopt \| quantize` | geometry compression method |
+| `--texture-compress ktx2 \| webp \| avif` | texture format (`ktx2` needs KTX-Software installed) |
+| other commands | `inspect`, `dedup`, `prune`, `resize`, `simplify`, `instance`, `join`, `draco`, `meshopt`, `uastc`, `etc1s` … |
+| `gltfpack -cc` | Meshopt compression, higher ratio |
+| `gltfpack -tc` | KTX2 / Basis textures |
+| `gltfpack -si 0.5` | simplify to ~50% triangles |
+| `npx gltfjsx model.glb -T` | R3F component + `--transform` (see [React Three Fiber](/typescript/three-js/react-three-fiber/#gltfjsx)) |
+
+Budgets that hold up on mid-range phones: a few MB per model, textures ≤ 2048², tens of thousands of
+triangles per hero asset, and **draw calls** (meshes × materials) in the low hundreds for the whole scene.
+
+## Loading manager & progress
+
+```ts
+import { LoadingManager } from "three";
+
+const manager = new LoadingManager();
+manager.onStart = (url, loaded, total) => {};
+manager.onProgress = (url, loaded, total) => {
+  bar.style.width = `${(loaded / total) * 100}%`;
+};
+manager.onLoad = () => overlay.remove();
+manager.onError = (url) => console.error("failed", url);
+
+const gltfLoader = new GLTFLoader(manager);
+const texLoader = new TextureLoader(manager);
+```
+
+| Tool | Use |
+| :--- | :-- |
+| `LoadingManager` | counts **items** (files), not bytes, across every loader sharing it |
+| `loader.loadAsync(url, onProgress)` | per-file `ProgressEvent` (bytes; `total` is 0 without `Content-Length`) |
+| `manager.setURLModifier(fn)` | remap URLs (blob URLs from drag and drop, CDN prefixes) |
+| `loader.setPath("/models/")` | base path for relative URLs |
+| `Cache.enabled = true` | in-memory cache of fetched files across loaders |
+| `renderer.compileAsync(scene, camera)` | compile shaders before the first frame to avoid a hitch |
+| `renderer.initTexture(tex)` | upload a texture before it is first seen |
+
+## Finding nodes
+
+```ts
+const root = gltf.scene;
+const wheel = root.getObjectByName("Wheel_FL"); // DFS
+const meshes: Mesh[] = [];
+root.traverse((o) => {
+  if ((o as Mesh).isMesh) {
+    const m = o as Mesh;
+    m.castShadow = m.receiveShadow = true;
+    meshes.push(m);
+  }
+});
+```
+
+| Pitfall | Detail |
+| :------ | :----- |
+| Names are sanitised | whitespace becomes `_` and `[ ] . : /` are stripped (`PropertyBinding.sanitizeNodeName`): `"Wheel.001"` → `"Wheel001"` |
+| Multi-material meshes | one glTF mesh with 2 materials becomes a `Group` of 2 `Mesh` children |
+| Duplicate names | `getObjectByName` returns the first; use paths or `userData` ids |
+| Shared materials | editing `mesh.material.color` changes every mesh using it: `mesh.material = mesh.material.clone()` |
+| `clone()` on skinned models | breaks skeleton binding; use `SkeletonUtils.clone` |
+| Bounding boxes | `new Box3().setFromObject(root)`: world-space, includes children |
+
+## Animation system
+
+```text
+ AnimationClip  = named set of KeyframeTracks ("Walk", 1.2 s)
+   KeyframeTrack  = property path + times[] + values[]
+        │
+ mixer.clipAction(clip) ─► AnimationAction  (play state, weight,
+        │                                    timeScale, loop, fades)
+ AnimationMixer(root) ── mixer.update(dt) each frame
+        │   blends all running actions per property
+        ▼
+ root's objects: position / quaternion / scale / morph weights
+```
+
+```ts
+const mixer = new AnimationMixer(gltf.scene);
+const clip = AnimationClip.findByName(
+  gltf.animations, "Idle",
+)!;
+const idle = mixer.clipAction(clip);
+idle.play();
+
+renderer.setAnimationLoop((t) => {
+  timer.update(t);
+  mixer.update(timer.getDelta()); // seconds
+  renderer.render(scene, camera);
+});
+```
+
+| `AnimationAction` | Notes |
+| :---------------- | :---- |
+| `play()` / `stop()` / `reset()` | `reset().play()` restarts from 0 |
+| `paused`, `enabled` | freeze in place / take out of the blend |
+| `time`, `timeScale` | current time; `-1` plays backwards |
+| `setLoop(mode, reps)` | `LoopRepeat` (default, `Infinity`), `LoopOnce`, `LoopPingPong` |
+| `clampWhenFinished` | hold the last frame after `LoopOnce` |
+| `weight`, `setEffectiveWeight(w)` | blend amount 0–1 |
+| `fadeIn(s)` / `fadeOut(s)` | ramp weight |
+| `crossFadeTo(other, s, warp)` | fade this out, `other` in; `warp` also blends time scales |
+| `crossFadeFrom(other, s, warp)` | same, from the other side |
+| `setEffectiveTimeScale(k)`, `setDuration(s)` | speed |
+| `syncWith(other)` | match time and time scale (walk ↔ run) |
+| `startAt(mixerTime)` | delayed start |
+| `blendMode` | `NormalAnimationBlendMode` or `AdditiveAnimationBlendMode` |
+
+| `AnimationMixer` | Notes |
+| :--------------- | :---- |
+| `update(dt)` | advance all actions; call once per frame |
+| `clipAction(clip, root?)` | get or create the (cached) action |
+| `existingAction(clip)` | lookup without creating |
+| `stopAllAction()` | stop everything |
+| `setTime(t)` | scrub (timelines, sliders) |
+| `uncacheRoot(root)`, `uncacheClip(clip)` | free bindings when removing a model |
+| events `"finished"`, `"loop"` | `mixer.addEventListener("finished", (e) => e.action)` |
+
+```ts
+// cross-fade idle → walk over 0.3 s
+function to(next: AnimationAction, from: AnimationAction) {
+  next.reset().setEffectiveWeight(1).play();
+  from.crossFadeTo(next, 0.3, true);
+}
+
+// one-shot "jump" that holds the last frame
+jump.setLoop(LoopOnce, 1);
+jump.clampWhenFinished = true;
+mixer.addEventListener("finished", (e) => {
+  if (e.action === jump) to(idle, jump);
+});
+```
+
+Clip utilities: `clip.optimize()` removes redundant keys, `AnimationUtils.subclip(clip, name, start,
+end, fps)` cuts one long timeline into clips (by frame), `AnimationUtils.makeClipAdditive(clip)` prepares
+additive layers (breathing, aiming on top of locomotion).
+
+## Skinning & morph targets
+
+| | Skinning | Morph targets |
+| :- | :------- | :------------ |
+| Object | `SkinnedMesh` + `Skeleton` of `Bone`s | any `Mesh` with `geometry.morphAttributes` |
+| Driven by | bone transforms (tracks on bones) | `mesh.morphTargetInfluences[i]` (0–1) |
+| Lookup | `skeleton.getBoneByName("Head")` | `mesh.morphTargetDictionary["smile"]` → index |
+| Typical use | characters, creatures | faces, blend shapes, corrective shapes |
+| Debug | `new SkeletonHelper(root)` | log `morphTargetDictionary` |
+
+```ts
+const face = root.getObjectByName("Face") as Mesh;
+const i = face.morphTargetDictionary!["smile"];
+face.morphTargetInfluences![i] = 0.8;
+
+// procedural look-at on top of the animation: after
+// mixer.update(), before render
+const head = skeleton.getBoneByName("Head")!;
+head.rotation.y += yawOffset;
+```
+
+Cloning skinned models: `object.clone()` shares the skeleton incorrectly; use
+`clone` from `three/addons/utils/SkeletonUtils.js`, which rebinds bones. Each clone needs its own
+`AnimationMixer`; clips can be shared. `SkeletonUtils.retargetClip` maps clips between rigs with
+different bone names.
+
+## Programmatic keyframes
+
+| Track | Values per key | Property examples |
+| :---- | :------------- | :---------------- |
+| `VectorKeyframeTrack` | 2–4 floats | `.position`, `.scale` |
+| `QuaternionKeyframeTrack` | 4 (x, y, z, w) | `.quaternion` (slerped) |
+| `NumberKeyframeTrack` | 1 | `.material.opacity`, `.morphTargetInfluences[smile]` |
+| `ColorKeyframeTrack` | 3 | `.material.color` |
+| `BooleanKeyframeTrack` | 1 | `.visible` (discrete) |
+| `StringKeyframeTrack` | 1 | any string property (discrete) |
+
+Property path syntax: `.prop` targets the mixer's root; `Name.prop` targets a descendant by name;
+`.bones[Head].quaternion` and `.morphTargetInfluences[smile]` index into arrays by name.
+
+```ts
+const times = [0, 0.5, 1];
+const y = new VectorKeyframeTrack(".position",
+  times, [0, 0, 0,   0, 1, 0,   0, 0, 0]);
+const fade = new NumberKeyframeTrack(".material.opacity",
+  times, [1, 0.3, 1]);
+const q0 = new Quaternion();
+const q1 = new Quaternion().setFromAxisAngle(
+  new Vector3(0, 1, 0), Math.PI);
+const spin = new QuaternionKeyframeTrack(".quaternion",
+  [0, 1], [...q0.toArray(), ...q1.toArray()]);
+
+const clip = new AnimationClip("bob", -1, [y, fade, spin]);
+// -1: duration computed from the tracks
+new AnimationMixer(mesh).clipAction(clip).play();
+```
+
+Interpolation per track: `InterpolateLinear` (default), `InterpolateSmooth` (cubic), `InterpolateDiscrete`
+(steps) via `track.setInterpolation(...)`. For UI-style tweens a tween library or a hand-written lerp in
+the loop is simpler than clips.
+
+## Raycaster picking
+
+```text
+ pointer (clientX, clientY)  ── rect ──►  NDC  x,y ∈ [-1, 1]  (y up)
+                                            │ setFromCamera
+                                            ▼
+                         ray from camera through the pixel
+                                            │ intersectObjects
+                                            ▼
+               Intersection[] sorted by distance (nearest first)
+```
+
+```ts
+const raycaster = new Raycaster();
+const ndc = new Vector2();
+
+function pick(e: PointerEvent): Intersection | undefined {
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  // recursive = true by default
+  return raycaster.intersectObjects(pickables)[0];
+}
+```
+
+| `Intersection` field | Meaning |
+| :------------------- | :------ |
+| `object` | the hit `Mesh` / `Points` / `Line` (often a child: walk up to your root) |
+| `distance`, `point` | from the ray origin; world-space hit point |
+| `face`, `faceIndex`, `normal` | triangle and its normal (local space; transform to world if needed) |
+| `uv`, `uv1` | texture coordinates at the hit (paint, decals) |
+| `instanceId` | index into an `InstancedMesh` |
+| `batchId` | instance id in a `BatchedMesh` |
+
+| Setting | Use |
+| :------ | :-- |
+| `raycaster.layers.set(n)` | only test objects on layer `n` (`obj.layers.enable(n)`) |
+| `raycaster.near` / `far` | limit distance |
+| `params.Points.threshold` | hit radius for points (world units) |
+| `params.Line.threshold` | hit tolerance for lines |
+| `firstHitOnly` (three-mesh-bvh) | stop after the first hit |
+
+- Test a curated `pickables` array, not `scene.children`: helpers, sprites and invisible meshes also get hit.
+  Invisible objects are still tested; filter with `visible` or use layers.
+- Raycasting is CPU work over every triangle of every tested mesh. For big meshes use
+  [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) (`computeBoundsTree`, `acceleratedRaycast`).
+- `InstancedMesh` needs a correct `boundingSphere` (`computeBoundingSphere()`) or hits are missed.
+- Throttle `pointermove` picking to once per frame; for `click`, ignore it if the pointer moved (a drag
+  on `OrbitControls`).
+- Alternative for huge scenes: GPU picking, rendering object ids into a 1×1 render target.
+
+## Physics & collisions
+
+Three.js has no physics engine. Common choices:
+
+| Library | Notes |
+| :------ | :---- |
+| [Rapier](https://rapier.rs/) (`@dimforge/rapier3d-compat`) | Rust → wasm; fast, deterministic, the modern default; `RapierPhysics` / `RapierHelper` addons exist |
+| [cannon-es](https://github.com/pmndrs/cannon-es) | pure JS, simple API, maintained fork of cannon.js |
+| Jolt (`jolt-physics`) | wasm port of a AAA engine; `JoltPhysics` addon |
+| Ammo.js | Bullet via Emscripten; older, verbose |
+| `Octree` + `Capsule` (addons) | simple character-vs-level collision without a full engine (see the FPS example) |
+| `Box3` / `Sphere` `.intersectsBox()` | trivial overlap tests |
+
+Pattern: step physics at a fixed timestep, copy body positions/rotations into meshes, render. In React,
+`@react-three/rapier` wraps Rapier.
+
+## Performance
+
+| Lever | Detail |
+| :---- | :----- |
+| Draw calls | `renderer.info.render.calls`; each mesh × material = 1+. Merge, instance, or batch |
+| Instancing | `InstancedMesh` for repeats, `BatchedMesh` for varied static props |
+| Materials | fewer unique materials = fewer programs and state changes; share them |
+| LOD | `lod.addLevel(mesh, distance, hysteresis)`; `gltf-transform simplify` / `gltfpack -si` for levels |
+| Frustum culling | automatic per object via `boundingSphere`; many small objects cull better than one huge merged one |
+| Textures | KTX2, ≤ 2048², reuse atlases; watch `renderer.info.memory.textures` |
+| Shadows | see [Lights & shadows](/typescript/three-js/lights-shadows/#performance) |
+| Pixel ratio | cap at 2; drop to 1–1.5 when FPS falls |
+| `matrixAutoUpdate = false` | for static objects |
+| Shader compile hitches | `renderer.compileAsync(scene, camera)` after loading |
+| Animation | pause mixers of off-screen characters; `clip.optimize()` |
+| Render on demand | no loop when nothing changes ([Fundamentals](/typescript/three-js/fundamentals/#render-on-demand)) |
+
+```ts
+const { calls, triangles } = renderer.info.render;
+const { geometries, textures } = renderer.info.memory;
+console.log({ calls, triangles, geometries, textures });
+```
+
+## Recipes
+
+### Shared compressed GLB loader
+Use as the single entry point for all models: decoders configured once, typed result, cached promises.
+
+```ts
+import type { WebGLRenderer } from "three";
+import { GLTFLoader } from
+  "three/addons/loaders/GLTFLoader.js";
+import type { GLTF } from
+  "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from
+  "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from
+  "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from
+  "three/addons/libs/meshopt_decoder.module.js";
+
+export function createModelLoader(r: WebGLRenderer) {
+  const draco = new DRACOLoader().setDecoderPath("/draco/");
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath("/basis/").detectSupport(r);
+  const loader = new GLTFLoader()
+    .setDRACOLoader(draco).setKTX2Loader(ktx2)
+    .setMeshoptDecoder(MeshoptDecoder);
+  const cache = new Map<string, Promise<GLTF>>();
+  return {
+    load(url: string): Promise<GLTF> {
+      let p = cache.get(url);
+      if (!p) cache.set(url, (p = loader.loadAsync(url)));
+      return p;
+    },
+    dispose(): void { draco.dispose(); ktx2.dispose(); },
+  };
+}
+```
+
+A cached `GLTF` is one scene graph: to place it twice, `SkeletonUtils.clone(gltf.scene)`.
+
+### Character state machine
+Use for a character with idle / walk / run clips: cross-fades on state change, speed-matched.
+
+```ts
+import { AnimationMixer, LoopRepeat } from "three";
+import type { AnimationAction, Object3D, AnimationClip }
+  from "three";
+
+type State = "Idle" | "Walk" | "Run";
+
+export class Character {
+  readonly mixer: AnimationMixer;
+  private actions = new Map<State, AnimationAction>();
+  private current: AnimationAction;
+
+  constructor(root: Object3D, clips: AnimationClip[]) {
+    this.mixer = new AnimationMixer(root);
+    for (const s of ["Idle", "Walk", "Run"] as const) {
+      const clip = clips.find((c) => c.name === s);
+      if (!clip) throw new Error(`missing clip ${s}`);
+      const a = this.mixer.clipAction(clip);
+      a.setLoop(LoopRepeat, Infinity);
+      this.actions.set(s, a);
+    }
+    this.current = this.actions.get("Idle")!;
+    this.current.play();
+  }
+
+  set(state: State, fade = 0.25): void {
+    const next = this.actions.get(state)!;
+    if (next === this.current) return;
+    next.reset().play();
+    next.syncWith(this.current); // keep foot phase
+    this.current.crossFadeTo(next, fade, true);
+    this.current = next;
+  }
+
+  update(dt: number): void { this.mixer.update(dt); }
+}
+```
+
+### Hover and click picking
+Use for interactive scenes: highlights under the pointer, fires on click but not after an orbit drag.
+
+```ts
+import { Raycaster, Vector2 } from "three";
+import type { Mesh, MeshStandardMaterial, Object3D }
+  from "three";
+
+const ray = new Raycaster();
+const ndc = new Vector2();
+let hovered: Mesh | null = null;
+let down = { x: 0, y: 0 };
+
+function hit(e: PointerEvent, targets: Object3D[]) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1,
+    -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  return ray.intersectObjects(targets)[0];
+}
+
+canvas.addEventListener("pointermove", (e) => {
+  const obj = (hit(e, pickables)?.object as Mesh) ?? null;
+  if (obj === hovered) return;
+  if (hovered) setGlow(hovered, 0);
+  if (obj) setGlow(obj, 0.4);
+  hovered = obj;
+  canvas.style.cursor = obj ? "pointer" : "";
+});
+canvas.addEventListener("pointerdown", (e) => {
+  down = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener("click", (e) => {
+  const moved = Math.hypot(e.clientX - down.x,
+    e.clientY - down.y);
+  if (moved > 4) return; // it was a drag
+  const h = hit(e, pickables);
+  if (h) select(h.object, h.point);
+});
+
+function setGlow(m: Mesh, v: number): void {
+  const mat = m.material as MeshStandardMaterial;
+  mat.emissive.setScalar(v); // clone shared mats first
+}
+```
+
+### Pick one instance
+Use to recolour or remove a single instance of an `InstancedMesh` under the pointer.
+
+```ts
+import { Color, Matrix4 } from "three";
+import type { InstancedMesh } from "three";
+
+const red = new Color("red");
+const zero = new Matrix4().makeScale(0, 0, 0);
+
+function onPick(mesh: InstancedMesh, e: PointerEvent) {
+  const h = hit(e, [mesh]); // from the previous recipe
+  if (h?.instanceId === undefined) return;
+  if (e.shiftKey) {
+    mesh.setMatrixAt(h.instanceId, zero); // "delete"
+    mesh.instanceMatrix.needsUpdate = true;
+  } else {
+    mesh.setColorAt(h.instanceId, red);
+    mesh.instanceColor!.needsUpdate = true;
+  }
+}
+```
+
+### Spawn animated clones
+Use for crowds of the same rigged character: shared geometry and clips, independent skeletons and mixers.
+
+```ts
+import { AnimationMixer } from "three";
+import type { AnimationClip } from "three";
+import { clone } from "three/addons/utils/SkeletonUtils.js";
+import type { GLTF } from
+  "three/addons/loaders/GLTFLoader.js";
+
+const mixers: AnimationMixer[] = [];
+
+export function spawn(gltf: GLTF, n: number, clip: string) {
+  const c: AnimationClip | undefined =
+    gltf.animations.find((a) => a.name === clip);
+  for (let i = 0; i < n; i++) {
+    const unit = clone(gltf.scene);
+    unit.position.set((i % 10) * 1.5, 0, Math.floor(i / 10));
+    scene.add(unit);
+    const mixer = new AnimationMixer(unit);
+    if (c) {
+      const a = mixer.clipAction(c);
+      a.time = Math.random() * c.duration; // desync
+      a.play();
+    }
+    mixers.push(mixer);
+  }
+}
+// in the loop: for (const m of mixers) m.update(dt);
+```
+
+Past a few dozen skinned characters, bake animations to textures and instance them (vertex animation
+textures), or use impostors for distant crowds.
+
+## References
+
+- [three.js docs](https://threejs.org/docs/): `GLTFLoader`, `AnimationMixer`, `AnimationAction`, `KeyframeTrack`, `Raycaster`, `LOD`
+- Manual: [Loading 3D models](https://threejs.org/manual/#loading-3d-models), [Animation system](https://threejs.org/manual/#animation-system), [Picking](https://threejs.org/manual/#picking), [Optimizing lots of objects](https://threejs.org/manual/#optimize-lots-of-objects)
+- Examples: [skinning blending](https://threejs.org/examples/#webgl_animation_skinning_blending), [keyframes + Draco](https://threejs.org/examples/#webgl_animation_keyframes), [interactive cubes](https://threejs.org/examples/#webgl_interactive_cubes), [LOD](https://threejs.org/examples/#webgl_lod), [BVH raycasting](https://threejs.org/examples/#webgl_raycaster_bvh)
+- [glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html) and [Khronos glTF extensions](https://github.com/KhronosGroup/glTF/tree/main/extensions)
+- [glTF Transform](https://gltf-transform.dev/) (CLI and library), [gltfpack / meshoptimizer](https://meshoptimizer.org/gltf/)
+- [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh), [Rapier](https://rapier.rs/), [cannon-es](https://github.com/pmndrs/cannon-es)
+- [Discover three.js](https://discoverthreejs.com/): loading models and the animation system chapters

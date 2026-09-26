@@ -1,0 +1,626 @@
+---
+title: Geometry & materials
+date: 2026-09-26
+order: 2
+---
+
+What a mesh is made of in Three.js r18x: `BufferGeometry` and its attributes, the built-in shapes, custom
+and merged geometry, instancing with `InstancedMesh` and `BatchedMesh`, the material catalogue and its
+shared properties, PBR maps, textures and colour spaces, points, lines and sprites. Setup is in
+[Fundamentals](/typescript/three-js/fundamentals/); lighting in [Lights & shadows](/typescript/three-js/lights-shadows/);
+custom shaders in [Shaders & post-processing](/typescript/three-js/shaders-postprocessing/).
+
+## Mesh anatomy
+
+```text
+ Mesh (Object3D: transform, layers, castShadow…)
+ ├── geometry: BufferGeometry
+ │     attributes: position (vec3), normal (vec3), uv (vec2),
+ │                 color, tangent, uv1…uv3, skinIndex/Weight
+ │     index?:     Uint16/Uint32 BufferAttribute
+ │     groups:     [{ start, count, materialIndex }]
+ │     boundingBox / boundingSphere (culling, raycasting)
+ └── material: Material | Material[]  (one per group)
+       → compiled to a shader program, cached by its settings
+```
+
+One `Mesh` = at least one draw call. Share geometries and materials between meshes freely; the renderer
+uploads each once.
+
+## BufferGeometry & attributes
+
+| Attribute | `itemSize` | Used for |
+| :-------- | :--------- | :------- |
+| `position` | 3 | required; local-space vertex positions |
+| `normal` | 3 | lighting; missing = black lit materials |
+| `uv` | 2 | texture coordinates (channel 0) |
+| `uv1`, `uv2`, `uv3` | 2 | extra UV sets; pick with `texture.channel` |
+| `color` | 3 or 4 | per-vertex colour; needs `vertexColors: true` |
+| `tangent` | 4 | normal maps without derivatives; `computeTangents()` |
+| `skinIndex`, `skinWeight` | 4 | skinning (from glTF) |
+
+| Call | Notes |
+| :--- | :---- |
+| `setAttribute(name, attr)` / `getAttribute(name)` | typed as `BufferAttribute \| InterleavedBufferAttribute` |
+| `setIndex(array \| attr)` | share vertices between triangles |
+| `computeVertexNormals()` | averages face normals (smooth); non-indexed = flat |
+| `computeBoundingBox()` / `computeBoundingSphere()` | after moving vertices on the CPU |
+| `computeTangents()` | needs index, position, normal, uv |
+| `center()`, `translate()`, `rotateX()`, `scale()` | bake a transform into the vertices |
+| `applyMatrix4(m)` | bake any matrix (e.g. `mesh.matrixWorld` before merging) |
+| `setFromPoints(points)` | quick lines / point clouds from `Vector3[]` |
+| `toNonIndexed()` | unshare vertices (for flat normals, per-face data) |
+| `addGroup(start, count, matIndex)` | multi-material ranges |
+| `setDrawRange(start, count)` | draw only part (grow a line over time) |
+| `dispose()` | free GPU buffers |
+
+```ts
+import {
+  BufferAttribute, BufferGeometry, DynamicDrawUsage,
+} from "three";
+
+const geo = new BufferGeometry();
+const pos = new BufferAttribute(
+  new Float32Array(1000 * 3), 3,
+);
+pos.setUsage(DynamicDrawUsage); // updated often
+geo.setAttribute("position", pos);
+
+// later: change a vertex, then flag the upload
+pos.setXYZ(42, 1, 2, 3);
+pos.addUpdateRange(42 * 3, 3); // upload only this slice
+pos.needsUpdate = true;
+geo.computeBoundingSphere();   // keep culling correct
+```
+
+`Float32BufferAttribute`, `Uint16BufferAttribute` etc. are shorthands that accept plain arrays. Attribute
+arrays cannot grow: allocate the maximum, then use `setDrawRange`.
+
+## Built-in geometries
+
+| Class | Constructor (defaults) |
+| :---- | :--------------------- |
+| `BoxGeometry` | `(w=1, h=1, d=1, wSeg=1, hSeg=1, dSeg=1)` |
+| `PlaneGeometry` | `(w=1, h=1, wSeg=1, hSeg=1)`: in XY, faces `+Z` |
+| `SphereGeometry` | `(r=1, wSeg=32, hSeg=16, phiStart, phiLen, thetaStart, thetaLen)` |
+| `CylinderGeometry` | `(rTop=1, rBottom=1, h=1, radialSeg=32, hSeg=1, openEnded=false, …)` |
+| `ConeGeometry` | `(r=1, h=1, radialSeg=32, hSeg=1, openEnded=false, …)` |
+| `CapsuleGeometry` | `(r=1, height=1, capSeg=4, radialSeg=8, hSeg=1)`: `height` = middle section |
+| `CircleGeometry` | `(r=1, segments=32, thetaStart, thetaLen)` |
+| `RingGeometry` | `(inner=0.5, outer=1, thetaSeg=32, phiSeg=1, …)` |
+| `TorusGeometry` | `(r=1, tube=0.4, radialSeg=12, tubularSeg=48, arc=2π, …)` |
+| `TorusKnotGeometry` | `(r=1, tube=0.4, tubularSeg=64, radialSeg=8, p=2, q=3)` |
+| `IcosahedronGeometry`, `OctahedronGeometry`, `DodecahedronGeometry`, `TetrahedronGeometry` | `(r=1, detail=0)`; raise `detail` for a geosphere |
+| `PolyhedronGeometry` | `(vertices, indices, r, detail)` |
+| `LatheGeometry` | `(points: Vector2[], segments=12, …)`: revolve a profile |
+| `ShapeGeometry` | `(shapes, curveSegments=12)`: flat 2D shape |
+| `ExtrudeGeometry` | `(shapes, { depth, bevelEnabled, steps, extrudePath })` |
+| `TubeGeometry` | `(path: Curve, tubularSeg=64, r=1, radialSeg=8, closed=false)` |
+| `EdgesGeometry` | `(geometry, thresholdAngle=1)`: hard edges for `LineSegments` |
+| `WireframeGeometry` | `(geometry)`: every edge |
+
+Addons add `RoundedBoxGeometry`, `TextGeometry` (with `FontLoader`), `ConvexGeometry`, `DecalGeometry`,
+`ParametricGeometry` under `three/addons/geometries/`.
+
+```ts
+import { Shape, ExtrudeGeometry } from "three";
+
+const s = new Shape();
+s.moveTo(0, 0).lineTo(2, 0).lineTo(2, 1)
+  .quadraticCurveTo(1, 2, 0, 1).closePath();
+const hole = new Shape()
+  .absarc(1, 0.8, 0.25, 0, Math.PI * 2);
+s.holes.push(hole);
+const geo = new ExtrudeGeometry(s, {
+  depth: 0.3, bevelEnabled: true, bevelSize: 0.03,
+});
+geo.center();
+```
+
+## Custom geometry
+
+```ts
+// A quad from 4 shared vertices and 2 indexed triangles
+const geo = new BufferGeometry();
+geo.setAttribute("position", new Float32BufferAttribute([
+  -1, -1, 0,   1, -1, 0,   1, 1, 0,   -1, 1, 0,
+], 3));
+geo.setAttribute("uv", new Float32BufferAttribute([
+  0, 0,   1, 0,   1, 1,   0, 1,
+], 2));
+geo.setIndex([0, 1, 2,   0, 2, 3]); // CCW = front
+geo.computeVertexNormals();          // +Z here
+```
+
+| Normals | How |
+| :------ | :-- |
+| Smooth | shared (indexed) vertices, then `computeVertexNormals()` |
+| Flat, per face | `toNonIndexed()` then `computeVertexNormals()`, or `material.flatShading = true` |
+| Crease angle | `toCreasedNormals(geo, angle)` from `BufferGeometryUtils` |
+| Welding duplicates | `mergeVertices(geo, tolerance)` then recompute normals |
+
+Winding is counter-clockwise for the front face. Getting it backwards makes the triangle invisible
+under default `side: FrontSide`.
+
+## Merging geometry
+
+Many static meshes with the same material → merge into one geometry, one draw call.
+
+```ts
+import { mergeGeometries } from
+  "three/addons/utils/BufferGeometryUtils.js";
+
+const parts: BufferGeometry[] = [];
+for (const m of rocks) {
+  m.updateWorldMatrix(true, false);
+  parts.push(m.geometry.clone().applyMatrix4(m.matrixWorld));
+}
+const merged = mergeGeometries(parts, false);
+// null if attribute sets or index usage differ
+```
+
+| `BufferGeometryUtils` | Does |
+| :-------------------- | :--- |
+| `mergeGeometries(geos, useGroups)` | concatenate; `useGroups: true` keeps a group per input for multi-material |
+| `mergeVertices(geo, tol)` | weld identical vertices, add an index |
+| `mergeAttributes(attrs)` | concatenate attributes |
+| `toCreasedNormals(geo, angle)` | hard edges above an angle |
+| `computeMikkTSpaceTangents` | glTF-exact tangents (needs the mikktspace wasm) |
+| `estimateBytesUsed(geo)` | memory estimate |
+| `interleaveAttributes`, `deinterleaveGeometry` | layout changes |
+
+Merged objects cannot be moved, hidden or picked individually. When they must be, instance instead.
+
+## InstancedMesh
+
+One geometry + one material drawn `count` times with per-instance matrices (and optional colours): one
+draw call for thousands of objects.
+
+```ts
+import {
+  Color, DynamicDrawUsage, InstancedMesh, Matrix4,
+  Object3D,
+} from "three";
+
+const COUNT = 5_000;
+const trees = new InstancedMesh(geo, mat, COUNT);
+trees.instanceMatrix.setUsage(DynamicDrawUsage);
+
+const dummy = new Object3D(); // reusable PRS helper
+const c = new Color();
+for (let i = 0; i < COUNT; i++) {
+  dummy.position.set(rand(-50, 50), 0, rand(-50, 50));
+  dummy.rotation.y = Math.random() * Math.PI * 2;
+  dummy.scale.setScalar(rand(0.7, 1.3));
+  dummy.updateMatrix();
+  trees.setMatrixAt(i, dummy.matrix);
+  trees.setColorAt(i, c.setHSL(0.3, 0.5, rand(.3, .6)));
+}
+trees.instanceMatrix.needsUpdate = true;
+trees.instanceColor!.needsUpdate = true;
+trees.computeBoundingSphere(); // culling + raycasting
+scene.add(trees);
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `setMatrixAt(i, m)` / `getMatrixAt(i, out)` | then `instanceMatrix.needsUpdate = true` |
+| `setColorAt(i, c)` / `getColorAt(i, out)` | creates `instanceColor` on first call; call it **before the first render** |
+| `count` | draw only the first `count` (≤ the constructor max) |
+| `computeBoundingSphere()` | the default sphere covers the geometry at the origin; instances outside get culled |
+| `frustumCulled` | whole-mesh culling; set `false` if bounds are unknown |
+| `setMorphAt(i, mesh)` | per-instance morph weights |
+| raycast hit `instanceId` | which instance was picked |
+| `dispose()` | frees instance buffers |
+
+Hiding one instance: scale it to zero, or swap it with the last and decrement `count`.
+
+## BatchedMesh
+
+Many **different** geometries sharing one material, drawn with multi-draw (`WEBGL_multi_draw`) where
+available. Per-instance matrices, colours and visibility; per-instance frustum culling and sorting.
+
+```ts
+import { BatchedMesh, Matrix4 } from "three";
+
+// (maxInstances, maxVertices, maxIndices, material)
+const batch = new BatchedMesh(1000, 50_000, 100_000, mat);
+const boxId = batch.addGeometry(boxGeo);
+const ballId = batch.addGeometry(sphereGeo);
+
+const m = new Matrix4();
+for (let i = 0; i < 500; i++) {
+  const inst = batch.addInstance(i % 2 ? boxId : ballId);
+  m.makeTranslation(i % 25, 0, Math.floor(i / 25));
+  batch.setMatrixAt(inst, m);
+}
+scene.add(batch);
+```
+
+| `BatchedMesh` | Notes |
+| :------------ | :---- |
+| `addGeometry(geo, reservedVerts?, reservedIdx?)` | returns a geometry id; all geometries need the same attributes |
+| `addInstance(geometryId)` | returns an instance id |
+| `setMatrixAt`, `setColorAt`, `setVisibleAt` | per instance, no `needsUpdate` needed |
+| `setGeometryAt(id, geo)`, `deleteGeometry`, `deleteInstance` | edit the batch |
+| `optimize()` | compact after deletions |
+| `perObjectFrustumCulled`, `sortObjects` | both `true` by default |
+| raycast hit `batchId` | the instance id |
+
+Pick: `InstancedMesh` for many copies of one mesh, `BatchedMesh` for many distinct meshes with one
+material, merging for static geometry that never changes.
+
+## Materials
+
+| Material | Lighting model | Relative cost | Use for |
+| :------- | :------------- | :------------ | :------ |
+| `MeshBasicMaterial` | none (unlit) | lowest | UI, baked lighting, flat colour, video |
+| `MeshLambertMaterial` | diffuse only (per-pixel in current releases) | low | matte things, mobile |
+| `MeshPhongMaterial` | Blinn-Phong, `shininess`, `specular` | low–mid | glossy look without PBR |
+| `MeshToonMaterial` | stepped diffuse via `gradientMap` | low–mid | cel shading |
+| `MeshStandardMaterial` | PBR metal/roughness | mid | **default choice**; what glTF uses |
+| `MeshPhysicalMaterial` | PBR + clearcoat, transmission, sheen, iridescence, anisotropy, dispersion | high | car paint, glass, fabric |
+| `MeshMatcapMaterial` | colour looked up from a matcap by normal | low | sculpt previews; ignores lights |
+| `MeshNormalMaterial` | view-space normal → RGB | low | debugging |
+| `MeshDepthMaterial` | depth | low | shadow and depth passes |
+| `MeshDistanceMaterial` | distance to a point | low | point-light shadow internals |
+| `ShadowMaterial` | transparent except where shadowed | low | shadow catcher on a ground plane |
+| `PointsMaterial` | unlit | low | `Points` clouds |
+| `LineBasicMaterial`, `LineDashedMaterial` | unlit | low | `Line`, `LineSegments` |
+| `SpriteMaterial` | unlit | low | `Sprite` billboards |
+| `ShaderMaterial`, `RawShaderMaterial` | yours | yours | custom GLSL |
+
+`MeshPhysicalMaterial` with `transmission > 0` renders the opaque scene an extra time into a texture;
+one glass object costs a whole extra pass. With `WebGPURenderer` use the `*NodeMaterial` twins
+(`MeshStandardNodeMaterial` etc.).
+
+## Common material properties
+
+| Property | Default | Notes |
+| :------- | :------ | :---- |
+| `color` | white | `ColorRepresentation`: `0xff0000`, `"#f00"`, `"red"` (sRGB) |
+| `side` | `FrontSide` | `BackSide`, `DoubleSide` (planes, leaves, open meshes) |
+| `transparent` | `false` | enables blending and back-to-front sorting per object |
+| `opacity` | `1` | only has effect with `transparent: true` |
+| `alphaTest` | `0` | discard below threshold: cheap cut-outs, no sorting |
+| `alphaHash` | `false` | dithered transparency; order independent, noisy |
+| `alphaToCoverage` | `false` | MSAA-smoothed cut-outs (needs `antialias`) |
+| `depthWrite` | `true` | `false` for particles and glows so they don't occlude each other |
+| `depthTest` | `true` | `false` to draw on top (gizmos, with `renderOrder`) |
+| `blending` | `NormalBlending` | `AdditiveBlending` for glow, fire, sparks |
+| `wireframe` | `false` | debug; 1px lines |
+| `flatShading` | `false` | faceted look from derivatives |
+| `vertexColors` | `false` | multiply by the `color` attribute |
+| `fog` | `true` | respond to `scene.fog` |
+| `toneMapped` | `true` | `false` for UI or colours that must match exactly |
+| `polygonOffset` + `polygonOffsetFactor/Units` | off | decals, coplanar overlays |
+| `visible` | `true` | hides every mesh using this material |
+| `clippingPlanes` | `null` | needs `renderer.localClippingEnabled = true` |
+| `needsUpdate` | | set after changing something that alters the program (adding a map, `flatShading`, `vertexColors`) |
+
+Transparency rules of thumb: sorting is per object, not per triangle, so intersecting transparent meshes
+will glitch. Prefer `alphaTest` for foliage and fences, `depthWrite: false` + additive blending for
+particles, and `renderOrder` when you know the order.
+
+## PBR maps
+
+| Map | Colour space | Channel read | Notes |
+| :-- | :----------- | :----------- | :---- |
+| `map` | `SRGBColorSpace` | RGB(A) | base colour × `color` |
+| `emissiveMap` | `SRGBColorSpace` | RGB | × `emissive` × `emissiveIntensity`; set `emissive` non-black |
+| `normalMap` | data (none) | RGB | tangent space; `normalScale` (`Vector2`; flip Y with `-1` for DirectX maps) |
+| `roughnessMap` | data | **G** | × `roughness` |
+| `metalnessMap` | data | **B** | × `metalness` |
+| `aoMap` | data | **R** | × `aoMapIntensity`; indirect light only |
+| `bumpMap` | data | R | cheap height-based normals; `bumpScale` |
+| `displacementMap` | data | R | moves vertices; needs dense geometry |
+| `alphaMap` | data | **G** | greyscale opacity; set `transparent` or `alphaTest` |
+| `lightMap` | data (linear) | RGB | baked light; `lightMapIntensity` |
+| `envMap` | per texture | | overrides `scene.environment` for this material |
+
+Roughness, metalness and AO fit in one "ORM" texture (R=AO, G=roughness, B=metalness): assign the same
+texture to `aoMap`, `roughnessMap` and `metalnessMap`. Since r151 `aoMap` and `lightMap` read `uv` by
+default; the old "needs `uv2`" advice is obsolete (use `texture.channel = 1` to pick `uv1`).
+
+```ts
+const tl = new TextureLoader();
+const [albedo, orm, normal] = await Promise.all([
+  tl.loadAsync("/crate/albedo.jpg"),
+  tl.loadAsync("/crate/orm.jpg"),
+  tl.loadAsync("/crate/normal.png"),
+]);
+albedo.colorSpace = SRGBColorSpace; // only colour maps
+const mat = new MeshStandardMaterial({
+  map: albedo,
+  normalMap: normal,
+  aoMap: orm, roughnessMap: orm, metalnessMap: orm,
+  roughness: 1, metalness: 1, // multipliers: keep 1
+});
+```
+
+## Textures
+
+```ts
+const tex = await new TextureLoader().loadAsync(url);
+tex.colorSpace = SRGBColorSpace;
+tex.wrapS = tex.wrapT = RepeatWrapping;
+tex.repeat.set(4, 4);          // tile 4×4
+tex.anisotropy =               // sharp at grazing angles
+  renderer.capabilities.getMaxAnisotropy();
+```
+
+| Property | Default | Notes |
+| :------- | :------ | :---- |
+| `colorSpace` | `NoColorSpace` | `SRGBColorSpace` for colour, leave for data |
+| `wrapS` / `wrapT` | `ClampToEdgeWrapping` | `RepeatWrapping`, `MirroredRepeatWrapping` |
+| `repeat`, `offset`, `rotation`, `center` | 1, 0, 0, 0 | UV transform; repeat > 1 needs `RepeatWrapping` |
+| `magFilter` | `LinearFilter` | `NearestFilter` for pixel art |
+| `minFilter` | `LinearMipmapLinearFilter` | `NearestFilter` or `LinearFilter` disable mipmaps |
+| `generateMipmaps` | `true` | `false` for render targets and data you sample exactly |
+| `anisotropy` | `1` | up to `getMaxAnisotropy()` (often 16) |
+| `flipY` | `true` | `TextureLoader` images flipped for GL; glTF textures use `false` |
+| `channel` | `0` | which UV set: 0 = `uv`, 1 = `uv1` … |
+| `needsUpdate` | | set after changing `image` or data |
+
+| Source | Class | Notes |
+| :----- | :---- | :---- |
+| Image URL | `TextureLoader` | `loadAsync(url)`; decodes on the main thread |
+| Off-thread decode | `ImageBitmapLoader` | returns `ImageBitmap`; wrap in `Texture`; `flipY` is ignored |
+| `<canvas>` | `CanvasTexture` | set `needsUpdate` after redrawing |
+| `<video>` | `VideoTexture` | updates each frame; `colorSpace = SRGBColorSpace` |
+| Typed array | `DataTexture(data, w, h, format, type)` | noise, LUTs, heightmaps; `needsUpdate = true` |
+| 3D / array | `Data3DTexture`, `DataArrayTexture` | volumes, texture arrays |
+| Six images | `CubeTextureLoader` | skybox; order px, nx, py, ny, pz, nz |
+| GPU compressed | `KTX2Loader` (addon) | Basis Universal → BCn / ETC / ASTC at runtime |
+| HDR | `HDRLoader`, `EXRLoader`, `UltraHDRLoader` | see [environment maps](/typescript/three-js/lights-shadows/#environment--ibl) |
+
+**Memory.** An uncompressed RGBA texture costs `w × h × 4` bytes, plus a third for mipmaps: a 4096² texture
+is ~85 MB of VRAM regardless of the JPEG's file size. KTX2 (UASTC or ETC1S) stays compressed on the GPU
+(4–8× smaller). Use 2048² or less unless the texture fills the screen; WebGL2 handles non-power-of-two
+sizes including mipmaps.
+
+```ts
+import { KTX2Loader } from
+  "three/addons/loaders/KTX2Loader.js";
+
+const ktx2 = new KTX2Loader()
+  // serve a copy of three/examples/jsm/libs/basis/
+  .setTranscoderPath("/basis/")
+  .detectSupport(renderer);
+const tex = await ktx2.loadAsync("/textures/wood.ktx2");
+tex.colorSpace = SRGBColorSpace;
+```
+
+Encode with the KTX-Software `toktx` / `ktx create` CLIs or `gltf-transform` (see
+[Models](/typescript/three-js/models-animation/#optimising-assets)).
+
+## Points
+
+```ts
+const N = 20_000;
+const pos = new Float32Array(N * 3);
+for (let i = 0; i < pos.length; i++) {
+  pos[i] = (Math.random() - 0.5) * 20;
+}
+const geo = new BufferGeometry();
+geo.setAttribute("position", new BufferAttribute(pos, 3));
+
+const stars = new Points(geo, new PointsMaterial({
+  size: 0.05,              // world units when attenuated
+  sizeAttenuation: true,   // smaller with distance
+  color: "#cfe3ff",
+  map: dotTexture,         // round sprite, not squares
+  alphaTest: 0.5, // or transparent + depthWrite: false
+}));
+scene.add(stars);
+```
+
+Points are square screen-aligned quads; give them a circular `map` or a shader. Max point size is
+driver-limited (often 64–1024 px). Raycasting uses `raycaster.params.Points.threshold`.
+
+## Lines
+
+| Object | Draws |
+| :----- | :---- |
+| `Line` | a connected strip through the vertices |
+| `LineLoop` | strip + closing segment |
+| `LineSegments` | pairs of vertices = separate segments (`EdgesGeometry`, grids) |
+| `Line2`, `LineSegments2` (addons) | screen-space thick lines via instanced quads |
+
+```ts
+const pts = curve.getPoints(100); // e.g. CatmullRomCurve3
+const line = new Line(
+  new BufferGeometry().setFromPoints(pts),
+  new LineDashedMaterial({ dashSize: 0.2, gapSize: 0.1 }),
+);
+line.computeLineDistances(); // required for dashes
+```
+
+`linewidth` on `LineBasicMaterial` is ignored by practically every WebGL implementation (always 1px).
+For real widths use the addon:
+
+```ts
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from
+  "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from
+  "three/addons/lines/LineMaterial.js";
+
+const g = new LineGeometry().setFromPoints(pts);
+const fat = new Line2(g, new LineMaterial({
+  color: 0xffaa00,
+  linewidth: 4,        // pixels (worldUnits: false)
+}));
+fat.computeLineDistances();
+```
+
+## Sprites
+
+A `Sprite` is a quad that always faces the camera: labels, markers, particles at small counts.
+
+```ts
+const label = new Sprite(new SpriteMaterial({
+  map: labelTexture,        // e.g. a CanvasTexture
+  sizeAttenuation: true,    // false: constant screen size
+  depthTest: false,         // stay on top
+}));
+label.scale.set(2, 0.5, 1); // world size; match aspect
+label.center.set(0.5, 0);   // anchor: bottom middle
+label.position.set(0, 2, 0);
+label.renderOrder = 10;
+```
+
+For thousands of billboards use `Points` or an `InstancedMesh` of planes with a shader; for crisp text
+use `troika-three-text` or HTML overlays (`CSS2DRenderer` addon).
+
+## Recipes
+
+### Instanced forest with colours
+Use for any crowd of identical meshes (trees, rocks, bullets): one draw call, pickable per instance.
+
+```ts
+import {
+  Color, ConeGeometry, InstancedMesh,
+  MeshStandardMaterial, Object3D,
+} from "three";
+
+export function forest(count: number, size = 80) {
+  const geo = new ConeGeometry(0.6, 2, 8).translate(0, 1, 0);
+  const mat = new MeshStandardMaterial({ roughness: 0.9 });
+  const mesh = new InstancedMesh(geo, mat, count);
+  const d = new Object3D();
+  const c = new Color();
+  for (let i = 0; i < count; i++) {
+    d.position.set(
+      (Math.random() - 0.5) * size, 0,
+      (Math.random() - 0.5) * size,
+    );
+    d.scale.setScalar(0.6 + Math.random() * 0.8);
+    d.updateMatrix();
+    mesh.setMatrixAt(i, d.matrix);
+    mesh.setColorAt(i, c.setHSL(0.3, 0.45,
+      0.25 + Math.random() * 0.2));
+  }
+  mesh.computeBoundingSphere();
+  mesh.castShadow = true;
+  return mesh;
+}
+```
+
+### Merge static scenery
+Use for level geometry that never moves: hundreds of meshes become one per material.
+
+```ts
+import { Mesh } from "three";
+import type { BufferGeometry, Material, Object3D }
+  from "three";
+import { mergeGeometries } from
+  "three/addons/utils/BufferGeometryUtils.js";
+
+export function mergeByMaterial(root: Object3D): Mesh[] {
+  const buckets = new Map<Material, BufferGeometry[]>();
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh || Array.isArray(m.material)) return;
+    const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+    const list = buckets.get(m.material) ?? [];
+    list.push(g);
+    buckets.set(m.material, list);
+  });
+  return [...buckets].flatMap(([mat, geos]) => {
+    const merged = mergeGeometries(geos);
+    geos.forEach((g) => g.dispose());
+    return merged ? [new Mesh(merged, mat)] : [];
+  });
+}
+```
+
+### Typed PBR texture set
+Use to load a material from a folder of maps with the right colour spaces and sampling in one call.
+
+```ts
+import {
+  MeshStandardMaterial, RepeatWrapping, SRGBColorSpace,
+  TextureLoader,
+} from "three";
+import type { Texture, WebGLRenderer } from "three";
+
+export async function pbr(
+  dir: string, renderer: WebGLRenderer, repeat = 1,
+): Promise<MeshStandardMaterial> {
+  const tl = new TextureLoader();
+  const load = (f: string) => tl.loadAsync(`${dir}/${f}`);
+  const [map, normalMap, orm] = await Promise.all([
+    load("albedo.jpg"), load("normal.png"), load("orm.jpg"),
+  ]);
+  map.colorSpace = SRGBColorSpace;
+  const aniso = renderer.capabilities.getMaxAnisotropy();
+  for (const t of [map, normalMap, orm] as Texture[]) {
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+    t.anisotropy = aniso;
+  }
+  return new MeshStandardMaterial({
+    map, normalMap,
+    aoMap: orm, roughnessMap: orm, metalnessMap: orm,
+  });
+}
+```
+
+### Text label sprite
+Use for name tags and markers that should face the camera; draws text with Canvas 2D.
+
+```ts
+import {
+  CanvasTexture, SRGBColorSpace, Sprite, SpriteMaterial,
+} from "three";
+
+export function textSprite(text: string, px = 64): Sprite {
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d")!;
+  ctx.font = `600 ${px}px system-ui`;
+  c.width = Math.ceil(ctx.measureText(text).width) + 16;
+  c.height = px * 1.4;
+  ctx.font = `600 ${px}px system-ui`; // reset by resize
+  ctx.fillStyle = "white";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 8, c.height / 2);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  const s = new Sprite(new SpriteMaterial({
+    map: tex, transparent: true, toneMapped: false,
+  }));
+  s.scale.set(c.width / c.height, 1, 1).multiplyScalar(0.3);
+  return s;
+}
+```
+
+### Animate vertices on the CPU
+Use for small procedural surfaces (flags, water tiles); for large ones move the work to a shader.
+
+```ts
+const geo = new PlaneGeometry(4, 4, 64, 64);
+const pos = geo.attributes.position as BufferAttribute;
+const base = Float32Array.from(pos.array);
+
+function wave(t: number): void {
+  for (let i = 0; i < pos.count; i++) {
+    const x = base[i * 3];
+    const y = base[i * 3 + 1];
+    pos.setZ(i, Math.sin(x * 2 + t) * Math.cos(y * 2 + t)
+      * 0.15);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals(); // lighting follows shape
+}
+```
+
+## References
+
+- [three.js docs](https://threejs.org/docs/): `BufferGeometry`, `InstancedMesh`, `BatchedMesh`, every material and texture class
+- Manual: [Custom BufferGeometry](https://threejs.org/manual/#custom-buffergeometry), [Textures](https://threejs.org/manual/#textures), [Materials](https://threejs.org/manual/#materials), [Primitives](https://threejs.org/manual/#primitives), [Transparency](https://threejs.org/manual/#transparency)
+- Examples: [instancing performance](https://threejs.org/examples/#webgl_instancing_performance), [BatchedMesh](https://threejs.org/examples/#webgl_mesh_batch), [fat lines](https://threejs.org/examples/#webgl_lines_fat), [physical material](https://threejs.org/examples/#webgl_materials_physical_transmission)
+- [KTX-Software](https://github.com/KhronosGroup/KTX-Software): `ktx` / `toktx` encoders for KTX2 textures
+- [Discover three.js](https://discoverthreejs.com/): chapters on geometry, materials and textures
+- [troika-three-text](https://github.com/protectwise/troika/tree/main/packages/troika-three-text): SDF text meshes

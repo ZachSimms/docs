@@ -1,0 +1,670 @@
+---
+title: Fundamentals
+date: 2026-09-26
+order: 1
+---
+
+Three.js (r18x, ES modules, `@types/three`) from the ground up: installing and importing, the scene /
+camera / renderer triad, the render loop, sizing and pixel ratio, the scene graph and transforms, cameras,
+controls, colour management and freeing GPU memory. Next: [Geometry & materials](/typescript/three-js/geometry-materials/),
+[Lights & shadows](/typescript/three-js/lights-shadows/); the raw API underneath is [WebGL](/typescript/web-apis/webgl/).
+
+## Install & imports
+
+```bash
+npm i three
+npm i -D @types/three   # keep its minor = three's minor
+```
+
+| Entry point | What it gives you |
+| :---------- | :---------------- |
+| `three` | core: `Scene`, `Mesh`, `WebGLRenderer`, maths, loaders base |
+| `three/addons/*` | examples: controls, loaders, post-processing, utils (maps to `examples/jsm/*`) |
+| `three/addons` | one barrel with every addon (convenient, heavier for dev servers) |
+| `three/webgpu` | core **plus** `WebGPURenderer`, node materials, `RenderPipeline` |
+| `three/tsl` | Three Shading Language functions (`Fn`, `uniform`, `uv`, …) |
+
+```ts
+import * as THREE from "three";
+import { Mesh, Scene, WebGLRenderer } from "three";
+import { OrbitControls } from
+  "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from
+  "three/addons/loaders/GLTFLoader.js";
+```
+
+- Keep the `.js` extension on addon paths: the package `exports` maps files, not bare names.
+- With `WebGPURenderer`, import from `three/webgpu` (it re-exports the core). Since r171 both entry points
+  share one `three.core.js`, so addons that import `three` still see the same classes.
+- Two **different copies** of three (two versions in `node_modules`, or npm plus a CDN) do break things:
+  `instanceof` fails, caches split, and three logs "Multiple instances of Three.js being imported".
+- Version tags: npm `0.186.x` = release `r186`. There is no semver: any minor can break; read the
+  [migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide) before bumping.
+
+No bundler: an import map, with the version pinned in both URLs.
+
+```text
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="./main.js"></script>
+```
+
+## TypeScript setup
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+| Typing tip | Why |
+| :--------- | :-- |
+| `moduleResolution: "bundler"` (or `"nodenext"`) | needed to resolve `three/addons/*` through `exports` |
+| `@types/three` version = three's version | the typings track releases one-for-one |
+| `Mesh<BoxGeometry, MeshStandardMaterial>` | generics narrow `.geometry` and `.material` |
+| `obj.isMesh` style flags | type guards that survive duplicate copies of three; `instanceof` does not |
+| `import type { GLTF } from ".../GLTFLoader.js"` | result type of `loadAsync` |
+| `userData` is `Record<string, any>` | wrap it in your own typed accessor |
+| `ColorRepresentation` | `number \| string \| Color` for any colour parameter |
+
+```ts
+import { BoxGeometry, Mesh, MeshStandardMaterial }
+  from "three";
+import type { Object3D } from "three";
+
+type Box = Mesh<BoxGeometry, MeshStandardMaterial>;
+const box: Box = new Mesh(
+  new BoxGeometry(1, 1, 1),
+  new MeshStandardMaterial({ color: "tomato" }),
+);
+box.material.roughness = 0.4; // typed, no cast
+
+function isMesh(o: Object3D): o is Mesh {
+  return (o as Mesh).isMesh === true;
+}
+```
+
+## Scene, camera, renderer
+
+```text
+ Scene (root Object3D)
+ ├── Mesh  = BufferGeometry + Material
+ ├── Group ── Mesh, Mesh …
+ ├── Light(s)
+ └── (camera may be a child too)
+          │
+ renderer.render(scene, camera)
+          │  per frame: update world matrices → frustum cull
+          │  → sort opaque front-to-back, transparent back-to-front
+          │  → compile/cache programs → draw calls
+          ▼
+ <canvas> drawing buffer  (tone mapping + sRGB on output)
+```
+
+```ts
+const canvas = document.querySelector<HTMLCanvasElement>(
+  "#app",
+)!;
+const renderer = new WebGLRenderer({
+  canvas,
+  antialias: true,                // MSAA on the canvas
+  powerPreference: "high-performance",
+});
+const scene = new Scene();
+scene.background = new Color(0x202025);
+
+const camera = new PerspectiveCamera(
+  50,                              // vertical fov, degrees
+  canvas.clientWidth / canvas.clientHeight,
+  0.1,                             // near
+  100,                             // far
+);
+camera.position.set(0, 1.5, 4);
+camera.lookAt(0, 0, 0);
+```
+
+| `WebGLRenderer` option | Default | Notes |
+| :--------------------- | :------ | :---- |
+| `canvas` | new canvas | append `renderer.domElement` if you let it create one |
+| `antialias` | `false` | MSAA on the default framebuffer only |
+| `alpha` | `false` | transparent canvas; pair with `setClearColor(c, 0)` |
+| `powerPreference` | `"default"` | `"high-performance"` / `"low-power"` |
+| `preserveDrawingBuffer` | `false` | needed for late `toDataURL()`; slower |
+| `logarithmicDepthBuffer` | `false` | huge scale ranges; disables early-z |
+| `reversedDepthBuffer` | `false` | better precision, needs `EXT_clip_control` (recent releases) |
+| `stencil` | `false` | enable for stencil tricks |
+
+WebGL1 support was removed (r163): `WebGLRenderer` needs WebGL2. The WebGPU path is
+[`WebGPURenderer`](/typescript/three-js/shaders-postprocessing/#webgpurenderer), which falls back to WebGL2.
+
+## Render loop
+
+`renderer.setAnimationLoop(cb)` is `requestAnimationFrame` managed by three: it also drives WebXR sessions
+(plain rAF does not) and is the documented loop for `WebGPURenderer`. Pass `null` to stop.
+
+```ts
+import { Timer } from "three"; // core since r179
+
+const timer = new Timer();
+timer.connect(document); // no giant delta after tab switch
+
+renderer.setAnimationLoop((time: DOMHighResTimeStamp) => {
+  timer.update(time);
+  const dt = timer.getDelta();  // s since last update
+  const t = timer.getElapsed(); // s, total
+  cube.rotation.y += dt * 0.8;  // frame-rate independent
+  cube.position.y = Math.sin(t) * 0.25;
+  renderer.render(scene, camera);
+});
+```
+
+| | `Timer` | `Clock` |
+| :- | :------ | :------ |
+| Status | current, in core | **deprecated since r183** (logs a warning) |
+| Reads | `update()` once per frame, then read freely | `getDelta()` mutates; calling twice gives `~0` |
+| Hidden tabs | `connect(document)` clamps via Page Visibility | huge first delta when you come back |
+| Speed | `setTimescale(0.5)` | none |
+
+<Note kind="tip">Scale everything by `dt`: displays run at 60, 120 or 144 Hz. Clamp it (`Math.min(dt, 0.1)`) before feeding physics.</Note>
+
+## Resizing & pixel ratio
+
+Three sizes the drawing buffer as CSS size × pixel ratio. Cap the ratio: a 3× phone at full ratio
+renders 9× the pixels of 1×, and fragment cost scales with pixel count.
+
+```ts
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+function resize(): void {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  renderer.setSize(w, h, false); // false: leave CSS alone
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix(); // required after edits
+}
+```
+
+| Call | Effect |
+| :--- | :----- |
+| `setSize(w, h, updateStyle = true)` | buffer = `w × h × pixelRatio`; also writes CSS size unless `false` |
+| `setPixelRatio(r)` | multiplier used by `setSize`; call it first |
+| `getDrawingBufferSize(v2)` | real pixel size (for render targets, post-processing) |
+| `camera.updateProjectionMatrix()` | after changing `fov`, `aspect`, `near`, `far`, `zoom`, ortho bounds |
+| `renderer.setViewport` / `setScissor` | split screen, picture-in-picture |
+
+Let CSS own layout (`canvas { width: 100%; height: 100%; display: block }`) and pass `false`. The
+`display: block` removes the inline-element gap under the canvas.
+
+## Coordinates & units
+
+| Convention | Value |
+| :--------- | :---- |
+| Handedness | right-handed |
+| Up | `+Y` (`Object3D.DEFAULT_UP`) |
+| Camera looks down | its local `-Z` |
+| Screen | `+X` right, `+Y` up in NDC; DOM `clientY` grows down |
+| Angles | radians everywhere (`MathUtils.degToRad`), except `PerspectiveCamera.fov` in degrees |
+| Units | arbitrary, but **1 unit = 1 metre** matches glTF and physically based lights |
+| Rotation order | Euler `"XYZ"` by default (`rotation.order`) |
+| Face winding | counter-clockwise = front |
+
+Blender exports glTF as `+Y` up metres, so models usually drop in at the right scale. Other tools may
+need `scale.setScalar(0.01)` (cm) or a `-Math.PI / 2` X rotation (Z-up sources).
+
+## Object3D transforms
+
+Everything in the graph (meshes, lights, cameras, groups) is an `Object3D`.
+
+| Property / method | Notes |
+| :---------------- | :---- |
+| `position: Vector3` | local, relative to parent; mutate in place (`position.set`, `.x = `) |
+| `rotation: Euler` | radians; kept in sync with `quaternion` |
+| `quaternion: Quaternion` | prefer for interpolation (`slerp`) and composing rotations |
+| `scale: Vector3` | `scale.setScalar(2)`; negative flips winding |
+| `lookAt(v)` | point local `+Z` (cameras and lights: `-Z`) at a world position |
+| `up: Vector3` | used by `lookAt`; change it before calling |
+| `rotateX/Y/Z(rad)`, `rotateOnAxis` | rotate in local space |
+| `rotateOnWorldAxis(axis, rad)` | rotate about a world axis |
+| `translateX/Y/Z(d)`, `translateOnAxis` | move along local axes |
+| `visible` | `false` skips the object and its children |
+| `renderOrder` | force draw order (mostly for transparency) |
+| `layers` | 32 bit mask; camera and raycaster only see enabled layers |
+| `frustumCulled` | `true`; set `false` for objects moved in a vertex shader |
+| `userData` | your data; copied by `clone()` and serialised by `toJSON()` |
+
+```ts
+// position, rotation, scale are readonly references:
+// mutate them, never reassign
+mesh.position.set(1, 0, -2);
+mesh.rotation.set(0, Math.PI / 4, 0);
+mesh.scale.setScalar(0.5);
+
+// quaternion from axis-angle, then slerp towards it
+const target = new Quaternion().setFromAxisAngle(
+  new Vector3(0, 1, 0), Math.PI,
+);
+mesh.quaternion.slerp(target, 1 - Math.exp(-6 * dt));
+```
+
+## Scene graph
+
+```ts
+const pivot = new Group(); // empty transform node
+scene.add(pivot);
+pivot.add(moon);           // moon now orbits with pivot
+moon.position.x = 3;       // local: 3 from pivot
+
+pivot.remove(moon);        // or moon.removeFromParent()
+other.attach(moon);        // re-parent, keep world pose
+scene.clear();             // remove all children
+
+scene.traverse((o) => { o.castShadow = true; });
+scene.traverseVisible(cb); // skips hidden branches
+obj.traverseAncestors(cb);
+scene.getObjectByName("Wheel_FL");
+scene.getObjectsByProperty("isLight", true);
+```
+
+| Local ↔ world | Call |
+| :------------ | :--- |
+| world position | `obj.getWorldPosition(out)` |
+| world rotation / scale | `getWorldQuaternion(out)`, `getWorldScale(out)` |
+| forward direction | `getWorldDirection(out)` (local `+Z`; cameras: `-Z`) |
+| point to world | `obj.localToWorld(v)` (mutates `v`) |
+| point to local | `obj.worldToLocal(v)` |
+| force update now | `obj.updateMatrixWorld(true)`; `updateWorldMatrix(parents, children)` |
+
+The `getWorld*` helpers update the object's matrices first; `matrixWorld` read directly is only fresh
+after a render or `updateMatrixWorld()`.
+
+## Matrices & updates
+
+| Flag | Default | Meaning |
+| :--- | :------ | :------ |
+| `matrixAutoUpdate` | `true` | rebuild `matrix` from position/quaternion/scale every frame |
+| `matrixWorldAutoUpdate` | `true` | renderer recomputes `matrixWorld` for this subtree |
+| `matrixWorldNeedsUpdate` | `false` | set after writing `matrix` by hand |
+| `Object3D.DEFAULT_MATRIX_AUTO_UPDATE` | `true` | static default for new objects |
+
+```ts
+// static scenery: compute once, then stop per-frame work
+building.updateMatrix();
+building.matrixAutoUpdate = false;
+// after moving it later: building.updateMatrix()
+
+// drive a transform by matrix instead of PRS
+obj.matrixAutoUpdate = false;
+obj.matrix.compose(pos, quat, scl);
+obj.matrixWorldNeedsUpdate = true;
+```
+
+Turning `matrixAutoUpdate` off for thousands of static objects is a cheap CPU win. Beyond that, use
+[instancing](/typescript/three-js/geometry-materials/#instancedmesh).
+
+## Cameras
+
+| | `PerspectiveCamera` | `OrthographicCamera` |
+| :- | :------------------ | :------------------- |
+| Args | `(fov, aspect, near, far)` | `(left, right, top, bottom, near, far)` |
+| Projection | foreshortening | parallel lines stay parallel |
+| Zoom | move it, change `fov`, or `zoom` | `zoom` (no size change with distance) |
+| Resize | update `aspect` | update the four bounds |
+| Use for | 3D scenes | CAD, isometric, 2D, UI overlays, shadows of directional lights |
+
+```ts
+// orthographic: `viewH` world units visible vertically
+const viewH = 10;
+const aspect = canvas.clientWidth / canvas.clientHeight;
+const ortho = new OrthographicCamera(
+  (-viewH * aspect) / 2, (viewH * aspect) / 2,
+  viewH / 2, -viewH / 2,
+  0.1, 100,
+);
+```
+
+**Depth precision.** A perspective depth buffer spends most of its precision near `near`; the far/near
+ratio decides whether distant surfaces fight (z-fighting).
+
+| Fix | Detail |
+| :-- | :----- |
+| Raise `near` | the biggest single win: `0.1` not `0.0001` |
+| Lower `far` | cover the scene, no more |
+| `logarithmicDepthBuffer: true` | planet-to-pebble scales; costs early-z |
+| `reversedDepthBuffer: true` | float depth reversed; best precision where supported |
+| `polygonOffset` on a material | decals and coplanar overlays |
+| `camera.layers` | draw a second pass (e.g. first-person weapon) with its own near/far |
+
+## Controls
+
+All controls are addons and extend the core `Controls` base: `enabled`, `connect(el)`, `disconnect()`,
+`dispose()`, `update(delta?)`.
+
+| Class | Behaviour |
+| :---- | :-------- |
+| `OrbitControls` | orbit a `target`; keeps "up" up; zoom and pan |
+| `MapControls` | orbit variant: left-drag pans, for maps and top-down views |
+| `TrackballControls` | free tumbling, no fixed up; call `update()` every frame |
+| `ArcballControls` | arcball rotation with gizmos |
+| `FlyControls` | 6-DOF flight with keys and mouse |
+| `FirstPersonControls` | look with mouse, move with keys (no pointer lock) |
+| `PointerLockControls` | FPS mouse-look via the Pointer Lock API |
+| `TransformControls` | translate/rotate/scale gizmo; add `controls.getHelper()` to the scene |
+| `DragControls` | drag objects on a plane |
+
+```ts
+import { OrbitControls } from
+  "three/addons/controls/OrbitControls.js";
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 1, 0);
+controls.enableDamping = true;   // inertia
+controls.dampingFactor = 0.08;
+controls.minDistance = 1;
+controls.maxDistance = 20;
+controls.maxPolarAngle = Math.PI / 2; // not below ground
+controls.update();               // apply target now
+
+renderer.setAnimationLoop(() => {
+  controls.update(); // required with damping/autoRotate
+  renderer.render(scene, camera);
+});
+```
+
+Listen to `"change"` for render-on-demand, `"start"` / `"end"` to pause other interaction, and call
+`controls.dispose()` when tearing down (it removes DOM listeners).
+
+## Helpers & debugging
+
+| Helper | Shows |
+| :----- | :---- |
+| `AxesHelper(size)` | X red, Y green, Z blue |
+| `GridHelper(size, divisions)` | ground grid on XZ |
+| `PolarGridHelper` | polar grid |
+| `BoxHelper(obj)` / `Box3Helper(box3)` | bounding box |
+| `ArrowHelper(dir, origin, len)` | a vector |
+| `CameraHelper(cam)` | frustum (also for shadow cameras) |
+| `DirectionalLightHelper`, `PointLightHelper`, `SpotLightHelper`, `HemisphereLightHelper` | lights |
+| `SkeletonHelper(root)` | bones |
+| `VertexNormalsHelper` (addon) | normals |
+
+```ts
+scene.add(new AxesHelper(1), new GridHelper(10, 10));
+console.table(renderer.info.render);  // calls, triangles
+console.log(renderer.info.memory);    // geometries, textures
+console.log(renderer.info.programs?.length); // shaders
+```
+
+Tooling: [Spector.js](https://spector.babylonjs.com/) captures raw GL calls, `lil-gui` (`three/addons/libs/lil-gui.module.min.js`)
+tweaks parameters, `Stats` (`three/addons/libs/stats.module.js`) shows FPS.
+
+## Colour management
+
+Since r152 colour management is on by default. Lighting maths happens in **linear** sRGB; inputs in sRGB
+are converted in, output is converted back to sRGB.
+
+```text
+ hex / CSS colours ──(treated as sRGB)──┐
+ colour textures (map, emissiveMap)     ├─► linear working space
+   texture.colorSpace = SRGBColorSpace ─┘       │ lighting, blending
+ data textures (normal, roughness…)             ▼
+   colorSpace = NoColorSpace (default)   tone mapping
+                                                │
+                           renderer.outputColorSpace = SRGBColorSpace
+                                                ▼
+                                             canvas
+```
+
+| Setting | Default | Rule |
+| :------ | :------ | :--- |
+| `ColorManagement.enabled` | `true` | leave on; `false` restores pre-r152 behaviour |
+| `ColorManagement.workingColorSpace` | `LinearSRGBColorSpace` | leave it |
+| `renderer.outputColorSpace` | `SRGBColorSpace` | leave it (post-processing: see `OutputPass`) |
+| `texture.colorSpace` | `NoColorSpace` | set `SRGBColorSpace` on colour maps you load yourself |
+| `new Color(0xff8800)`, `"#ff8800"` | sRGB input | converted to linear on the way in |
+| `color.setRGB(r, g, b)` | linear input | pass `SRGBColorSpace` as 4th arg for sRGB |
+| `color.getHex()` / `getStyle()` | sRGB output | round-trips with the hex you set |
+
+```ts
+const tex = await new TextureLoader().loadAsync(
+  "/albedo.jpg",
+);
+tex.colorSpace = SRGBColorSpace;  // colour data
+const nrm = await new TextureLoader().loadAsync(
+  "/normal.png",
+); // data: leave NoColorSpace
+```
+
+`GLTFLoader` sets colour spaces for you. The removed properties you still meet in old tutorials:
+`renderer.outputEncoding`, `texture.encoding`, `sRGBEncoding`, `renderer.physicallyCorrectLights`,
+`renderer.useLegacyLights`.
+
+## Disposal & memory
+
+JavaScript GC frees the JS objects, **not** the GPU buffers, textures and programs behind them. Removing
+a mesh from the scene frees nothing on the GPU.
+
+| Resource | Free with | Notes |
+| :------- | :-------- | :---- |
+| `BufferGeometry` | `geometry.dispose()` | vertex/index buffers |
+| `Material` | `material.dispose()` | program released when no material uses it |
+| `Texture` | `texture.dispose()` | not freed by `material.dispose()` |
+| `ImageBitmap` source | `bitmap.close()` | after `texture.dispose()` if you own it |
+| `WebGLRenderTarget` | `rt.dispose()` | its textures and depth |
+| `PMREMGenerator` | `pmrem.dispose()` | after generating your env maps |
+| Controls | `controls.dispose()` | DOM listeners |
+| `Skeleton` | `skeleton.dispose()` | bone texture |
+| Renderer | `renderer.dispose()` | whole context teardown; `forceContextLoss()` to free it immediately |
+| `Object3D.dispose()` | only fires a `"dispose"` event | does not free geometry or materials |
+
+`renderer.info.memory.geometries` / `.textures` counting up while you swap content is a leak. Resources
+shared between meshes (one material on 100 meshes) must be disposed once, when nothing uses them.
+
+## Black screen checklist
+
+| Symptom | Likely cause | Fix |
+| :------ | :----------- | :-- |
+| Nothing at all | camera inside or behind the object | `camera.position.z = 5; camera.lookAt(0,0,0)` |
+| Nothing at all | object outside `near`–`far` | check units; raise `far` or scale the model |
+| Nothing at all | canvas 0×0 | CSS height on parent; `display: block`; call `setSize` |
+| Nothing at all | forgot `renderer.render` or the loop | `setAnimationLoop` |
+| Black mesh | lit material, no lights | add lights or `scene.environment`; or `MeshBasicMaterial` |
+| Black mesh | light intensity too low for physical units | point/spot in candela: try `50`–`500` at a few metres |
+| Black / invisible | normals missing or inverted | `computeVertexNormals()`; `side: DoubleSide` to test |
+| Plane invisible from one side | back-face culling | `side: DoubleSide` or rotate it |
+| Stretched image | aspect not updated | `camera.aspect = w/h; updateProjectionMatrix()` |
+| Blurry on HiDPI | pixel ratio 1 | `setPixelRatio(Math.min(devicePixelRatio, 2))` |
+| Washed out / too dark colours | colour space mix-up | `map.colorSpace = SRGBColorSpace`; data maps untouched |
+| Model tiny or huge | unit mismatch | measure with `new Box3().setFromObject(m)` |
+| Flicker between surfaces | z-fighting | raise `near`, `polygonOffset`, separate geometry |
+| `WebGPURenderer` throws on `render` | not initialised | `await renderer.init()` or use `setAnimationLoop` |
+| "Multiple instances" warning | two versions installed, or npm plus CDN | `npm ls three`; align versions; `resolve.dedupe: ["three"]` in Vite |
+
+## Recipes
+
+### Minimal typed scene
+Use as the starting point for any page: cube, light, environment-free, capped DPR, typed.
+
+```ts
+import {
+  BoxGeometry, Color, DirectionalLight, HemisphereLight,
+  Mesh, MeshStandardMaterial, PerspectiveCamera, Scene,
+  Timer, WebGLRenderer,
+} from "three";
+
+const canvas = document.querySelector("canvas")!;
+const renderer = new WebGLRenderer({
+  canvas, antialias: true,
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+
+const scene = new Scene();
+scene.background = new Color("#1d1f24");
+const camera = new PerspectiveCamera(
+  50, innerWidth / innerHeight, 0.1, 50,
+);
+camera.position.set(2, 1.5, 3);
+camera.lookAt(0, 0, 0);
+
+scene.add(new HemisphereLight("#dfe8ff", "#3a2e24", 1));
+const sun = new DirectionalLight("#ffffff", 2.5);
+sun.position.set(3, 5, 2);
+scene.add(sun);
+
+const cube = new Mesh(
+  new BoxGeometry(1, 1, 1),
+  new MeshStandardMaterial({ color: "#4f8cff" }),
+);
+scene.add(cube);
+
+const timer = new Timer();
+timer.connect(document);
+renderer.setAnimationLoop((t) => {
+  timer.update(t);
+  cube.rotation.y += timer.getDelta();
+  renderer.render(scene, camera);
+});
+```
+
+### Resize with ResizeObserver
+Use when the canvas lives in a layout (grid cell, panel) rather than filling the window.
+
+```ts
+import type { PerspectiveCamera, WebGLRenderer }
+  from "three";
+
+export function autoResize(
+  renderer: WebGLRenderer,
+  camera: PerspectiveCamera,
+  maxDpr = 2,
+): () => void {
+  const canvas = renderer.domElement;
+  const ro = new ResizeObserver(([entry]) => {
+    const { width, height } = entry.contentRect;
+    if (width === 0 || height === 0) return;
+    renderer.setPixelRatio(
+      Math.min(devicePixelRatio, maxDpr),
+    );
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  });
+  ro.observe(canvas);
+  return () => ro.disconnect();
+}
+```
+
+`contentRect` is in CSS pixels, so a DPR-only change (dragging the window to another monitor) does not
+fire the observer; add a `matchMedia` listener on the `resolution` media query if that matters.
+
+### Dispose a subtree
+Use when unloading a level or model; frees geometry, materials and every texture they reference.
+
+```ts
+import type {
+  BufferGeometry, Material, Object3D, Texture,
+} from "three";
+
+type Drawable = Object3D & {
+  geometry: BufferGeometry;
+  material: Material | Material[];
+};
+const isDrawable = (o: Object3D): o is Drawable =>
+  "geometry" in o && "material" in o;
+
+function disposeMaterial(m: Material): void {
+  for (const value of Object.values(m)) {
+    const tex = value as Texture | null;
+    if (tex?.isTexture) tex.dispose();
+  }
+  m.dispose();
+}
+
+export function disposeTree(root: Object3D): void {
+  root.traverse((o) => {
+    if (!isDrawable(o)) return;
+    o.geometry.dispose();
+    const mats = Array.isArray(o.material)
+      ? o.material : [o.material];
+    mats.forEach(disposeMaterial);
+  });
+  root.removeFromParent();
+}
+```
+
+Skip anything shared with objects that stay in the scene (cached materials, a texture atlas).
+
+### Render on demand
+Use for viewers and configurators: no work at all while nothing moves, battery friendly.
+
+```ts
+let queued = false;
+
+function requestRender(): void {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => {
+    queued = false;
+    // damping emits "change" again until it settles
+    controls.update();
+    renderer.render(scene, camera);
+  });
+}
+
+controls.addEventListener("change", requestRender);
+new ResizeObserver(() => {
+  resize();          // from "Resizing & pixel ratio"
+  requestRender();
+}).observe(canvas);
+requestRender();     // first frame
+// also call it after loading assets or changing materials
+```
+
+### Frame an object
+Use after loading a model of unknown size: centre it and pull the camera back to fit.
+
+```ts
+import { Box3, Sphere, Vector3 } from "three";
+import type { Object3D, PerspectiveCamera } from "three";
+
+export function frame(
+  obj: Object3D, cam: PerspectiveCamera, pad = 1.2,
+): Vector3 {
+  const sphere = new Box3()
+    .setFromObject(obj)
+    .getBoundingSphere(new Sphere());
+  const fov = (cam.fov * Math.PI) / 180;
+  const dist = (sphere.radius * pad) / Math.sin(fov / 2);
+  const dir = new Vector3(1, 0.6, 1).normalize();
+  cam.position.copy(sphere.center)
+    .addScaledVector(dir, dist);
+  cam.near = dist / 100;
+  cam.far = dist * 100;
+  cam.updateProjectionMatrix();
+  cam.lookAt(sphere.center);
+  return sphere.center; // use as controls.target
+}
+```
+
+## References
+
+- [three.js docs](https://threejs.org/docs/): API reference for every class; [manual](https://threejs.org/manual/): fundamentals, responsive design, colour management, cleanup
+- [Manual: Installation](https://threejs.org/manual/#installation), [Color management](https://threejs.org/manual/#color-management), [How to dispose of objects](https://threejs.org/manual/#how-to-dispose-of-objects), [Rendering on demand](https://threejs.org/manual/#rendering-on-demand)
+- [three.js examples](https://threejs.org/examples/) and their source in [mrdoob/three.js](https://github.com/mrdoob/three.js)
+- [Migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide) and [release notes](https://github.com/mrdoob/three.js/releases): read before every upgrade
+- [@types/three](https://github.com/three-types/three-ts-types): the TypeScript definitions
+- [Discover three.js](https://discoverthreejs.com/): book-length walkthrough (some APIs predate r15x colour management)
+- [three.js forum](https://discourse.threejs.org/): the best place to search for gotchas

@@ -1,0 +1,423 @@
+---
+title: Lights, shadows & environment
+date: 2026-09-26
+order: 3
+---
+
+Lighting in Three.js r18x: the light classes and their physical units, shadow maps and how to tune them,
+image-based lighting with `scene.environment` and PMREM, HDR loading, tone mapping and exposure, fog,
+baked lighting and what each choice costs. Materials that respond to light are in
+[Geometry & materials](/typescript/three-js/geometry-materials/); the loop and colour pipeline in
+[Fundamentals](/typescript/three-js/fundamentals/).
+
+## Light types
+
+| Light | Models | Intensity unit | Shadows | Cost |
+| :---- | :----- | :------------- | :------ | :--- |
+| `AmbientLight(color, i)` | flat fill from everywhere | relative | no | ~free; flattens form |
+| `HemisphereLight(sky, ground, i)` | sky/ground gradient by normal | relative | no | ~free; good outdoor fill |
+| `DirectionalLight(color, i)` | parallel rays (sun) | lux (as glTF) | ortho shadow camera | 1 shadow pass |
+| `PointLight(color, i, distance, decay)` | bulb, all directions | candela (`power` in lumens) | cube: **6** passes | expensive with shadows |
+| `SpotLight(color, i, dist, angle, penumbra, decay)` | cone | candela (`power` in lumens) | perspective | 1 shadow pass |
+| `RectAreaLight(color, i, w, h)` | emitting rectangle | nits (`power` in lumens) | **no** | Standard/Physical only |
+| `LightProbe(sh, i)` | spherical-harmonics irradiance | relative | no | cheap diffuse IBL |
+| `scene.environment` | image-based lighting (IBL) | `environmentIntensity` | no | one texture; best realism per ms |
+
+```ts
+const sun = new DirectionalLight(0xffffff, 3);
+sun.position.set(5, 10, 3);  // direction = position → target
+sun.target.position.set(0, 0, 0);
+scene.add(sun, sun.target);  // target must be in the scene
+                             // (or updated) if you move it
+
+const bulb = new PointLight(0xffe0b0, 80, 0, 2);
+bulb.position.set(0, 2.5, 0);
+
+const spot = new SpotLight(0xffffff, 200);
+spot.angle = Math.PI / 8;    // half-angle, radians
+spot.penumbra = 0.3;         // 0 hard edge … 1 soft
+spot.map = gobo;             // projected texture (cookie)
+```
+
+`DirectionalLight` and `SpotLight` point at `light.target`, not along their rotation. `HemisphereLight`
+uses its `position` as the "sky" direction (default straight up).
+
+## Physical light units
+
+Physically correct lighting is the only mode: `renderer.physicallyCorrectLights` and
+`renderer.useLegacyLights` were deprecated and then removed (r165). What that means in practice:
+
+| Rule | Detail |
+| :--- | :----- |
+| `decay = 2` default | inverse-square falloff, like real light; leave it |
+| `distance = 0` default | no cut-off; a positive value adds a smooth window to zero at that range (a perf hint, not physics) |
+| Scene scale matters | point/spot intensity is candela; at 10 m, a light is 100× dimmer than at 1 m. Model in metres |
+| `light.power` | point/spot/rect lights: set lumens instead (`power = 800` ≈ a 60 W bulb) |
+| Directional/ambient/hemisphere | no falloff; values around `1`–`5` with exposure 1 |
+| Old tutorials look too dark | they used legacy scaling; point/spot values in the tens to hundreds are normal now |
+| glTF `KHR_lights_punctual` | same units; `GLTFLoader` imports them as-is (Blender's watts are converted by its exporter) |
+
+Real-world values (sun ≈ 100 000 lux) only work with a matching `toneMappingExposure`; most apps
+treat intensities as relative and tune by eye with exposure 1.
+
+## RectAreaLight
+
+```ts
+import { RectAreaLightUniformsLib } from
+  "three/addons/lights/RectAreaLightUniformsLib.js";
+import { RectAreaLightHelper } from
+  "three/addons/helpers/RectAreaLightHelper.js";
+
+RectAreaLightUniformsLib.init(); // once, WebGLRenderer only
+
+const panel = new RectAreaLight(0xffffff, 8, 2, 0.5);
+panel.position.set(0, 2, 2);
+panel.lookAt(0, 0, 0);           // emits along its -Z
+panel.add(new RectAreaLightHelper(panel));
+scene.add(panel);
+```
+
+- Only `MeshStandardMaterial` and `MeshPhysicalMaterial` respond; no shadows.
+- `WebGPURenderer` needs `RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())` instead
+  (`RectAreaLightTexturesLib` from `three/addons/lights/RectAreaLightTexturesLib.js`).
+- Great for softboxes and screens; combine with an environment map for reflections of the panel itself.
+
+## Shadow maps
+
+Each shadow-casting light renders the scene's casters from its own viewpoint into a depth texture, then
+every receiving fragment compares against it.
+
+```ts
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = PCFShadowMap;  // default
+
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);      // default 512
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 40;
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.02;
+sun.shadow.radius = 3;                   // PCF softness
+
+mesh.castShadow = true;
+ground.receiveShadow = true;
+```
+
+| Shadow map type | Look | Notes |
+| :-------------- | :--- | :---- |
+| `BasicShadowMap` | hard, aliased | fastest; `radius` ignored |
+| `PCFShadowMap` | filtered, soft edges via `shadow.radius` | **default** and the usual choice |
+| `VSMShadowMap` | blurred, very soft | `radius` + `blurSamples`; can light-bleed; no point lights |
+| `PCFSoftShadowMap` | | **removed in r182**: falls back to PCF with a warning |
+
+Flags on objects: `castShadow` and `receiveShadow` both default to `false`. Traverse a loaded model to set
+them. `material.shadowSide` picks which faces cast.
+
+## Shadow cameras
+
+| Light | Shadow camera | Size it with |
+| :---- | :------------ | :----------- |
+| `DirectionalLight` | `OrthographicCamera(-5, 5, 5, -5, 0.5, 500)` | `left/right/top/bottom`, `near/far` around the area that needs shadows |
+| `SpotLight` | `PerspectiveCamera`, fov from `angle` | `shadow.focus` (0–1) narrows it; `near/far` |
+| `PointLight` | cube (6 × 90° perspective) | `near/far`; keep `mapSize` small |
+
+```ts
+const cam = sun.shadow.camera; // OrthographicCamera
+cam.left = -15; cam.right = 15;
+cam.top = 15;   cam.bottom = -15;
+cam.near = 1;   cam.far = 50;
+cam.updateProjectionMatrix();   // after every change
+
+scene.add(new CameraHelper(cam)); // see the box
+```
+
+Shadow texel size = frustum width / `mapSize`. A 30 m box at 2048² gives ~1.5 cm texels; a 300 m box
+at the same size gives 15 cm blocks. Fit the box tightly, and for large outdoor scenes move the light and
+its target with the player, or use cascaded shadow maps (`CSM` from `three/addons/csm/CSM.js`).
+
+## Acne vs peter-panning
+
+| Artefact | Looks like | Cause | Fix |
+| :------- | :--------- | :---- | :-- |
+| Shadow acne | stripes / moiré on lit surfaces | surface self-shadows due to depth quantisation | small negative `bias` (`-0.0001` … `-0.001`) or `normalBias` (`0.01` … `0.05`) |
+| Peter-panning | shadow detached from the object's base | too much bias | reduce bias; prefer `normalBias` |
+| Blocky edges | stair-stepped outlines | texel too large | tighter frustum, bigger `mapSize`, `radius` |
+| Shadows cut off | hard edge where shadow stops | caster/receiver outside the shadow camera | enlarge frustum or `far`; check with `CameraHelper` |
+| No shadows at all | | `shadowMap.enabled`, `castShadow`, `receiveShadow`, light type | `AmbientLight`/`Hemisphere`/`RectArea` never cast |
+| Light leaks through thin walls | | single-sided geometry | `material.shadowSide = DoubleSide` or thicker walls |
+
+`normalBias` offsets along the surface normal and handles grazing angles better than `bias`; start with
+`normalBias` and add a tiny `bias` only if acne remains.
+
+## Environment & IBL
+
+An environment map lights every `MeshStandardMaterial` / `MeshPhysicalMaterial` with the surroundings
+(diffuse and reflections). It is usually the single biggest realism upgrade.
+
+```ts
+import { HDRLoader } from
+  "three/addons/loaders/HDRLoader.js";
+
+const hdr = await new HDRLoader().loadAsync(
+  "/env/studio_small_2k.hdr",
+);
+hdr.mapping = EquirectangularReflectionMapping;
+scene.environment = hdr;   // PMREM'd automatically
+scene.background = hdr;    // optional
+scene.backgroundBlurriness = 0.4;  // 0–1
+scene.environmentIntensity = 1;
+scene.environmentRotation.y = Math.PI / 2;
+```
+
+| Loader (addons) | Format | Notes |
+| :-------------- | :----- | :---- |
+| `HDRLoader` | Radiance `.hdr` (RGBE) | **replaces `RGBELoader`**, deprecated in r180 |
+| `EXRLoader` | OpenEXR `.exr` | float data |
+| `UltraHDRLoader` | JPEG with HDR gain map | much smaller downloads |
+| `CubeTextureLoader` (core) | 6 LDR images | marks them `SRGBColorSpace` itself |
+| `RoomEnvironment` | procedural studio room | no download; neutral product lighting |
+
+| Scene / material property | Effect |
+| :------------------------ | :----- |
+| `scene.environment` | default env map for all PBR materials |
+| `scene.environmentIntensity`, `environmentRotation` | global strength and rotation |
+| `scene.background` | `Color`, texture or cube texture |
+| `scene.backgroundBlurriness`, `backgroundIntensity`, `backgroundRotation` | background only |
+| `material.envMap`, `envMapIntensity`, `envMapRotation` | per-material override |
+| `GroundedSkybox` (addon) | projects the HDRI onto a ground dome so objects appear to stand on it |
+
+**PMREM** (prefiltered, mipmapped radiance environment map) pre-blurs the map per roughness level.
+Equirect and cube textures assigned to `scene.environment` are converted automatically; generate
+explicitly when you want to reuse or dispose it yourself, or for procedural scenes:
+
+```ts
+import { RoomEnvironment } from
+  "three/addons/environments/RoomEnvironment.js";
+
+const pmrem = new PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(
+  new RoomEnvironment(), 0.04, // sigma: slight blur
+).texture;
+pmrem.dispose(); // keep the texture, free the generator
+```
+
+Good free HDRIs: [Poly Haven](https://polyhaven.com/hdris). 1k–2k is enough for lighting; use a
+separate, larger or blurred image if the background must look sharp.
+
+## Tone mapping & exposure
+
+Lighting produces HDR values above 1.0; tone mapping compresses them into displayable range before the
+sRGB conversion. It runs when rendering to the canvas (or in `OutputPass`), not into render targets.
+
+```ts
+renderer.toneMapping = AgXToneMapping;
+renderer.toneMappingExposure = 1.0; // photographic stops
+                                    // = log2 of this
+```
+
+| Constant | Character | Use when |
+| :------- | :-------- | :------- |
+| `NoToneMapping` | clamp at 1 | default; UI, unlit, stylised |
+| `LinearToneMapping` | exposure only | debugging |
+| `ReinhardToneMapping` | soft, desaturated highlights | simple scenes |
+| `CineonToneMapping` | filmic, contrasty | legacy looks |
+| `ACESFilmicToneMapping` | punchy, shifts bright colours toward yellow/white | games, cinematic |
+| `AgXToneMapping` | graceful highlight desaturation, neutral hues | HDR-heavy scenes, Blender-matching |
+| `NeutralToneMapping` | Khronos PBR Neutral: keeps base colours accurate | e-commerce, product viewers |
+| `CustomToneMapping` | your GLSL via `ShaderChunk.tonemapping_pars_fragment` | special grading |
+
+Per material: `toneMapped: false` skips it (UI colours that must match CSS exactly). Changing
+`renderer.toneMapping` at runtime recompiles materials; switch rarely.
+
+## Fog
+
+```ts
+scene.fog = new Fog(0xb8c6d9, 10, 80);   // linear
+scene.fog = new FogExp2(0xb8c6d9, 0.02); // exponential²
+scene.background = new Color(0xb8c6d9);  // match it!
+```
+
+| | `Fog(color, near, far)` | `FogExp2(color, density)` |
+| :- | :---------------------- | :------------------------ |
+| Falloff | linear from `near` to `far` | `1 - exp(-(density·d)²)` |
+| Feels | controllable, game-like | natural haze |
+| Tip | set camera `far` ≈ fog `far` to hide popping | density `0.01`–`0.05` for metre scenes |
+
+Materials opt out with `fog: false`. `ShaderMaterial` needs `fog: true` plus the fog chunks
+(`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`).
+
+## Baked lighting
+
+Real-time lights are per-frame cost; baked lighting is a texture lookup.
+
+| Technique | How |
+| :-------- | :-- |
+| Bake to base colour | bake lighting in Blender into the albedo, render with `MeshBasicMaterial`; zero lights needed |
+| `lightMap` | separate baked texture on `uv1` (`texture.channel = 1`), `lightMapIntensity`; keeps PBR reflections |
+| `aoMap` | ambient occlusion; only affects indirect light (env, ambient, hemisphere) |
+| Static shadows | `shadowMap.autoUpdate = false`, then `shadowMap.needsUpdate = true` when things move |
+| Contact shadows | a blurred depth render on a plane under the object (drei's `ContactShadows` in R3F) |
+| Shadow blob | a transparent radial-gradient plane under characters; cheapest of all |
+| Light probes | `LightProbeGenerator.fromCubeRenderTarget(renderer, rt)` (addon) for diffuse irradiance |
+
+glTF has no standard lightmap slot: export the baked texture separately (or name it by convention) and
+assign it after loading.
+
+## Performance
+
+| Cost | Why | Mitigation |
+| :--- | :-- | :--------- |
+| Each shadow-casting light | renders all casters again | 1 directional shadow; bake the rest |
+| Point-light shadow | 6 renders per frame | avoid, or tiny `mapSize`, or `autoUpdate = false` |
+| Many lights | per-fragment loop over every light | 3–5 dynamic lights; env map for the rest |
+| Adding/removing/hiding lights | changes the shader: **all lit materials recompile** (stall) | create lights up front; animate `intensity` to 0 instead |
+| `mapSize` 4096² | 16× the fill of 1024² | fit the frustum first |
+| `MeshPhysicalMaterial.transmission` | extra opaque-scene pass | fake glass with env reflections + opacity |
+| Env map | one PMREM texture, cheap per pixel | prefer it over many fill lights |
+| `renderer.shadowMap.autoUpdate` | re-renders shadows every frame | `false` for static scenes |
+
+## Recipes
+
+### Studio product lighting
+Use for model viewers and configurators: neutral IBL, one key light with a soft shadow, accurate colours.
+
+```ts
+import {
+  DirectionalLight, NeutralToneMapping, PCFShadowMap,
+  PMREMGenerator,
+} from "three";
+import type { Scene, WebGLRenderer } from "three";
+import { RoomEnvironment } from
+  "three/addons/environments/RoomEnvironment.js";
+
+export function studio(
+  scene: Scene, renderer: WebGLRenderer,
+): DirectionalLight {
+  renderer.toneMapping = NeutralToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
+
+  const pmrem = new PMREMGenerator(renderer);
+  scene.environment = pmrem
+    .fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+
+  const key = new DirectionalLight(0xffffff, 1.5);
+  key.position.set(3, 6, 4);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.radius = 4;
+  key.shadow.normalBias = 0.02;
+  scene.add(key);
+  return key;
+}
+```
+
+### Fit the shadow camera to a box
+Use after loading a scene: sizes the directional shadow frustum to the content so texels are as small as possible.
+
+```ts
+import { Box3, Sphere, Vector3 } from "three";
+import type { DirectionalLight, Object3D } from "three";
+
+export function fitShadow(
+  light: DirectionalLight, content: Object3D,
+): void {
+  const s = new Box3().setFromObject(content)
+    .getBoundingSphere(new Sphere());
+  const dir = light.position.clone()
+    .sub(light.target.position).normalize();
+  light.target.position.copy(s.center);
+  light.position.copy(s.center)
+    .addScaledVector(dir, s.radius * 2);
+  light.target.updateMatrixWorld();
+
+  const cam = light.shadow.camera;
+  cam.left = cam.bottom = -s.radius;
+  cam.right = cam.top = s.radius;
+  cam.near = s.radius * 0.5;
+  cam.far = s.radius * 3.5;
+  cam.updateProjectionMatrix();
+}
+```
+
+### Sun that follows the player
+Use in open worlds: a small, sharp shadow box travels with the camera instead of covering the map.
+
+```ts
+const SUN_DIR = new Vector3(-0.5, 1, 0.3).normalize();
+const sun = new DirectionalLight(0xfff4e0, 3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {
+  left: -20, right: 20, top: 20, bottom: -20,
+  near: 1, far: 120,
+});
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun, sun.target);
+
+function followSun(focus: Vector3): void {
+  // snap to texel grid to stop shadow edge shimmer
+  const texel = 40 / 2048;
+  const x = Math.round(focus.x / texel) * texel;
+  const z = Math.round(focus.z / texel) * texel;
+  sun.target.position.set(x, 0, z);
+  sun.position.set(x, 0, z).addScaledVector(SUN_DIR, 60);
+}
+```
+
+The texel snap is approximate (it snaps in world XZ rather than light space) but removes most crawling
+at the shadow edges while moving.
+
+### HDRI with explicit PMREM
+Use when you switch environments at runtime and want to dispose the old ones deterministically.
+
+```ts
+import {
+  EquirectangularReflectionMapping, PMREMGenerator,
+} from "three";
+import type { Scene, Texture, WebGLRenderer } from "three";
+import { HDRLoader } from
+  "three/addons/loaders/HDRLoader.js";
+
+const loader = new HDRLoader();
+let current: Texture | null = null;
+
+export async function setEnv(
+  url: string, scene: Scene, renderer: WebGLRenderer,
+): Promise<void> {
+  const hdr = await loader.loadAsync(url);
+  hdr.mapping = EquirectangularReflectionMapping;
+  const pmrem = new PMREMGenerator(renderer);
+  const env = pmrem.fromEquirectangular(hdr).texture;
+  hdr.dispose();
+  pmrem.dispose();
+  scene.environment = env;
+  scene.background = env;
+  current?.dispose();
+  current = env;
+}
+```
+
+### Static scene, shadows once
+Use for architecture and dioramas: shadows cost nothing per frame until something moves.
+
+```ts
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true; // first frame
+
+function onSceneEdited(): void {
+  renderer.shadowMap.needsUpdate = true; // next frame
+}
+```
+
+## References
+
+- [three.js docs](https://threejs.org/docs/): `DirectionalLight`, `LightShadow`, `PMREMGenerator`, `Scene`, `WebGLRenderer.shadowMap`
+- Manual: [Lights](https://threejs.org/manual/#lights), [Shadows](https://threejs.org/manual/#shadows), [Fog](https://threejs.org/manual/#fog), [Backgrounds and skyboxes](https://threejs.org/manual/#backgrounds), [Color management](https://threejs.org/manual/#color-management)
+- Examples: [physical lights](https://threejs.org/examples/#webgl_lights_physical), [RectAreaLight](https://threejs.org/examples/#webgl_lights_rectarealight), [shadow map types](https://threejs.org/examples/#webgl_shadowmap_viewer), [tone mapping](https://threejs.org/examples/#webgl_tonemapping)
+- [Migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide): the r155 lighting change, r180 `HDRLoader`, r182 `PCFSoftShadowMap`
+- [Khronos: `KHR_lights_punctual`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_lights_punctual): the unit definitions three follows
+- [Khronos PBR Neutral tone mapper](https://github.com/KhronosGroup/ToneMapping/tree/main/PBR_Neutral)
+- [Poly Haven HDRIs](https://polyhaven.com/hdris), [Discover three.js: lights](https://discoverthreejs.com/book/first-steps/physically-based-rendering/)

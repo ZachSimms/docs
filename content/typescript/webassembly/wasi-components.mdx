@@ -1,0 +1,442 @@
+---
+title: WASI & components
+date: 2026-09-26
+order: 5
+---
+
+WebAssembly outside the browser: WASI versions and capability-based security, runtimes, the Wasmtime
+CLI, WIT and the component model, the canonical ABI, tooling for Rust, JS and Python, composition and
+registries, and running components in Node and the browser with jco. Language details are in
+[Rust](/typescript/webassembly/rust/) and [Emscripten](/typescript/webassembly/emscripten/).
+
+## WASI versions
+
+| Version | Released | Model | Status (September 2026) |
+| :------ | :------- | :---- | :---------------------- |
+| Preview 0 (`wasi_unstable`) | 2019 | core module imports | obsolete |
+| Preview 1 (`wasi_snapshot_preview1`) | December 2019 | core module imports, POSIX-like, pointers into linear memory | frozen; still the most widely supported (Node, Bun, Wasmer, WasmEdge, WAMR, wasi-sdk, Go, Zig) |
+| WASI 0.2 (Preview 2) | 25 January 2024 | **components** with WIT interfaces (`wasi:cli`, `wasi:http`, `wasi:filesystem`, `wasi:sockets`, ...) | stable; patch releases 0.2.1 to 0.2.12 on a two-month train, now concluded |
+| WASI 0.3 (Preview 3) | 11 June 2026 (0.3.1 August 2026) | components with **native async**: `async func`, `stream<T>`, `future<T>`; `wasi:io` removed | current; Wasmtime 46+ implements 0.3.0; 0.3.x continues on the release train |
+| WASI 1.0 | not scheduled | | "may be scheduled outside the train" per the roadmap |
+
+- Preview 1 is a flat set of C-like functions (`fd_write`, `path_open`, `args_get`, `clock_time_get`,
+  `random_get`) taking `i32` pointers. It works with any core module but cannot express rich types.
+- 0.2 moved WASI onto the component model: interfaces are typed in WIT and grouped into **worlds**
+  such as `wasi:cli/command` (a CLI program) and `wasi:http/proxy` (an HTTP handler).
+- 0.3 is a mechanical migration from 0.2: `pollable` becomes `future<T>`, `input-stream` becomes
+  `stream<u8>`, and `start-x` / `finish-x` pairs become one `async func`. The HTTP handler world is
+  `wasi:http/service` in 0.3 tooling. Many hosts and guest toolchains still default to 0.2, so check
+  both ends before switching.
+
+## Capability-based security
+
+```text
+ host (wasmtime, node, ...)                guest.wasm
+ ──────────────────────────                ──────────
+ --dir ./data::/data   ── preopen fd 3 ──►  open("/data/x")   ok
+                                            open("/etc/passwd") ENOTCAPABLE
+ --env KEY=v           ── environ ──────►  getenv("KEY")
+ (no -S inherit-network)                   connect(...)       denied
+ stdin / stdout / stderr inherited         printf(...)        ok
+ wall clock, random                        time(), rand()     ok
+```
+
+| Principle | Meaning |
+| :-------- | :------ |
+| No ambient authority | a module starts with nothing: no files, env, network or clock unless the host grants it |
+| Preopened directories | the host opens directories and passes handles; paths resolve only beneath them (no `..` escape) |
+| Handles, not names | components receive resources (`descriptor`, `tcp-socket`) and can only use what they were given |
+| Deny by default | network, env vars and extra files are opt-in flags in every serious runtime |
+| Virtualisation | a component can import an interface implemented by another component (a fake FS, a logger) |
+
+Node's `node:wasi` exposes the same options but explicitly **does not** provide a secure sandbox (see
+its docs); use Wasmtime or another runtime for untrusted code.
+
+## Runtimes
+
+| Runtime | Kind | WASI support and notes |
+| :------ | :--- | :--------------------- |
+| Wasmtime | Bytecode Alliance, Rust, Cranelift JIT / AOT | reference host for components, WASI 0.2 and 0.3, `wasi:http`; monthly major releases (49.x in September 2026) |
+| Wasmer | Rust, several backends | preview 1 plus its own WASIX POSIX extensions; package registry at wasmer.io |
+| WasmEdge | CNCF, C++ | preview 1, networking and `wasi-nn` for AI inference; edge and cloud-native |
+| WAMR | Bytecode Alliance micro runtime, C | interpreter, AOT and JIT for embedded and IoT; preview 1 |
+| Node.js `node:wasi` | built in | preview 1 only; **Stability: 1 - Experimental**; not a security boundary |
+| Bun | built in | partial `node:wasi` (`args`, `env`, `preopens`, `start`); `bun ./app.wasm` runs a WASI command |
+| Deno | built in | `node:wasi` is a non-functional stub; use jco output or a userland shim |
+| Browsers | via JS | no native WASI: `jco transpile` + `@bytecodealliance/preview2-shim`, or preview 1 shims |
+| Cloudflare Workers | V8 isolates | core Wasm through the JS API (e.g. Rust via `workers-rs`); not a WASI 0.2 host |
+| Fastly Compute | Wasmtime-based edge | Wasm guests via Rust, JS and Go SDKs |
+| Spin (CNCF) | framework on Wasmtime | components and `wasi:http`; `spin new`, `spin build`, `spin up` |
+| wasmCloud (CNCF) | distributed platform | components linked across hosts; WIT-first |
+
+## Wasmtime CLI
+
+```bash
+curl https://wasmtime.dev/install.sh -sSf | bash
+wasmtime --version
+
+wasmtime run app.wasm arg1 arg2        # "run" is default
+wasmtime --dir ./data::/data app.wasm  # preopen
+wasmtime --env API=x --env HOME app.wasm
+wasmtime run --invoke 'add(1, 2)' comp.wasm
+wasmtime serve -S cli --addr 0.0.0.0:8080 http.wasm
+wasmtime compile app.wasm -o app.cwasm # AOT
+```
+
+| Flag | Effect |
+| :--- | :----- |
+| `--dir HOST[::GUEST]` | preopen a host directory, optionally under another guest path |
+| `--env NAME=VAL` / `--env NAME` | set a variable / inherit it from the host |
+| `-S inherit-env` | inherit every host environment variable |
+| `-S inherit-network` | full network access for `wasi:sockets` |
+| `-S tcp`, `-S udp`, `-S allow-ip-name-lookup` | finer-grained socket switches |
+| `-S http` | provide `wasi:http` outgoing requests to `run` |
+| `-S cli` | include the `wasi:cli` imports (used with `serve`) |
+| `-S p3` | enable the WASIp3 (0.3) host APIs where not on by default |
+| `-S help`, `-W help`, `-O help`, `-C help` | list WASI, Wasm-feature, optimisation and codegen options |
+| `-W gc`, `-W component-model-async` | toggle Wasm proposals |
+| `--invoke name` | call an export instead of `_start` / `wasi:cli/run`; components take WAVE syntax `'f("x", 1)'` |
+| `-W fuel=N`, `-W max-memory-size=N` | CPU (instruction fuel) and memory limits |
+
+**All Wasmtime flags go before the `.wasm` file**; everything after it is passed to the guest as
+arguments. `wasmtime serve` runs a `wasi:http` component as a local HTTP server and is for
+development only.
+
+## WIT basics
+
+```wit title="wit/world.wit"
+package acme:shapes@0.1.0;
+
+interface types {
+  record point { x: f32, y: f32 }
+
+  variant shape {
+    circle(f32),
+    rect(tuple<f32, f32>),
+    empty,
+  }
+
+  enum unit { px, mm, inch }
+
+  flags style { bold, italic, underline }
+
+  type points = list<point>;
+}
+
+interface geometry {
+  use types.{point, shape};
+
+  area: func(s: shape) -> f32;
+  centroid: func(pts: list<point>) -> option<point>;
+  parse: func(src: string) -> result<shape, string>;
+
+  resource canvas {
+    constructor(width: u32, height: u32);
+    draw: func(s: shape);
+    pixels: func() -> list<u8>;
+    blank: static func() -> canvas;
+  }
+}
+
+world shapes {
+  import log: func(msg: string);
+  export geometry;
+}
+```
+
+| WIT | Meaning | JS / TS (jco) | Rust (wit-bindgen) |
+| :-- | :------ | :------------ | :----------------- |
+| `bool`, `s8`..`s64`, `u8`..`u64` | integers | `number` (`bigint` for 64-bit) | `i8`..`u64` |
+| `f32`, `f64`, `char`, `string` | scalars, Unicode | `number`, `string` | `f32`, `f64`, `char`, `String` |
+| `list<T>` | sequence | `T[]` (`Uint8Array` for `list<u8>`) | `Vec<T>` |
+| `option<T>` | maybe | `T \| undefined` | `Option<T>` |
+| `result<T, E>` | success or error | returns `T`, throws `ComponentError` with `E` | `Result<T, E>` |
+| `tuple<A, B>` | fixed tuple | `[A, B]` | `(A, B)` |
+| `record` | struct with named fields | object | `struct` |
+| `variant` | tagged union with payloads | `{ tag: "circle", val: 1.5 }` | `enum` with data |
+| `enum` | tag only | string literal union (`"px"`) | C-like `enum` |
+| `flags` | bit set | object of booleans | bitflags struct |
+| `resource` | handle to an object owned by one side | class | trait + handle type |
+| `own<T>` / `borrow<T>` | ownership of a resource handle | | owned / `&` |
+| `future<T>`, `stream<T>` | async values (WASI 0.3) | promise / stream-like | async types |
+| `type x = ...` | alias | | |
+
+| Item | Syntax |
+| :--- | :----- |
+| Package | `package ns:name@1.2.3;` first in the file (or a `package ... { }` block) |
+| Interface | `interface name { ... }`: types and functions |
+| World | `world name { import ...; export ...; }`: the full contract of one component |
+| Use | `use types.{point};` in an interface; `use wasi:io/streams@0.2.0.{input-stream};` across packages |
+| Include | `include wasi:cli/imports@0.2.0;` merges another world |
+| Functions | `name: func(a: u32) -> string;`; `async func` in WASI 0.3 |
+| Identifiers | kebab-case (`get-user`); `%` escapes keywords (`%type`) |
+| Gates | `@since(version = 0.2.0)`, `@unstable(feature = x)`, `@deprecated(...)` |
+| Dependencies | `wit/deps/<pkg>/*.wit`, fetched with `wkg fetch` |
+
+## Canonical ABI
+
+```text
+ component (shapes.wasm)
+ ┌──────────────────────────────────────────────┐
+ │  WIT world: import log, export geometry      │
+ │   ┌──────────────┐  canon lower   ┌────────┐ │
+ │   │ core module  │◄───────────────┤ import │ │
+ │   │ (Rust, C...) │  canon lift    ├────────┤ │
+ │   │ own memory,  ├───────────────►│ export │ │
+ │   │ cabi_realloc │                └────────┘ │
+ │   └──────────────┘                           │
+ └──────────────────────────────────────────────┘
+       ▲ strings, lists, records are copied and
+       │ re-encoded at the boundary; no shared memory
+```
+
+- A **component** wraps one or more core modules plus type information. Components never share
+  linear memory: values are copied between them.
+- **Lifting** turns core values (pointers, lengths, flat `i32`s) into WIT values; **lowering** does
+  the reverse. The core module exports `cabi_realloc` so the host can allocate space for incoming
+  strings and lists.
+- `cabi_post_*` exports let the callee free return buffers after the caller has copied them.
+- Resources are `i32` handles into per-component tables; `borrow` handles are only valid for the call.
+- You rarely see any of this: bindings generators (wit-bindgen, jco, componentize-py) write both
+  sides. It matters when debugging traps inside generated glue or measuring copy costs.
+
+## Tooling
+
+| Tool | Does |
+| :--- | :--- |
+| `wasm-tools component new core.wasm -o c.wasm` | wrap a core module (with embedded WIT) into a component; `--adapt` a preview 1 adapter |
+| `wasm-tools component embed wit/ core.wasm -o e.wasm` | embed WIT type info into a core module |
+| `wasm-tools component wit c.wasm` | print a component's WIT (components are self-describing) |
+| `wasm-tools print c.wasm` / `validate` | inspect and validate components too |
+| `wit-bindgen rust`, `c`, `csharp`, ... | guest bindings; in Rust usually the `wit_bindgen::generate!` macro |
+| Rust `wasm32-wasip2` target | `cargo build` emits a component directly (no extra tool) |
+| `cargo-component` | older Cargo subcommand; being deprecated in favour of the native target + wit-bindgen |
+| `jco transpile c.wasm -o out/` | component → ES module + core `.wasm` + `.d.ts`, for Node and browsers |
+| `jco componentize app.js -w wit -o c.wasm` | JS / TS → component (ComponentizeJS on StarlingMonkey) |
+| `jco types wit/`, `jco guest-types wit/` | TS declarations for hosts / for JS guests |
+| `jco run`, `jco serve` | run a command / HTTP component in Node (serve is dev-only) |
+| `componentize-py -d wit -w world componentize app -o c.wasm` | Python → component (CPython inside) |
+| TinyGo `-target=wasip2`, `componentize-go` | Go → component |
+| `wac plug`, `wac compose` | compose components by wiring exports to imports |
+| `wkg fetch`, `wkg get`, `wkg publish`, `wkg oci pull` | fetch WIT dependencies; get, publish and pull packages and components (OCI) |
+
+```bash
+cargo install --locked wasm-tools wac-cli wkg
+npm i -D @bytecodealliance/jco
+pip install componentize-py
+```
+
+## Composition and registries
+
+```bash
+# app.wasm imports acme:kv/store; redis.wasm exports it
+wac plug app.wasm --plug redis.wasm -o composed.wasm
+wasm-tools component wit composed.wasm   # fewer imports
+
+# packages and components live in OCI registries
+wkg get wasi:http@0.2.1          # a WIT package
+wkg fetch                        # deps for ./wit
+wkg publish composed.wasm        # configured registry
+wkg oci pull ghcr.io/webassembly/wasi/http:0.2.1
+```
+
+- **Composition** links components at build time into one component; the result still only talks
+  through WIT, so each part keeps its own memory and sandbox.
+- `wac compose` takes a small `.wac` script for complex graphs; `wac plug` covers the common "fill
+  these imports" case.
+- Components are distributed as OCI artifacts (the same registries as containers), and WIT packages
+  are resolved by `wkg` from registry namespaces such as `wasi:` and `ba:`.
+
+## Core module or component?
+
+| Choose a core module when | Choose a component when |
+| :------------------------ | :---------------------- |
+| the host is a browser page and you own the JS glue | the host is Wasmtime, Spin, wasmCloud or another component runtime |
+| you need shared memory, threads or SIMD-heavy kernels with zero-copy views | you want typed, language-neutral interfaces (WIT) instead of pointer contracts |
+| wasm-bindgen / Emscripten already give you good TypeScript bindings | you are building plugins that third parties write in other languages |
+| smallest possible download and startup matter | you want to compose parts, virtualise capabilities, or target `wasi:http` |
+| you need preview 1 runtimes (Node `node:wasi`, Wasmer, WAMR) | you are writing new server-side or edge code in 2026 |
+
+Components run in browsers only through `jco transpile` (JS glue over core Wasm); browsers have no
+native component model support and it is still a phase-1 proposal at the W3C CG.
+
+## Recipes
+
+### Rust CLI for WASI
+Use for a portable command-line tool that runs on any WASI host.
+
+```rust title="src/main.rs"
+use std::{env, fs, io::Write};
+
+fn main() -> std::io::Result<()> {
+    let path = env::args().nth(1).expect("usage: wc <file>");
+    let text = fs::read_to_string(&path)?;
+    let words = text.split_whitespace().count();
+    let who = env::var("USER").unwrap_or("?".into());
+    writeln!(std::io::stdout(), "{who}: {words} words")?;
+    Ok(())
+}
+```
+
+```bash
+rustup target add wasm32-wasip1 wasm32-wasip2
+cargo build --release --target wasm32-wasip2 # component
+cargo build --release --target wasm32-wasip1 # core
+```
+
+### Run with a preopened directory
+Use to give a guest exactly one directory and nothing else.
+
+```bash
+W=target/wasm32-wasip2/release/wc.wasm
+wasmtime run --dir ./notes::/notes --env USER=ada \
+  $W /notes/todo.md
+# ada: 42 words
+
+wasmtime run $W /etc/passwd   # no preopen for /etc
+# Error: Os { ..., kind: NotFound, ... }
+```
+
+### WIT world implemented in Rust
+Use to build a reusable library component with a typed interface.
+
+```wit title="wit/world.wit"
+package acme:calc@0.1.0;
+
+interface ops {
+  record stats { min: f64, max: f64, mean: f64 }
+  summarise: func(xs: list<f64>) -> result<stats, string>;
+}
+
+world calc {
+  export ops;
+}
+```
+
+```toml title="Cargo.toml"
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.62"
+```
+
+```rust title="src/lib.rs"
+mod bindings {
+    wit_bindgen::generate!({ path: "wit" });
+    use super::Calc;
+    export!(Calc);
+}
+use bindings::exports::acme::calc::ops::{Guest, Stats};
+
+struct Calc;
+
+impl Guest for Calc {
+    fn summarise(xs: Vec<f64>) -> Result<Stats, String> {
+        if xs.is_empty() {
+            return Err("empty input".into());
+        }
+        let it = xs.iter().copied();
+        let min = it.clone().fold(f64::MAX, f64::min);
+        let max = it.fold(f64::MIN, f64::max);
+        let mean = xs.iter().sum::<f64>() / xs.len() as f64;
+        Ok(Stats { min, max, mean })
+    }
+}
+```
+
+```bash
+cargo build --release --target wasm32-wasip2
+wasm-tools component wit \
+  target/wasm32-wasip2/release/calc.wasm
+wasmtime run --invoke 'summarise([1.0, 5.0])' \
+  target/wasm32-wasip2/release/calc.wasm
+```
+
+### Component in Node or browser
+Use jco to turn any component into an ES module with TypeScript types.
+
+```bash
+npx jco transpile calc.wasm -o src/calc --name calc
+# src/calc/calc.js, calc.core.wasm, calc.d.ts,
+# interfaces/acme-calc-ops.d.ts
+```
+
+```ts
+import { ops } from "./calc/calc.js";
+
+try {
+  const s = ops.summarise(new Float64Array([1, 5, 9]));
+  console.log(s.mean); // 5
+} catch (e) {
+  // result<_, string> error arrives as a thrown
+  // ComponentError whose payload is the string
+  console.error((e as { payload?: unknown }).payload);
+}
+```
+
+The output imports WASI from `@bytecodealliance/preview2-shim` when the component needs it (install it
+next to the output); bundle it with Vite or esbuild for the browser. Use `--instantiation async` to
+pass imports yourself instead of ES imports.
+
+### Preview 1 module in Node
+Use for `wasm32-wasip1` / wasi-sdk binaries without a separate runtime.
+
+```ts
+import { readFile } from "node:fs/promises";
+import { WASI } from "node:wasi";
+import { argv, env } from "node:process";
+
+const wasi = new WASI({
+  version: "preview1",          // required
+  args: ["wc", "/notes/todo.md"], // argv[0] first
+  env: { USER: env.USER ?? "" },
+  preopens: { "/notes": "./notes" }, // guest: host
+});
+const mod = await WebAssembly.compile(
+  await readFile("./wc.wasm"),
+);
+const inst = await WebAssembly.instantiate(
+  mod, wasi.getImportObject(),
+);
+const code = wasi.start(inst); // exit code
+console.log("exit", code, argv.length);
+```
+
+`wasi.start` is for commands (`_start`); call `wasi.initialize(instance)` for reactor modules that export
+`_initialize`. Remember that `node:wasi` is experimental and not a sandbox.
+
+### Componentize JavaScript
+Use to write a component in TypeScript/JS, for example a plugin for a Wasmtime-based host.
+
+```wit title="wit/world.wit"
+package acme:greet@0.1.0;
+
+world greeter {
+  export greet: func(name: string) -> string;
+}
+```
+
+```ts title="greeter.ts"
+export function greet(name: string): string {
+  return `Hello, ${name}!`;
+}
+```
+
+```bash
+npx jco componentize greeter.ts -w wit -o greeter.wasm
+npx jco wit greeter.wasm
+wasmtime run --invoke 'greet("Ada")' greeter.wasm
+```
+
+The output embeds a JS engine (StarlingMonkey), so expect multi-megabyte components; `jco componentize
+--backend qjs` selects a QuickJS-based backend instead.
+
+## References
+
+- [wasi.dev](https://wasi.dev/): [roadmap](https://wasi.dev/roadmap), [WASI 0.3 release](https://wasi.dev/releases/wasi-p3); [WASI repository](https://github.com/WebAssembly/WASI)
+- [Component Model book](https://component-model.bytecodealliance.org/): [WIT reference](https://component-model.bytecodealliance.org/design/wit.html), [canonical ABI](https://component-model.bytecodealliance.org/advanced/canonical-abi.html), [Rust guide](https://component-model.bytecodealliance.org/language-support/building-a-simple-component/rust.html); [component-model spec repo](https://github.com/WebAssembly/component-model)
+- [Wasmtime docs](https://docs.wasmtime.dev/): [CLI options](https://docs.wasmtime.dev/cli-options.html); [wasmtime.dev](https://wasmtime.dev/)
+- [Bytecode Alliance: WASI 0.3 launched](https://bytecodealliance.org/articles/WASI-0.3)
+- [jco book](https://bytecodealliance.github.io/jco/), [jco](https://github.com/bytecodealliance/jco), [wit-bindgen](https://github.com/bytecodealliance/wit-bindgen), [wasm-tools](https://github.com/bytecodealliance/wasm-tools), [wac](https://github.com/bytecodealliance/wac), [componentize-py](https://github.com/bytecodealliance/componentize-py)
+- [Node.js: `node:wasi`](https://nodejs.org/api/wasi.html), [Rust target `wasm32-wasip2`](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip2.html), [Spin](https://spinframework.dev/), [wasmCloud](https://wasmcloud.com/)
