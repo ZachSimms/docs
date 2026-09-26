@@ -1,0 +1,440 @@
+---
+title: Playbook
+date: 2026-09-26
+order: 1
+---
+
+The master sheet for getting from "I have an idea" to "real users are using it" in 6–8 weeks. It defines the six
+phases, the artefact each one hands to the next, the timeboxes, the decision rules, and the specific ways technical
+founders stall between phases. Each phase has its own sheet: [ideation](/startups/idea-to-mvp/ideation/),
+[validation](/startups/idea-to-mvp/validation/), [product design](/startups/idea-to-mvp/product-design/),
+[building the MVP](/startups/idea-to-mvp/building-mvp/) and [launch and iterate](/startups/idea-to-mvp/launch-iterate/).
+Attributed advice lives in the [advice](/startups/advice/y-combinator/) sheets; the stack assumed here is
+[Next.js](/typescript/react/next-js/) and [Postgres](/databases/postgres/).
+
+## Why ideas stall
+
+Ideas rarely die because the founder can't code. They die in the gaps between phases, where nobody tells you what
+the next step is, what "done" looks like, or when to stop. The pattern for technical founders is consistent: the
+comfortable activity (building, researching, choosing tools) expands to fill all available time, and the
+uncomfortable one (talking to strangers, asking for money, shipping something embarrassing) never happens.
+
+| Symptom | Underlying cause | Fix |
+| :------ | :--------------- | :-- |
+| New idea every week, none pursued | **endless ideation**: evaluating feels productive and carries no risk of rejection | timebox ideation to 1 week, score with a fixed matrix, commit to the winner for one validation cycle |
+| Months of building, zero users have seen it | **fear of judgment** disguised as "it's not ready yet"; building in secret | show something to one real user this week; public launch date |
+| Rewriting the auth flow for the third time | **perfectionism**: polishing what you control instead of testing what you don't | fixed time, variable scope; a "not now" list; ship on the date whatever is done |
+| "I don't know what to do next" | **ambiguity about the next step**: no phase model, no exit criteria | use the phase table below; every phase ends with a named artefact |
+| MVP spec has 14 features | **too-big scope**: MVP treated as "v1 minus a bit" rather than an experiment | one core job, one user type, one happy path; everything else to "not now" |
+| Comparing five ORMs, three hosts and two auth libraries | **tool or stack yak-shaving**: tool-shopping is building-adjacent procrastination | use the stack you already know; once a stack decision is made, it stays closed until launch |
+| Project drifts for months | **no deadline**: work expands to fill the time available (Parkinson's law) | timebox every phase; announce the launch date publicly |
+| Opinions about users, but no conversations | **no user contact**: the building feels safer than the market | one user conversation per day, every day, in every phase |
+| Doing a course on Kubernetes "for the MVP" | **confusing learning with building**: learning feels like progress but produces no evidence | learn only what the next deliverable requires, just in time |
+| Waiting for the perfect idea | **fear of commitment**: any real idea has visible flaws | an idea only has to be good enough to test; tests are cheap |
+| Launch keeps slipping by "one more feature" | **one-more-feature syndrome**: each feature is a reason not to face users | feature freeze 3 days before launch; new ideas go to the backlog |
+| Stuck after a lukewarm launch | **no decision rules**: ambiguity about whether to continue | pre-commit kill/continue criteria before each phase starts |
+
+<Callout type="warn" title="The core diagnosis">
+Almost every stall is an avoidance of **contact with users** or **contact with a deadline**. The fixes below are
+mostly ways of forcing one or both.
+</Callout>
+
+## The phase model
+
+Six phases. Each answers one question, produces one artefact, and has a hard timebox. Default timeboxes assume a solo
+or two-person technical founder working close to full time; roughly double the timeboxes (never the scope) if you
+are working evenings and weekends.
+
+| Phase | Question it answers | Key activities | Artefacts | Exit criteria | Timebox | Biggest risk |
+| :---- | :------------------ | :------------- | :-------- | :------------ | :------ | :----------- |
+| **0. Ideation** | Which problem is worth testing? | problem journal, idea list, scoring, bottom-up sizing, "why now" | problem hypothesis one-pager; list of 20 people to talk to | one idea chosen; riskiest assumptions ranked; 20 names | ≤ 1 week | endless ideation; picking a made-up or tarpit idea |
+| **1. Problem validation** | Does this problem exist, is it painful, will people pay or switch, and can I reach them? | 10–20 interviews, synthesis, landing page, smoke tests, pre-sales | validated problem brief | pre-set evidence thresholds met (or idea killed) | 1–2 weeks | false positives from friends and compliments |
+| **2. Solution design** | What is the smallest thing that delivers the must-have outcome? | scope cut, user flow, clickable prototype, prototype tests | one-page spec; prototype; "not now" list | 5+ target users complete the core task on the prototype | 1 week | scope creep; designing for imagined users |
+| **3. Build the MVP** | Can I deliver the core outcome reliably enough for real use? | walking skeleton, core flow, analytics, onboarding, payments if tested | deployed MVP with analytics; launch list | core job works end to end in production for a real user | 2–4 weeks (hard cap 6) | polishing; tool-shopping; building in secret |
+| **4. Launch to first users** | Will real users adopt it, and what breaks? | personal onboarding of first users, launch posts, support | launch results (activation, retention signals, quotes) | first cohort onboarded; data and feedback collected | 1 week | big-bang launch; vanity metrics |
+| **5. Iterate toward product–market fit** | What must change for users to keep coming back and pay? | weekly build–measure–learn cycles, retention cohorts, PMF survey | iteration backlog; weekly metrics | retention curve flattening; strong PMF signals | weekly cycles | "one more feature" instead of fixing retention |
+
+**Total target: idea → users in 6–8 weeks.** That is phases 0–4. Phase 5 has no fixed end; it runs until the product
+has found fit or you kill it. The detail for each phase is in its sheet:
+[ideation](/startups/idea-to-mvp/ideation/), [validation](/startups/idea-to-mvp/validation/),
+[product design](/startups/idea-to-mvp/product-design/), [building the MVP](/startups/idea-to-mvp/building-mvp/),
+[launch and iterate](/startups/idea-to-mvp/launch-iterate/).
+
+## The pipeline at a glance
+
+```text
+ PHASE 0          PHASE 1            PHASE 2           PHASE 3          PHASE 4          PHASE 5
+ Ideation   -->   Problem      -->   Solution    -->   Build the  -->   Launch to  -->   Iterate
+ (<= 1 wk)        validation         design            MVP              first users      toward PMF
+                  (1-2 wks)          (1 wk)            (2-4 wks,        (1 wk)           (weekly)
+                                                        cap 6)
+    |                 |                  |                 |                |                |
+    v                 v                  v                 v                v                v
+ Problem          Validated          One-page spec     Deployed MVP     Launch results   Iteration
+ hypothesis  -->  problem brief -->  + prototype  -->  + analytics -->  (cohort data, -> backlog +
+ + 20 names       (quotes, WTP,      + "not now"       + launch list    quotes, bugs)    weekly metrics
+                  channel)           list                                                    |
+                                                                                             |
+    ^                 ^                                                                      |
+    |   kill / pivot  |                        kill / pivot / persevere                      |
+    +-----------------+---------------------------------------------------------------------+
+
+ Running underneath every phase:
+   - 1 user conversation per day          - deploy something every day (from phase 1)
+   - Friday review against exit criteria  - public deadline for the launch date
+```
+
+Arrows back to the left are normal. A failed validation that sends you back to ideation in week 2 is the process
+working, not failing: it saved you 5 weeks of building.
+
+## What an MVP is (and is not)
+
+| Term | Source | Definition | What it emphasises |
+| :--- | :----- | :--------- | :----------------- |
+| **Minimum viable product** | coined by **Frank Robinson** (SyncDev), 2001 | "the unique product that maximizes return on risk for both the vendor and the customer" (SyncDev's wording) | right-sized: big enough to cause adoption and sales, small enough not to be bloated and risky |
+| **Minimum viable product** | **Eric Ries**, "Minimum Viable Product: a guide" (blog, 3 Aug 2009), popularised in *The Lean Startup* (2011) | "that version of a new product which allows a team to collect the maximum amount of validated learning about customers with the least effort" | learning, not a small product; the book frames it as the fastest way round the build–measure–learn loop |
+| **Minimum lovable product** | common industry variant; no single clear originator | the smallest product users would genuinely love, not just tolerate | emotional response; retention |
+| **SLC: simple, lovable, complete** | **Jason Cohen**, "Your customers hate MVPs. Make a SLC instead." (A Smart Bear, Aug 2017) | simple enough to build fast, lovable enough that people want it, complete enough to do one job fully | respect for the customer: Cohen argues "'MVP' implies a selfish process, abusing customers so you can 'learn'" |
+
+How to reconcile them: **Ries's definition decides what you build first; Cohen's decides how it should feel.** An MVP is
+an experiment aimed at your riskiest assumption. It can be a landing page, a spreadsheet you run by hand, or a working
+app. If it is software that real users rely on, make it SLC: one job, done completely, without broken edges. Cohen's
+line is the useful test: customers would rather use "v1 of something simple" than "v0.1 of something broken".
+
+| An MVP is | An MVP is not |
+| :-------- | :------------ |
+| the cheapest test of the riskiest assumption | a smaller version of your eventual product roadmap |
+| scoped to one user type and one core job | a platform, a marketplace for everyone, or "phase 1 of 4" |
+| something real users touch, and which produces evidence | an internal demo, a pitch deck, or a Figma file no user saw |
+| allowed to be manual behind the scenes | required to scale, be multi-tenant or be fully automated |
+| deliberately embarrassing in the parts that don't matter | broken in the part that does |
+
+<Note kind="tip">A widely repeated line credited to Reid Hoffman says that if you are not embarrassed by the first
+version of your product, you launched too late (paraphrased). Apply it to the parts that don't matter, not to the core
+job. See the [founders](/startups/advice/founders/) sheet for attributed founder advice.</Note>
+
+## Types of MVP
+
+Choose the cheapest type that can produce the evidence you need. Cost is for a technical founder; signal strength
+follows the ladder in [validation](/startups/idea-to-mvp/validation/): compliments are worth nothing, money is worth
+the most.
+
+| Type | What you do | Typical cost | What it tests | Signal strength | Example or note |
+| :--- | :---------- | :----------- | :------------ | :-------------- | :-------------- |
+| **Landing page / smoke test** | page describing the product with a sign-up or "request access" button | hours–1 day | whether the pitch attracts the target segment | weak–medium (an email is cheap) | Buffer started as a two-page site: pitch, then an email form (Joel Gascoigne, 2010–11) |
+| **Fake door** | a button or pricing tier for something not yet built; clicks are measured, then an honest "coming soon" | hours | demand for a specific feature or price point | weak–medium | Buffer inserted a pricing page between the two pages to see which plan people clicked |
+| **Explainer video / demo** | a video of the product working (possibly faked) | 1–3 days | whether the concept is understood and wanted | medium when it drives sign-ups | Ries describes Dropbox's early demo video driving beta sign-ups (*The Lean Startup*) |
+| **Concierge** | deliver the outcome manually, openly, to a handful of customers | days of your time per customer | whether the outcome is valued enough to use and pay for | strong if they pay or keep coming back | Ries's Food on the Table case (*The Lean Startup*); see also Paul Graham, "Do Things that Don't Scale" (2013) |
+| **Wizard of Oz** | real-looking product front end; humans do the work behind it, unseen | days–2 weeks | whether users behave as if the product exists | strong (real behaviour) | Zappos is the usual story: shoes photographed in shops and bought at retail when orders came in |
+| **Piecemeal / no-code** | stitch existing tools (forms, spreadsheets, Stripe payment links, email) into a working service | 1–5 days | the whole flow, end to end, with real users | strong | technical founders skip this out of pride; don't |
+| **Single-feature product** | build only the one feature that delivers the core outcome | 2–4 weeks | retention and willingness to pay on real software | strongest before scale | Buffer's first build did one thing: queue tweets |
+| **Pre-sale** | sell before building: deposits, paid pilots, letters of intent | days | willingness to pay, in money | strongest (cash) | refund promise and delivery date required; see [validation](/startups/idea-to-mvp/validation/) |
+
+Rule of thumb: **test problem risk with interviews, demand risk with a landing page or pre-sale, value risk with
+concierge or Wizard of Oz, and only then test feasibility and retention with software.** Technical founders do this
+backwards because software is what they are good at.
+
+## Handoffs between phases
+
+The single most effective anti-stall device is an **explicit artefact** at each boundary. You cannot start the next
+phase without it, and it is the first thing the next phase opens, so no phase starts from a blank page.
+
+| From → to | Artefact passed | Must contain | "Done" test |
+| :-------- | :-------------- | :----------- | :---------- |
+| 0 → 1 | **Problem hypothesis one-pager** (the problem statement) | target customer, problem, current alternatives, why now, riskiest assumptions ranked, 20 names to contact | could a stranger book your first interview from it? |
+| 1 → 2 | **Validated problem brief** | who, problem in their words with quotes, frequency, workaround and its cost, willingness-to-pay evidence, reachable channel, 1–3 must-have outcomes | every claim has an interview or data point behind it |
+| 2 → 3 | **One-page spec + clickable prototype + "not now" list** | one user type, one core job, happy-path flow, success metric, what is explicitly out | 5 target users completed the core task on the prototype |
+| 3 → 4 | **Deployed MVP + analytics + launch list** | production URL, core flow working end to end, activation event tracked, 20–100 named people to invite | a real user completed the core job in production without your help |
+| 4 → 5 | **Launch results** | who signed up, who activated, who came back, quotes, bugs, channel performance | written up in one page, with the next hypothesis stated |
+| 5 → 5 | **Iteration backlog + weekly metrics** | ranked problems from users, retention by cohort, this week's experiment | one experiment shipped and measured per week |
+
+<Note kind="info">Templates for each artefact are in the phase sheets: the problem hypothesis in
+[ideation](/startups/idea-to-mvp/ideation/), the validated problem brief in
+[validation](/startups/idea-to-mvp/validation/), the spec in [product design](/startups/idea-to-mvp/product-design/),
+the launch list in [building the MVP](/startups/idea-to-mvp/building-mvp/) and the results report in
+[launch and iterate](/startups/idea-to-mvp/launch-iterate/).</Note>
+
+## Reducing friction between phases
+
+| Technique | How | Which stall it kills |
+| :-------- | :-- | :------------------- |
+| **Decide in advance** | write kill/continue criteria before each phase starts ("if fewer than 5 of 12 interviewees raise the problem unprompted, I go back to ideation") | motivated reasoning after the fact; zombie projects |
+| **Overlap phases** | build the landing page during validation; recruit launch users during the build; write launch posts during week 1 of the build | dead time at boundaries; launching to nobody |
+| **Walking skeleton on day 1** | deploy a trivially thin end-to-end slice to production on the first day: domain, Next.js app, Postgres, deploy pipeline, one page | "deployment is a problem for later"; big-bang integration; tool-shopping |
+| **Fixed time, variable scope** | set the appetite (the time budget) first, then shape the solution to fit it | scope creep; "one more feature" |
+| **Public commitments and deadlines** | announce the launch date to people whose opinion you care about | infinite polishing; drift |
+| **Daily shipping** | something reaches production (or a user) every working day | building in secret; fear of judgment |
+| **A "not now" list** | every idea that isn't in scope goes on a visible list with a date to reconsider | the guilt that drives scope creep; losing good ideas |
+| **Blank-page-free templates** | every phase starts by filling in the previous phase's artefact and this phase's template | ambiguity about the next step |
+| **One user conversation per day** | calendar block; counts in every phase, including the build | no user contact; designing for imagined users |
+| **Pre-chosen stack** | decide once, write it down, don't revisit before launch | yak-shaving |
+
+### Fixed time, variable scope
+
+Borrowed from Basecamp's *Shape Up* (Ryan Singer, 2019). Shape Up calls the time budget the **appetite**: "You can
+think of the appetite as a time budget for a standard team size." The contrast with estimation is the whole point:
+"Estimates start with a design and end with a number. Appetites start with a number and end with a design."
+Shape Up works in six-week cycles, with small-batch projects of one or two weeks. For an MVP: the build appetite is 2–4
+weeks and the hard cap is 6. When the cap arrives, you cut scope, not time.
+
+### The walking skeleton
+
+A term from Alistair Cockburn: the thinnest possible implementation that exercises the whole architecture end to end.
+On day 1 of the project, spend at most 2 hours: create the app, connect Postgres, deploy to production on your real
+domain, add analytics. Every later deploy is then routine, and the landing page for validation has somewhere to live.
+See [building the MVP](/startups/idea-to-mvp/building-mvp/).
+
+```text
+Walking skeleton, day 1 (max 2 hours):
+[ ] repo created, pushed
+[ ] Next.js app renders one page at your real domain
+[ ] Postgres connected; one table; one write, one read
+[ ] deploy on push to main
+[ ] analytics snippet installed; one event fires
+[ ] error tracking installed
+[ ] STOP. No auth, no design system, no CI matrix.
+```
+
+## The six-week plan
+
+The fast path: 6 weeks from idea to first users. The 8-week variant adds a second validation week and a fourth build
+week; use it if you are part-time or the interviews are hard to book. Week 1 is planned by the day because that is
+where most people stall.
+
+```text
+WEEK 1 - PHASE 0 IDEATION (and skeleton)
+  Mon  AM  Dump every idea and every problem from your problem
+           journal into one list (aim for 30+; 100 if you can).
+       PM  Walking skeleton deployed (<= 2h). Pick stack: done.
+  Tue  AM  Cut the list to 10 using the "tarpit / made-up" filters.
+       PM  Score the 10 on the idea matrix. Keep the top 3.
+  Wed  AM  For each of the 3: competitors and alternatives scan
+           (45 min each), bottom-up size (30 min each).
+       PM  Write a draft problem hypothesis for each of the 3.
+  Thu  AM  Choose ONE. Rank its riskiest assumptions.
+       PM  Write kill/continue criteria for validation.
+           Build the list of 20 people to talk to.
+  Fri  AM  Send 20 outreach messages. Book >= 5 interviews.
+       PM  Landing page v0 live on the skeleton (headline,
+           3 bullets, email capture). Friday review.
+  OUTPUT: problem hypothesis one-pager + 20 names + 5 bookings
+
+WEEK 2 - PHASE 1 PROBLEM VALIDATION
+  Daily: 2-3 interviews; synthesise same day; send more outreach
+  Mid-week: smoke test running (landing page, community posts)
+  Thu: ask for commitment (pilot, pre-order, LOI, intro)
+  Fri: synthesis; check against pre-set thresholds
+  OUTPUT: validated problem brief  (or kill -> back to week 1)
+  8-WEEK VARIANT: add a second validation week here
+
+WEEK 3 - PHASE 2 SOLUTION DESIGN
+  Mon: one-page spec; cut scope to one user, one job
+  Tue: user flow + low-fi screens
+  Wed: clickable prototype
+  Thu: 5 prototype tests with interviewees from week 2
+  Fri: fix spec; "not now" list; build plan by day
+  Keep going: 1 conversation/day; start the launch list
+  OUTPUT: one-page spec + prototype + not-now list
+
+WEEKS 4-5 - PHASE 3 BUILD THE MVP
+  Week 4: core flow end to end, ugly, in production
+          (data model, the one job, minimal auth)
+  Week 5: onboarding, activation event tracked, payments
+          if you tested price, error states on the happy path
+  Every day: deploy; 1 user conversation; show progress
+  Thu wk 5: FEATURE FREEZE
+  8-WEEK VARIANT: add a third build week (cap is 6 total)
+  OUTPUT: deployed MVP + analytics + launch list (20-100)
+
+WEEK 6 - PHASE 4 LAUNCH TO FIRST USERS
+  Mon-Tue: personally onboard the first 5-10 users
+  Wed: fix what blocked them; invite the next batch
+  Thu: public posts to the channels in the problem brief
+  Fri: launch results one-pager; next hypothesis
+  OUTPUT: launch results -> iteration backlog
+
+WEEK 7+ - PHASE 5 ITERATE (weekly cycles, see rhythm below)
+```
+
+## Weekly operating rhythm
+
+The rhythm is what keeps the phases moving once the plan meets reality. It applies from week 1 onwards.
+
+| When | What | Time | Output |
+| :--- | :--- | :--- | :----- |
+| **Monday** | plan: re-read the current phase's exit criteria; pick 1 goal and at most 3 outcomes for the week | 30 min | written weekly goal |
+| **Daily** | one focused build (or research) block; ship something to production or to a user | 3–5 h | a deploy, a sent message or a finished interview |
+| **Daily** | one user conversation (interview, onboarding call, support reply, demo) | 30 min | notes in the synthesis doc |
+| **Daily** | update the "not now" list instead of acting on new ideas | 5 min | shorter scope |
+| **Friday** | demo to someone outside your head (co-founder, peer, user) | 30 min | feedback |
+| **Friday** | review: metrics, exit criteria, kill/continue rules; write 5 lines on what you learned | 30 min | decision: continue, cut scope, change phase, or kill |
+
+Metrics to track each week, by phase:
+
+| Phase | Leading metric (effort) | Lagging metric (evidence) |
+| :---- | :---------------------- | :------------------------ |
+| 0–1 | outreach sent; interviews held | problem mentioned unprompted; commitments obtained |
+| 2 | prototype sessions run | users who completed the core task unaided |
+| 3 | deploys per week | real users through the core flow in production |
+| 4 | people personally invited | sign-ups → activated → returned in week 2 |
+| 5 | experiments shipped | retention by weekly cohort; revenue; PMF survey |
+
+Paul Graham's "Startup = Growth" (2012) gives a YC reference point for phase 5: "A good growth rate during YC is 5-7%
+a week." That describes funded startups aiming for venture scale; treat it as a yardstick, not a pass mark.
+
+## Decision rules
+
+Write your rules **before** each phase starts, in the one-pager, with numbers. The thresholds below are
+**heuristics**, not laws: they are starting points for a solo B2B or prosumer product and should be adjusted for your
+market (a niche enterprise product might need 3 committed customers, a consumer app hundreds of sign-ups). What
+matters is that you set them in advance and honour them.
+
+| Phase | Continue if… | Go back or kill if… |
+| :---- | :----------- | :------------------ |
+| 0 | one idea scores clearly ahead and you can name 20 reachable people with the problem | you can't name 10 people who have the problem → pick another idea or another segment |
+| 1 | at least half of 10–15 interviewees describe the problem **unprompted** and have tried to solve it; at least 3 give a real commitment (time, reputation or money) | fewer than about a third describe it unprompted → back to ideation; they describe it but nobody has tried to solve it → problem too mild, kill or re-segment |
+| 1 | smoke test beats the threshold you wrote down before launching it | it misses by a wide margin after reaching enough of the target segment → rewrite the pitch once; if it misses again, re-segment or kill |
+| 2 | most prototype testers (say 4 of 5) complete the core task and ask when they can use it | testers complete it but shrug → the outcome is wrong, not the UI; back to the brief |
+| 3 | the core flow works in production by the appetite deadline | at the hard cap (6 weeks) → cut to what works and launch anyway; never extend twice |
+| 4 | a meaningful share of activated users come back in week 2 without being chased | almost nobody returns → talk to every one of them before writing code |
+| 5 | retention by cohort flattens; PMF survey approaches Sean Ellis's 40% "very disappointed" | 8–12 weekly cycles with no retention improvement → pivot or kill (see [launch and iterate](/startups/idea-to-mvp/launch-iterate/)) |
+
+<Callout type="info" title="Why pre-commit?">
+After weeks of work, every result looks like a reason to continue. Writing the rule first converts a painful judgment
+call into a lookup. See [decision-making](/thinking/mental-models/decision-making/) and
+[cognitive biases](/thinking/mental-models/cognitive-biases/) (sunk cost, confirmation bias).
+</Callout>
+
+## Startup canvas
+
+A one-page summary you keep open throughout. It is a cut-down version of the **Lean Canvas** that Ash Maurya adapted
+from Alexander Osterwalder's Business Model Canvas in 2010 (see Maurya's *Running Lean*). Fill it in during ideation,
+correct it with evidence during validation, and re-read it every Friday.
+
+```text
+STARTUP CANVAS                          Version: __  Date: ____
+---------------------------------------------------------------
+1. PROBLEM (top 1-3, in the customer's words)
+   -
+2. CUSTOMER (one segment; specific enough to find on LinkedIn
+   or in a named community)
+   - Who:
+   - Early adopter trait (already hacking a workaround):
+3. CURRENT ALTERNATIVE (what they do today, and what it costs
+   them in time / money / risk)
+   -
+4. UNIQUE VALUE PROPOSITION (one sentence: outcome, for whom,
+   unlike what)
+   -
+5. RISKIEST ASSUMPTION (the one that kills the idea if false)
+   - Assumption:
+   - Cheapest test:
+6. MVP (type + the one job it does)
+   - Type: landing page / concierge / WoZ / single feature / ...
+   - Core job:
+7. SUCCESS METRIC (one number, with a threshold set now)
+   - Metric:            Threshold:           By (date):
+8. DEADLINE (public launch date and who you told)
+   - Date:              Told:
+---------------------------------------------------------------
+KILL CRITERIA: I will stop or pivot if ________________________
+NOT NOW: ______________________________________________________
+```
+
+## Phase gate checklists
+
+Tick every box before moving on. If a box can't be ticked by the end of the timebox, apply the decision rules above.
+
+```text
+GATE 0 -> 1  (end of ideation)
+[ ] One idea chosen; the others parked with a note on why
+[ ] Problem hypothesis one-pager written (ideation template)
+[ ] Riskiest assumptions ranked (top 3 named)
+[ ] Kill/continue criteria for validation written, with numbers
+[ ] 20 named people with the problem; >= 5 interviews booked
+[ ] Walking skeleton deployed; landing page v0 live
+
+GATE 1 -> 2  (end of validation)
+[ ] 10-20 interviews held, notes synthesised
+[ ] Problem described unprompted by the pre-set share
+[ ] Commitment obtained (time, reputation or money) from >= N
+[ ] Current workaround and its cost documented
+[ ] Reachable channel identified and tested once
+[ ] Validated problem brief written with quotes
+
+GATE 2 -> 3  (end of design)
+[ ] One-page spec: one user type, one job, one happy path
+[ ] Clickable prototype tested with >= 5 target users
+[ ] "Not now" list written; appetite (2-4 weeks) fixed
+[ ] Activation event and success metric defined
+[ ] Build plan by day for week 1 of the build
+
+GATE 3 -> 4  (end of build)
+[ ] Core job works end to end in production
+[ ] A real user completed it without help
+[ ] Analytics: sign-up, activation, return events firing
+[ ] Payments work (if price is part of the test)
+[ ] Launch list of 20-100 named people; posts drafted
+[ ] Feature freeze held for >= 2 days
+
+GATE 4 -> 5  (end of launch week)
+[ ] First cohort personally onboarded
+[ ] Launch results one-pager written
+[ ] Top 3 problems from users ranked into the backlog
+[ ] Weekly metrics dashboard exists (even a spreadsheet)
+```
+
+## Anti-patterns
+
+Named so you can catch yourself doing them.
+
+| Anti-pattern | What it looks like | What it's really avoiding | Counter |
+| :----------- | :----------------- | :------------------------ | :------ |
+| **Endless ideation** | a Notion database of 80 ideas, none tested | commitment and possible rejection | 1-week timebox; scoring matrix; pick one |
+| **Building in secret** | "stealth mode" for a to-do app | judgment | show a user something every week; build in public |
+| **Polishing before users** | animations, dark mode, custom design system in week 2 | finding out the core is unwanted | nothing cosmetic until 10 users used the core flow |
+| **Tool-shopping** | a week comparing hosting, ORMs, auth providers, component libraries | the actual problem | use the stack you know; see [building the MVP](/startups/idea-to-mvp/building-mvp/) |
+| **"One more feature"** | launch slips weekly as features are added | launch-day exposure | feature freeze; "not now" list; public date |
+| **Premature scaling** | microservices, queues and Kubernetes for zero users | the market question, by answering an engineering one | one app, one database, one region |
+| **Survey-as-validation** | "83% of respondents said they'd use it" | talking to people | interviews about past behaviour; commitments |
+| **Friends-and-family validation** | mum, flatmates and ex-colleagues love it | strangers | only count people who match the segment and don't know you |
+| **Tutorial hell** | "learning" the stack you'll need "properly" first | building | learn just in time, for the next deliverable |
+| **The big-bang launch** | everything rides on one Product Hunt day | the slow grind of onboarding users one by one | launch to 10 people you know first; public launch later |
+| **Pivot-hopping** | new direction every week after one bad conversation | sitting with ambiguous data | only change course at a Friday review, against written rules |
+| **Brand before product** | logo, name and domain agonised over for days | the product | placeholder name; 30-minute timebox |
+| **Fundraising before evidence** | pitch deck before a single user | building and selling | users and revenue are the pitch; see [y-combinator](/startups/advice/y-combinator/) |
+
+## Stuck? Do this now
+
+Pick the row that matches, do the action in the next 30 minutes, then return to the phase plan.
+
+| If you are… | Do this now (≤ 30 min) |
+| :---------- | :--------------------- |
+| unable to choose between ideas | score the top 3 on the [ideation](/startups/idea-to-mvp/ideation/) matrix; take the winner; set a 1-week validation timebox |
+| without any idea | write down 10 things that annoyed you at work this month; for each, who else has it |
+| afraid to contact strangers | send 5 outreach messages from the [validation](/startups/idea-to-mvp/validation/) templates, now, before you think about it |
+| getting polite, useless interviews | re-read the Mom Test rules; replace every "would you" question with "tell me about the last time" |
+| unsure whether validation "passed" | open the kill/continue criteria you wrote; if you didn't write any, write them now and apply them honestly |
+| staring at a 14-feature spec | cross out everything not needed for one user to complete the core job once; move it to "not now" |
+| stuck choosing a tool | pick the one you have shipped with before; if none, the most boring mainstream option; close the tabs |
+| three weeks into the build with nothing deployed | deploy what exists today, even if it's broken; show it to one user tomorrow |
+| polishing | ask "would a user notice this in their first session?"; if not, stop |
+| scared to launch | message 5 people from the launch list personally with a link; that is the launch |
+| demoralised after a flat launch | call three users who signed up and didn't return; ask what they were trying to do |
+| drifting with no deadline | put a launch date in writing and send it to three people whose opinion you care about |
+
+## References
+
+- Eric Ries, [Minimum Viable Product: a guide](http://www.startuplessonslearned.com/2009/08/minimum-viable-product-guide.html) (Startup Lessons Learned, 3 August 2009): the source of the MVP definition quoted above
+- Eric Ries, *The Lean Startup* (Crown Business, 2011): validated learning, build–measure–learn, MVP case studies (Dropbox, Zappos, Food on the Table)
+- [SyncDev: Minimum Viable Product](https://www.syncdev.com/minimum-viable-product/): Frank Robinson's firm; the "maximizes return on risk" definition; Robinson dates his first use of the term to 2001
+- Jason Cohen, [Your customers hate MVPs. Make a SLC instead.](https://longform.asmartbear.com/slc/) (A Smart Bear, August 2017): simple, lovable, complete
+- Ryan Singer, [Shape Up: Stop Running in Circles and Ship Work that Matters](https://basecamp.com/shapeup) (Basecamp, 2019), especially [Set Boundaries](https://basecamp.com/shapeup/1.2-chapter-03): appetite, fixed time and variable scope
+- [Lean Canvas](https://leanstack.com/lean-canvas) (LEANSTACK) and Ash Maurya, *Running Lean* (O'Reilly, 2012): the canvas behind the startup canvas template
+- Joel Gascoigne, [Idea to Paying Customers in 7 Weeks: How We Did It](https://buffer.com/resources/idea-to-paying-customers-in-7-weeks-how-we-did-it/) (Buffer, 16 February 2011): two-page MVP, pricing-page test, public deadline, first paying customer within 4 days of launch
+- Paul Graham, [Do Things that Don't Scale](https://paulgraham.com/ds.html) (July 2013): concierge-style manual work to get the first users
+- Paul Graham, [Startup = Growth](https://paulgraham.com/growth.html) (September 2012): weekly growth as the YC yardstick
+- Steve Blank, *The Four Steps to the Epiphany* (2005): customer development, the method the Lean Startup grew out of
+- Rob Fitzpatrick, *The Mom Test* (2013): the interview rules used in validation
+- Sean Ellis, [PMF survey](https://pmfsurvey.com/): the "very disappointed" question and the 40% heuristic
+- C. Northcote Parkinson, "Parkinson's Law" (*The Economist*, 1955): work expands to fill the time available

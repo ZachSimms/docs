@@ -120,7 +120,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 | Route                    | Content                                                      |
 | ------------------------ | ------------------------------------------------------------ |
-| `/`                      | the fifteen topics, numbered, plus `v` to all sheets          |
+| `/`                      | the nineteen topics, numbered, plus `v` to all sheets         |
 | `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug` |
 | `/<topic>/`              | that topic's directories and sheets                          |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                 |

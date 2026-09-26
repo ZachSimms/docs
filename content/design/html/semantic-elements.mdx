@@ -1,0 +1,580 @@
+---
+title: Semantic elements
+date: 2026-09-26
+order: 2
+---
+
+Choosing the element that says what the content *is*: content categories and nesting rules,
+landmarks and headings, text-level and grouping elements, tables, links, global attributes and
+the obsolete tags to stop using. The document skeleton and `<head>` are in
+[Document & head](/design/html/document-head/), form controls in
+[Forms & inputs](/design/html/forms-inputs/), media in [Media & embeds](/design/html/media-embeds/),
+and ARIA and testing in [Accessibility](/design/html/accessibility/).
+
+## Why semantics
+
+| Consumer | What the right element gives it |
+| :------- | :------------------------------ |
+| **Accessibility tree** | each element maps to a role (`<nav>` → navigation, `<button>` → button) with a name and state; screen-reader users jump by landmark, heading, list, table and link |
+| **Default behaviour** | `<button>` is focusable and fires on Enter and Space; `<a href>` opens in a new tab on middle-click; `<details>` toggles; `<label>` focuses its input. A `<div onclick>` has none of this |
+| **Search engines** | headings, `<title>`, link text, `<time>`, tables and lists help crawlers understand structure; structured data does the rest |
+| **Reader mode & translation** | Safari Reader, Firefox Reader View and translators pick the `<article>`/`<main>` body and skip `<nav>`/`<aside>`; `translate="no"` protects brand names |
+| **Default styles** | lists get markers, `<em>` italics, `<code>` monospace; they survive when CSS fails to load |
+| **Future you** | `<section class="pricing">` reads better than `<div class="pricing">` five levels deep |
+
+Rule of thumb: pick the element for meaning, then style it. Reach for `<div>` and `<span>` only
+when no element fits, and add ARIA only when HTML has no native equivalent (the
+[first rule of ARIA use](https://www.w3.org/TR/using-aria/#rule1)).
+
+## Content categories & content model
+
+Every element belongs to one or more **content categories**, and every element's **content model**
+says which categories may go inside it.
+
+| Category | Members (main ones) | Typical rule |
+| :------- | :------------------ | :----------- |
+| Metadata | `base`, `link`, `meta`, `noscript`, `script`, `style`, `template`, `title` | goes in `head` (some also allowed in body) |
+| Flow | almost everything allowed in `body` | block-level containers accept flow |
+| Sectioning | `article`, `aside`, `nav`, `section` | define the scope of `header`, `footer` and headings |
+| Heading | `h1`–`h6`, `hgroup` | |
+| Phrasing | text, `a`, `abbr`, `b`, `br`, `button`, `code`, `em`, `img`, `input`, `label`, `mark`, `q`, `span`, `strong`, `time`, `wbr`… | what goes inside paragraphs and headings |
+| Embedded | `audio`, `canvas`, `embed`, `iframe`, `img`, `math`, `object`, `picture`, `svg`, `video` | |
+| Interactive | `a[href]`, `button`, `details`, `embed`, `iframe`, `input` (not hidden), `label`, `select`, `textarea`, `audio[controls]`, `video[controls]` | may not nest inside each other |
+| Form-associated | `button`, `fieldset`, `input`, `object`, `output`, `select`, `textarea`, `img`, form-associated custom elements | can belong to a `form` |
+
+| Element | May contain | May not contain |
+| :------ | :---------- | :-------------- |
+| `p`, `h1`–`h6` | phrasing content | `div`, lists, `table`, other `p` (the parser closes the `p`) |
+| `a` | transparent: whatever its parent allows, so a block link around a card is valid | interactive content, another `a`, anything with `tabindex` |
+| `button` | phrasing content | interactive content, anything with `tabindex` |
+| `label` | phrasing content | other labelable controls besides its own, another `label` |
+| `ul`, `ol`, `menu` | `li` (plus `script`/`template`) | bare text, `div` |
+| `dl` | `dt`/`dd` groups, or `div`s each wrapping one group | bare text |
+| `table` | `caption`, `colgroup`, `thead`, `tbody`, `tfoot`, `tr` | a `tr` directly under `table` gets an implied `tbody` |
+| `form` | flow content | another `form` |
+| `header`, `footer` | flow content | `header`, `footer`, `main` |
+| `address` | flow content | headings, sectioning content, `header`, `footer`, `address` |
+| `main` | flow content | may only sit inside `html`, `body`, `div`, an unnamed `form`, or a custom element; not in `article`, `aside`, `header`, `footer`, `nav` |
+
+The parser repairs invalid nesting instead of failing, and the repair often isn't what you meant.
+A `<p>`'s end tag is implied as soon as a block element such as `div`, `ul`, `table`, `section`,
+`h1`–`h6`, `pre`, `blockquote`, `figure`, `form` or another `p` starts, so the `div` below is
+*not* inside the paragraph, "more text" ends up outside any paragraph, and the stray `</p>`
+creates a new, empty paragraph:
+
+```html demo height=150 title="p-autoclose.html"
+<style>
+  p { outline: 2px dashed var(--graph-1);
+    padding: 4px; margin: 6px 0; min-height: 8px; }
+  div { outline: 2px solid var(--graph-0); padding: 4px; }
+</style>
+<p>Paragraph text
+  <div>A div written "inside" the p</div>
+  more text
+</p>
+```
+
+Other repairs to know: a `<table>` gets an implied `<tbody>` (so `table > tr` selectors never
+match), text directly inside `<table>` is moved in front of the table ("foster parenting"), and
+an `<a>` opened inside another `<a>` closes the first.
+
+## Sectioning & landmarks
+
+Landmarks are the regions screen-reader users list and jump between. HTML elements create them
+without any ARIA.
+
+| Element | Implicit role | Landmark? | Use for |
+| :------ | :------------ | :-------- | :------ |
+| `header` | `banner` at page level; `generic` inside `article`, `aside`, `main`, `nav`, `section` | only at page level | site header: logo, site nav, search |
+| `nav` | `navigation` | yes | major blocks of navigation links; label each one when there are several (`aria-label="Primary"`) |
+| `main` | `main` | yes | the page's unique content; exactly one visible per page |
+| `aside` | `complementary`; `generic` if unnamed and nested in sectioning content | top-level, or when named | content tangential to its parent: sidebar, pull quote, related links |
+| `footer` | `contentinfo` at page level; `generic` inside `article`, `aside`, `main`, `nav`, `section` | only at page level | copyright, contact, legal links |
+| `section` | `region` if it has an accessible name, otherwise `generic` | only when named | a thematic group with its own heading |
+| `article` | `article` | no (but listed by some screen readers) | self-contained, independently distributable: a post, a comment, a product card |
+| `search` | `search` | yes | wraps a search or filter form. Baseline widely available since April 2026 |
+| `form` | `form` | only when named (`aria-label`, `aria-labelledby`) | |
+| `address` | `group` | no | contact details for the nearest `article` or the page; not for arbitrary postal addresses |
+| `div`, `span` | `generic` | no | styling hooks when nothing else fits |
+
+- `section` vs `article`: would it make sense on its own in a feed or another site? `article`.
+  Otherwise, does it have a heading? `section`. Neither? `div`.
+- Name a `section` by pointing at its heading: `<section aria-labelledby="faq-h">` with
+  `<h2 id="faq-h">`. That turns it into a region landmark; do it only for regions worth jumping to.
+- Every piece of content should sit inside some landmark, so screen-reader users navigating by
+  region don't miss it.
+- One `banner`, one `main`, one `contentinfo` per page. Several `nav`s are fine if each is named.
+
+## Headings & the outline
+
+The HTML5 **document outline algorithm**, in which `<h1>` inside nested `<section>`s would be
+demoted automatically, was never implemented by any browser or screen reader. WHATWG removed it
+from the standard in July 2022 (pull request #7829 by Steve Faulkner) and replaced it with an
+outline built from heading **levels** alone. The UA styles that shrank an `<h1>` inside
+`section`/`article`/`aside`/`nav` were removed from the spec in May 2025 and from Chrome 140,
+Firefox 140 and Safari 26.2, so a nested `<h1>` now renders full size. MDN notes that nested
+`<h1>`s are now non-conforming.
+
+| Rule | Detail |
+| :--- | :----- |
+| One `h1` per page | multiple `h1`s are technically allowed if not nested, but MDN and most audits recommend one, matching the `<title>` |
+| No skipped levels | the spec now says each heading must be at most one level deeper than the one before (`h2` → `h4` is non-conforming); going back up any number is fine |
+| Level = rank, not size | style with classes (`.h-small`); never pick `h4` because it looks right |
+| Headings are for sections | not for bold text, taglines or "Follow us" boxes that head nothing |
+| `hgroup` | a heading plus `p` subtitles: `<hgroup><h1>Dune</h1><p>A novel</p></hgroup>`; the old "several headings in one hgroup" model is gone |
+| `headingoffset` | new spec attribute that shifts descendant heading levels (for reusable components); behind flags in Chrome and Firefox, not usable yet |
+
+```html
+<h1>HTML reference</h1>        <!-- one per page -->
+  <h2>Sectioning</h2>
+    <h3>header and footer</h3>
+    <h3>section vs article</h3>
+  <h2>Headings</h2>            <!-- back up: fine -->
+```
+
+## Text-level semantics
+
+| Element | Means | Not for |
+| :------ | :---- | :------ |
+| `em` | **stress emphasis** that changes the sentence's meaning ("I *did* pay") | visual italics |
+| `i` | alternate voice: technical terms, foreign phrases (add `lang`), thoughts, ship names, taxonomic names | emphasis, icons (`<i class="icon">` is a hack) |
+| `strong` | **importance**, seriousness or urgency ("**Warning:**") | headings, visual bold |
+| `b` | attention without extra importance: keywords, product names, a lede | anything that matters more than its surroundings |
+| `mark` | highlighted for relevance in this context: search hits, a quoted passage's key phrase | emphasis the author adds |
+| `small` | side comments, fine print, legal text, attribution | making text less important |
+| `s` | no longer accurate or relevant (an old price) | document edits |
+| `del` / `ins` | text removed from / added to the document; `cite` (URL) and `datetime` attributes | outdated-but-kept content (`s`) |
+| `u` | unarticulated annotation: a spelling-error squiggle, a Chinese proper-name mark | underlining for style (it looks like a link) |
+| `cite` | the **title of a work**: book, film, paper, program | a person's name (the WHATWG spec forbids it) |
+| `q` | inline quotation; the browser adds language-appropriate quote marks; `cite` attribute for the source URL | typing your own quotes too |
+| `abbr` | abbreviation; `title` gives the expansion | relying on `title` alone: expand on first use in text |
+| `dfn` | the defining instance of a term (the `p`, `dt` or section around it holds the definition) | every later mention |
+| `code` | a fragment of computer code | keyboard input |
+| `kbd` | user input: keys, commands to type; nest for key combos | output |
+| `samp` | sample output from a program | input |
+| `var` | a variable in maths or code | |
+| `sub` / `sup` | typographic convention only: chemical formulae, footnote markers, French abbreviations such as Mlle | maths layout (use MathML) |
+| `time` | a date, time or duration; `datetime` holds the machine-readable value | vague spans ("soon") |
+| `data` | a machine-readable `value` for any content (`<data value="8712345">Blue mug</data>`) | dates (use `time`) |
+| `bdi` | isolates text of unknown direction (user names in RTL/LTR mixes) | |
+| `bdo` | overrides direction with `dir` | normal bidi text |
+| `br` | a line break that is part of the content: addresses, poems | spacing between paragraphs |
+| `wbr` | a line-break opportunity inside a long word or URL | hyphenation (use `&shy;` or `hyphens: auto`) |
+| `span` | nothing; a hook for `lang`, `class`, `dir` | |
+
+```html demo height=180 title="text-level.html"
+<p><em>Stress</em> vs <strong>importance</strong>;
+  <i lang="la">in vitro</i>; <b>keyword</b>.</p>
+<p><mark>match</mark> · <small>fine print</small> ·
+  <s>£40</s> £30 · <del>removed</del> <ins>added</ins></p>
+<p><q>Fear is the mind-killer</q> from <cite>Dune</cite>
+  · <abbr title="HyperText Markup Language">HTML</abbr></p>
+<p><kbd><kbd>Ctrl</kbd>+<kbd>C</kbd></kbd> ·
+  <code>npm i</code> · <samp>Error 404</samp> ·
+  <var>x</var><sup>2</sup> · H<sub>2</sub>O</p>
+```
+
+### `time` formats
+
+| Kind | `datetime` value |
+| :--- | :--------------- |
+| Date | `2026-09-26` |
+| Month | `2026-09` |
+| Yearless date | `09-26` |
+| Year | `2026` (four or more digits) |
+| Week | `2026-W39` |
+| Time | `14:30`, `14:30:15`, `14:30:15.250` |
+| Local date and time | `2026-09-26T14:30` (a space instead of `T` is also valid) |
+| Global date and time | `2026-09-26T13:30Z`, `2026-09-26T14:30+01:00` |
+| Time-zone offset | `Z`, `+01:00`, `-0800` |
+| Duration | `PT2H30M`, `P3DT4H`, or `2h 30m` |
+
+```html
+<p>Published <time datetime="2026-09-26">26 Sept</time>.
+  Doors open <time datetime="19:30">7.30pm</time>;
+  the talk runs <time datetime="PT45M">45 min</time>.</p>
+```
+
+Without `datetime`, the element's text must itself be one of these formats.
+
+## Grouping content
+
+| Element | Use | Notes |
+| :------ | :-- | :---- |
+| `p` | a paragraph | phrasing only; never empty `<p>`s for spacing |
+| `blockquote` | an extended quotation | `cite` attribute holds the source URL (not shown); the spec puts the attribution **outside** the `blockquote`, typically in a `figcaption` |
+| `pre` | preformatted text: whitespace and line breaks kept | a newline right after `<pre>` is dropped; escape `<` and `&`; wrap code in `<pre><code>` |
+| `figure` + `figcaption` | self-contained content referred to from the main text: image, chart, code listing, quote, table | `figcaption` first or last child; it becomes the figure's accessible name |
+| `hr` | a thematic break between paragraphs (scene change, topic shift) | role `separator`; not a decorative line (use a border) |
+| `div` | no meaning; wrapper for styling or for `dt`/`dd` groups | last resort |
+| `main` | see landmarks | |
+| `ul` | unordered list: order doesn't matter | nav menus are lists of links |
+| `ol` | ordered list: `start="5"`, `reversed`, `type="1 \| a \| A \| i \| I"`; `li value="10"` jumps the count | `type` is meaningful (legal clauses), so it lives in HTML, not only CSS |
+| `menu` | a toolbar-style list of commands; treated like `ul` | not the old context-menu element |
+| `dl` / `dt` / `dd` | name–value groups: glossaries, metadata, FAQs; several `dt` per `dd` or several `dd` per `dt` | wrap each group in a `div` for styling (valid since 2017) |
+
+```html demo height=170 title="lists.html"
+<style>
+  .cols { display: flex; gap: 28px; flex-wrap: wrap; }
+  dt { font-weight: 600; }
+  dl div { margin-block-end: 6px; }
+  dd { margin-inline-start: 12px; }
+</style>
+<div class="cols">
+  <ol reversed start="3">
+    <li>Bronze</li><li>Silver</li><li>Gold</li></ol>
+  <ol type="i">
+    <li>Scope</li><li>Terms</li><li>Fees</li></ol>
+  <dl>
+    <div><dt>HTML</dt><dd>Structure</dd></div>
+    <div><dt>CSS</dt><dd>Presentation</dd></div>
+    <div><dt>JS</dt><dt>Wasm</dt><dd>Behaviour</dd></div>
+  </dl>
+</div>
+```
+
+<Note kind="warning">Safari/VoiceOver deliberately stops announcing a `ul`/`ol` as a list when CSS sets `list-style: none`. If the item count matters, add `role="list"` to restore it.</Note>
+
+## Tables
+
+Tables are for **data with rows and columns**, never for layout.
+
+| Element / attribute | Job |
+| :------------------ | :-- |
+| `caption` | the table's title and accessible name; first child of `table` |
+| `thead`, `tbody`, `tfoot` | row groups; browsers repeat `thead` on each printed page; `tfoot` may sit after `tbody`; several `tbody`s split sections |
+| `th` | a header cell; bold and centred by default |
+| `scope="col"` / `"row"` | which cells a `th` heads; needed for row headers and anything irregular |
+| `scope="colgroup"` / `"rowgroup"` | a header spanning a group of columns or a `tbody` |
+| `headers="id1 id2"` on `td` | explicit list of header ids for complex tables where `scope` can't express it |
+| `colspan`, `rowspan` | merged cells; keep them rare, they make screen-reader navigation harder |
+| `colgroup` / `col span="2"` | style whole columns; only `background`, `border`, `width` and `visibility` apply |
+| `aria-sort` on `th` | `ascending` / `descending` for sortable columns |
+
+```html demo height=210 title="table.html"
+<style>
+  table { border-collapse: collapse; }
+  caption { text-align: start; font-weight: 600;
+    padding-block-end: 6px; }
+  th, td { padding: 4px 10px;
+    border-block-end: 1px solid var(--chip); }
+  td { text-align: end; font-variant-numeric: tabular-nums; }
+  th[scope="row"] { text-align: start; }
+  tfoot th, tfoot td { font-weight: 600; }
+</style>
+<table>
+  <caption>Quarterly revenue, £k</caption>
+  <thead>
+    <tr><th scope="col">Region</th>
+      <th scope="col">Q1</th><th scope="col">Q2</th></tr>
+  </thead>
+  <tbody>
+    <tr><th scope="row">UK</th><td>120</td><td>135</td></tr>
+    <tr><th scope="row">EU</th><td>98</td><td>110</td></tr>
+  </tbody>
+  <tfoot>
+    <tr><th scope="row">Total</th>
+      <td>218</td><td>245</td></tr>
+  </tfoot>
+</table>
+```
+
+- Right-align numbers and use `tabular-nums` so digits line up.
+- A wide table needs a scroll container: wrap it in `<div tabindex="0" role="region"
+  aria-labelledby="cap-id">` so keyboard users can scroll it.
+- If you are stuck with a layout table, `role="presentation"` removes its table semantics.
+
+## Links
+
+### `href` values
+
+| Form | Example | Notes |
+| :--- | :------ | :---- |
+| Absolute | `https://example.com/a` | external links |
+| Root-relative | `/pricing/` | the usual choice for internal links |
+| Relative | `../img/a.png` | resolved against the current URL (or `<base>`) |
+| Fragment | `#faq` | scrolls to `id="faq"`; `#top` or `#` go to the top |
+| Text fragment | `/post/#:~:text=exact%20phrase` | scrolls to and highlights text: `text=[prefix-,]start[,end][,-suffix]`; Baseline 2024 |
+| `mailto:` | `mailto:hi@acme.example?subject=Hi` | opens the mail client |
+| `tel:` / `sms:` | `tel:+442071234567` | international format, no spaces |
+| `javascript:` | | avoid: use a `<button>` |
+| (missing) | `<a>` | a placeholder link: not focusable, role `generic` |
+
+Text fragments are case-insensitive, match whole words, can repeat
+(`#:~:text=one&text=two`) and are ignored if nothing matches. Style the highlight with
+`::target-text`.
+
+### Link attributes
+
+| Attribute | Values | Notes |
+| :-------- | :----- | :---- |
+| `target` | `_blank`, `_self`, `_parent`, `_top`, a named frame | `_blank` now implies `rel="noopener"` in every current browser; warn users that a new tab opens |
+| `rel="noopener"` | | new page gets no `window.opener`; the default for `_blank` anyway |
+| `rel="noreferrer"` | | no `Referer` header and implies `noopener` |
+| `rel="nofollow"` | | don't endorse or crawl this link |
+| `rel="ugc"` | | user-generated content: comments, forum posts |
+| `rel="sponsored"` | | paid or affiliate links. Google treats `nofollow`, `ugc` and `sponsored` as hints and generally doesn't follow them; they combine (`rel="ugc nofollow"`) |
+| `rel="external"`, `"me"`, `"author"`, `"license"`, `"prev"`/`"next"` | | informational; `me` verifies profiles (Mastodon) |
+| `download` | optional file name | same-origin, `blob:` and `data:` URLs only; cross-origin links just navigate |
+| `hreflang` | `de`, `en-GB` | language of the target (hint) |
+| `type` | MIME type | hint only |
+| `referrerpolicy` | `no-referrer`, `origin`… | per-link referrer policy |
+| `ping` | space-separated URLs | POSTs on click; not supported in Firefox by default |
+
+Link text must make sense out of context ("Download the 2026 report", not "click here"); screen
+readers list links on their own. A link goes somewhere (a URL); a button does something. If it
+has no URL, it's a `<button>`.
+
+## Global attributes
+
+| Attribute | Values | Notes |
+| :-------- | :----- | :---- |
+| `id` | unique, no whitespace | fragment target, `label for`, ARIA references; also creates a `window` global (don't rely on it) |
+| `class` | space-separated tokens | styling and script hooks |
+| `hidden` | `hidden` / `until-found` | `hidden` = `display: none` (removed from the accessibility tree; CSS `display` overrides it). `until-found` keeps content findable by find-in-page and fragment links and reveals it on match (`beforematch` event); Chromium and Firefox, partial in Safari, so not Baseline |
+| `lang` | BCP 47: `en`, `en-GB`, `zh-Hant` | on `html` and on any passage in another language |
+| `dir` | `ltr`, `rtl`, `auto` | `auto` for user-generated text of unknown direction |
+| `title` | text | tooltip on mouse hover only; unreachable by touch and keyboard, inconsistently announced: never put essential information here |
+| `tabindex` | `0`, `-1`, positive | `0` = focusable in order; `-1` = focusable by script only; positive values break the order: never |
+| `inert` | boolean | the subtree can't be focused, clicked or found, and is hidden from assistive tech; Baseline 2023 |
+| `contenteditable` | `true`, `false`, `plaintext-only` | `plaintext-only` is Baseline 2025 |
+| `draggable` | `true`, `false` | enumerated, not boolean: write the value |
+| `spellcheck` | `true`, `false` | turn off for codes, usernames, email addresses |
+| `translate` | `yes`, `no` | stops machine translation of names and code; Baseline 2023 |
+| `autofocus` | boolean | focuses on load (or when a `dialog`/popover opens); one per page; can disorient screen-reader users |
+| `popover` | `auto`, `manual`, `hint` | turns the element into a popover; Baseline 2025 (`hint` is Chromium and Firefox only); see [Interactive elements](/design/html/interactive-elements/) |
+| `data-*` | any string | custom data: `data-state="open"`, read as `el.dataset.state` |
+| `inputmode` | `none`, `text`, `decimal`, `numeric`, `tel`, `search`, `email`, `url` | virtual keyboard hint; also for `contenteditable` |
+| `enterkeyhint` | `enter`, `done`, `go`, `next`, `previous`, `search`, `send` | label of the virtual keyboard's Enter key |
+| `autocapitalize` | `off`, `sentences`, `words`, `characters` | virtual keyboards only |
+| `autocorrect` | `on`, `off` | Baseline since September 2026 |
+| `accesskey` | a character | clashes with assistive-tech shortcuts; avoid |
+| `style` | CSS declarations | blocked by strict CSP (`style-src` without `'unsafe-inline'`) |
+| `nonce` | random token | lets an inline `script`/`style` through CSP |
+| `slot`, `part`, `exportparts`, `is` | | web components; `is` (customised built-ins) is not supported in Safari |
+
+Boolean attributes are true when present, whatever the value: `hidden="false"` still hides. Remove
+the attribute to turn it off.
+
+## Character references & whitespace
+
+| Write | For | When it's needed |
+| :---- | :-- | :--------------- |
+| `&amp;` | `&` | when the next characters could read as a reference (`&copy` in a URL query); always safe |
+| `&lt;` | `<` | in text, always (or it may start a tag) |
+| `&gt;` | `>` | optional; used for symmetry |
+| `&quot;` / `&#39;` | `"` / `'` | inside an attribute quoted with the same character |
+| `&nbsp;` | non-breaking space | keeps `10&nbsp;kg` or `Fig.&nbsp;3` together |
+| `&shy;` | soft hyphen | a hyphenation point shown only at a line break |
+| `&#8212;`, `&#x2014;` | any code point, decimal or hex | characters you can't type |
+
+With `<meta charset="utf-8">` just type `é`, `—`, `→` and `£` directly; named references for them
+work but add noise.
+
+**Whitespace collapsing**: in normal flow, runs of spaces, tabs and newlines collapse into one
+space, and leading and trailing whitespace in a line is removed. Consequences:
+
+- Indenting markup is free, but a newline between two `inline-block` elements renders as a gap
+  (use flex or grid gaps instead of fighting it).
+- To keep whitespace, use `<pre>` or CSS `white-space: pre-wrap` (`pre-line` keeps only newlines).
+- `&nbsp;` doesn't collapse; don't use runs of it for layout.
+
+## Obsolete & deprecated elements
+
+All of these still render (browsers never break old pages), but they are non-conforming.
+
+| Obsolete | Use instead |
+| :------- | :---------- |
+| `center`, `font`, `big`, `tt`, `basefont` | CSS (`text-align`, `font-*`, `font-family: monospace`) |
+| `strike` | `s` (no longer accurate) or `del` (removed) |
+| `acronym` | `abbr` |
+| `marquee`, `blink` | nothing; CSS animation with `prefers-reduced-motion` if you must |
+| `frame`, `frameset`, `noframes` | `iframe`, or better, one page |
+| `applet`, `param` | nothing; `object` with `data`, or `embed` |
+| `dir` | `ul` |
+| `nobr` | CSS `white-space: nowrap` |
+| `xmp`, `listing`, `plaintext` | `pre` with escaped content |
+| `rb`, `rtc` | `ruby` with `rt` (and `rp` fallbacks) |
+| `keygen`, `menuitem`, `isindex`, `bgsound` | removed; Web Crypto, a real menu, a search form, `audio` |
+| `a name="x"` | `id="x"` on the target element |
+| `table summary`, `align`, `bgcolor`, `valign`, `width` on cells | `caption`, CSS |
+| `script language`, `type="text/javascript"` | omit (classic script is the default) |
+
+## Common mistakes
+
+| Mistake | Why it's wrong | Fix |
+| :------ | :------------- | :-- |
+| `<div onclick>` buttons | not focusable, no Enter/Space, no role | `<button type="button">` |
+| `<a href="#">` for actions | wrong role; jumps to top; opens in new tab on middle-click | `<button>` |
+| Button or link inside a link (clickable card with a menu) | invalid; unpredictable click and focus | one real link, stretched with a `::after` overlay; other controls positioned above it |
+| Heading picked for size | broken outline for screen-reader navigation | right level, style with a class |
+| `<br><br>` for spacing | fake paragraphs | separate `<p>`s, CSS margins |
+| `<b>`/`<i>` as "bold/italic" and `<strong>`/`<em>` as "semantic bold/italic" | they have distinct meanings | pick by meaning, see the table |
+| `section` everywhere | unnamed sections are just `div`s; named ones clutter landmark lists | `section` only for headed thematic groups |
+| Several unlabelled `nav`s | screen reader lists "navigation, navigation, navigation" | `aria-label` each |
+| Table for layout, or data as `div` grids | wrong semantics either way | CSS grid for layout, `table` for data |
+| `title` for important info | invisible on touch and to keyboard users | visible text |
+| `placeholder` or `title` as a label | not a reliable accessible name | `label` ([Forms & inputs](/design/html/forms-inputs/)) |
+| Missing `lang` on quoted foreign text | wrong pronunciation | `<i lang="fr">` or `<span lang="fr">` |
+| Empty links wrapping an icon only | no accessible name | visually hidden text or `aria-label` |
+
+## Recipes
+
+### Article page skeleton
+
+```html title="post.html"
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <a href="/" aria-label="Acme home">
+      <img src="/logo.svg" alt="" width="96" height="32">
+    </a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="/blog/" aria-current="true">
+          Blog</a></li>
+      </ul>
+    </nav>
+    <search>
+      <form action="/search/">
+        <label for="q">Search</label>
+        <input id="q" name="q" type="search">
+      </form>
+    </search>
+  </header>
+
+  <main id="main">
+    <article>
+      <h1>Faster builds</h1>
+      <p>…</p>
+    </article>
+    <aside aria-label="Related posts">…</aside>
+  </main>
+
+  <footer>
+    <p><small>© 2026 Acme Ltd</small></p>
+  </footer>
+</body>
+```
+
+`<search>` supplies the search landmark, so the form needs no `role="search"`. The skip link
+is the first focusable element and targets `main`. `aria-current="true"` marks the current
+section in the primary nav; use `"page"` only on a link to the page itself.
+
+### Accessible data table
+
+Two header rows with column groups, and row headers:
+
+```html
+<table>
+  <caption>Train times, weekdays</caption>
+  <colgroup><col></colgroup>
+  <colgroup span="2"></colgroup>
+  <colgroup span="2"></colgroup>
+  <thead>
+    <tr>
+      <td rowspan="2"></td>
+      <th scope="colgroup" colspan="2">Morning</th>
+      <th scope="colgroup" colspan="2">Evening</th>
+    </tr>
+    <tr>
+      <th scope="col">Dep</th><th scope="col">Arr</th>
+      <th scope="col">Dep</th><th scope="col">Arr</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">Leeds</th>
+      <td><time>07:05</time></td><td><time>09:18</time></td>
+      <td><time>17:35</time></td><td><time>19:50</time></td>
+    </tr>
+  </tbody>
+</table>
+```
+
+### Blog post with `time` and `figure`
+
+```html
+<article>
+  <header>
+    <h1>Faster builds</h1>
+    <p>By <a href="/team/sam-lee/" rel="author">Sam Lee</a>
+      · <time datetime="2026-09-26">26 September 2026</time>
+      · updated <time datetime="2026-09-27T14:20+01:00">
+        27 Sept, 14:20</time></p>
+  </header>
+
+  <p>We moved to <dfn>remote caching</dfn>: each task's
+    output is stored by a hash of its inputs.</p>
+
+  <figure>
+    <img src="/img/build-times.png" width="1200"
+      height="630" alt="Bar chart: builds fell from
+      9 minutes in June to 2 minutes in September.">
+    <figcaption>Median CI build time, 2026.</figcaption>
+  </figure>
+
+  <figure>
+    <blockquote cite="https://acme.example/retro/">
+      <p>We got an hour a day back.</p>
+    </blockquote>
+    <figcaption>Priya, platform team</figcaption>
+  </figure>
+
+  <footer>
+    <p>Tags: <a href="/tags/ci/" rel="tag">CI</a></p>
+  </footer>
+</article>
+```
+
+The `header` and `footer` inside the `article` are not landmarks, just the article's intro and
+footer.
+
+### Breadcrumb navigation
+
+```html
+<nav aria-label="Breadcrumb" class="breadcrumb">
+  <ol>
+    <li><a href="/">Home</a></li>
+    <li><a href="/docs/">Docs</a></li>
+    <li><a href="/docs/html/" aria-current="page">
+      HTML</a></li>
+  </ol>
+</nav>
+```
+
+```css
+.breadcrumb ol {
+  display: flex; flex-wrap: wrap; gap: 0.5ch;
+  list-style: none; padding: 0;
+}
+/* separator drawn by CSS, so it isn't read out */
+.breadcrumb li + li::before {
+  content: "/" / "";
+  margin-inline-end: 0.5ch;
+}
+```
+
+An ordered list conveys position ("3 of 3"), `aria-current="page"` marks where you are, and
+the `content: "/" / ""` syntax gives the separator empty alternative text. Pair it with
+`BreadcrumbList` JSON-LD if you want breadcrumbs in search results.
+
+## References
+
+- [MDN: HTML elements reference](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements): every element grouped by purpose
+- [MDN: Content categories](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories): flow, phrasing, interactive and the rest
+- [MDN: Heading elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/Heading_Elements): one `h1`, no skipped levels, the removed nested-`h1` styles
+- [MDN: Global attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes): the full list with support tables
+- [MDN: Text fragments](https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment/Text_fragments): `#:~:text=` syntax and `::target-text`
+- [WHATWG HTML: Sections](https://html.spec.whatwg.org/multipage/sections.html): landmarks, headings, `hgroup` and `headingoffset`
+- [WHATWG HTML: Text-level semantics](https://html.spec.whatwg.org/multipage/text-level-semantics.html) and [Grouping content](https://html.spec.whatwg.org/multipage/grouping-content.html): the normative meanings quoted above
+- [WHATWG HTML: Obsolete features](https://html.spec.whatwg.org/multipage/obsolete.html): non-conforming elements and attributes
+- [W3C: ARIA in HTML](https://www.w3.org/TR/html-aria/): implicit roles for every element
+- [W3C: Using ARIA](https://www.w3.org/TR/using-aria/): the rules of ARIA use
+- [whatwg/html #7829](https://github.com/whatwg/html/pull/7829): the pull request that removed the outline algorithm (2022)
+- [Adrian Roselli: There Is No Document Outline Algorithm](https://adrianroselli.com/2016/08/there-is-no-document-outline-algorithm.html): the history, kept up to date
+- [WAI: Tables tutorial](https://www.w3.org/WAI/tutorials/tables/): simple, irregular and multi-level headers
+- [WAI-ARIA APG: Breadcrumb pattern](https://www.w3.org/WAI/ARIA/apg/patterns/breadcrumb/): the markup used in the recipe
+- [Google Search Central: Qualify outbound links](https://developers.google.com/search/docs/crawling-indexing/qualify-outbound-links): `sponsored`, `ugc`, `nofollow`
+- [Web Platform Status](https://webstatus.dev/): Baseline data for `search`, `inert`, `hidden="until-found"` and the rest

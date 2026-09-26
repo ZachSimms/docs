@@ -1,0 +1,562 @@
+---
+title: First principles thinking
+date: 2026-09-26
+order: 1
+---
+
+How to take a problem apart until you reach things that are actually true (physics, arithmetic, hard constraints),
+throw away what is merely customary, and rebuild a solution from those pieces. Covers where the idea comes from, when
+it beats reasoning by analogy and when it does not, a step-by-step method, the supporting tools (Socratic questions,
+Five Whys, Fermi estimates, unit economics, the idiot index, inversion, constraints), worked examples and the ways it
+goes wrong. It pairs with [systems thinking](/thinking/systems-thinking/), which puts the parts back together, and with
+the wider toolkit in [general thinking models](/thinking/mental-models/general-thinking/).
+
+## Definition and origin
+
+A **first principle** is a proposition you cannot usefully derive from anything more basic within the problem at hand:
+a law of nature, a definition, an arithmetic identity, a measured fact. **First principles thinking** is decomposing a
+problem down to those propositions and reasoning upward from them, instead of starting from how things are usually done.
+
+| Source | Idea | What it contributes |
+| :--- | :--- | :--- |
+| Aristotle, *Metaphysics* Book V (Δ), 1013a | a "beginning" (*archē*) is the first point from which a thing is, comes to be, or is known | the name: a starting point of knowledge that is not itself derived |
+| Aristotle, *Posterior Analytics* I.2 | demonstrated knowledge rests on premises that are true, primary and immediate, better known than and prior to the conclusion (paraphrased) | reasoning is only as good as the premises it rests on |
+| Descartes, *Discourse on the Method* (1637) | four rules: accept only what is clearly known, divide difficulties into parts, go from simple to complex, enumerate completely | the procedure: doubt, decompose, rebuild, check |
+| Descartes, *Meditations* (1641) | **method of doubt**: suspend every belief that can be doubted to find what survives | the attitude: treat inherited beliefs as unproven |
+| Physics | derive behaviour from conservation laws, measured constants and units | quantification: fundamentals come with numbers |
+| Musk (Wired, 2012; Kevin Rose interview, 2012) | "reason from first principles rather than by analogy" | the popular business framing, applied to cost |
+
+Aristotle's wording in W. D. Ross's translation: "It is common, then, to all beginnings to be the first point from
+which a thing either is or comes to be or is known." The line often quoted online, "the first basis from which a thing
+is known", is a compressed rendering of the same passage (1013a), not Ross's text.
+
+Descartes' first two rules, in John Veitch's translation of the *Discourse*: "never to accept anything for true which I
+did not clearly know to be such" and "to divide each of the difficulties under examination into as many parts as
+possible, and as might be necessary for its adequate solution." The third rule (ascend from the simplest objects to the
+complex) is the rebuild step; the fourth (enumerations "so complete" that nothing is omitted) is the check.
+
+Musk's version, from his October 2012 interview with Chris Anderson in *Wired*: "I tend to approach things from a
+physics framework. And physics teaches you to reason from first principles rather than by analogy." In the Kevin Rose
+interview the same year he described it as a way to "boil things down to the most fundamental truths and then reason
+up from there".
+
+<Note kind="info">None of this is new or proprietary. It is the ordinary method of physics and engineering applied to
+business and personal questions, where people are less used to asking "what does the arithmetic actually say?"</Note>
+
+## First principles vs reasoning by analogy
+
+**Reasoning by analogy** means copying what worked in a similar case, with small changes: "competitors charge \$29, so
+we will", "every startup raises a seed round", "rockets cost what rockets have always cost". It is how most decisions
+are made, and usually rightly so.
+
+| | Reasoning by analogy | Reasoning from first principles |
+| :--- | :--- | :--- |
+| Starts from | what others did in similar cases | what must be true (laws, constraints, measured facts) |
+| Cost | cheap: minutes, borrows others' learning | expensive: hours to months, needs domain knowledge and data |
+| Typical output | incremental improvement on the status quo | a different design, or confirmation that the status quo is near optimal |
+| Error mode | inherits the reference class's mistakes and outdated assumptions | misses tacit knowledge, reinvents wheels, overconfident models |
+| Best when | the domain is stable, the stakes are low, many others have iterated on it | conventions are wrong, the domain or its inputs are changing, stakes are high |
+| Examples of good use | choosing a CRM, standard legal docs, office layout | cost-down of a core component, new product category, pricing a new kind of service |
+
+| Signal that first principles will pay off | Why |
+| :--- | :--- |
+| the price or cost is far above the cost of inputs (high idiot index) | the gap is made of conventions and process, which can change |
+| an input changed recently (cost of compute, a new material, a regulation) | industry habits were optimised for the old input |
+| "that's how it's done" is the only justification anyone can give | no one has checked the reasoning recently |
+| experts disagree on basic numbers | the reference class is not trustworthy |
+| the decision is large and irreversible | the cost of the analysis is small relative to the stakes |
+| incumbents are all doing the same thing for the same reason | shared assumptions are shared blind spots |
+
+The practical rule: **default to analogy, escalate to first principles** for the few decisions where the gap between
+convention and physics looks large and the payoff from closing it matters.
+
+## The method
+
+<Steps>
+<Step title="State the goal as an outcome, not a solution">
+
+"Get 5 people from A to B daily for under \$X" rather than "buy a van". "Store energy at under \$Y/kWh" rather than
+"buy cheaper battery packs". A solution-shaped goal smuggles in assumptions before you start.
+
+</Step>
+<Step title="List every assumption">
+
+Write down what you, the industry and your team believe about the problem: costs, constraints, customer behaviour,
+required features, regulations, timelines. Include the ones that feel too obvious to write.
+
+</Step>
+<Step title="Classify each assumption">
+
+Sort into law of nature, hard constraint, convention, or opinion (table below). Most of the value is found here:
+conventions masquerading as laws.
+
+</Step>
+<Step title="Decompose to fundamentals">
+
+Break the cost, time or performance into its components: materials, energy, labour hours, machine time, information
+flows, approvals. Keep going until each piece is something you can measure or look up.
+
+</Step>
+<Step title="Quantify">
+
+Put a number and a unit on each component, with a range. Fermi estimates are fine at this stage; you need orders of
+magnitude, not precision. Check units add up.
+
+</Step>
+<Step title="Rebuild from the fundamentals">
+
+Ask: given only the laws and hard constraints, what is the cheapest, fastest or simplest design that meets the goal?
+Then add back only the conventions that earn their place.
+
+</Step>
+<Step title="Test against reality">
+
+Build the smallest experiment that could prove the rebuilt design wrong: a prototype, a quote from a supplier, a
+price test, a pilot. Update the model with what breaks. Theory that has not met a supplier or a customer is not done.
+
+</Step>
+</Steps>
+
+### Classifying assumptions
+
+| Class | Test | Can you change it? | Examples |
+| :--- | :--- | :--- | :--- |
+| **Law of nature** | would violating it break physics, maths or logic? | no | energy conservation, speed of light, a lithium-ion cell's theoretical energy density limit, compounding arithmetic |
+| **Hard constraint** | is it enforced by something outside your control, at real cost if breached? | rarely, slowly, at high cost | law and regulation, contracts in force, available capital, human biology, current supplier capacity |
+| **Convention** | did people choose it, and could a competitor do it differently tomorrow? | yes | pricing norms, org structure, batch sizes, approval steps, standard part choices, "enterprise needs a sales team" |
+| **Opinion** | is it a prediction or preference without data behind it? | yes, by testing | "customers won't pay for that", "this market is too small", "users hate onboarding flows" |
+
+Two useful probes: **"Who decided this, and when?"** (conventions have authors and dates; laws do not) and **"What
+would have to be true for this to be false?"** (if the answer is "physics would have to change", it is a law).
+
+## Tools
+
+### Socratic questioning
+
+Disciplined questioning to expose assumptions and test reasoning, named after the method Plato shows Socrates using.
+The six categories below are the standard classification taught in critical-thinking courses (see the Wikipedia entry
+in References).
+
+| Category | Purpose | Questions to ask |
+| :--- | :--- | :--- |
+| Clarification | make the claim precise | What exactly do you mean by "expensive"? Compared with what? Can you give an example? |
+| Probing assumptions | surface what is taken for granted | What are we assuming here? Is that always true? Why do we think it holds in this case? |
+| Probing reasons and evidence | test the support | How do we know? What is the source? What would change our mind? Is there reason to doubt this evidence? |
+| Viewpoints and perspectives | find alternatives | How would a competitor, a customer, a regulator see this? What is the strongest counter-argument? |
+| Implications and consequences | follow it through | If this is true, what else must be true? What happens next? Who is affected? |
+| Questions about the question | check you are solving the right problem | Why does this question matter? Is there a better question? What would answering it let us do? |
+
+### Five Whys
+
+Ask "why?" repeatedly until you reach a cause you can act on structurally. Taiichi Ohno, architect of the Toyota
+Production System, described it as "the basis of Toyota's scientific approach by repeating why five times the nature
+of the problem as well as its solution becomes clear" (*Toyota Production System*, English edition 1988).
+
+Ohno's own example, condensed:
+
+| Why? | Answer |
+| :--- | :--- |
+| 1. Why did the machine stop? | there was an overload and the fuse blew |
+| 2. Why was there an overload? | the bearing was not sufficiently lubricated |
+| 3. Why was it not lubricated? | the lubrication pump was not pumping sufficiently |
+| 4. Why was it not pumping sufficiently? | the pump shaft was worn and rattling |
+| 5. Why was the shaft worn? | there was no strainer, so metal scrap got in |
+
+Replacing the fuse fixes the symptom; fitting a strainer stops the recurrence.
+
+| Limit | What to do instead or as well |
+| :--- | :--- |
+| "Five" is arbitrary; the root may be at 3 or 9 | stop when you reach a cause you can change structurally, not at a count |
+| produces one causal chain; real failures usually have several contributing causes | branch the tree at each level; use a fishbone (Ishikawa) diagram or a causal loop diagram |
+| investigators stop at symptoms or at "human error" | ban "someone made a mistake" as an answer; ask why the system allowed the mistake |
+| results depend heavily on who is asking and what they already believe | do it as a group with people from each part of the process; check each link with data |
+| critics: Teruyuki Minoura (ex-Toyota) called it too shallow in practice; Alan Card (*BMJ Quality & Safety*, 2017) argued it should be abandoned for serious incident analysis | treat it as a quick triage tool, not a method for complex incidents |
+
+### Fermi estimation
+
+Estimate an unknown quantity by multiplying rough, independently estimated factors. Named after Enrico Fermi, who was
+known for good order-of-magnitude answers from little data. Errors in the factors tend partly to cancel, so the product
+is often within a factor of a few of the truth, provided no single factor is badly biased.
+
+**Worked example 1: piano tuners in Chicago (the classic)**
+
+| Factor | Estimate | Reasoning |
+| :--- | :--- | :--- |
+| population | 2.7 million | 2020 US census, rounded |
+| people per household | ~2.5 | typical US figure |
+| households | ~1.1 million | 2.7 M ÷ 2.5 |
+| share of households with a piano | ~1 in 20 | guess; the weakest factor |
+| household pianos | ~55,000 | plus schools, churches, venues: call it ~60,000 |
+| tunings per piano per year | ~1 | recommended once a year; many are tuned less often |
+| tunings a tuner can do per year | ~1,000 | ~2 hours each with travel → 4 a day × 250 working days |
+| **tuners** | **~60** | 60,000 ÷ 1,000 |
+
+The answer is "tens, not thousands". If a directory showed thousands, the estimate tells you which factor to question.
+
+**Worked example 2: how many servers for 1 million daily active users?**
+
+| Factor | Estimate |
+| :--- | :--- |
+| requests per user per day | 50 (assumption; measure it) |
+| requests per day | 50 million |
+| average requests per second | 50 M ÷ 86,400 s ≈ 580 |
+| peak-to-average ratio | 3× (assumption) → ~1,750 req/s |
+| throughput per instance | 500 req/s (from a load test) |
+| instances at peak | 1,750 ÷ 500 = 3.5 → 4, plus 50% headroom → **6** |
+
+<Note kind="tip">Write each factor with its unit and a low/high range. Multiply the lows and the highs separately to
+get a band. If the band spans the decision threshold, measure the factor with the widest range first.</Note>
+
+### Dimensional analysis and unit economics
+
+**Dimensional analysis**: every term in an equation must have the same units, and units multiply and cancel like
+algebra. It catches most spreadsheet errors ("users × \$/month = \$/month", not "\$").
+
+$$
+\frac{\text{requests}}{\text{user}\cdot\text{day}} \times \text{users} \times \frac{\text{day}}{86{,}400\ \text{s}} = \frac{\text{requests}}{\text{s}}
+$$
+
+**Unit economics** is first principles applied to a business: decompose the P&L into what one unit (a customer, an
+order, a ride) earns and costs.
+
+| Quantity | Formula | Example |
+| :--- | :--- | :--- |
+| gross margin per customer per month | $\text{ARPU} \times \text{GM\%}$ | \$50 × 80% = \$40 |
+| expected customer lifetime (constant monthly churn *c*) | 1 ÷ *c* months | 1 ÷ 0.03 ≈ 33 months |
+| lifetime value (LTV) | $\text{ARPU} \times \text{GM\%} / c$ | \$40 ÷ 0.03 ≈ \$1,333 |
+| CAC payback | $\text{CAC} / (\text{ARPU} \times \text{GM\%})$ | \$400 ÷ \$40 = 10 months |
+| LTV : CAC | LTV ÷ CAC | \$1,333 ÷ \$400 ≈ 3.3 |
+
+The same decomposition works for anything: cost per delivered parcel, cost per inference, cost per hire, cost per
+kilogram to orbit.
+
+### The idiot index
+
+The ratio of what a finished part costs to what its raw materials cost. Walter Isaacson's 2023 biography *Elon Musk*
+describes Musk using it at SpaceX and Tesla: a component with a high index is a sign that the design is too complex or
+the manufacturing process too inefficient.
+
+$$
+\text{idiot index} = \frac{\text{cost of finished part}}{\text{cost of its raw materials}}
+$$
+
+| Index (rough heuristic) | Reading |
+| :--- | :--- |
+| ~1–3 | commodity-like; little room except in materials |
+| ~10 | typical of machined or assembled parts; look at process, tolerances, supplier margin |
+| ~50+ | the cost is almost all process, overhead, low volume or margin: first principles territory |
+
+Caveats: it ignores the value of design, qualification, testing, certification and low volume, which are real costs.
+A high index is a question ("where does the money go?"), not a verdict.
+
+### Inversion
+
+Solve the problem backwards: instead of "how do we succeed?", ask "what would guarantee failure?" and avoid those
+things; instead of "how do we make this faster?", ask "what makes it slow?". The mathematician Carl Jacobi is said to
+have told students to "invert, always invert" (*man muss immer umkehren*); Charlie Munger popularised it as a thinking
+tool. In first principles work it finds the constraints you forgot to list.
+
+| Forward question | Inverted question |
+| :--- | :--- |
+| How do we reduce churn? | What would make a happy customer leave next month? |
+| How do we ship faster? | What stops a finished change reaching users today? |
+| What should this product do? | What must it never do? |
+| How can this plan succeed? | It is a year from now and the plan failed: why? (a pre-mortem) |
+
+### Constraints analysis: physics vs policy
+
+For every limit on performance, ask whether it is **physics** (a law or hard constraint) or **policy** (a rule, habit,
+or decision someone made). Most bottlenecks in organisations are policy.
+
+Eliyahu Goldratt's **theory of constraints** (*The Goal*, 1984) adds the discipline of working on one constraint at a
+time: the throughput of a system is limited by its tightest constraint, so improving anything else does not help.
+
+| Step (Goldratt's five focusing steps) | In practice |
+| :--- | :--- |
+| 1. Identify the constraint | where does work queue up? what is at 100% utilisation? |
+| 2. Exploit it | get the most out of the constraint as it is: no idle time, no low-value work on it |
+| 3. Subordinate everything else | pace the rest of the system to the constraint |
+| 4. Elevate it | invest to increase its capacity (hire, buy, redesign) |
+| 5. Repeat | the constraint has moved; do not let inertia become the new constraint |
+
+| Constraint | Physics or policy? | First-principles response |
+| :--- | :--- | :--- |
+| "Releases happen fortnightly" | policy | ask what risk the cadence controls; control it directly |
+| "A London server cannot answer a Sydney user in under ~170 ms" | physics: ~17,000 km each way at ~200,000 km/s in fibre | move the data or the compute closer, not the code |
+| "Enterprise deals need 6 months" | mostly policy (buyer procurement), partly hard constraint | find which steps are legal requirements; remove or parallelise the rest |
+| "We can't hire senior engineers" | usually policy (pay bands, location, process) | test each: which would a competitor change? |
+
+### Musk's "algorithm" (as reported)
+
+Isaacson's biography reports a five-step process Musk repeated to his teams, in this order (paraphrased):
+
+| Step | Idea |
+| :--- | :--- |
+| 1. Question every requirement | each requirement should come with the name of the person who made it, not a department |
+| 2. Delete any part or process step you can | if you are not adding some back later, you did not delete enough |
+| 3. Simplify and optimise | only after deleting; the common mistake is optimising something that should not exist |
+| 4. Accelerate cycle time | speed up only what survived steps 1–3 |
+| 5. Automate | last, not first |
+
+It is first principles thinking turned into an operating routine: steps 1–2 are "classify assumptions", step 3 is
+"rebuild".
+
+## Worked examples
+
+### Battery packs (Musk, 2012)
+
+In a September 2012 episode of Kevin Rose's *Foundation* interview series, Musk used battery packs to illustrate the
+method. The common assumption he described was that packs had historically cost "\$600 per kilowatt hour" and always
+would. His first-principles version: list the material constituents (cobalt, nickel, aluminium, carbon, polymers for
+separation, a steel can), price each at London Metal Exchange rates, and add them up: "It's like \$80 per kilowatt hour."
+
+<YouTube id="L-s_3b5fRd8" title="Elon Musk and Kevin Rose" channel="Kevin Rose" />
+
+| Step | Content |
+| :--- | :--- |
+| goal | cheap stored energy for cars, in \$/kWh |
+| analogy answer | ~\$600/kWh, "historically", so electric cars stay expensive |
+| decomposition | cell chemistry → materials by mass per kWh → commodity prices |
+| fundamental floor | ~\$80/kWh in materials (Musk's 2012 figure) |
+| conclusion | the ~\$520 gap is manufacturing, design and scale, which can be engineered down |
+| what happened | BloombergNEF's December 2025 survey put the average lithium-ion pack price at \$108/kWh, and battery-electric-vehicle packs at \$99/kWh |
+
+Caveats: the materials floor is not an achievable price (processing, cell manufacturing, packs, margins are real
+costs), commodity prices move (lithium prices spiked in 2022, for example), and the fall in pack prices came from the whole
+industry's scale and chemistry changes, not one company's reasoning. The method's value was showing that the high price
+was not a law.
+
+### Rocket materials (Wired, 2012)
+
+Musk told Chris Anderson (*Wired*, October 2012) that he asked what a rocket is made of ("aerospace-grade aluminum
+alloys, plus some titanium, copper, and carbon fiber") and what those materials cost on the commodity market. His
+answer: "the materials cost of a rocket was around 2 percent of the typical price", against "probably 20 to 25
+percent" for a Tesla car. An idiot index near 50 said the cost was almost all process, overhead and low volume.
+SpaceX's response over the following decade (vertical integration, in-house manufacturing, then reusable boosters)
+attacked that gap.
+
+### The Wright brothers' lift data
+
+After disappointing glider flights in 1900–1901, the Wrights stopped trusting the published aerodynamic data they had
+inherited (including the long-accepted Smeaton coefficient, which turned out to be too high) and built their own wind
+tunnel in late 1901 to measure lift and drag on many small wing shapes. The accepted numbers were a convention that
+everyone had copied; the measurements were the fundamentals. Their 1902 glider, designed from their own data, worked.
+
+### Pricing a product from its cost structure (illustrative numbers)
+
+A B2B scheduling tool. Analogy says: "competitors charge \$29 per seat, so charge \$25."
+
+| Component | Monthly cost per customer | Note |
+| :--- | :--- | :--- |
+| compute and storage | \$4 | from the cloud bill ÷ active customers |
+| support | \$6 | ~20 minutes per customer per month at a loaded \$18/hour |
+| payment fees | ~3% of price | card processing |
+| onboarding (amortised) | \$2 | \$48 of setup time over 24 months |
+| **unit cost** | **~\$12 + 3%** | |
+
+| Anchor | Calculation | Result |
+| :--- | :--- | :--- |
+| price floor at 80% gross margin | \$12 ÷ (1 − 0.80 − 0.03) | ~\$71/month |
+| value ceiling | saves 5 staff hours/month × \$40/hour | \$200/month |
+| sensible range | between floor and roughly a third to a half of value | ~\$70–100/month per location |
+
+The first-principles answer prices per location, not per seat (the value scales with appointments, not logins), at
+roughly 3× the analogy price. Then test it (step 7): a price test is cheaper than a debate.
+
+### Redesigning a process: the weekly change board
+
+"Every production change needs sign-off from the Thursday change advisory board." Classified: convention.
+
+| Question | Answer |
+| :--- | :--- |
+| What is the goal? | few customer-visible failures, fast recovery when they happen |
+| What are the fundamentals? | failure probability per change, blast radius, time to detect, time to roll back |
+| What does the board do to each? | little to failure probability; batches changes weekly, which *increases* blast radius and makes causes harder to find |
+| Rebuilt design | small changes, automated tests, canary releases, feature flags, one-click rollback, peer review in the pull request |
+| Evidence | DORA's 2019 *State of DevOps* report found no evidence that formal external review was associated with lower change fail rates |
+
+### Personal: do I need a car? (illustrative numbers)
+
+Analogy says: "adults own cars." First principles says: the goal is trips, not a car.
+
+| Fundamental | How to get it |
+| :--- | :--- |
+| trips per month by type (commute, shopping, weekend, emergency) | a week of logging, scaled up |
+| full annual cost of ownership | depreciation + insurance + fuel or charging + maintenance + parking + tax, from your own quotes |
+| cost of the alternative mix | public transport pass + taxis for the awkward trips + rentals for weekends away |
+| time cost | door-to-door minutes each way × your value of an hour |
+| hard constraints | disability, children, rural location, shift work at night |
+
+If ownership costs, say, \$8,000 a year and the alternative mix for your actual trips is \$3,500 plus 80 hours of extra
+travel time, the question becomes "is an hour of my time worth more than \$56?", which is answerable. Put in your own
+numbers; the structure is the point.
+
+## Worked template
+
+```text
+FIRST-PRINCIPLES BREAKDOWN: <problem>
+
+1. GOAL (outcome, with a number and a unit)
+   e.g. "cut cost per delivered order from 9.40 to under 5 USD"
+
+2. CURRENT ANSWER BY ANALOGY
+   what the industry / we currently do, and its cost/performance
+
+3. ASSUMPTIONS                         CLASS        EVIDENCE
+   a. ...............................  law/hard/conv/opinion  ...
+   b. ...............................  ...          ...
+   c. ...............................  ...          ...
+
+4. DECOMPOSITION (tree down to measurable pieces)
+   total = component A + component B + ...
+     A = (units) x (price per unit)       low / likely / high
+     B = ...
+
+5. FUNDAMENTAL FLOOR
+   cost/time/performance if only laws + hard constraints applied
+   gap between current and floor = ........ (the opportunity)
+
+6. WHERE THE GAP LIVES
+   component   current   floor   gap   convention causing it
+
+7. REBUILT DESIGN
+   the simplest design that meets the goal using the floor;
+   conventions added back ONLY with a stated reason
+
+8. RISKS AND CHESTERTON'S FENCES
+   conventions we are removing - do we know why they exist?
+
+9. CHEAPEST TEST THAT COULD PROVE THIS WRONG
+   experiment, owner, date, pass/fail threshold
+
+10. DECISION AND REVIEW DATE
+```
+
+## Checklist
+
+- [ ] The goal is an outcome with a number and a unit, not a solution.
+- [ ] Every assumption is written down and classified; "law" is used only for physics, maths or logic.
+- [ ] Each convention has an owner or origin you can name, or is marked "origin unknown: investigate".
+- [ ] The decomposition bottoms out in things you can measure or look up, with units that check.
+- [ ] Each number has a range and a source; the weakest estimate is flagged.
+- [ ] The floor (physics-only answer) is computed and compared with the current answer.
+- [ ] You know *why* each removed convention existed (Chesterton's fence) and have spoken to someone who operates it.
+- [ ] An expert in the domain has tried to break the model.
+- [ ] There is a cheap test with a pass/fail threshold before any large commitment.
+- [ ] You have checked whether the analogy answer was, in fact, close to optimal.
+
+## Failure modes
+
+| Failure mode | What it looks like | Guard |
+| :--- | :--- | :--- |
+| **Convention mistaken for law** | "enterprise software needs a 6-month sales cycle", treated as fixed | ask "who decided this and when?"; look for anyone who does it differently |
+| **Law mistaken for convention** | "latency is just an engineering problem" when it is the speed of light; "we can grow 20% a month forever" | check against physics, maths and base rates before rebuilding |
+| **Reinventing the wheel** | a startup designs its own database or payments stack because "we reasoned from scratch" | first principles is for the core problem; buy or copy everything else |
+| **Infinite regress** | decomposing to quarks when the question is office rent | stop at the level where the numbers become stable and measurable |
+| **Ignoring tacit knowledge** | removing a rule, step or margin whose purpose is invisible on paper | Chesterton's fence: find out why it is there before you remove it |
+| **Materials floor treated as a target** | "the parts cost \$80, so we can sell at \$100" | the floor excludes processing, labour, testing, warranty, overhead, margin |
+| **Overconfidence in the model** | a neat spreadsheet replaces contact with suppliers and customers | step 7: every model gets a real-world test |
+| **Selective scepticism** | doubting others' assumptions but not your own favourite | classify your own assumptions with the same table |
+| **Cost of analysis ignored** | a week of first-principles work on a \$200 decision | use analogy for small, reversible decisions |
+| **Using it as rhetoric** | "I'm thinking from first principles" as a way to dismiss experience | show the decomposition and numbers, or it is just an opinion |
+
+### Chesterton's fence
+
+From G. K. Chesterton's *The Thing* (1929): a reformer comes across a fence across a road and says, "I don't see the
+use of this; let us clear it away." The wiser reformer answers: "If you don't see the use of it, I certainly won't let
+you clear it away. Go away and think. Then, when you can come back and tell me that you do see the use of it, I may
+allow you to destroy it." The point is not "never remove fences"; it is "understand the reason before deciding the
+reason no longer applies". In first principles work, that means every convention you delete gets a line in step 8 of
+the template.
+
+## Critiques and when not to use it
+
+| Critique | Substance |
+| :--- | :--- |
+| It is not a distinct method | it is ordinary scientific and engineering reasoning; the name adds branding, not technique |
+| Survivorship bias | famous examples (batteries, rockets) are remembered because they worked; many "first principles" ventures failed on things the model left out |
+| Fundamentals are not always knowable | in markets, organisations and people, the "laws" are statistical and change; decomposition can give false precision |
+| Analogy encodes accumulated learning | conventions often exist because many people tried alternatives and they failed; discarding them wastes that knowledge |
+| Decomposition misses interactions | reducing a system to parts can miss feedback, delays and emergent behaviour (this is what [systems thinking](/thinking/systems-thinking/) is for) |
+| It can justify arrogance | "reasoning from scratch" is sometimes a licence to ignore experts, regulators or safety margins |
+
+**Do not use it when:**
+
+- the decision is small, cheap and reversible: copy a good default and move on;
+- the domain is well understood and stable, and others have iterated on it for decades (tax filing, accounting
+  standards, most HR processes);
+- the "conventions" are safety-critical rules written after accidents (aviation, medicine, electrical codes) unless you
+  have the expertise and the regulator's agreement;
+- you do not have the domain knowledge to tell a law from a convention, and cannot get someone who does;
+- speed matters more than optimality, and the analogy answer is good enough.
+
+## Related thinking tools
+
+| Tool | Relationship |
+| :--- | :--- |
+| [Systems thinking](/thinking/systems-thinking/) | first principles takes a problem apart; systems thinking studies how the parts interact over time (feedback, delays, stocks). Use both: decompose to find the fundamentals, then map the loops before changing anything. |
+| [General thinking models](/thinking/mental-models/general-thinking/) | inversion, second-order thinking, map vs territory and circle of competence are the companion checks on a first-principles model |
+| [Decision-making models](/thinking/mental-models/decision-making/) | reversibility tells you how much first-principles effort a decision deserves |
+| [Probability and risk](/thinking/mental-models/probability-risk/) | ranges, base rates and expected value turn estimates into decisions |
+| [Cognitive biases](/thinking/mental-models/cognitive-biases/) | anchoring on the current price and status quo bias are what analogy reasoning is most exposed to |
+| [Microeconomics](/economics/microeconomics/) | cost curves, marginal cost and opportunity cost are first principles for business questions |
+
+## Practice exercises
+
+1. **Your biggest line item.** Take your company's (or household's) largest monthly cost. Decompose it to units ×
+   price per unit, compute a floor, and list which conventions sit in the gap.
+2. **Fermi warm-ups.** Estimate, with ranges: litres of coffee drunk in your city per day; the number of software
+   engineers in your country; the energy in a fully charged phone battery, in joules.
+3. **Classify ten assumptions.** Write ten beliefs your team holds about your market. Classify each; for every
+   "convention", name who decided it.
+4. **Idiot index hunt.** Pick three products you buy (a charger cable, a sofa, a SaaS subscription). Estimate raw
+   input cost and compute the index. Where does the gap go?
+5. **Invert your roadmap.** List five ways next quarter could fail. Which one is not addressed by any current plan?
+6. **Five Whys, with branches.** Take a recent incident. Do five whys, but allow two answers at each level. Compare
+   the tree with the single chain.
+
+<details>
+<summary>Worked answer: energy in a phone battery</summary>
+
+A typical phone battery is around 4,000–5,000 mAh at a nominal ~3.8 V (read the numbers printed on yours).
+
+$$
+4.5\ \text{Ah} \times 3.8\ \text{V} \approx 17\ \text{Wh}, \qquad 17\ \text{Wh} \times 3{,}600\ \tfrac{\text{J}}{\text{Wh}} \approx 62{,}000\ \text{J}
+$$
+
+About 60 kJ: roughly the energy needed to lift a 60 kg person 100 m. Dimensional analysis (Ah × V = Wh) is what makes
+the conversion safe.
+
+</details>
+
+<details>
+<summary>Worked answer: classifying "we need an office to build culture"</summary>
+
+Opinion, dressed as a hard constraint. The fundamentals are: how often people need synchronous, high-bandwidth
+contact (design reviews, onboarding, conflict), how much that costs remotely vs in person, and what rent costs per
+employee per year. A first-principles design might be a remote team with paid quarterly offsites, or an office used
+two fixed days a week; either can be tested for a quarter against retention and delivery metrics.
+
+</details>
+
+## References
+
+- [Aristotle, *Metaphysics* Book V, trans. W. D. Ross (MIT Internet Classics Archive)](https://classics.mit.edu/Aristotle/metaphysics.5.v.html): the definition of "beginning" (*archē*), 1013a
+- [Aristotle, *Metaphysics* Book V (Perseus Digital Library)](https://www.perseus.tufts.edu/hopper/text?doc=Perseus%3Atext%3A1999.01.0052%3Abook%3D5%3Asection%3D1013a): parallel text with the Greek
+- [René Descartes, *Discourse on the Method*, trans. John Veitch (Project Gutenberg)](https://www.gutenberg.org/ebooks/59): the four rules, Part II
+- René Descartes, *Meditations on First Philosophy* (1641): the method of doubt
+- [Chris Anderson, "Elon Musk's Mission to Mars", *Wired* (21 October 2012)](https://www.wired.com/2012/10/ff-elon-musk-qa/): the rocket materials-cost quote (~2% of price; 20–25% for a Tesla)
+- [Kevin Rose, "Elon Musk and Kevin Rose" (*Foundation*, 2012), YouTube](https://www.youtube.com/watch?v=L-s_3b5fRd8): the battery-pack example (\$600 vs ~\$80 per kWh)
+- [CNBC, "Why Elon Musk wants his employees to use an ancient mental strategy called 'first principles'" (2018)](https://www.cnbc.com/2018/04/18/why-elon-musk-wants-his-employees-to-use-a-strategy-called-first-principles.html): transcript excerpts of the Rose interview
+- [BloombergNEF, "Lithium-Ion Battery Pack Prices Fall to \$108 Per Kilowatt-Hour, Despite Rising Metal Prices" (December 2025)](https://about.bnef.com/insights/clean-transport/lithium-ion-battery-pack-prices-fall-to-108-per-kilowatt-hour-despite-rising-metal-prices-bloombergnef/): 2025 average and BEV pack prices
+- Walter Isaacson, *Elon Musk* (Simon & Schuster, 2023): the idiot index and the five-step "algorithm"
+- Taiichi Ohno, *Toyota Production System: Beyond Large-Scale Production* (Productivity Press, 1988; Japanese original 1978): Five Whys and the machine-stoppage example
+- [Alan J. Card, "The problem with '5 whys'", *BMJ Quality & Safety* (2017)](https://doi.org/10.1136/bmjqs-2016-005849): critique of Five Whys for incident analysis
+- [Wikipedia: Five whys](https://en.wikipedia.org/wiki/Five_whys): history and criticisms (including Minoura)
+- [Wikipedia: Socratic questioning](https://en.wikipedia.org/wiki/Socratic_questioning): the six question categories with examples
+- [Wikipedia: Fermi problem](https://en.wikipedia.org/wiki/Fermi_problem): background, why estimates work, the piano-tuner example
+- Eliyahu M. Goldratt and Jeff Cox, *The Goal* (North River Press, 1984): theory of constraints and the five focusing steps
+- [Wikipedia: Carl Gustav Jacob Jacobi](https://en.wikipedia.org/wiki/Carl_Gustav_Jacob_Jacobi): "invert, always invert"
+- [DORA: Streamlining change approval](https://dora.dev/capabilities/streamlining-change-approval/): 2019 *State of DevOps* finding on change advisory boards
+- [Wikiquote: G. K. Chesterton, *The Thing* (1929)](https://en.wikiquote.org/wiki/G._K._Chesterton): the full "fence" passage, Ch. IV "The Drift From Domesticity"
+- [James Clear, "First Principles: Elon Musk on the Power of Thinking for Yourself"](https://jamesclear.com/first-principles): popular overview with further examples

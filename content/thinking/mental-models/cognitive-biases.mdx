@@ -1,0 +1,363 @@
+---
+title: Cognitive biases
+date: 2026-09-26
+order: 4
+---
+
+The systematic ways human judgement departs from what the evidence supports: where the heuristics-and-biases
+idea came from, a catalogue of the well-supported biases grouped by kind, which famous effects failed to
+replicate, how persuasion exploits these tendencies, and the techniques that actually reduce error. The
+probability side (base rates, regression, selection effects) is in [probability & risk](/thinking/mental-models/probability-risk/),
+decision processes are in [decision-making](/thinking/mental-models/decision-making/), and the general toolkit is
+in [general thinking](/thinking/mental-models/general-thinking/).
+
+## System 1 and System 2
+
+Daniel Kahneman's *Thinking, Fast and Slow* (2011) popularised a two-system description of thinking, using the
+labels Keith Stanovich and Richard West had proposed in 2000.
+
+| | System 1 | System 2 |
+| :--- | :--- | :--- |
+| speed | fast, automatic | slow, deliberate |
+| effort | effortless, always on | effortful, limited capacity, easily depleted by distraction |
+| control | involuntary | voluntary |
+| examples | reading a face, 2 + 2, driving an empty road, sensing hostility in a voice | 17 × 24, checking an argument, filling in a tax form, parking in a tight space |
+| strengths | pattern recognition, expertise, speed | rules, logic, statistics, overriding a first impression |
+| failure mode | substitutes an easier question; jumps to a coherent story | lazy: endorses System 1's answer without checking |
+
+**Attribute substitution** is the core mechanism: faced with a hard question ("how likely is this startup to
+succeed?"), System 1 answers an easier one ("how impressive was the pitch?") without noticing the swap.
+**WYSIATI** ("what you see is all there is", Kahneman's acronym) is the tendency to build a confident story from
+whatever information is at hand, without asking what is missing.
+
+<Callout type="info" title="It is a metaphor">
+Kahneman himself describes the two systems as useful fictions, not brain regions or literal modules. Psychologists dispute whether "two" is the right number or a continuum is better (see Melnikoff and Bargh, "The mythical number two", 2018). Use it as shorthand for "intuitive vs deliberate", not as neuroscience.
+</Callout>
+
+### When to trust intuition
+
+Kahneman and Gary Klein, from opposing camps, agreed (*American Psychologist*, 2009) that intuition is
+trustworthy only when all three conditions hold:
+
+| Condition | Present (trust it more) | Absent (distrust it) |
+| :-------- | :---------------------- | :------------------- |
+| a regular environment with valid cues | chess, firefighting, anaesthesiology, debugging a familiar system | stock picking, long-range political forecasting, early-stage startup picking |
+| prolonged practice | thousands of repetitions | a handful of cases |
+| rapid, clear feedback | you learn quickly whether you were right | outcomes arrive years later, noisily |
+
+Confidence is not a signal of accuracy: people feel just as sure in low-validity environments.
+
+## The heuristics and biases programme
+
+Amos Tversky and Daniel Kahneman's 1974 *Science* paper, "Judgment under Uncertainty: Heuristics and Biases",
+argued that people judge probability using a few mental shortcuts that are usually useful but produce
+**systematic, predictable** errors.
+
+| Heuristic | Judges probability by… | Typical error |
+| :-------- | :--------------------- | :------------ |
+| **representativeness** | how much A resembles the typical B | base-rate neglect, conjunction fallacy, insensitivity to sample size, misconceptions of chance |
+| **availability** | how easily examples come to mind | overweighting vivid, recent, reported events |
+| **anchoring and adjustment** | starting from a number and adjusting | adjustments are too small, even from obviously irrelevant anchors |
+
+Prospect theory (Kahneman and Tversky, 1979) extended the programme to choices: people evaluate outcomes as
+gains and losses relative to a reference point, weigh losses more than gains, and overweight small probabilities.
+Kahneman received the 2002 Nobel prize in economics for this work (Tversky had died in 1996).
+
+### Criticisms worth knowing
+
+| Critique | Argument | What to take from it |
+| :------- | :------- | :------------------- |
+| ecological rationality (Gerd Gigerenzer) | simple heuristics often perform well in real environments; many "biases" shrink when problems are posed as natural frequencies | heuristics are tools, not defects; the question is fit to the environment |
+| task artefacts | some classic results depend on wording (e.g. what "probable" means in the Linda problem) | test the bias in your own setting before assuming it |
+| replication | some effects in the wider literature have not held up; see [replication status](#replication-status) | prefer effects replicated in large pre-registered studies |
+| bias blind spot | knowing about biases does little to stop you having them | rely on process (checklists, outside view), not willpower |
+
+## Judgement and decision biases
+
+Each entry: what it is, what it looks like, and the countermeasure most likely to work. Effects here are ones
+with substantial replicated support; contested ones are flagged.
+
+### Estimating and predicting
+
+| Bias | Definition | Example | Debias with |
+| :--- | :--------- | :------ | :---------- |
+| **anchoring** | estimates are pulled toward an initial number, even an arbitrary one | Tversky and Kahneman (1974): after a rigged wheel stopped at 10 or 65, median estimates of the share of African countries in the UN were 25% and 45%. Replicated strongly in Many Labs 1. | make your own estimate before seeing anyone else's; generate several anchors; in negotiation, set the first number yourself |
+| **availability** | judging frequency by how easily examples come to mind | fearing plane crashes more than car journeys; overrating the risk of whatever was in the news | look up base rates; ask "what am I not hearing about?" |
+| **representativeness** | judging probability by resemblance to a stereotype | "he looks like a founder" | start from the base rate, then adjust ([Bayes](/thinking/mental-models/probability-risk/#base-rates-and-bayes-theorem)) |
+| **conjunction fallacy** | judging a specific combination more likely than one of its parts | the **Linda problem** (Tversky and Kahneman, 1983): 85% ranked "bank teller and active feminist" above "bank teller". Much weaker when posed as frequencies ("out of 100 people like Linda…"). | multiply the probabilities of each step; count, don't narrate |
+| **planning fallacy** | underestimating time, cost and risk of your own plans while knowing that similar plans overran | Buehler, Griffin and Ross (1994): students predicted their thesis would take 34 days on average; it took 56, and only about 30% finished by their own estimate | reference class forecasting; compare with your past estimates |
+| **overconfidence** | being more sure than your accuracy justifies; "90%" intervals that contain the answer far less often | most founders rate their own odds far above the base rate | calibration training; ranges; keep score |
+| **optimism bias** | believing good things are more likely, bad things less likely, for you than for others (Weinstein, 1980) | "most startups fail, but not this one" | pre-mortem; outside view |
+| **hindsight bias** | after the outcome, believing you knew it all along (Fischhoff, 1975) | "the crash was obvious" | write predictions down beforehand, with dates |
+| **outcome bias** | judging a decision by its result rather than its quality at the time (Baron and Hershey, 1988) | praising a reckless deploy that happened to work | review the decision with the information available then |
+| **neglect of probability** | responding to whether a vivid risk exists, not how likely it is (Sunstein, 2002) | paying heavily to remove a tiny, frightening risk while ignoring a larger dull one | state the probability and the size of the effect as numbers |
+| **scope insensitivity** | valuing outcomes without regard to their size | Desvousges et al. (1993): groups asked what they'd pay to save 2,000, 20,000 or 200,000 birds answered about \$80, \$78 and \$88 | put quantities side by side; compute per-unit value |
+
+### Choosing and valuing
+
+| Bias | Definition | Example | Debias with |
+| :--- | :--------- | :------ | :---------- |
+| **framing** | the same choice described differently gets different answers | Tversky and Kahneman (1981), "Asian disease": 72% chose the sure option when framed as lives saved; 78% chose the gamble when the same numbers were framed as deaths | restate the choice in the opposite frame; use absolute numbers |
+| **loss aversion** | losses hurt more than equal gains please; typical estimates of the ratio are about 2 (Tversky and Kahneman, 1992: 2.25) | refusing a 50/50 bet to win \$110 or lose \$100 | frame decisions as portfolios of many bets; ask about final states, not changes. Magnitude and generality are debated (Gal and Rucker, 2018) |
+| **endowment effect** | valuing something more once you own it | Kahneman, Knetsch and Thaler (1990): mug owners asked roughly twice what buyers would pay | ask "would I buy this today at this price?" (debated: some studies find it shrinks with procedure and experience) |
+| **status quo bias** | preferring the current state (Samuelson and Zeckhauser, 1988) | organ-donor consent is far higher in opt-out countries than opt-in ones (Johnson and Goldstein, 2003) | design good defaults; periodically make "keep" an active choice |
+| **sunk cost fallacy** | continuing because of what you've already spent (Arkes and Blumer, 1985) | finishing a doomed project "because we've put a year into it" | ask only about future costs and benefits; kill criteria set in advance |
+| **IKEA effect** | overvaluing what you built yourself (Norton, Mochon and Ariely, 2012) | not-invented-here: preferring your in-house tool to a better library | have someone who didn't build it evaluate it |
+| **zero-risk bias** | preferring to eliminate a small risk entirely over a larger reduction in a bigger one (Baron, Gowda and Kunreuther, 1993) | fixing every low-severity bug in one module while a high-severity class of bugs stays open | compare expected harm removed, not whether a risk hits zero |
+| **hyperbolic discounting / present bias** | discounting the near future steeply and the far future gently, so preferences flip as a date approaches (Laibson, 1997) | many people take \$100 today over \$110 tomorrow, but choose \$110 in 31 days over \$100 in 30 days | commitment devices; automate the long-term choice (auto-save, scheduled refactor time) |
+
+### Believing and defending
+
+| Bias | Definition | Example | Debias with |
+| :--- | :--------- | :------ | :---------- |
+| **confirmation bias** | seeking, noticing and remembering evidence that supports what you already think | Wason's 2-4-6 task (1960): people test only triples that fit their rule, never ones that would break it | look for disconfirming evidence first; ask "what would change my mind?" |
+| **motivated reasoning** | reasoning towards the conclusion you want (Kunda, 1990) | holding a rival's code to a higher bar than your own | decide the criteria before seeing whose result it is |
+| **belief perseverance** | beliefs survive after their evidence is discredited (Ross, Lepper and Hubbard, 1975) | still trusting a metric after learning it was mis-instrumented | explain how the opposite could be true; "consider the opposite" |
+| **bias blind spot** | seeing biases in others more than in yourself | "their estimate is anchored; mine is just right" | process-level safeguards rather than self-assessment |
+
+## Social biases
+
+| Bias | Definition | Example | Debias with |
+| :--- | :--------- | :------ | :---------- |
+| **social proof** | doing what others are doing, especially when unsure | Asch's line studies (1950s): about a third of answers conformed to a unanimous wrong majority | ask what you would think if you hadn't seen what others did; collect opinions independently |
+| **authority bias** | overweighting the view of a perceived authority | Milgram (1963): 26 of 40 participants went to the maximum "450-volt" shock when instructed (later archival work shows much variation across conditions) | judge the argument, not the title; invite dissent explicitly |
+| **halo effect** | one good trait colours judgements of unrelated traits (Thorndike, 1920) | assuming a charismatic founder must also be a good operator | score attributes separately and independently |
+| **in-group bias** | favouring your own group, even one formed arbitrarily (Tajfel et al., 1971, minimal groups) | backend team discounting a frontend team's estimates | mixed teams; blind review; rotate people |
+| **fundamental attribution error** | explaining others' behaviour by character, not circumstances (Ross, 1977; Jones and Harris, 1967) | "that engineer is careless" when the deploy process made mistakes easy | ask what situation would make a reasonable person do this; blameless post-mortems |
+| **false consensus** | overestimating how many people share your views (Ross, Greene and House, 1977) | "everyone wants dark mode" | survey or test; you are not the user |
+| **curse of knowledge** | being unable to imagine not knowing what you know | Newton (1990): tappers predicted listeners would name about half of the tapped songs; listeners named 3 of 120 | test explanations on newcomers; write for a reader who lacks context |
+| **spotlight effect** | overestimating how much others notice you (Gilovich, Medvec and Savitsky, 2000) | students wearing an embarrassing T-shirt far overestimated how many people noticed it | remember everyone else is busy with their own spotlight |
+| **bystander effect** | feeling less responsible to act when others are present (Darley and Latané, 1968) | an incident channel full of people watching and no one owning it | name an owner; "who is doing what by when?" Note: real-world CCTV data (Philpot et al., 2020) found someone intervened in about 90% of public conflicts, and the Kitty Genovese story that inspired the research was exaggerated |
+| **groupthink** | cohesive groups suppress dissent to preserve harmony (Janis, 1972) | a leadership team where no one challenges the founder's plan | red team; leader speaks last; anonymous input. Janis's full model has had mixed empirical support |
+| **Dunning–Kruger effect (contested)** | Kruger and Dunning (1999): the least skilled overestimate their performance most | beginners rating their code highly | see below; calibrate everyone with objective feedback |
+
+### The Dunning–Kruger critique
+
+The famous chart (low scorers hugely overestimate; high scorers slightly underestimate) is largely produced by
+two general effects: **regression to the mean** (self-estimates correlate imperfectly with scores, so extreme
+scorers' estimates sit closer to the middle) and the **better-than-average effect** (most people rate
+themselves above average). Nuhfer and colleagues (2016) reproduced the pattern with random data, and Gignac
+and Zajenkowski (*Intelligence*, 2020) found that, with valid methods, the relation between ability and
+self-assessment is close to linear, calling the effect "mostly a statistical artefact". People are imperfectly
+calibrated at every skill level; the popular version ("the incompetent are uniquely confident") is not well
+supported.
+
+## Memory biases
+
+| Bias | Definition | Example | Debias with |
+| :--- | :--------- | :------ | :---------- |
+| **peak–end rule** | experiences are remembered by their most intense moment and their end, not their total | Kahneman et al. (1993): most participants preferred to repeat a longer cold-water trial that ended slightly warmer; Redelmeier and Kahneman (1996) found the same with colonoscopies | design endings deliberately (onboarding, offboarding, incident close-out); measure during, not only after |
+| **duration neglect** | the length of an experience barely affects its remembered value | the same studies | track totals, not impressions |
+| **rosy retrospection** | remembering events as better than they felt at the time (Mitchell et al., 1997) | "the early days were fun"; nostalgia for the old stack | keep contemporaneous notes and metrics |
+| **misinformation effect** | later information alters memory of an event (Loftus and Palmer, 1974) | asking how fast cars were going when they "smashed" rather than "hit" raised speed estimates and false reports of broken glass | take statements early; ask open, non-leading questions in incident reviews and interviews |
+| **serial position effect** | the first and last items in a list are remembered best (primacy and recency; Murdock, 1962) | the middle candidate in a day of interviews blurs | score each candidate immediately; put key points first and last |
+| **hindsight and consistency** | memory of past beliefs drifts toward current beliefs | "I always thought this would work" | decision journals |
+
+## Munger's psychology of human misjudgment
+
+Charlie Munger gave the talk "The Psychology of Human Misjudgment" at Harvard in June 1995, listing 24 "standard
+causes of human misjudgment". An expanded version with 25 "tendencies" appears in *Poor Charlie's Almanack*
+(2005). His emphasis differs from the academic literature: incentives first, and combinations of tendencies
+(his **lollapalooza effect**) that produce extreme outcomes.
+
+| Cause (1995 list) | Meaning | Engineering / startup form |
+| :---------------- | :------ | :------------------------- |
+| underrecognition of incentive power | people underestimate how strongly incentives drive behaviour | the metric you reward is the one you get |
+| **incentive-caused bias** | people (including professionals) sincerely come to believe what benefits them | the vendor's consultant recommends the vendor; the team that owns a service argues it can't be deprecated |
+| consistency and commitment | once committed, people defend the position | public roadmap promises that outlive their rationale |
+| reciprocation | returning favours, even unrequested ones | "free" enterprise pilots that create obligation |
+| social proof | following the crowd | adopting a framework because everyone else did |
+| contrast | judging by comparison to what came just before | a \$50k tool looks cheap after a \$500k quote |
+| authority | deference to rank | nobody questions the CTO's architecture |
+| deprival super-reaction | overreacting to loss or near-loss | fighting to keep a feature a handful of users use |
+| envy / jealousy | comparing to peers | chasing competitors' features |
+| liking / disliking distortion | favouring people and ideas you like; dismissing those you don't | a friend's startup gets an easier diligence |
+| say-something syndrome | talking to seem useful | meetings that end with more opinions than decisions |
+
+His best-known illustration: Federal Express could not get its night shift to move packages on time until it
+stopped paying by the hour and paid by the shift, at which point the work got done faster. **Incentive-caused
+bias** is not dishonesty: people genuinely believe the conclusion that pays them. Discount advice by the adviser's
+incentives, including your own.
+
+## Cialdini's principles of influence
+
+Robert Cialdini's *Influence: The Psychology of Persuasion* (1984) set out six principles from experiments
+and years spent inside sales, fundraising and advertising organisations. In *Pre-Suasion* (2016) he added a
+seventh, **unity**. Each is a legitimate way to help people decide, and each is a lever for manipulation.
+
+| Principle | How it works | Legitimate use | Watch for (defence) |
+| :-------- | :----------- | :------------- | :------------------ |
+| **reciprocity** | we feel obliged to return what we've received | give genuinely useful content, help or trials first | small unsolicited "gifts" before a big ask; judge the offer on its merits |
+| **commitment and consistency** | after a small commitment we act to stay consistent with it | ask users to state a goal during onboarding | foot-in-the-door escalation; ask "knowing what I know now, would I say yes?" |
+| **social proof** | we follow what similar others do, especially under uncertainty | real testimonials, usage numbers, logos (with permission) | fake reviews, inflated counts; ask whether those people are like you |
+| **authority** | we defer to credible experts | show real credentials and expertise | borrowed or irrelevant authority (uniforms, titles); check the expertise is in this domain |
+| **liking** | we say yes to people we like: similarity, compliments, cooperation | build rapport honestly; find real common ground | charm that substitutes for substance; separate the person from the deal |
+| **scarcity** | things seem more valuable when rare or disappearing | real deadlines and limited capacity | fake countdowns and "only 2 left"; ask why you want it, not how soon |
+| **unity** (2016) | shared identity: "one of us" (family, place, tribe, alma mater) | genuine community among users | identity appeals used to shut down scrutiny; ask whether you'd agree if an outsider proposed it |
+
+<Note kind="warning">Deceptive uses of these principles (fake scarcity, fake social proof, confirmshaming) are "dark patterns" and in many jurisdictions unlawful consumer practices. Use the principles to reduce friction for choices people actually want to make.</Note>
+
+## Replication status
+
+Psychology's replication crisis matters here because many popular "biases" came from the same small-sample,
+flexible-analysis era. The big systematic replication efforts:
+
+| Project | What it did | Result |
+| :------ | :---------- | :----- |
+| Open Science Collaboration (*Science*, 2015) | replicated 100 studies from three leading psychology journals | 97% of originals were significant; 36% of replications were, with effect sizes about half the originals |
+| Many Labs 1 (Klein et al., 2014) | 13 effects across 36 samples, about 6,300 participants | 10 replicated consistently (including **anchoring**, **sunk costs** and **gain/loss framing**); imagined contact weak; **flag priming** and **currency priming** did not replicate |
+| Many Labs 2 (Klein et al., 2018) | 28 effects, about 15,000 participants in 36 countries | 14 (50%) replicated at a strict threshold; median effect size fell from $d = 0.60$ to $0.15$ |
+
+### Effects that failed or are contested
+
+These should **not** be cited as established biases.
+
+| Effect | Original claim | What happened | Status |
+| :----- | :------------- | :------------ | :----- |
+| **ego depletion** | self-control draws on a limited resource that exercise of willpower depletes (Baumeister et al., 1998) | 23-lab registered replication (Hagger et al., 2016, N = 2,141): $d = 0.04$, CI including zero. 36-lab test (Vohs et al., 2021, N = 3,531): confirmatory $d = 0.06$, not significant | not supported in its classic form |
+| **power posing** | briefly holding expansive poses raises testosterone, lowers cortisol and increases risk-taking (Carney, Cuddy and Yap, 2010) | Ranehill et al. (2015), with a larger sample, found no effect on hormones or risk-taking; lead author Dana Carney said in 2016 she did not believe the effects were real | hormonal and behavioural claims failed; small effects on self-reported feelings still debated |
+| **behavioural (social) priming** | subtle cues change behaviour: e.g. elderly-related words make people walk slower (Bargh, Chen and Burrows, 1996) | Doyen et al. (2012) failed to replicate the walking effect and suggested experimenter expectations; Many Labs 1 found no flag or money priming effects. Kahneman, who featured priming in *Thinking, Fast and Slow*, later acknowledged relying too much on underpowered studies | much of it not supported. Semantic priming (a word speeds recognition of related words) is a different, robust effect |
+| **nudges (as a class)** | small changes in choice architecture reliably change behaviour | Maier et al. (*PNAS*, 2022): after adjusting for publication bias, no evidence remained for nudging overall. DellaVigna and Linos (*Econometrica*, 2022): academic papers averaged 8.7 percentage points; nudge-unit trials at scale averaged 1.4. The "sign at the top" honesty study (Shu et al., *PNAS*, 2012) was retracted in 2021 over fabricated data | effects usually far smaller than published; **defaults** remain one of the better-supported tools (Jachimowicz et al., 2019 meta-analysis) |
+| **stereotype threat** | reminding people of a negative stereotype about their group lowers their test performance (Steele and Aronson, 1995) | Flore and Wicherts (2015) found signs of publication bias; a large registered study in Dutch high schools (Flore, Mulder and Wicherts, 2018, N = 2,064) found no effect; other meta-analyses do find effects | mixed; probably smaller and more context-dependent than claimed |
+| **facial feedback** | holding a pen in the teeth (forcing a smile) makes cartoons funnier (Strack et al., 1988) | 17-lab registered replication (Wagenmakers et al., 2016) found no effect; the Many Smiles Collaboration (2022, N = 3,878) found that mimicking or deliberately posing a smile did raise reported happiness, while evidence for the unobtrusive pen method was inconclusive | posed expressions have small effects; the classic pen result is not established |
+| **Dunning–Kruger** | see [above](#the-dunningkruger-critique) | largely a statistical artefact | contested |
+| **loss aversion** | losses loom about twice as large as gains | found in many choice tasks; critics (Gal and Rucker, 2018) argue it is weaker and less general than claimed | real, magnitude debated |
+
+**Rules of thumb for judging a claimed bias:** prefer effects that replicated in large, pre-registered,
+multi-lab studies; distrust small samples with big effects, especially "one weird trick" behaviour changes;
+check whether the effect survives in the field, not only in a lab; and look for a replication before you
+build a product or policy on it.
+
+## Debiasing techniques
+
+Knowing a bias rarely removes it. What works is **changing the process**: who judges, when, with what
+information and in what order.
+
+| Technique | How | Counters | Source / evidence |
+| :-------- | :-- | :------- | :---------------- |
+| **consider the opposite** | before deciding, list reasons your conclusion could be wrong | confirmation bias, overconfidence, anchoring | Lord, Lepper and Preston (1984) found it more effective than instructions to "be unbiased" |
+| **pre-mortem** | "It is a year from now and this failed. Write down why." Each person writes independently, then share | optimism, planning fallacy, groupthink | Gary Klein, *Harvard Business Review* (2007); builds on "prospective hindsight" research (Mitchell, Russo and Pennington, 1989) |
+| **reference class forecasting** | pick a class of similar past projects, take its distribution of outcomes, adjust modestly for specifics | planning fallacy, optimism, anchoring | Kahneman and Lovallo (1993); Lovallo and Kahneman, "Delusions of success" (*HBR*, 2003); Bent Flyvbjerg (2006) describes its first uses in UK transport planning |
+| **outside view before inside view** | ask "how do projects like this usually go?" before "how will ours go?" | same as above | Kahneman's curriculum-writing team estimated 2 years; similar teams had taken 7–10 or never finished (*Thinking, Fast and Slow*, ch. 23) |
+| **checklists** | short, explicit lists of critical steps, used at defined pause points | memory lapses, overconfidence under pressure | WHO surgical safety checklist: deaths fell from 1.5% to 0.8% and complications from 11% to 7% across eight hospitals (Haynes et al., *NEJM*, 2009); Atul Gawande, *The Checklist Manifesto* (2009) |
+| **blind evaluation** | hide names, genders, schools, authorship; score before discussion | halo, in-group, authority, anchoring | Goldin and Rouse (2000) credited blind orchestra auditions with part of the rise in women hired (the statistical strength of that finding has since been questioned); blind code review; structured interviews |
+| **independent judgements, then aggregate** | everyone estimates privately, then compare and average | anchoring, social proof, groupthink, noise | Kahneman, Sibony and Sunstein, *Noise* (2021); wisdom-of-crowds averaging |
+| **red teams / devil's advocate** | a person or team whose job is to attack the plan | groupthink, confirmation bias | security practice; rotate the role so it isn't dismissed as theatre |
+| **decision journals** | record the decision, options, expected outcome with probabilities, and your state of mind; review later | hindsight bias, outcome bias, overconfidence | makes calibration measurable (see [forecasting](/thinking/mental-models/probability-risk/#forecasting-and-scoring)) |
+| **cooling-off periods** | delay irreversible or emotional decisions (a night, a week) | hot-state decisions, scarcity pressure, present bias | the logic behind statutory cooling-off rights for doorstep and distance sales (e.g. 14 days in the EU) |
+| **kill criteria** | write down in advance what result will make you stop | sunk cost, escalation of commitment | set with the plan, not when the numbers come in |
+| **leader speaks last** | the most senior person gives their view after everyone else | authority, social proof, groupthink | standard advice in decision-making practice |
+| **incentive audit** | ask who benefits from each recommendation, including you | incentive-caused bias | Munger put incentives at the top of his list |
+
+The step-by-step formats for a [pre-mortem](/thinking/mental-models/decision-making/#pre-mortem),
+[red teams](/thinking/mental-models/decision-making/#red-teams-and-devils-advocates) and
+[decision journals](/thinking/mental-models/decision-making/#decision-journals) are on the decision-making sheet.
+Whatever the technique, three rules carry most of the benefit: **write before you talk** (independent
+judgements), **start from the outside view**, and **decide the criteria before you see the candidates**.
+
+## Biases most dangerous to founders and engineers
+
+| Bias | How it shows up | Countermeasure |
+| :--- | :-------------- | :------------- |
+| **planning fallacy** in estimates | "two weeks" for a migration that took two months last time | compare with your own history; estimate in ranges; multiply by your observed overrun ratio; break work down |
+| **sunk cost** on features | keeping a feature because of the effort put in, not its usage | kill criteria set at launch; review features by usage and maintenance cost |
+| **confirmation bias** in customer interviews | asking "would you use this?" and hearing yes | ask about past behaviour and money spent, not future intentions (Rob Fitzpatrick, *The Mom Test*, 2013); see [validation](/startups/idea-to-mvp/validation/) |
+| **survivorship bias** in startup advice | copying the habits of famous winners | find the base rate and the failures who did the same; weigh advice from people who see many outcomes ([Y Combinator](/startups/advice/y-combinator/)) |
+| **overconfidence / optimism** in fundraising and runway | assuming the next round will close on time | plan runway for a round that takes twice as long; default-alive maths |
+| **IKEA effect / not-invented-here** | building in-house what a library does better | cost the build including maintenance; let someone else evaluate |
+| **false consensus / curse of knowledge** in product design | "users will obviously understand this" | usability tests with real newcomers; you are not the user |
+| **anchoring** in pricing and negotiation | first number mentioned sets the range | research the range first; make the first offer when you know the market |
+| **authority bias / groupthink** in architecture | nobody questions the lead's design | written design docs with a named reviewer tasked to find flaws |
+| **availability** in prioritisation | the loudest customer's request jumps the queue | weigh requests by revenue, frequency and strategic fit, not volume |
+| **outcome bias** in post-mortems | blaming the person when the process failed, or praising luck | blameless reviews; judge the decision on what was known then |
+| **status quo bias** in tooling | "it works" for a stack that costs hours a week | put the switching and staying costs side by side, annually |
+| **incentive-caused bias** in advice | the vendor, the agency, the investor with a thesis | ask what the adviser gains; get a view from someone without the incentive |
+| **escalation of commitment** in hiring | keeping a bad hire because you made the decision | decide as if hiring them afresh today |
+
+## Debiasing checklist
+
+```text
+BEFORE A DECISION THAT MATTERS
+
+Frame
+[ ] Have I stated the decision in both frames (gain/loss)?
+[ ] What is the reference class and its base rate?
+[ ] Did I make my estimate before seeing anyone else's?
+
+Evidence
+[ ] What evidence would change my mind? Have I looked for it?
+[ ] Am I judging by the story or by the numbers?
+[ ] Is my sample only the survivors / the loudest / the recent?
+
+People
+[ ] Who benefits from each option, including me?
+[ ] Did everyone give their view independently before discussion?
+[ ] Has someone been asked to argue the other side?
+[ ] Am I deferring to rank, charm or consensus?
+
+Commitment
+[ ] Would I start this today, ignoring what's already spent?
+[ ] What are the kill criteria, and when do we check them?
+[ ] Is this reversible? If not, have I slept on it?
+
+Record
+[ ] Written: options, choice, reasons, probability, date.
+[ ] Pre-mortem done: top three failure causes addressed.
+[ ] Review date set to compare outcome with expectation.
+```
+
+## References
+
+- Daniel Kahneman, *Thinking, Fast and Slow* (Farrar, Straus and Giroux, 2011): System 1 and 2, heuristics, the outside view
+- Amos Tversky and Daniel Kahneman, ["Judgment under uncertainty: heuristics and biases"](https://doi.org/10.1126/science.185.4157.1124), *Science* 185, 1974: the founding paper
+- Daniel Kahneman and Amos Tversky, "Prospect theory: an analysis of decision under risk", *Econometrica* 47(2), 1979: loss aversion and reference dependence
+- Amos Tversky and Daniel Kahneman, ["The framing of decisions and the psychology of choice"](https://doi.org/10.1126/science.7455683), *Science* 211, 1981: the Asian disease problem
+- Amos Tversky and Daniel Kahneman, ["Extensional versus intuitive reasoning: the conjunction fallacy in probability judgment"](https://doi.org/10.1037/0033-295X.90.4.293), *Psychological Review* 90(4), 1983: the Linda problem
+- Daniel Kahneman and Gary Klein, ["Conditions for intuitive expertise: a failure to disagree"](https://doi.org/10.1037/a0016755), *American Psychologist* 64(6), 2009: when to trust intuition
+- David E. Melnikoff and John A. Bargh, ["The mythical number two"](https://doi.org/10.1016/j.tics.2018.02.001), *Trends in Cognitive Sciences* 22(4), 2018: critique of dual-process models
+- Gerd Gigerenzer, Peter M. Todd and the ABC Research Group, *Simple Heuristics That Make Us Smart* (Oxford University Press, 1999): ecological rationality
+- Roger Buehler, Dale Griffin and Michael Ross, ["Exploring the 'planning fallacy'"](https://doi.org/10.1037/0022-3514.67.3.366), *Journal of Personality and Social Psychology* 67(3), 1994: thesis-completion estimates
+- Hal R. Arkes and Catherine Blumer, ["The psychology of sunk cost"](https://doi.org/10.1016/0749-5978%2885%2990049-4), *Organizational Behavior and Human Decision Processes* 35(1), 1985
+- Daniel Kahneman, Jack L. Knetsch and Richard H. Thaler, ["Experimental tests of the endowment effect and the Coase theorem"](https://doi.org/10.1086/261737), *Journal of Political Economy* 98(6), 1990
+- Eric J. Johnson and Daniel Goldstein, ["Do defaults save lives?"](https://doi.org/10.1126/science.1091721), *Science* 302, 2003: organ-donation defaults
+- Michael I. Norton, Daniel Mochon and Dan Ariely, ["The IKEA effect: when labor leads to love"](https://doi.org/10.1016/j.jcps.2011.08.002), *Journal of Consumer Psychology* 22(3), 2012
+- David Laibson, ["Golden eggs and hyperbolic discounting"](https://doi.org/10.1162/003355397555253), *Quarterly Journal of Economics* 112(2), 1997: present bias
+- P. C. Wason, ["On the failure to eliminate hypotheses in a conceptual task"](https://doi.org/10.1080/17470216008416717), *Quarterly Journal of Experimental Psychology* 12(3), 1960: the 2-4-6 task
+- Ziva Kunda, ["The case for motivated reasoning"](https://doi.org/10.1037/0033-2909.108.3.480), *Psychological Bulletin* 108(3), 1990
+- Baruch Fischhoff, ["Hindsight ≠ foresight"](https://doi.org/10.1037/0096-1523.1.3.288), *Journal of Experimental Psychology: Human Perception and Performance* 1(3), 1975: hindsight bias
+- Jonathan Baron and John C. Hershey, ["Outcome bias in decision evaluation"](https://doi.org/10.1037/0022-3514.54.4.569), *Journal of Personality and Social Psychology* 54(4), 1988
+- Cass R. Sunstein, "Probability neglect: emotions, worst cases, and law", *Yale Law Journal* 112(1), 2002
+- William H. Desvousges et al., ["Measuring natural resource damages with contingent valuation: tests of validity and reliability"](https://doi.org/10.1016/b978-0-444-81469-2.50009-2), in J. A. Hausman (ed.), *Contingent Valuation: A Critical Assessment* (North-Holland, 1993): the birds study
+- Jonathan Baron, Rajeev Gowda and Howard Kunreuther, ["Attitudes toward managing hazardous waste"](https://doi.org/10.1111/j.1539-6924.1993.tb01068.x), *Risk Analysis* 13(2), 1993: zero-risk bias
+- Justin Kruger and David Dunning, ["Unskilled and unaware of it"](https://doi.org/10.1037/0022-3514.77.6.1121), *Journal of Personality and Social Psychology* 77(6), 1999
+- Gilles E. Gignac and Marcin Zajenkowski, ["The Dunning–Kruger effect is (mostly) a statistical artefact"](https://doi.org/10.1016/j.intell.2020.101449), *Intelligence* 80, 2020
+- John M. Darley and Bibb Latané, ["Bystander intervention in emergencies: diffusion of responsibility"](https://doi.org/10.1037/h0025589), *Journal of Personality and Social Psychology* 8(4), 1968
+- Richard Philpot et al., "Would I be helped? Cross-national CCTV footage shows that intervention is the norm in public conflicts", *American Psychologist* 75(1), 2020
+- Thomas Gilovich, Victoria Husted Medvec and Kenneth Savitsky, ["The spotlight effect in social judgment"](https://doi.org/10.1037/0022-3514.78.2.211), *Journal of Personality and Social Psychology* 78(2), 2000
+- Daniel Kahneman et al., ["When more pain is preferred to less: adding a better end"](https://doi.org/10.1111/j.1467-9280.1993.tb00589.x), *Psychological Science* 4(6), 1993: peak–end rule
+- Elizabeth F. Loftus and John C. Palmer, ["Reconstruction of automobile destruction"](https://doi.org/10.1016/S0022-5371%2874%2980011-3), *Journal of Verbal Learning and Verbal Behavior* 13(5), 1974: misinformation effect
+- [Charlie Munger, "The Psychology of Human Misjudgment" (1995 Harvard talk, transcript)](https://jamesclear.com/great-speeches/psychology-of-human-misjudgment-by-charlie-munger): incentive-caused bias and the 24 causes
+- Robert B. Cialdini, *Influence: The Psychology of Persuasion* (William Morrow, 1984): the six principles
+- Robert B. Cialdini, *Pre-Suasion: A Revolutionary Way to Influence and Persuade* (Simon & Schuster, 2016): unity
+- [Open Science Collaboration, "Estimating the reproducibility of psychological science"](https://doi.org/10.1126/science.aac4716), *Science* 349, 2015
+- Richard A. Klein et al., ["Investigating variation in replicability: a 'Many Labs' replication project"](https://doi.org/10.1027/1864-9335/a000178), *Social Psychology* 45(3), 2014
+- Richard A. Klein et al., ["Many Labs 2"](https://doi.org/10.1177/2515245918810225), *Advances in Methods and Practices in Psychological Science* 1(4), 2018
+- Martin S. Hagger et al., ["A multilab preregistered replication of the ego-depletion effect"](https://doi.org/10.1177/1745691616652873), *Perspectives on Psychological Science* 11(4), 2016
+- Kathleen D. Vohs et al., ["A multisite preregistered paradigmatic test of the ego-depletion effect"](https://doi.org/10.1177/0956797621989733), *Psychological Science* 32(10), 2021
+- Eva Ranehill et al., ["Assessing the robustness of power posing"](https://doi.org/10.1177/0956797614553946), *Psychological Science* 26(5), 2015
+- Stéphane Doyen et al., ["Behavioral priming: it's all in the mind, but whose mind?"](https://doi.org/10.1371/journal.pone.0029081), *PLoS ONE* 7(1), 2012
+- Claude M. Steele and Joshua Aronson, ["Stereotype threat and the intellectual test performance of African Americans"](https://doi.org/10.1037/0022-3514.69.5.797), *Journal of Personality and Social Psychology* 69(5), 1995
+- Paulette C. Flore and Jelte M. Wicherts, ["Does stereotype threat influence performance of girls in stereotyped domains? A meta-analysis"](https://doi.org/10.1016/j.jsp.2014.10.002), *Journal of School Psychology* 53(1), 2015
+- Maximilian Maier et al., ["No evidence for nudging after adjusting for publication bias"](https://doi.org/10.1073/pnas.2200300119), *PNAS* 119(31), 2022
+- Stefano DellaVigna and Elizabeth Linos, ["RCTs to scale: comprehensive evidence from two nudge units"](https://doi.org/10.3982/ECTA18709), *Econometrica* 90(1), 2022
+- Jon M. Jachimowicz et al., ["When and why defaults influence decisions: a meta-analysis of default effects"](https://doi.org/10.1017/bpp.2018.43), *Behavioural Public Policy* 3(2), 2019
+- E.-J. Wagenmakers et al., ["Registered replication report: Strack, Martin, & Stepper (1988)"](https://doi.org/10.1177/1745691616674458), *Perspectives on Psychological Science* 11(6), 2016
+- Nicholas A. Coles et al., ["A multi-lab test of the facial feedback hypothesis by the Many Smiles Collaboration"](https://doi.org/10.1038/s41562-022-01458-9), *Nature Human Behaviour* 6, 2022
+- Charles G. Lord, Mark R. Lepper and Elizabeth Preston, ["Considering the opposite: a corrective strategy for social judgment"](https://doi.org/10.1037/0022-3514.47.6.1231), *Journal of Personality and Social Psychology* 47(6), 1984
+- Gary Klein, ["Performing a project premortem"](https://hbr.org/2007/09/performing-a-project-premortem), *Harvard Business Review*, September 2007
+- Daniel Kahneman and Dan Lovallo, ["Timid choices and bold forecasts"](https://doi.org/10.1287/mnsc.39.1.17), *Management Science* 39(1), 1993: inside vs outside view
+- Bent Flyvbjerg, ["From Nobel prize to project management: getting risks right"](https://doi.org/10.1177/875697280603700302), *Project Management Journal* 37(3), 2006: reference class forecasting in practice
+- Alex B. Haynes et al., ["A surgical safety checklist to reduce morbidity and mortality in a global population"](https://doi.org/10.1056/NEJMsa0810119), *New England Journal of Medicine* 360, 2009
+- Claudia Goldin and Cecilia Rouse, ["Orchestrating impartiality"](https://doi.org/10.1257/aer.90.4.715), *American Economic Review* 90(4), 2000: blind auditions
+- Daniel Kahneman, Olivier Sibony and Cass R. Sunstein, *Noise: A Flaw in Human Judgment* (Little, Brown Spark, 2021): independent judgements and aggregation
+- Rob Fitzpatrick, *The Mom Test* (2013): interviewing customers without confirmation bias

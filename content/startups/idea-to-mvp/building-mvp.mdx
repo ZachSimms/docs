@@ -1,0 +1,788 @@
+---
+title: Building the MVP
+date: 2026-09-26
+order: 5
+---
+
+Phase 3 of the pipeline: turning the signed-off spec from [product design](/startups/idea-to-mvp/product-design/) into
+a working product at a public URL in 2–4 weeks (hard cap 6), then handing it to
+[launch & iterate](/startups/idea-to-mvp/launch-iterate/). It is opinionated for a TypeScript builder: the stack details
+live on [Next.js](/typescript/react/next-js/), [Hono](/typescript/backend/hono/), [PostgreSQL](/databases/postgres/),
+[Drizzle](/databases/drizzle/), [authentication](/typescript/backend/authentication/) and [testing](/typescript/testing/).
+This sheet is about what to build, what not to, and how to keep moving.
+
+## Phase at a glance
+
+| Item | Phase 3: Build the MVP |
+| :--- | :--- |
+| Pipeline position | Ideation → Problem validation → Solution design → **Build** → Launch → Iterate |
+| Goal | the core loop working end to end for a stranger, in production, instrumented |
+| Timebox | **2–4 weeks**, hard cap **6** (the circuit breaker: at week 6, stop and reshape, don't extend) |
+| Input | one-page spec, story map with MVP slice, tested prototype, event plan, "not now" list |
+| Artefacts | deployed app at a public URL, schema and migrations, event tracking, error monitoring, smoke tests, runbook notes, pre-launch checklist, launch list |
+| Output | a product you'd be comfortable showing 20–50 hand-picked users next week |
+| Main traps | over-engineering, bikeshedding the stack, building auth from scratch, infrastructure procrastination, polishing before users |
+
+### A 4-week plan
+
+| Week | Focus | Done when |
+| :--- | :--- | :--- |
+| 1 | **walking skeleton** deployed on day 1; auth; schema; happy path of the core loop, ugly | you can complete the core loop in production with your own account |
+| 2 | core loop complete (edge cases that lose data or money); first-run flow and empty states | a new account reaches the aha moment without help |
+| 3 | payments, transactional email, instrumentation, error tracking; the rough edges on the core loop | test payment succeeds; events arrive; a thrown error pages you |
+| 4 | pre-launch checklist; 2–3 friendly users try it while you watch; fix what they hit | every checklist item ticked; launch list ready |
+
+A 2-week build compresses weeks 1–2 and 3–4. If week 4 ends with the core loop still broken, cut scope, not the
+launch.
+
+## Entry criteria
+
+Phase 3 starts with the Phase 2 handoff package from [product design](/startups/idea-to-mvp/product-design/#exit-criteria--handoff).
+Missing pieces are cheaper to fix now than mid-build.
+
+| Must have | Check |
+| :--- | :--- |
+| Signed-off one-page spec | success metric, appetite in weeks, scope in/out, rabbit holes decided |
+| Story map with a single MVP slice | walking skeleton identified; nothing in the slice off the core loop, first run or payment |
+| Prototype tested with ≥ 5 target users | severity 3–4 issues fixed in the design |
+| Data model sketch | tenant, core object lifecycle, events table |
+| Analytics event plan | 5–10 `object_action` events; activation and core-loop definitions |
+| "Not now" list | with the manual workaround for each |
+| Stack decision | made in under a day, using the default below unless there's a specific reason |
+
+<Note kind="warning">If you catch yourself "just quickly" designing new screens during the build, you skipped Phase 2. Stop for a day, sketch and test, then resume.</Note>
+
+## Principles
+
+| Principle | What it means in practice | Source |
+| :--- | :--- | :--- |
+| **Walking skeleton on day 1** | the thinnest end-to-end slice (page → API → DB → deploy) live at a real URL before any feature work | Alistair Cockburn's term: a tiny implementation that links the main architectural components end to end |
+| **Choose boring technology** | use tools whose failure modes you already know; spend novelty only where it's the product | Dan McKinley, "Choose Boring Technology" (2015) |
+| **Monolith first** | one codebase, one deploy, one database; split only when a real boundary hurts | Martin Fowler, "MonolithFirst" (2015) |
+| **Do things that don't scale, in code too** | manual operations behind a clean UI; admin by SQL; onboarding by hand | Paul Graham, "Do Things That Don't Scale" (2013), applied to engineering |
+| **Vertical slices** | each change delivers user-visible behaviour through every layer | story mapping ([product design](/startups/idea-to-mvp/product-design/#user-story-mapping)) |
+| **Ship to production daily** | small diffs, deployed on merge, unfinished work behind flags | trunk-based development |
+| **Fixed time, variable scope** | the deadline holds; scope is what moves | Ryan Singer, *Shape Up* (2019) |
+
+### Choose boring technology
+
+McKinley's essay (March 2015) proposes that "every company gets about three innovation tokens": each new, unfamiliar
+technology spends one, because its operational unknowns are paid for long after the build. He argues boring tools
+(Postgres, a mainstream language) win because their failure modes are well understood, and that before adding
+anything you should consider how you'd solve the problem without adding anything new.
+
+For a solo founder the budget is smaller: **spend at most one token, and only on the thing that is the product**. If
+the product is a scheduling tool, the scheduling logic may deserve novelty; the database, auth, queue and hosting do not.
+
+| Innovation token spent on… | Verdict for an MVP |
+| :--- | :--- |
+| a new framework you wanted to learn | no; learn it on a side project |
+| a new database (graph, document, vector-only) | no, unless the product *is* that query pattern; Postgres covers JSON, full-text and vectors (pgvector) |
+| a new language or runtime you haven't shipped | no |
+| a novel algorithm that is the product's advantage | yes, this is where the token goes |
+| an AI model integration that is the core value | yes, but wrap it behind one function so you can swap providers |
+
+### Monolith first
+
+Fowler (June 2015) reports two observations: "Almost all the successful microservice stories have started with a
+monolith that got too big and was broken up", and "Almost all the cases where I've heard of a system that was built as a
+microservice system from scratch, it has ended up in serious trouble." For an MVP there's also no team to split
+services between. Organise the monolith in modules by domain (`billing/`, `rota/`, `accounts/`) so a later split is
+possible, and stop there.
+
+### Do things that don't scale, in code
+
+| Instead of building… | Do this for the first 50 customers |
+| :--- | :--- |
+| an admin dashboard | a database GUI (TablePlus, DBeaver, Drizzle Studio) and a file of saved SQL queries |
+| self-serve data import | ask for their spreadsheet and import it yourself with a script |
+| automated onboarding emails | send them yourself from your own inbox; you learn more |
+| a support ticketing system | a shared inbox or a feedback email address |
+| a rules engine or settings page | hard-code the defaults; change a customer's config in SQL on request |
+| automated refunds, plan changes | the payment provider's dashboard or hosted customer portal |
+| reporting and exports | run a query and email them a CSV |
+| a moderation queue | a daily query of new content, reviewed by you |
+
+The rule: **automate the second or third time the same manual task annoys you**, not the first time you imagine it.
+
+## Build, buy or no-code
+
+| Capability | Build | Buy (managed service / library) | No-code | MVP default |
+| :--- | :--- | :--- | :--- | :--- |
+| Core loop logic | ✓ | — | only if the loop is simple CRUD and you're testing demand | **build**: it's the product |
+| Authentication | only sessions via a vetted library | managed auth or an auth library that stores users in your DB | — | **buy** |
+| Payments and billing | never card handling | hosted checkout + customer portal | payment links | **buy** |
+| Transactional email | — | email API provider | — | **buy** |
+| Marketing site / landing page | if it's the same Next.js app | site builder | ✓ | same app or no-code; don't spend a week on it |
+| Admin / back office | — | DB GUI | internal-tool builders | **DB GUI + SQL** |
+| Search | Postgres full-text | hosted search | — | **Postgres** until it hurts |
+| File storage | — | S3-compatible object storage | — | **buy** |
+| Background jobs | a jobs table + a worker, or platform cron | managed job queue | — | **simplest thing your host supports** |
+| Analytics | an `events` table | product analytics tool | — | **both**: own the raw events, use a tool for dashboards |
+| Docs / help centre | — | — | a notes tool published to the web | **no-code** |
+
+Decision rule: build only what differentiates the product or what no vendor does acceptably. Everything else is a
+purchase, and the cost of switching later is almost always lower than the cost of building now.
+
+<Note kind="info">A no-code or spreadsheet-backed MVP is a legitimate choice when the risk is demand, not technology. For a fluent TypeScript developer the default stack below is usually just as fast, and you keep the code.</Note>
+
+## A default stack
+
+Pick in an afternoon; changing later is cheaper than debating now. Vendor names are **examples**, not endorsements or
+price claims; check current pricing and terms yourself.
+
+| Layer | Default for this owner | Alternatives | Choose the alternative when |
+| :--- | :--- | :--- | :--- |
+| App framework | **Next.js** (App Router) full-stack: pages, server actions, route handlers | Vite + React SPA with a **Hono** API on Bun | API-first product, a mobile client, or you dislike framework magic |
+| Language | TypeScript, strict | — | — |
+| Runtime / package manager | Bun locally | Node in production if the host prefers it | the host or a dependency needs Node |
+| Database | **PostgreSQL**, managed (e.g. Neon, Supabase, or your host's managed Postgres) | SQLite / libSQL | single-server, read-heavy, tiny data |
+| ORM / queries | **Drizzle** + drizzle-kit migrations | Kysely, Prisma, raw SQL | team already knows another |
+| Auth | **managed or library**, not hand-rolled: e.g. Clerk, WorkOS AuthKit, Auth0 (hosted); Better Auth, Auth.js (library, users in your DB) | sessions you write using the [authentication](/typescript/backend/authentication/) sheet | you need full control *and* you know the pitfalls |
+| UI | Tailwind + a copy-in component library (e.g. shadcn/ui) | your own minimal components | — |
+| Payments | **Stripe** Checkout + Customer Portal | a merchant of record (e.g. Paddle, Lemon Squeezy) that handles sales tax and VAT for you | you sell to consumers in many tax jurisdictions and don't want the tax admin |
+| Transactional email | an email API (e.g. Resend, Postmark, Amazon SES) | — | — |
+| Hosting | **Vercel** for Next.js; **Fly.io, Railway or Render** for a Bun/Hono server | a single VPS with Docker | you're comfortable running a box |
+| Object storage | S3-compatible (e.g. AWS S3, Cloudflare R2) | — | — |
+| Error tracking | e.g. Sentry | host's built-in logs | — |
+| Product analytics | own `events` table + a tool such as PostHog; privacy-first page analytics such as Plausible | — | — |
+| Uptime | any external HTTP monitor on `/healthz` | — | — |
+| Feature flags | env var + DB table ([recipe](#feature-flag-helper)) | the analytics tool's flags | many flags, percentage rollouts |
+
+Rules for the stack:
+
+- **Use what you already ship with.** The best stack is the one you can debug at 11 pm.
+- **One language end to end.** TypeScript on client and server; share types and validation schemas.
+- **Managed over self-hosted** for anything stateful (database, auth, email, files).
+- **No stack changes after day 2** of the build. Write the idea down for the iteration phase.
+
+## The MVP architecture
+
+One repository, one deploy, one database. Everything else is a managed service called over HTTPS.
+
+```text
+                        ┌───────────────────────────────┐
+  browser ─── HTTPS ───►│  ONE APP (single repo/deploy) │
+  (responsive web)      │  Next.js  or  Vite + Hono     │
+                        │  ├─ pages / UI                │
+                        │  ├─ API routes / actions      │
+                        │  ├─ modules: accounts, core,  │
+                        │  │   billing, notifications   │
+                        │  ├─ track() → events table    │
+                        │  └─ /healthz                  │
+                        └──────┬──────────┬─────────────┘
+                               │          │
+              ┌────────────────┘          └──────────────────┐
+              ▼                                              ▼
+   ┌─────────────────────┐        managed services (HTTPS APIs)
+   │ ONE POSTGRES        │        ├─ auth provider / library
+   │ tables + events     │        ├─ payments (webhooks → app)
+   │ daily backups       │        ├─ email API
+   │ (PITR if offered)   │        ├─ object storage (files)
+   └─────────────────────┘        ├─ error tracking
+                                  └─ product analytics
+
+ CI: push to main → typecheck + smoke tests → migrate → deploy
+ Monitoring: uptime check on /healthz, error alerts to phone
+```
+
+| Deliberately absent | Why | Add when |
+| :--- | :--- | :--- |
+| Redis / cache layer | Postgres is fast enough for early load | measured slow queries you can't index away |
+| Message broker | a jobs table or platform cron covers it | job volume or fan-out a table can't handle |
+| Separate API service | one deploy is simpler to reason about | a second client (mobile, public API) needs a stable contract |
+| Kubernetes, service mesh | nothing to orchestrate | multiple services with a team to run them |
+| Multi-region | latency isn't your problem yet | customers complain, with numbers |
+
+Scaling, caching and queues when you really need them: [system design](/infrastructure/system-design/).
+
+## What not to build
+
+The list of things that feel productive and aren't. Each one is a week you don't get back.
+
+| Don't build | Why it's tempting | Do instead |
+| :--- | :--- | :--- |
+| **Custom authentication** | "it's just a users table and bcrypt" | managed auth or a vetted library; see [authentication](/typescript/backend/authentication/) for why it's never "just" that (reset flows, sessions, rate limiting, MFA, account enumeration) |
+| **Microservices** | "it'll scale" | modular monolith |
+| **Kubernetes / infra-as-code empire** | résumé-driven, feels like engineering | a PaaS and a `git push` |
+| **A design system** | components feel reusable | a component library, one type scale, one accent colour |
+| **An admin dashboard** | "I'll need it eventually" | DB GUI + saved SQL |
+| **Internationalisation** | "we'll go global" | one language; keep strings out of logic so i18n is possible later |
+| **Perfect test coverage** | feels responsible | a handful of end-to-end smoke tests on the core loop + unit tests on money and permissions |
+| **Multi-tenancy abstractions** | "enterprise customers" | an `account_id` column on every table, filtered in every query; nothing more |
+| **Roles and permission matrices** | "teams will need it" | owner + member |
+| **Settings pages** | "users want control" | good defaults; change it for them in SQL |
+| **A public API** | "developers will integrate" | webhooks or CSV export when a customer asks |
+| **Real-time everything** | WebSockets are fun | poll or refresh; real-time only if it *is* the core loop |
+| **Your own billing logic** | "it's just subscriptions" | hosted checkout, hosted customer portal, webhooks |
+| **Mobile apps** | "users are on phones" | responsive web; a PWA at most |
+| **Caching layers** | premature performance | indexes; measure first |
+| **A plugin/extension system** | "flexibility" | hard-code the three cases you know |
+| **Dark mode, themes, animations** | polish | one theme; defer |
+
+<Callout type="error" title="Premature scaling kills more MVPs than scaling problems">
+  A product with 30 users does not have a scale problem. If you're designing for a million users before you have ten,
+  you're procrastinating on the scary part: putting it in front of people.
+</Callout>
+
+## Quality bar: solid vs rough
+
+Not everything deserves the same care. Get the irreversible things right; let the reversible things be ugly.
+
+| Must be solid (hard or impossible to undo) | Why | Minimum |
+| :--- | :--- | :--- |
+| Data integrity | lost or corrupted data loses the customer and their trust | foreign keys, `not null`, unique constraints, transactions for multi-row writes, migrations in version control |
+| Auth and access control | a data leak between customers can end the company | vetted auth; every query scoped by `account_id`; test that user A can't read user B's data |
+| Payments | double charges, missed webhooks, wrong access after cancel | provider-hosted checkout; idempotent webhook handler; entitlement derived from provider state |
+| Backups and restore | you will delete production data once | automated daily backups (or provider PITR) **and one practised restore** |
+| Secrets | leaked keys are expensive and instant | env vars, never committed; rotate on leak |
+| Email deliverability | sign-in links and receipts must arrive | SPF, DKIM and DMARC set up on your sending domain |
+
+| Can be rough | Why it's fine |
+| :--- | :--- |
+| visual polish, animations, illustrations | early users forgive plain if it solves their problem |
+| performance beyond "feels fast" on the core loop | you have tens of users |
+| code structure, duplication | you'll rewrite parts once you know what matters |
+| edge cases that don't lose data or money | handle them manually when they happen |
+| admin tooling | SQL |
+| mobile layout of secondary screens | core loop on mobile must work; settings can be cramped |
+| error messages on rare paths | a generic message plus error tracking |
+
+## Testing strategy for MVPs
+
+Aim for **confidence that the core loop works after every deploy**, not coverage.
+
+| Layer | What to test | How many | Tool |
+| :--- | :--- | :--- | :--- |
+| Types | everything, for free | — | `tsc --noEmit` in CI, strict mode |
+| End-to-end smoke | sign up → first value; core loop; payment (test mode) | **3–5 tests** | Playwright ([E2E with Playwright](/typescript/testing/#e2e-with-playwright)) |
+| Unit | money calculations, permission checks, date/time logic, anything with branches you'd get wrong | as needed | `bun test` or Vitest |
+| Integration | webhook handlers (payments), tenant isolation ("A can't see B") | a few | real test database, not mocks |
+| Manual | a checklist run before each launch step | 1 list | you, on your phone |
+
+Skip for now: snapshot tests, component tests of simple UI, coverage thresholds, load tests. Add a regression test
+whenever a bug reaches a user. Details on runners and patterns: [testing](/typescript/testing/).
+
+## Security minimums
+
+Small products get attacked by the same bots as big ones. The [OWASP Top 10:2025](https://top10.owasp.org/2025) is the
+checklist; for an MVP, these are the non-negotiables.
+
+| Area | Minimum | OWASP 2025 category |
+| :--- | :--- | :--- |
+| Access control | every query filtered by tenant and owner on the server; never trust IDs from the client; deny by default | A01 Broken Access Control |
+| Configuration | production debug off; default credentials changed; security headers (e.g. Hono's `secureHeaders` middleware) | A02 Security Misconfiguration |
+| Dependencies | lockfile committed; `--frozen-lockfile` in CI; update regularly; check that an AI-suggested package really exists before installing | A03 Software Supply Chain Failures |
+| Transport and crypto | HTTPS everywhere (hosts do it by default), HSTS; never roll your own crypto | A04 Cryptographic Failures |
+| Injection | parameterised queries (Drizzle does this; beware raw `sql` string building); validate input with a schema (Zod) | A05 Injection |
+| Authentication | vetted auth; rate-limit login, sign-up and password reset; `HttpOnly`, `Secure`, `SameSite` cookies | A07 Authentication Failures |
+| Integrity | verify payment webhook signatures | A08 Software or Data Integrity Failures |
+| Logging and alerting | log auth events and errors; alert on error spikes | A09 Security Logging and Alerting Failures |
+| Errors | fail closed; don't leak stack traces to users | A10 Mishandling of Exceptional Conditions |
+
+Plus:
+
+- **Secrets**: in the host's secret store and a local `.env` that is in `.gitignore`. Turn on your Git host's secret scanning.
+- **Least privilege**: the app connects as a database role that is not a superuser; production and development use
+  separate databases and separate keys; your personal accounts have MFA.
+- **Rate limiting**: on anything that sends email or SMS, costs money (AI calls), or accepts anonymous input (waitlist,
+  contact form). See [rate limiting](/infrastructure/system-design/#rate-limiting).
+- **Privacy**: collect the minimum personal data; know where it's stored; publish a privacy policy that matches reality.
+
+## Instrumentation from day one
+
+If you can't see what users do in week one of launch, you can't learn anything from the launch. Instrumentation is part
+of the feature, not a follow-up.
+
+| What | Minimum | Why |
+| :--- | :--- | :--- |
+| Product events | the 5–10 events from the event plan, tracked **server-side** into your own `events` table ([recipe](#event-tracking-helper)); optionally mirrored to an analytics tool | activation, core loop, retention cohorts |
+| Page analytics | a lightweight script on marketing pages | which channels bring visitors |
+| Error monitoring | an error tracker on client and server, with alerts to your phone | you find bugs before users report them (most won't) |
+| Uptime | an external monitor hitting `/healthz` every minute or so | you know it's down before a customer does |
+| Logs | structured logs (JSON) with request IDs, retained somewhere searchable | debugging the one weird account |
+| Business metrics | a saved SQL query: sign-ups, activated, paying, per week | the Monday review in [launch & iterate](/startups/idea-to-mvp/launch-iterate/#the-weekly-iteration-loop) |
+
+### Event naming
+
+| Rule | Good | Bad |
+| :--- | :--- | :--- |
+| `object_action`, snake_case, past tense | `invoice_sent` | `SendInvoice`, `clicked_button` |
+| name the domain object, not the UI | `project_created` | `modal_submit` |
+| properties carry detail | `invoice_sent {amount, currency}` | `invoice_sent_over_100` |
+| one name per meaning, forever | `signup_completed` | renaming to `user_registered` in week 3 |
+| track outcomes server-side, where they're true | `payment_succeeded` from the webhook | from the "thank you" page load |
+
+Typical MVP set: `account_created`, `onboarding_step_completed`, *first-value event* (e.g. `report_generated`),
+*core-loop events* (2–3), `invite_sent`, `checkout_started`, `subscription_activated`, `subscription_cancelled`,
+`feedback_submitted`. Retention is computed from the core-loop events, not from logins.
+
+## Feature flags and shipping daily
+
+| Practice | How | Why |
+| :--- | :--- | :--- |
+| Trunk-based | short branches (hours, not days), merge to `main` | no integration hell; always releasable |
+| Deploy on merge | CI deploys `main` to production ([recipe](#deploy-on-push)) | every day ends with something live |
+| Flags for unfinished work | wrap incomplete features in a flag that defaults off | merge half-built work without exposing it |
+| Flags per customer | turn a feature on for one account to test with them | concierge beta, pilot customers |
+| Kill switches | a flag that disables an expensive or risky path | turn off a broken feature without a deploy |
+| Remove flags | delete the flag within a week or two of full rollout | flags are debt; stale ones confuse |
+| Migrations | backwards-compatible (add column → deploy → backfill → switch → drop later) | deploy and roll back without downtime |
+
+## Working rhythm
+
+| Rule | Detail |
+| :--- | :--- |
+| **Vertical slices** | each task goes UI → API → DB → deployed; never "do the whole database layer first" |
+| **WIP limit 1** | one task in progress at a time; finish or cut before starting another |
+| **The 2× rule** | if a task takes more than twice its estimate, stop: cut it, simplify it, or do it manually |
+| **Timebox research** | 30–60 minutes to choose a library; then pick the most popular adequate option |
+| **Yak-shaving alarm** | if you're three problems removed from the task (fixing a build tool to fix a plugin to add a feature), stop and ask whether the feature needs the plugin |
+| **Daily deploy** | something reaches production every working day |
+| **Stop at a known next step** | end the day mid-task with a note, so tomorrow starts fast |
+| **Weekly scope check** | every Friday: is the remaining MVP slice still achievable by the deadline? If not, cut now |
+
+```text
+THE DAILY LOOP (solo founder, build phase)
+
+09:00  Read yesterday's note. Pick ONE story from the MVP slice.
+09:15  Write the acceptance check (what will I click to prove it?)
+09:30  Build the thinnest vertical slice of it.
+12:30  Deploy what works (behind a flag if incomplete).
+13:30  Continue / fix / cut (2× rule).
+16:30  Deploy. Tick the story on the map. Update the cut list.
+16:45  Write tomorrow's first step. Reply to any user messages.
+17:00  Stop.
+
+Weekly: Friday scope check · show it to 1 target user · review
+error tracker · update launch list.
+```
+
+## Building with AI coding tools
+
+AI coding assistants genuinely speed up an MVP: scaffolding, CRUD, forms, migrations, tests, glue code, and unfamiliar
+APIs. They also generate plausible code faster than you can understand it. Use them like a fast junior developer whose
+work you are responsible for.
+
+| Do | Don't |
+| :--- | :--- |
+| scaffold boilerplate, forms, CRUD routes, schema drafts | let it choose your stack or architecture |
+| ask for small, reviewable diffs (one story at a time) | accept a 2,000-line change you haven't read |
+| read every line that touches auth, payments, permissions, or data deletion | trust it on security-sensitive code |
+| give it your conventions (a short project instructions file, examples of existing code) | let each session invent new patterns |
+| have it write tests for the behaviour you specify, then check the tests assert the right thing | let it write tests that mirror its own bugs |
+| verify every new dependency exists and is the package you meant | paste in packages it names without checking |
+| run the app and click through the change | assume "it compiles" means "it works" |
+| keep secrets out of prompts and pasted logs | paste `.env` contents to debug |
+
+The failure mode is not bad code; it's **a codebase you no longer understand** two weeks before launch. Keep diffs
+small, commit often, and stay able to explain every module.
+
+## Friction points and fixes
+
+| Friction point | Symptom | Fix |
+| :--- | :--- | :--- |
+| **Stack paralysis** | a week of comparing frameworks, ORMs, hosts | use the default stack above; you have one afternoon; the choice matters far less than shipping |
+| **Scope creep** | "while I'm here" features; the MVP slice grows | anything new goes on the "not now" list; to add a story, remove one of equal size |
+| **Perfectionism** | refactoring working code, polishing screens nobody has seen | the quality bar table: only the "must be solid" column deserves polish now |
+| **Infrastructure procrastination** | Docker, Terraform, CI matrices, monorepo tooling before a feature exists | PaaS + one workflow file; infrastructure work capped at half a day in week 1 |
+| **Building auth from scratch** | three days in, now on password reset emails | stop; use managed auth or a library; you'll be done by lunch |
+| **Horizontal building** | full schema, then full API, then full UI; nothing works until week 4 | walking skeleton first; vertical slices only |
+| **Rewrite urge** | "the code is a mess, I should restart" | no rewrites before launch; messy code with users beats clean code without |
+| **Learning-driven development** | trying the new framework, runtime or database "while I'm at it" | innovation-token rule: none spent outside the product's core |
+| **Estimation drift** | week 6 arrives, still "almost done" | the circuit breaker: at the hard cap, cut to what works and launch it, or go back to Phase 2 |
+| **Invisible progress** | nobody has seen it in three weeks | show one target user every Friday; deploy daily |
+| **Polishing before users** | onboarding animations, marketing copy, logo | defer; the first 20 users are hand-held anyway |
+| **Edge-case paralysis** | handling every timezone, currency and malformed input | handle what loses data or money; log and hand-fix the rest |
+
+## Pre-launch checklist
+
+Run it in week 4. Every item is small; skipping them is how launches embarrass.
+
+```text
+PRE-LAUNCH CHECKLIST
+
+DOMAIN & DELIVERY
+[ ] Custom domain; apex and www redirect to one canonical URL
+[ ] HTTPS everywhere (valid certificate, HSTS)
+[ ] Email: SPF, DKIM, DMARC on sending domain; magic links and
+    receipts land in inbox, not spam (test Gmail and Outlook)
+
+LEGAL & TRUST
+[ ] Privacy policy that matches what you actually collect
+[ ] Terms of service
+[ ] Cookie/consent banner if your analytics or region needs one
+[ ] Contact method visible (email address, not only a form)
+[ ] Company/legal name where payment or law requires it
+
+PRODUCT
+[ ] Onboarding: new account reaches first value without help;
+    empty states explain the next action
+[ ] Core loop works end to end for a fresh account (not yours)
+[ ] Account deletion or a documented way to request it
+[ ] Mobile check: core loop usable on a real phone
+[ ] Performance: key pages load fast on a mid-range phone on 4G;
+    no obvious slow queries on the core loop
+[ ] 404 and error pages exist and link home
+
+PAYMENTS
+[ ] Test-mode purchase, cancellation and failed payment work
+[ ] Webhook signature verified; handler idempotent
+[ ] One real live-mode purchase (yours), refunded
+[ ] Receipts/invoices sent
+
+OPERATIONS
+[ ] Analytics: all planned events arriving, with properties
+[ ] Error tracking live on client + server; alerts reach phone
+[ ] Uptime monitor on /healthz
+[ ] Backups automated AND one restore rehearsed
+[ ] Secrets only in the host's secret store; .env not in git
+[ ] Rate limits on sign-up, login, email-sending endpoints
+
+SEO & SHARING BASICS
+[ ] <title> and meta description per public page
+[ ] Open Graph image and tags (link previews look right)
+[ ] sitemap.xml and robots.txt; favicon
+
+FEEDBACK
+[ ] Feedback widget or "Reply to this email" on key emails
+[ ] A way to book a call with you (calendar link)
+```
+
+## Exit criteria / handoff
+
+Phase 3 ends, and [Phase 4: launch](/startups/idea-to-mvp/launch-iterate/#entry-criteria) begins, when all of these are
+true. Anything not on this list is not a launch blocker.
+
+```text
+PHASE 3 EXIT CHECKLIST (handoff to Phase 4: Launch)
+
+[ ] MVP deployed at a public URL on your own domain
+[ ] A brand-new user completes the core loop end to end in
+    under N minutes (N = the first-value target in the spec,
+    typically 5-10), without help, on desktop and phone
+[ ] Analytics live: every event in the plan arrives with its
+    properties; activation query written and returns numbers
+[ ] Error tracking and uptime monitoring live, alerting you
+[ ] Payments work in live mode (if charging from day one)
+[ ] Feedback channel in the product (widget, email, call link)
+[ ] Backups automated and one restore rehearsed
+[ ] Pre-launch checklist complete
+[ ] Launch list of the first 20-50 named people to invite:
+    interviewees, prototype testers, waitlist, warm intros
+    (name, how you know them, channel, date to contact)
+[ ] "Not now" list updated: everything cut during the build,
+    ready to become the iteration backlog
+```
+
+| Handoff artefact | Used in Phase 4/5 for |
+| :--- | :--- |
+| public URL + working core loop | soft launch to the interview list |
+| events table and activation query | the first cohort table and activation rate |
+| error tracking | fixing what the first users hit, same day |
+| launch list | the first invitations, sent personally |
+| "not now" list | the starting backlog, re-prioritised with real usage data |
+
+## Recipes
+
+### Drizzle schema: accounts, users, events
+Tenant, user, append-only event log and feature flags. Assumes `casing: "snake_case"` in the Drizzle config and
+client, as on [Drizzle](/databases/drizzle/#config--layout).
+
+```ts title="src/db/schema.ts"
+import { sql } from "drizzle-orm";
+import {
+  boolean, index, jsonb, pgTable, text, timestamp, uuid,
+} from "drizzle-orm/pg-core";
+
+const createdAt = () =>
+  timestamp({ withTimezone: true }).notNull().defaultNow();
+
+export const accounts = pgTable("accounts", {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull(),
+  createdAt: createdAt(),
+});
+
+export const users = pgTable("users", {
+  id: uuid().primaryKey().defaultRandom(),
+  accountId: uuid()
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  email: text().notNull().unique(),
+  createdAt: createdAt(),
+});
+
+export const events = pgTable(
+  "events",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    accountId: uuid().references(() => accounts.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid().references(() => users.id, {
+      onDelete: "set null",
+    }),
+    name: text().notNull(),
+    props: jsonb().$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    at: createdAt(),
+  },
+  (t) => [
+    index("events_name_at_idx").on(t.name, t.at),
+    index("events_user_at_idx").on(t.userId, t.at),
+  ],
+);
+
+export const flags = pgTable("feature_flags", {
+  name: text().primaryKey(),
+  enabled: boolean().notNull().default(false),
+  accountIds: uuid().array().notNull().default(sql`'{}'`),
+});
+```
+
+### Event-tracking helper
+Server-side, typed event names, never throws into the request that called it.
+
+```ts title="src/lib/track.ts"
+import { db } from "../db";
+import { events } from "../db/schema";
+
+export type EventName =
+  | "account_created"
+  | "first_value_reached"
+  | "core_action_completed"
+  | "checkout_started"
+  | "subscription_activated"
+  | "feedback_submitted";
+
+type Actor = { accountId?: string; userId?: string };
+
+export async function track(
+  name: EventName,
+  actor: Actor,
+  props: Record<string, unknown> = {},
+) {
+  try {
+    await db.insert(events)
+      .values({ name, ...actor, props });
+  } catch (err) {
+    console.error("track failed", name, err);
+  }
+}
+
+// await track("account_created", { accountId, userId },
+//   { source: "show_hn" });
+```
+
+Activation rate by sign-up week, straight from the table:
+
+```sql
+select date_trunc('week', a.at) as week,
+       count(*) as signups,
+       count(v.account_id) as activated,
+       round(100.0 * count(v.account_id) / count(*), 1)
+         as pct
+from events a
+left join lateral (
+  select e.account_id from events e
+  where e.account_id = a.account_id
+    and e.name = 'first_value_reached'
+    and e.at < a.at + interval '7 days'
+  limit 1
+) v on true
+where a.name = 'account_created'
+group by 1 order by 1;
+```
+
+### Feature-flag helper
+Env var for global switches, a DB row for per-account rollouts. `FLAGS=new_editor,bulk_import` turns flags on for
+everyone.
+
+```ts title="src/lib/flags.ts"
+import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { flags } from "../db/schema";
+
+const fromEnv = new Set(
+  (process.env.FLAGS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+export async function isOn(
+  name: string,
+  accountId?: string,
+) {
+  if (fromEnv.has(name)) return true;
+  const [row] = await db
+    .select()
+    .from(flags)
+    .where(eq(flags.name, name))
+    .limit(1);
+  if (!row) return false;
+  if (row.enabled) return true;
+  return !!accountId && row.accountIds.includes(accountId);
+}
+
+// enable for one pilot customer:
+// update feature_flags
+//   set account_ids = array_append(account_ids, '<uuid>')
+//   where name = 'bulk_import';
+```
+
+### Health-check route in Hono
+Point the uptime monitor here. Returns 503 if the database is unreachable.
+
+```ts title="src/routes/health.ts"
+import { Hono } from "hono";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
+
+export const health = new Hono();
+
+health.get("/healthz", async (c) => {
+  const version = process.env.GIT_SHA ?? "dev";
+  try {
+    await db.execute(sql`select 1`);
+    return c.json({ ok: true, db: "up", version });
+  } catch {
+    return c.json({ ok: false, db: "down", version }, 503);
+  }
+});
+
+// app.route("/", health);
+```
+
+### Waitlist form handler
+A plain HTML form posting to Hono; a hidden honeypot field catches naive bots; duplicates are ignored.
+
+```ts title="src/routes/waitlist.ts"
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import {
+  pgTable, text, timestamp,
+} from "drizzle-orm/pg-core";
+import { db } from "../db";
+
+export const waitlist = pgTable("waitlist", {
+  email: text().primaryKey(),
+  source: text(),
+  at: timestamp({ withTimezone: true }).defaultNow(),
+});
+
+const Form = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  source: z.string().max(64).optional(),
+  website: z.string().max(0).optional(), // honeypot
+});
+
+export const waitlistRoutes = new Hono().post(
+  "/waitlist",
+  zValidator("form", Form),
+  async (c) => {
+    const { email, source } = c.req.valid("form");
+    await db
+      .insert(waitlist)
+      .values({ email, source })
+      .onConflictDoNothing();
+    return c.redirect("/thanks", 303);
+  },
+);
+```
+
+```html title="landing.html (form)"
+<form method="post" action="/waitlist">
+  <label>Email <input name="email" type="email"
+    autocomplete="email" required></label>
+  <input name="website" tabindex="-1" autocomplete="off"
+    style="position:absolute;left:-9999px"
+    aria-hidden="true">
+  <input type="hidden" name="source" value="landing">
+  <button>Join the waitlist</button>
+</form>
+```
+
+Add a rate limit on this route before you post the link anywhere public.
+
+### Deploy on push
+GitHub Actions: typecheck, test, migrate, deploy to Fly.io on every push to `main`. Swap the last step for your host's
+CLI; Vercel and Render can also deploy from Git without a workflow.
+
+```yaml title=".github/workflows/deploy.yml"
+name: deploy
+on:
+  push:
+    branches: [main]
+concurrency: deploy-production
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bun test
+      - run: bunx drizzle-kit migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+```
+
+Migrations run before the new code deploys, so they must be backwards-compatible with the running version.
+
+### Nightly Postgres backup
+For a self-managed database or as a second copy alongside your provider's backups. Custom format, 14-day retention,
+and a sanity check that the file is restorable.
+
+```bash title="~/bin/pg-backup"
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$HOME/backups/pg"
+file="$dir/app-$(date -u +%Y%m%dT%H%MZ).dump"
+mkdir -p "$dir"
+
+pg_dump --format=custom --no-owner \
+  --dbname="$DATABASE_URL" --file="$file"
+pg_restore --list "$file" > /dev/null   # readable?
+
+# copy off the machine, e.g. to object storage:
+# aws s3 cp "$file" "s3://my-backups/pg/"
+find "$dir" -name 'app-*.dump' -mtime +14 -delete
+```
+
+```bash title="crontab -e"
+# 03:15 UTC daily; the script's env needs DATABASE_URL
+15 3 * * * ~/bin/pg-backup >> ~/pg-backup.log 2>&1
+```
+
+```bash title="restore (rehearse this once)"
+createdb app_restore_test
+pg_restore --no-owner --dbname=app_restore_test \
+  ~/backups/pg/app-20260926T0315Z.dump
+psql app_restore_test -c "select count(*) from users;"
+```
+
+Use a `pg_dump` at least as new as the server. More on backups and point-in-time recovery:
+[PostgreSQL](/databases/postgres/#maintenance--backups).
+
+## References
+
+- [Dan McKinley, "Choose Boring Technology" (2015)](https://mcfunley.com/choose-boring-technology): innovation tokens and the cost of novelty
+- [Martin Fowler, "MonolithFirst" (2015)](https://martinfowler.com/bliki/MonolithFirst.html): why new systems should start as a monolith
+- [Paul Graham, "Do Things That Don't Scale" (2013)](https://paulgraham.com/ds.html): manual work early, applied here to operations
+- [Ryan Singer, *Shape Up* (Basecamp, 2019)](https://basecamp.com/shapeup): fixed time, variable scope; the circuit breaker
+- Alistair Cockburn, *Crystal Clear: A Human-Powered Methodology for Small Teams* (Addison-Wesley, 2004): the walking skeleton
+- [OWASP Top 10:2025](https://top10.owasp.org/2025): the web application security risk categories
+- [Drizzle ORM docs](https://orm.drizzle.team/docs/overview): schema, migrations, queries
+- [Hono docs](https://hono.dev/docs/): routing, middleware, validation
+- [Fly.io, "Continuous deployment with GitHub Actions"](https://docs.fly.io/launch/continuous-deployment-with-github-actions/): the deploy workflow the recipe follows
+- [PostgreSQL docs: pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html) and [pg_restore](https://www.postgresql.org/docs/current/app-pgrestore.html): backup formats and options
+- [Playwright docs](https://playwright.dev/docs/intro): end-to-end smoke tests
