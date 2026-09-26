@@ -1,0 +1,706 @@
+---
+title: Nodes, scenes & signals
+date: 2026-09-26
+order: 2
+---
+
+How a Godot 4 game is put together: the scene tree, node lifecycle and notifications, finding and instancing
+nodes, groups, signals, autoloads, scene switching, pausing, custom Resources and composition. Language
+details are in [GDScript](/game-dev/godot/gdscript/); saving Resources to disk is in
+[Resources, saving & export](/game-dev/godot/resources-saving-export/).
+
+## The model
+
+| Term | Meaning |
+| :--- | :------ |
+| Node | the unit of behaviour: one type (`Sprite2D`, `Timer`, `CharacterBody3D` ...) plus an optional script |
+| Scene | a saved tree of nodes (`.tscn` text or `.scn` binary); the root node's type is the scene's type |
+| Instance | a scene placed inside another scene; behaves like one node from the outside |
+| SceneTree | the running game: `get_tree()`; owns the root `Window`, the main loop, groups, timers, pausing |
+| Root | `get_tree().root`, a `Window`; autoloads and the current scene are its children |
+| Current scene | `get_tree().current_scene`, the scene started from Project Settings > Application > Run > Main Scene |
+| Owner | the root of the scene file a node was saved in (see [Owner](#owner--saving-scenes)) |
+| Resource | shared, ref-counted data (textures, meshes, your own data classes); not in the tree |
+
+```text
+ root (Window)
+ ├─ EventBus            autoload, added first, in list order
+ ├─ Music               autoload scene
+ └─ Main                current scene (main.tscn)
+    ├─ World
+    │  ├─ Player        instance of player.tscn
+    │  │  ├─ Sprite2D
+    │  │  └─ CollisionShape2D
+    │  └─ Enemies       enemies added at runtime
+    └─ HUD (CanvasLayer)
+       └─ HealthBar     unique name: %HealthBar
+```
+
+Think of a scene as a reusable component (a prefab) and a node as an object with one built-in capability.
+Scenes nest freely; there is no separate "prefab" concept.
+
+## Node lifecycle
+
+```text
+ instantiate()          for each node in the scene file:
+   _init()                constructor; no parent, no tree
+   (exported / saved properties assigned, setters run)
+   children attached      still outside the tree
+
+ add_child(scene_root)  enters the tree:
+   _enter_tree()          TOP-DOWN   Main, World, Player,
+                                     Sprite2D, ..., HUD
+   _ready()               BOTTOM-UP  Sprite2D, Player, World,
+                                     ..., HUD, Main
+                          once per node (request_ready()
+                          to run it again on re-entry)
+
+ every frame (main loop):
+   input callbacks        _input, _unhandled_input ...
+   _physics_process(dt)   0..n times, fixed rate (60 Hz)
+   _process(dt)           once, variable dt
+   (tree order within each pass; process_priority first)
+   draw
+
+ queue_free()           at the end of the frame:
+   _exit_tree()           BOTTOM-UP  children before parents
+   NOTIFICATION_PREDELETE then memory freed
+```
+
+| Callback | Called | Typical use |
+| :------- | :----- | :---------- |
+| `_init()` | on creation (`new()` or instancing) | default values; no node access |
+| `_enter_tree()` | every time the node enters the tree, parent first | register with a manager |
+| `_ready()` | first time in the tree, after all children are ready | cache nodes, connect signals, initial state |
+| `_process(delta)` | every rendered frame | visuals, UI, non-physics timers |
+| `_physics_process(delta)` | every physics tick (`delta` constant) | movement, physics queries |
+| `_input(event)` etc. | per input event | see [Input & physics](/game-dev/godot/input-physics/#input-callbacks--order) |
+| `_exit_tree()` | leaving the tree, children first | unregister, save state |
+| `_notification(what)` | every notification | low-level hooks (below) |
+
+`_process` and `_physics_process` are only called when defined; toggle them with `set_process(false)` /
+`set_physics_process(false)`. `process_priority` (lower runs first) and `process_physics_priority` reorder
+nodes within a pass.
+
+## Notifications & node signals
+
+```gdscript
+func _notification(what: int) -> void:
+    match what:
+        NOTIFICATION_PREDELETE:
+            print("about to be freed")
+        NOTIFICATION_WM_CLOSE_REQUEST:
+            save_game()            # window close button
+            get_tree().quit()
+        NOTIFICATION_APPLICATION_FOCUS_OUT:
+            get_tree().paused = true
+        NOTIFICATION_PAUSED, NOTIFICATION_UNPAUSED:
+            pass
+```
+
+| Notification | When |
+| :----------- | :--- |
+| `NOTIFICATION_ENTER_TREE`, `EXIT_TREE`, `READY` | same moments as the virtual methods |
+| `NOTIFICATION_PARENTED`, `UNPARENTED` | parent set or removed |
+| `NOTIFICATION_PREDELETE` | just before the object is freed |
+| `NOTIFICATION_PAUSED`, `UNPAUSED` | tree paused state changed for this node |
+| `NOTIFICATION_WM_CLOSE_REQUEST` | window close; auto-quit can be disabled with `get_tree().set_auto_accept_quit(false)` |
+| `NOTIFICATION_WM_GO_BACK_REQUEST` | Android back button |
+| `NOTIFICATION_APPLICATION_FOCUS_IN` / `_OUT` | the OS window gained or lost focus |
+| `NOTIFICATION_TRANSLATION_CHANGED` | locale changed; refresh texts |
+
+| Node signal | Emitted |
+| :---------- | :------ |
+| `tree_entered` | after `_enter_tree` |
+| `ready` | after `_ready` |
+| `tree_exiting` | before leaving the tree |
+| `tree_exited` | after leaving; the node may be freed right after |
+| `child_entered_tree(node)`, `child_exiting_tree(node)` | children changing |
+| `renamed` | the node's name changed |
+
+## Getting nodes
+
+```gdscript
+@onready var sprite: Sprite2D = $Sprite2D
+@onready var gun := $Arm/Gun as Gun           # typed cast
+@onready var bar: ProgressBar = %HealthBar    # unique name
+@onready var label := $"UI/Score Label"       # spaces: quote
+
+func _ready() -> void:
+    var p := get_node("Arm/Gun")        # same as $Arm/Gun
+    var up := get_node("../Sibling")    # relative
+    var abs_node := get_node("/root/Main/World")
+    var maybe := get_node_or_null("Shield")  # no error
+    if has_node("Shield"):
+        pass
+    var btn := find_child("StartButton", true, false)
+    var all_buttons := find_children("*", "Button")
+    var parent := get_parent()
+    var kids := get_children()
+```
+
+| Way | Notes |
+| :-- | :---- |
+| `$Path/To` | sugar for `get_node("Path/To")`; errors if missing |
+| `%Name` | scene-unique node: right-click > Access as Unique Name; survives reparenting inside the scene |
+| `$Child/%Name` | a unique node inside another instanced scene |
+| `get_node_or_null(path)` | returns `null` instead of logging an error |
+| `find_child(pattern, recursive, owned)` | slow tree search; `owned = false` also finds nodes created in code |
+| `@export var target: Node2D` | drag a node in the inspector; the most robust option across scenes |
+| Groups | `get_tree().get_first_node_in_group("player")` from anywhere |
+
+<Callout type="warn" title="Node paths in initialisers">
+`var s = $Sprite2D` without `@onready` runs during `_init`, before the node has children, and returns
+null. Use `@onready`, or fetch inside `_ready`.
+</Callout>
+
+## Instancing scenes
+
+```gdscript
+const BULLET := preload("res://weapons/bullet.tscn")
+@export var enemy_scene: PackedScene   # set in inspector
+
+func shoot() -> void:
+    var b := BULLET.instantiate() as Bullet
+    b.direction = Vector2.RIGHT.rotated(global_rotation)
+    b.global_position = $Muzzle.global_position
+    get_tree().current_scene.add_child(b)  # not a child
+                                           # of the gun
+
+func spawn(at: Vector2) -> Enemy:
+    var e: Enemy = enemy_scene.instantiate()
+    e.position = at                # set before add_child
+    $Enemies.add_child(e)          # _ready runs here
+    return e
+```
+
+| API | Notes |
+| :-- | :---- |
+| `preload("res://x.tscn")` | parse time, path must be a constant; errors early |
+| `load("res://x.tscn")` | runtime, cached by path; dynamic paths |
+| `PackedScene.instantiate()` | new node tree, not yet in the scene tree |
+| `PackedScene.can_instantiate()` | validity check |
+| `PackedScene.pack(node)` | turn a live subtree into a PackedScene (owners matter) |
+| Constructor args | scenes call `_init()` with no args; set properties or call a `setup()` method before `add_child` |
+
+Adding a projectile as a child of the shooter makes it inherit the shooter's transform (it moves and rotates with
+it) and die with it. Parent it to the level instead.
+
+## Adding, moving & freeing
+
+| Call | Effect |
+| :--- | :----- |
+| `add_child(node)` | attach; enters the tree now if the parent is in it |
+| `add_sibling(node)` | attach next to this node |
+| `remove_child(node)` | detach; the node is not freed (an orphan until you free or re-add it) |
+| `reparent(new_parent, keep_global := true)` | move while keeping the global transform |
+| `move_child(node, index)` | reorder (draw order in 2D, layout order in containers) |
+| `queue_free()` | free at the end of the frame, with its children; safe default |
+| `free()` | immediately; unsafe if anything still uses the node this frame |
+| `is_instance_valid(obj)` | false after the object has been freed |
+| `is_queued_for_deletion()` | true between `queue_free()` and the actual free |
+| `call_deferred("m", ...)` / `m.call_deferred(...)` | run at the end of the frame (idle time) |
+| `set_deferred("prop", v)` | assign at the end of the frame |
+
+```gdscript
+# Inside physics callbacks (body_entered etc.) the physics
+# state is locked; defer structural and shape changes.
+func _on_body_entered(body: Node2D) -> void:
+    $CollisionShape2D.set_deferred("disabled", true)
+    var drop := LOOT.instantiate()
+    drop.position = position
+    get_parent().add_child.call_deferred(drop)
+    queue_free()
+```
+
+Common errors and their fix: "Can't change this state while flushing queries" (use `set_deferred` /
+`call_deferred`), "Parent node is busy setting up children" (add the node with `call_deferred`), and orphan
+nodes leaking after `remove_child` (check Debugger > Monitors > Object > Orphan Nodes).
+
+## Owner & saving scenes
+
+`owner` points to the root of the scene a node belongs to. Nodes loaded from a `.tscn` get it automatically;
+nodes created in code have `owner == null`.
+
+| Consequence | Detail |
+| :---------- | :----- |
+| `PackedScene.pack(root)` | saves only nodes whose `owner` is `root` (or nested instances) |
+| `@tool` scripts adding nodes | set `node.owner = get_tree().edited_scene_root` or the node vanishes on save |
+| `%UniqueName` | resolved against the owner's scene |
+| `find_child(..., owned = true)` | skips unowned (code-created) nodes |
+
+```gdresource title="coin.tscn"
+[gd_scene format=3 uid="uid://b6x3coinexample"]
+
+[ext_resource type="Script" path="res://coin.gd" id="1_s"]
+
+[sub_resource type="CircleShape2D" id="Circle_1"]
+radius = 8.0
+
+[node name="Coin" type="Area2D"]
+script = ExtResource("1_s")
+
+[node name="Shape" type="CollisionShape2D" parent="."]
+shape = SubResource("Circle_1")
+```
+
+`.tscn` files are plain text and diff well; editor-made signal connections are stored in them as
+`[connection ...]` lines.
+
+## Groups
+
+```gdscript
+func _ready() -> void:
+    add_to_group("enemies")        # or Node dock > Groups
+    add_to_group("saveable", true) # persistent: saved
+
+func _on_bomb_exploded() -> void:
+    get_tree().call_group("enemies", "take_damage", 50)
+    for e in get_tree().get_nodes_in_group("enemies"):
+        if e.global_position.distance_to(pos) < 200.0:
+            e.queue_free()
+    var player := get_tree() \
+        .get_first_node_in_group("player")
+    print(is_in_group("enemies"))
+```
+
+| API | Notes |
+| :-- | :---- |
+| `add_to_group(name)`, `remove_from_group(name)` | runtime membership |
+| `is_in_group(name)` | test |
+| `get_tree().get_nodes_in_group(name)` | `Array[Node]`, tree order |
+| `get_tree().get_first_node_in_group(name)` | first or `null` |
+| `get_tree().call_group(name, method, ...)` | call on all members (skips nodes lacking the method) |
+| `get_tree().set_group(name, prop, value)` | set a property on all members |
+| `get_tree().notify_group(name, what)` | send a notification |
+| Global groups | Project Settings > Global Groups gives names and descriptions (4.3+) |
+
+Groups work like tags: cheap to query, ideal for "all enemies", "saveable", "interactable".
+
+## Signals
+
+```gdscript
+signal health_changed(current: int, max: int)
+signal died
+
+func _ready() -> void:
+    health_changed.connect(_on_health_changed)
+    $Timer.timeout.connect(_spawn)
+    # bind appends extra args after the signal's own args
+    for i in $Slots.get_child_count():
+        var b: Button = $Slots.get_child(i)
+        b.pressed.connect(_on_slot_pressed.bind(i))
+    died.connect(_on_died, CONNECT_ONE_SHOT)
+    # unbind(1) drops the signal's argument
+    $Check.toggled.connect(_refresh.unbind(1))
+
+func damage(n: int) -> void:
+    hp -= n
+    health_changed.emit(hp, max_hp)
+
+func _on_slot_pressed(index: int) -> void:
+    print("slot ", index)
+```
+
+| API | Notes |
+| :-- | :---- |
+| `signal name(arg: Type)` | declare; argument types are documentation plus editor hints |
+| `sig.emit(args)` | synchronous: handlers run before `emit` returns |
+| `sig.connect(callable, flags := 0)` | returns an `Error`; connecting the same Callable twice errors |
+| `sig.disconnect(callable)`, `sig.is_connected(callable)` | keep a reference to a lambda if you need to disconnect it |
+| `sig.get_connections()` | list of Dictionaries |
+| `await sig` | wait for the next emission |
+| `emit_signal("name", ...)`, `connect("name", c)` | string-based, for dynamic cases |
+| Editor connections | Node dock > Signals; generates `_on_<node>_<signal>` and saves in the `.tscn` |
+| Auto cleanup | connections are removed when either side is freed |
+
+| Flag | Effect |
+| :--- | :----- |
+| `CONNECT_DEFERRED` | handler runs at the end of the frame (idle time) |
+| `CONNECT_PERSIST` | saved when the scene is packed (editor connections use it) |
+| `CONNECT_ONE_SHOT` | disconnects after the first emission |
+| `CONNECT_REFERENCE_COUNTED` | the same Callable may connect several times; needs as many disconnects |
+
+Flags combine with `|`: `CONNECT_DEFERRED | CONNECT_ONE_SHOT`.
+
+<Note kind="tip">
+"Call down, signal up": a parent calls methods on its children; children emit signals and never assume who their
+parent is. This keeps scenes reusable and testable on their own (F6 runs the current scene).
+</Note>
+
+## Autoloads (singletons)
+
+Project Settings > Globals > Autoload: add a `.gd` or `.tscn`, give it a name, keep "Global Variable" ticked.
+Godot instantiates each autoload as a child of `root`, in list order, before the main scene, and they survive
+scene changes.
+
+```gdscript title="event_bus.gd"
+extends Node
+# Registered as autoload "EventBus"
+
+signal coin_collected(value: int)
+signal player_died
+signal level_finished(next_level: String)
+```
+
+```gdscript
+# Anywhere:
+EventBus.coin_collected.emit(10)
+EventBus.player_died.connect(_on_player_died)
+var bus := get_node("/root/EventBus")   # explicit path
+```
+
+| Good autoload | Not an autoload |
+| :------------ | :-------------- |
+| event bus of global signals | per-level state (put it in the level scene) |
+| game state and save/load manager | anything that must reset on scene change |
+| music player that persists between scenes | plain constants (use a `class_name` script with `const`) |
+| scene transition layer | static utility functions (use `static func` on a `class_name`) |
+
+Do not reuse an autoload's name as a `class_name`: that is a "hides an autoload singleton" parse error.
+
+## Changing scenes
+
+```gdscript
+get_tree().change_scene_to_file("res://levels/level_2.tscn")
+
+const MENU := preload("res://ui/menu.tscn")
+get_tree().change_scene_to_packed(MENU)
+
+get_tree().reload_current_scene()
+get_tree().quit()          # optional exit code
+```
+
+| Step (both `change_scene_*` calls) | Detail |
+| :--------------------------------- | :----- |
+| 1. Immediately | the current scene is removed from the tree; `current_scene` is `null` |
+| 2. End of frame | the old scene is freed, the new one instantiated and added |
+| Return value | `Error` (for example a bad path) |
+| Keep something alive | put it in an autoload, or move it (`reparent`) before switching |
+
+Manual alternative for loading screens or keeping levels resident: instance the new scene yourself, `add_child`
+it under a persistent root node, and `queue_free()` the old one. Threaded loading is covered in
+[Resources, saving & export](/game-dev/godot/resources-saving-export/#threaded-loading).
+
+## SceneTree & timers
+
+| SceneTree member | Use |
+| :--------------- | :-- |
+| `root`, `current_scene` | top of the tree, the running scene |
+| `paused` | pause the game (see next section) |
+| `create_timer(sec, process_always := true, process_in_physics := false, ignore_time_scale := false)` | one-shot `SceneTreeTimer`; await its `timeout` |
+| `create_tween()` | tween not bound to a node |
+| `process_frame`, `physics_frame` signals | `await` one frame / tick |
+| `node_added(node)`, `node_removed(node)` | global tree hooks |
+| `get_frame()` | frame counter |
+| `debug_collisions_hint` | show shapes at runtime (same as Debug menu) |
+| `Engine.time_scale` | global slow motion (affects `delta`) |
+
+```gdscript
+# Timer node: repeating, pausable, editable in the inspector
+@onready var spawn_timer: Timer = $SpawnTimer
+
+func _ready() -> void:
+    spawn_timer.wait_time = 2.0
+    spawn_timer.one_shot = false
+    spawn_timer.timeout.connect(_spawn)
+    spawn_timer.start()     # start(5.0) overrides wait_time
+    print(spawn_timer.time_left)
+```
+
+<Note kind="warning">
+`create_timer` defaults to `process_always = true`: it keeps running while the game is paused. Pass `false` as
+the second argument for gameplay delays that should respect pause.
+</Note>
+
+## Process modes & pausing
+
+```gdscript
+func toggle_pause() -> void:
+    get_tree().paused = not get_tree().paused
+
+# On the pause menu (or set it in the inspector):
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+```
+
+| `process_mode` | Runs when the tree is ... |
+| :------------- | :------------------------ |
+| `PROCESS_MODE_INHERIT` | same as the parent (default; the root counts as Pausable) |
+| `PROCESS_MODE_PAUSABLE` | not paused |
+| `PROCESS_MODE_WHEN_PAUSED` | paused only (pause menus) |
+| `PROCESS_MODE_ALWAYS` | always (music manager, debug overlay, transition layer) |
+| `PROCESS_MODE_DISABLED` | never |
+
+A paused node stops `_process`, `_physics_process` and input callbacks; Timers, animations, audio streams,
+particles and bound tweens pause and resume automatically. Signals still fire and run their handlers. The physics
+servers are switched off while paused, so even an Always node gets no physics until you unpause (or call the
+servers' `set_active`). The node that opens the pause menu must itself run while paused to close it again.
+
+## Custom Resources
+
+Resources are the data half of Godot: shared, serialisable objects edited in the inspector and saved as `.tres`.
+
+```gdscript title="enemy_stats.gd"
+class_name EnemyStats
+extends Resource
+
+@export var display_name := "Slime"
+@export var max_hp := 10
+@export_range(0.0, 400.0) var speed := 60.0
+@export var sprite: Texture2D
+@export var drops: Array[ItemData] = []
+
+# Every _init parameter needs a default, or the editor
+# cannot create the resource.
+func _init(p_hp := 10) -> void:
+    max_hp = p_hp
+```
+
+```gdscript title="enemy.gd"
+extends CharacterBody2D
+
+@export var stats: EnemyStats   # drag slime.tres here
+var hp: int
+
+func _ready() -> void:
+    hp = stats.max_hp           # copy mutable state out
+    $Sprite2D.texture = stats.sprite
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Create | FileSystem dock > New Resource > EnemyStats, or inspector slot > New EnemyStats |
+| Shared by default | `load()` returns one cached instance per path: mutating it changes every user |
+| Per-instance copy | `stats = stats.duplicate()` in `_ready`, or tick Resource > Local to Scene |
+| Built-in vs external | a resource saved inside the `.tscn` (sub_resource) or as its own `.tres` file |
+| Change notification | call `emit_changed()`; listeners connect to `changed` |
+| Nested resources | `@export var x: OtherResource` and typed arrays of resources work in the inspector |
+
+Use Resources for item definitions, enemy stats, dialogue, level metadata, input profiles: anything that is data
+rather than behaviour.
+
+## Composition patterns
+
+| Pattern | How |
+| :------ | :-- |
+| Component nodes | small child scenes (`HealthComponent`, `Hurtbox`, `Hitbox`) with their own script and signals |
+| Data resources | behaviour reads an `@export` Resource; designers swap `.tres` files |
+| Scene inheritance | Scene > New Inherited Scene: a base `enemy.tscn` with variants that override properties |
+| Editable children | right-click an instance > Editable Children to tweak one instance's internals |
+| Duck typing | `if body.has_method("take_damage"): body.take_damage(1)` |
+| Type checks | `if body is Player:` with `class_name`, cheaper and clearer than groups for one type |
+| Event bus | global signals in an autoload for decoupled systems (achievements, audio, UI) |
+| State nodes | a `StateMachine` node with one child node per state (see Recipes) |
+
+```gdscript title="health_component.gd"
+class_name HealthComponent
+extends Node
+
+signal changed(current: int, maximum: int)
+signal depleted
+
+@export var maximum := 10
+@onready var current := maximum
+
+func damage(amount: int) -> void:
+    if current <= 0:
+        return
+    current = maxi(current - amount, 0)
+    changed.emit(current, maximum)
+    if current == 0:
+        depleted.emit()
+```
+
+```gdscript
+# The owner wires components together
+@onready var health: HealthComponent = $HealthComponent
+
+func _ready() -> void:
+    health.depleted.connect(queue_free)
+    health.changed.connect(%HealthBar.set_value.unbind(1))
+```
+
+## Project layout
+
+```tree title="A feature-first project"
+res://
+  project.godot
+  addons/                  # plugins (keep third-party here)
+  autoload/
+    event_bus.gd
+    game_state.gd
+  actors/
+    player/
+      player.tscn
+      player.gd
+      player.png           # assets next to their scene
+    enemies/
+      enemy.tscn
+      slime.tres           # EnemyStats resource
+  components/
+    health_component.tscn
+  levels/
+    level_1.tscn
+  ui/
+    hud.tscn
+    theme.tres
+  audio/
+  shaders/
+```
+
+Group files by feature (everything for the player in `actors/player/`) rather than by type. The editor keeps
+references intact when you move files inside the FileSystem dock. Since 4.4 scripts and shaders carry a `.uid`
+sidecar file, so moves made outside the editor also survive, provided each `.uid` file moves with its source.
+
+## Recipes
+
+### Spawner with a Timer
+Use for waves of enemies or pickups at random points inside an area.
+
+```gdscript title="spawner.gd"
+extends Node2D
+
+@export var scene: PackedScene
+@export var interval := 1.5
+@export var max_alive := 10
+@export var area := Rect2(-200, -200, 400, 400)
+
+func _ready() -> void:
+    var t := Timer.new()
+    t.wait_time = interval
+    t.timeout.connect(_spawn)
+    add_child(t)
+    t.start()
+
+func _spawn() -> void:
+    if get_tree().get_nodes_in_group("spawned").size() \
+            >= max_alive:
+        return
+    var n: Node2D = scene.instantiate()
+    n.position = area.position + Vector2(
+        randf() * area.size.x, randf() * area.size.y)
+    n.add_to_group("spawned")
+    add_child(n)
+```
+
+### Node-based state machine
+Use when states need their own variables, enter/exit hooks and editor-visible structure.
+
+```gdscript title="state_machine.gd"
+class_name StateMachine
+extends Node
+
+@export var initial: State
+var current: State
+
+func _ready() -> void:
+    for child in get_children():
+        if child is State:
+            child.machine = self
+    current = initial
+    current.enter()
+
+func _physics_process(delta: float) -> void:
+    current.physics_update(delta)
+
+func transition(to: StringName) -> void:
+    var next := get_node_or_null(NodePath(to)) as State
+    if next == null or next == current:
+        return
+    current.exit()
+    current = next
+    current.enter()
+```
+
+```gdscript title="state.gd"
+class_name State
+extends Node
+
+var machine: StateMachine
+@onready var actor: CharacterBody2D = owner  # scene root
+
+func enter() -> void: pass
+func exit() -> void: pass
+func physics_update(_delta: float) -> void: pass
+```
+
+### Scene switcher with fade
+Use as an autoload scene (`Transition`: a CanvasLayer with a full-rect black `ColorRect`, mouse filter Ignore).
+
+```gdscript title="transition.gd"
+extends CanvasLayer
+
+@onready var rect: ColorRect = $ColorRect
+
+func _ready() -> void:
+    layer = 100
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    rect.modulate.a = 0.0
+
+func go(path: String, time := 0.3) -> void:
+    var t := create_tween()
+    t.tween_property(rect, "modulate:a", 1.0, time)
+    await t.finished
+    get_tree().change_scene_to_file(path)
+    await get_tree().process_frame   # new scene added
+    t = create_tween()
+    t.tween_property(rect, "modulate:a", 0.0, time)
+
+# Transition.go("res://levels/level_2.tscn")
+```
+
+### Pause toggle
+Use on a pause-menu scene placed in the HUD; it must run while the tree is paused.
+
+```gdscript title="pause_menu.gd"
+extends Control
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    hide()
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("ui_cancel"):
+        var paused := not get_tree().paused
+        get_tree().paused = paused
+        visible = paused
+        get_viewport().set_input_as_handled()
+```
+
+### Item database from Resources
+Use to load every `.tres` in a folder into a lookup table at startup.
+
+```gdscript title="items.gd (autoload)"
+extends Node
+
+const DIR := "res://data/items/"
+var by_id: Dictionary[StringName, ItemData] = {}
+
+func _ready() -> void:
+    # list_directory also sees remapped files in exports
+    for file in ResourceLoader.list_directory(DIR):
+        if not file.ends_with(".tres"):
+            continue
+        var item := load(DIR + file) as ItemData
+        if item:
+            by_id[item.id] = item
+
+func get_item(id: StringName) -> ItemData:
+    return by_id.get(id)
+```
+
+## References
+
+- [Godot docs: Nodes and scenes](https://docs.godotengine.org/en/stable/getting_started/step_by_step/nodes_and_scenes.html) and [Creating instances](https://docs.godotengine.org/en/stable/getting_started/step_by_step/instancing.html)
+- [Godot docs: Using SceneTree](https://docs.godotengine.org/en/stable/tutorials/scripting/scene_tree.html): main loop, root, changing scenes
+- [Godot docs: Node class](https://docs.godotengine.org/en/stable/classes/class_node.html): lifecycle, notifications, process modes
+- [Godot docs: Using signals](https://docs.godotengine.org/en/stable/getting_started/step_by_step/signals.html) and [Signal class](https://docs.godotengine.org/en/stable/classes/class_signal.html)
+- [Godot docs: Scene unique nodes](https://docs.godotengine.org/en/stable/tutorials/scripting/scene_unique_nodes.html)
+- [Godot docs: Groups](https://docs.godotengine.org/en/stable/tutorials/scripting/groups.html)
+- [Godot docs: Singletons (Autoload)](https://docs.godotengine.org/en/stable/tutorials/scripting/singletons_autoload.html)
+- [Godot docs: Change scenes manually](https://docs.godotengine.org/en/stable/tutorials/scripting/change_scenes_manually.html)
+- [Godot docs: Pausing games and process mode](https://docs.godotengine.org/en/stable/tutorials/scripting/pausing_games.html)
+- [Godot docs: Resources](https://docs.godotengine.org/en/stable/tutorials/scripting/resources.html)
+- [Godot docs: Scene organization](https://docs.godotengine.org/en/stable/tutorials/best_practices/scene_organization.html) and [Project organization](https://docs.godotengine.org/en/stable/tutorials/best_practices/project_organization.html)
+- [KidsCanCode: Godot 4 recipes](https://kidscancode.org/godot_recipes/4.x/): short, practical patterns

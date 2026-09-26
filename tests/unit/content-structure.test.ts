@@ -33,6 +33,8 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       "react/",
       "web-apis/",
       "backend/",
+      "three-js/",
+      "webassembly/",
       "testing",
     ],
     directories: {
@@ -64,6 +66,15 @@ const TOPICS: Readonly<Record<string, Layout>> = {
         "page-visibility",
       ],
       backend: ["hono", "file-io", "streaming", "websockets", "authentication"],
+      "three-js": [
+        "fundamentals",
+        "geometry-materials",
+        "lights-shadows",
+        "models-animation",
+        "shaders-postprocessing",
+        "react-three-fiber",
+      ],
+      webassembly: ["fundamentals", "wat", "rust", "emscripten", "wasi-components"],
     },
   },
   databases: { entries: ["postgres", "db-design", "drizzle"], directories: {} },
@@ -99,6 +110,19 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       training: ["energy-systems", "strength-training", "endurance", "training-plans"],
       nutrition: ["nutrition-hydration", "vitamins-minerals"],
       "recovery-mobility": ["running-warmup-drills", "stretching-recovery"],
+    },
+  },
+  "game-dev": {
+    entries: ["godot/"],
+    directories: {
+      godot: [
+        "gdscript",
+        "nodes-scenes",
+        "input-physics",
+        "ui-animation-audio",
+        "shaders",
+        "resources-saving-export",
+      ],
     },
   },
 };
@@ -172,6 +196,23 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "fitness/nutrition/vitamins-minerals",
   "fitness/recovery-mobility/running-warmup-drills",
   "fitness/recovery-mobility/stretching-recovery",
+  "typescript/three-js/fundamentals",
+  "typescript/three-js/geometry-materials",
+  "typescript/three-js/lights-shadows",
+  "typescript/three-js/models-animation",
+  "typescript/three-js/shaders-postprocessing",
+  "typescript/three-js/react-three-fiber",
+  "typescript/webassembly/fundamentals",
+  "wat",
+  "rust",
+  "emscripten",
+  "wasi-components",
+  "gdscript",
+  "nodes-scenes",
+  "input-physics",
+  "ui-animation-audio",
+  "shaders",
+  "resources-saving-export",
 ]);
 
 /** Visual components or live demos each design sheet must use at least this many times. */

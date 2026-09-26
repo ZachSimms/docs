@@ -1,0 +1,657 @@
+---
+title: C/C++ & Emscripten
+date: 2026-09-26
+order: 4
+---
+
+Compiling C and C++ to WebAssembly with Emscripten, from the TypeScript side: `emcc` basics, output
+modes and the settings that matter, calling C from JS (`ccall`, `cwrap`, heap views), embind with
+generated `.d.ts`, JS from C, file systems, main loops, SDL/WebGL, pthreads, CMake, debugging and
+optimisation, plus wasi-sdk for builds without JS. Background is in
+[Fundamentals](/typescript/webassembly/fundamentals/).
+
+## Install emsdk
+
+```bash
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest     # LLVM, Binaryen, Node, emscripten
+./emsdk activate latest
+source ./emsdk_env.sh      # per shell (.ps1 on Windows)
+emcc --version             # 6.0.x as of September 2026
+```
+
+| Tool | Role |
+| :--- | :--- |
+| `emcc` / `em++` | clang drivers: compile and link to `.wasm` + JS glue; **link C++ with `em++`** (since 6.0.6) |
+| `emcmake`, `emmake`, `emconfigure` | run CMake / make / autoconf with the Emscripten toolchain |
+| `emrun` | serve and open an `.html` output with the right headers |
+| `emar`, `emranlib`, `emnm`, `emstrip` | LLVM binutils equivalents |
+| `embuilder` | prebuild system libraries and ports (`embuilder build sdl2`) |
+
+Pin a version in CI (`./emsdk install 6.0.10`): there is no ABI guarantee between releases, so rebuild
+all object files and libraries after upgrading.
+
+## emcc basics
+
+```bash
+emcc hello.c -o hello.html     # page + JS + wasm (demo)
+emcc hello.c -o hello.js       # JS glue + hello.wasm
+emcc hello.c -o hello.mjs      # ES module glue
+emcc lib.c -o lib.wasm --no-entry   # standalone Wasm
+em++ -std=c++20 -O2 app.cpp -o app.js
+emcc -O2 -c a.c -o a.o && emcc a.o b.o -o app.js
+```
+
+| Output | What you get | Use |
+| :----- | :----------- | :-- |
+| `-o x.html` | HTML shell + `x.js` + `x.wasm` | quick demos (`--shell-file` for your own template) |
+| `-o x.js` | glue that loads `x.wasm`, sets up memory, FS, runtime | most apps; load with a `<script>` or import |
+| `-o x.mjs` | same, as an ES module (implies `EXPORT_ES6`, `MODULARIZE`) | bundlers and TS projects |
+| `-o x.wasm` | standalone Wasm (`STANDALONE_WASM`), WASI-style imports | non-JS hosts; minimal JS |
+| `-sSINGLE_FILE` | `.wasm` embedded in the `.js` | one-file distribution (larger; CSP caveats) |
+
+Warnings and C semantics are clang's: `-Wall -Wextra`, `-std=c17` / `-std=c++20` (C++17 is the
+default), `-fno-exceptions`, `-D`, `-I` all work as usual. `__EMSCRIPTEN__` is defined.
+
+## Key settings
+
+Settings are passed as `-sNAME=value` (`-sNAME` alone means `1`; lists as `-sX=a,b` or JSON).
+
+| Setting | Default | Use |
+| :------ | :------ | :-- |
+| `EXPORTED_FUNCTIONS` | `_main` | C functions to keep and export, **with a leading underscore**: `-sEXPORTED_FUNCTIONS=_add,_malloc,_free` |
+| `EXPORTED_RUNTIME_METHODS` | none | runtime helpers on `Module`: `ccall,cwrap,UTF8ToString,FS,HEAPU8,HEAPF32` |
+| `MODULARIZE` | off | wrap output in a factory returning `Promise<Module>`; `=instance` (experimental) gives ESM named exports plus `init` |
+| `EXPORT_ES6` | off | ES module output (implied by `.mjs`) |
+| `EXPORT_NAME` | `Module` | name of the factory / global (`createMyLib`) |
+| `ENVIRONMENT` | `web,webview,worker,node` | trim runtime checks: `web`, `web,worker`, `node` |
+| `ALLOW_MEMORY_GROWTH` | off | let `malloc` grow memory; otherwise out-of-memory aborts |
+| `INITIAL_MEMORY` | computed | starting heap, e.g. `64MB` |
+| `MAXIMUM_MEMORY` | `2GB` | cap for growth; up to `4GB` on 32-bit |
+| `STACK_SIZE` | `64KB` | fixed shadow stack; raise it for deep recursion (formerly `TOTAL_STACK`) |
+| `ASYNCIFY` | off | binaryen transform so C can "block" on async JS; costs size and speed |
+| `JSPI` | off | same goal using JS Promise Integration; no code transform; no longer experimental (6.0.8) |
+| `SINGLE_FILE` | off | inline the `.wasm` as base64 / binary in the JS |
+| `FILESYSTEM` | auto | `0` removes FS support when nothing needs it |
+| `FORCE_FILESYSTEM` | off | keep FS even if C does not use it (JS does) |
+| `EXIT_RUNTIME` | off | run `atexit`, flush stdio after `main` returns |
+| `INVOKE_RUN` | on | `0`: do not call `main` automatically (`callMain()` later) |
+| `STANDALONE_WASM` | off | WASI-style imports, runnable in Wasmtime |
+| `ASSERTIONS` | on at `-O0` | runtime checks with readable errors (`=2` for more) |
+
+<Callout type="warn" title="Exports are opt-in">
+Since Emscripten 4.0.7 the `HEAP8` / `HEAPU8` / `HEAP32` / `HEAPF32` views are **not** on `Module` by
+default: add them to `EXPORTED_RUNTIME_METHODS`. Missing names there are now an error, and a C function
+missing from `EXPORTED_FUNCTIONS` is silently dead-code-eliminated unless it is `EMSCRIPTEN_KEEPALIVE`.
+</Callout>
+
+## Exporting C functions
+
+```c title="mathlib.c"
+#include <emscripten/emscripten.h>
+#include <stdlib.h>
+#include <string.h>
+
+EMSCRIPTEN_KEEPALIVE
+int add(int a, int b) { return a + b; }
+
+EMSCRIPTEN_KEEPALIVE
+double sum(const float *xs, int n) {
+  double s = 0;
+  for (int i = 0; i < n; i++) s += xs[i];
+  return s;
+}
+
+EMSCRIPTEN_KEEPALIVE
+char *greet(const char *name) {  // caller frees
+  char *out = malloc(strlen(name) + 8);
+  strcpy(out, "Hello, ");
+  strcat(out, name);
+  return out;
+}
+```
+
+```cpp
+#include <emscripten/emscripten.h>
+// C++: disable name mangling for exported symbols
+extern "C" {
+EMSCRIPTEN_KEEPALIVE int add(int a, int b);
+}
+```
+
+```bash
+emcc mathlib.c -O2 -o mathlib.mjs \
+  -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createMath \
+  -sENVIRONMENT=web,worker \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,HEAPF32
+```
+
+`EMSCRIPTEN_KEEPALIVE` both keeps the symbol alive and exports it (as `_add` on the module); list
+extra C functions such as `_malloc` in `EXPORTED_FUNCTIONS`. In C++ without `extern "C"` the export
+name is mangled, so either use `extern "C"` or embind.
+
+## Calling C from JS
+
+```ts
+import createMath from "./mathlib.mjs";
+
+const M = await createMath({
+  print: (s: string) => console.log(s),     // stdout
+  printErr: (s: string) => console.error(s),
+  locateFile: (p: string) => `/wasm/${p}`,  // .wasm URL
+});
+
+// direct: numbers only
+M._add(2, 3);
+
+// ccall / cwrap convert strings and arrays for you
+const greet = M.cwrap("greet", "number", ["string"]);
+const p = greet("Ada");
+console.log(M.UTF8ToString(p));
+M._free(p);
+
+M.ccall("add", "number", ["number", "number"], [1, 2]);
+```
+
+| `ccall` / `cwrap` type | JS value | C side |
+| :--------------------- | :------- | :----- |
+| `"number"` | `number` (or `bigint` for `int64_t`) | `int`, `float`, `double`, pointers |
+| `"string"` arg | `string` | `const char *`, copied to the stack for the call only |
+| `"string"` return | `string` | decoded with `UTF8ToString`; the C buffer is **not** freed |
+| `"array"` arg | `Uint8Array` / `number[]` | `const uint8_t *`, copied to the stack |
+| `"boolean"` | `boolean` | `bool` |
+| `"pointer"` | `number` | with memory64 or 2 GB+ heaps: unsigned / `Number` conversion |
+| `null` return | `undefined` | `void` |
+
+Pass `{ async: true }` as the fifth `ccall` argument (or fourth for `cwrap`) when the function may
+suspend with `ASYNCIFY` / `JSPI`; the call then returns a `Promise`.
+
+## Heap views and malloc
+
+```ts
+// JS allocates, fills, calls, frees
+const xs = new Float32Array([1, 2, 3, 4]);
+const ptr = M._malloc(xs.byteLength);
+M.HEAPF32.set(xs, ptr >> 2);   // index = byte offset / 4
+const total = M._sum(ptr, xs.length);
+M._free(ptr);
+```
+
+| View | Element | Index from a byte pointer |
+| :--- | :------ | :------------------------ |
+| `HEAP8` / `HEAPU8` | `int8_t` / `uint8_t` | `ptr` |
+| `HEAP16` / `HEAPU16` | `int16_t` / `uint16_t` | `ptr >> 1` |
+| `HEAP32` / `HEAPU32` | `int32_t` / `uint32_t` | `ptr >> 2` |
+| `HEAPF32` / `HEAPF64` | `float` / `double` | `ptr >> 2` / `ptr >> 3` |
+| `HEAP64` / `HEAPU64` | `int64_t` / `uint64_t` (`BigInt64Array`) | `ptr >> 3` |
+
+| Helper (export via `EXPORTED_RUNTIME_METHODS`) | Does |
+| :--------------------------------------------- | :--- |
+| `UTF8ToString(ptr, maxBytes?)` | read a NUL-terminated C string |
+| `stringToUTF8(str, ptr, maxBytes)` | write a string into allocated memory |
+| `lengthBytesUTF8(str)` | bytes needed (add 1 for NUL) |
+| `stringToNewUTF8(str)` | `malloc` + write; caller `_free`s |
+| `getValue(ptr, "i32")` / `setValue(ptr, v, "double")` | single typed load / store |
+| `stackAlloc`, `stackSave`, `stackRestore` | cheap temporary allocations |
+
+With `ALLOW_MEMORY_GROWTH`, the runtime replaces the `HEAP*` views after growth: always read
+`M.HEAPU8` fresh instead of caching the view in your own variable.
+
+## Embind
+
+```cpp title="shapes.cpp"
+#include <emscripten/bind.h>
+#include <string>
+#include <vector>
+using namespace emscripten;
+
+struct Point { float x, y; };
+
+class Path {
+ public:
+  explicit Path(std::string name) : name_(name) {}
+  void add(Point p) { pts_.push_back(p); }
+  size_t size() const { return pts_.size(); }
+  std::string name() const { return name_; }
+  void setName(std::string n) { name_ = n; }
+  static Path unit() { return Path("unit"); }
+ private:
+  std::string name_;
+  std::vector<Point> pts_;
+};
+
+float lerp(float a, float b, float t) {
+  return a + (b - a) * t;
+}
+
+EMSCRIPTEN_BINDINGS(shapes) {
+  function("lerp", &lerp);
+  value_object<Point>("Point")
+      .field("x", &Point::x)
+      .field("y", &Point::y);
+  class_<Path>("Path")
+      .constructor<std::string>()
+      .function("add", &Path::add)
+      .function("size", &Path::size)
+      .property("name", &Path::name, &Path::setName)
+      .class_function("unit", &Path::unit);
+  register_vector<float>("FloatVector");
+}
+```
+
+```bash
+em++ -O2 -lembind shapes.cpp -o shapes.mjs \
+  -sMODULARIZE -sEXPORT_ES6 \
+  --emit-tsd shapes.d.ts
+```
+
+```ts
+import createShapes from "./shapes.mjs";
+
+const S = await createShapes();
+S.lerp(0, 10, 0.25);             // 2.5
+const path = new S.Path("route");
+path.add({ x: 1, y: 2 });        // value_object: plain JS
+path.name = "renamed";           // property()
+console.log(path.size());
+path.delete();                   // C++ destructor
+```
+
+| Embind API | Maps to |
+| :--------- | :------ |
+| `function("name", &fn)` | a module-level JS function |
+| `class_<T>("T")` | JS class; `.constructor<Args...>()`, `.function`, `.property`, `.class_function` |
+| `class_<D, base<B>>` | inheritance; `allow_subclass` + `wrapper<T>` for JS overriding virtuals |
+| `value_object<T>` / `value_array<T>` | copied to / from plain JS objects / arrays |
+| `register_vector<T>("V")` | `std::vector<T>` class with `push_back`, `get`, `size`; iterable in 5.0+ |
+| `register_map<K, V>` | `std::map` wrapper |
+| `enum_<E>("E").value("A", E::A)` | enum object |
+| `emscripten::val` | any JS value from C++: `val::global("document")`, `.call<void>("x")` |
+| `smart_ptr` / `std::shared_ptr` | managed handles |
+
+- Link with `-lembind` (the old `--bind` flag also works). Embind needs C++17 or later.
+- Every C++ object you receive in JS must be freed with `.delete()`; `FinalizationRegistry` cleanup is
+  not guaranteed. Bound classes also implement `[Symbol.dispose]`, so TypeScript's `using` works.
+- `--emit-tsd out.d.ts` generates TypeScript declarations for the bindings and the module factory
+  (replaced the older `--embind-emit-tsd`).
+
+## Calling JS from C
+
+```c
+#include <emscripten/emscripten.h>
+
+// A JS function compiled into the output
+EM_JS(void, show_title, (const char *s), {
+  document.title = UTF8ToString(s);
+});
+
+EM_JS(int, screen_width, (void), {
+  return window.innerWidth;
+});
+
+void demo(void) {
+  show_title("Loaded");
+  // inline JS; $0, $1 are the arguments
+  EM_ASM({ console.log("x =", $0, "y =", $1); }, 3, 4.5);
+  int w = EM_ASM_INT({ return window.innerWidth; });
+  double d = EM_ASM_DOUBLE({ return performance.now(); });
+  emscripten_run_script("console.log('eval-based')");
+  (void)w; (void)d;
+}
+```
+
+| Mechanism | Notes |
+| :-------- | :---- |
+| `EM_JS(ret, name, (args), { js })` | named JS function; the cleanest option |
+| `EM_ASM`, `EM_ASM_INT`, `EM_ASM_DOUBLE`, `EM_ASM_PTR` | inline JS with numbered placeholders for arguments |
+| `--js-library lib.js` | `addToLibrary({ fn: ... })` functions callable from C as `extern` |
+| `--pre-js` / `--post-js` | JS inserted before / after the glue (hooks, `Module` config) |
+| `emscripten_run_script` | `eval`: slow, CSP-hostile; avoid |
+| `emscripten::val` (embind) | C++ object API over any JS value |
+
+Only numbers cross directly: pass strings as `const char *` and decode with `UTF8ToString`.
+
+## File systems
+
+| FS | Backing | Enable |
+| :- | :------ | :----- |
+| MEMFS | in memory, lost on reload | default |
+| Preloaded files | `x.data` package fetched at startup, mounted into MEMFS | `--preload-file assets@/assets` |
+| Embedded files | bytes inside the `.wasm` / JS | `--embed-file config.json` (small files) |
+| IDBFS | MEMFS synced to IndexedDB by `FS.syncfs` | `-lidbfs.js` |
+| NODEFS | a real host directory (Node only) | `-lnodefs.js`, `FS.mount(NODEFS, { root }, "/mnt")` |
+| NODERAWFS | the whole host FS, no mounting (Node only) | `-sNODERAWFS` |
+| WORKERFS | read-only `File` / `Blob` in a worker | `-lworkerfs.js` |
+| WasmFS | new C++ FS implementation with OPFS and other backends | `-sWASMFS` (still marked experimental) |
+
+```ts
+// -sEXPORTED_RUNTIME_METHODS=FS,IDBFS -lidbfs.js
+M.FS.mkdir("/persist");
+M.FS.mount(M.IDBFS, { autoPersist: true }, "/persist");
+await new Promise<void>((ok, err) =>
+  M.FS.syncfs(true, (e) => (e ? err(e) : ok())), // load
+);
+M.FS.writeFile("/persist/save.json", JSON.stringify(s));
+const text = M.FS.readFile("/persist/save.json", {
+  encoding: "utf8",
+});
+```
+
+C code sees a normal POSIX file system (`fopen`, `read`, `stat`); JS drives the same tree through `FS`.
+Synchronous file I/O that must hit the network or IndexedDB needs `ASYNCIFY` / `JSPI` or a worker.
+
+## Main loop
+
+```c
+#include <emscripten/emscripten.h>
+
+static int frame = 0;
+
+static void tick(void) {
+  frame++;
+  // update and render one frame; never block here
+  if (frame == 600) emscripten_cancel_main_loop();
+}
+
+int main(void) {
+  // fps 0: use requestAnimationFrame
+  // 1: simulate an infinite loop (main does not return)
+  emscripten_set_main_loop(tick, 0, 1);
+  return 0;
+}
+```
+
+A native `while (running) { ... }` loop freezes the tab: the browser only paints and dispatches events
+when control returns to the event loop. Restructure into a per-frame callback, or keep the loop and
+build with `-sASYNCIFY` / `-sJSPI` and call `emscripten_sleep(0)` inside it.
+
+## SDL2, WebGL and ports
+
+```bash
+em++ game.cpp -O2 -o game.html \
+  -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -sSDL2_IMAGE_FORMATS=png \
+  -sMAX_WEBGL_VERSION=2 -sMIN_WEBGL_VERSION=2 \
+  -sALLOW_MEMORY_GROWTH \
+  --preload-file assets@/assets
+```
+
+| Flag | Effect |
+| :--- | :----- |
+| `-sUSE_SDL=2` / `--use-port=sdl2` | SDL2 port (built on first use); `--use-port=sdl3` for SDL3 (no longer experimental) |
+| `-sMAX_WEBGL_VERSION=2` | allow WebGL 2 (OpenGL ES 3.0); `-sUSE_WEBGL2` is the deprecated spelling |
+| `-sMIN_WEBGL_VERSION=2` | drop WebGL 1 support code |
+| `-sFULL_ES3` | emulate client-side arrays etc. for GLES3 code that needs them |
+| `-sLEGACY_GL_EMULATION` | partial desktop fixed-function GL emulation |
+| `--use-port=contrib.glfw3` | GLFW port |
+| `--use-port=emdawnwebgpu` | WebGPU via Dawn's `webgpu.h` (replaces deprecated `-sUSE_WEBGPU`) |
+| `--show-ports` | list available ports |
+
+The canvas is `Module.canvas` (or `#canvas` in the default shell). Audio needs a user gesture before
+the `AudioContext` starts, exactly as in JS.
+
+## Pthreads
+
+```bash
+emcc -pthread -O2 app.c -o app.js \
+  -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency \
+  -sPROXY_TO_PTHREAD \
+  -sALLOW_MEMORY_GROWTH
+```
+
+| Setting | Use |
+| :------ | :-- |
+| `-pthread` | compile **and** link flag: atomics, shared memory, Worker-based threads (`-sUSE_PTHREADS` is deprecated) |
+| `PTHREAD_POOL_SIZE=N` | pre-spawn workers; creating a thread with an empty pool needs the main thread to yield first |
+| `PTHREAD_POOL_SIZE_STRICT` | fail (or warn) when the pool is exhausted |
+| `PROXY_TO_PTHREAD` | run `main` on a worker so it may block; the browser thread stays free |
+| `-sWASM_WORKERS` | lighter, non-POSIX worker API (`emscripten_malloc_wasm_worker`) |
+
+Threads require `SharedArrayBuffer`, so the page must be cross-origin isolated:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Blocking (`pthread_join`, mutex waits, `Atomics.wait`) on the browser main thread is disallowed or
+busy-waits: use `PROXY_TO_PTHREAD`. Growth with shared memory makes JS heap access slower because the
+views must be revalidated; emcc suggests `-sGROWABLE_ARRAYBUFFERS=2` for that combination.
+
+## CMake and existing builds
+
+```bash
+emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+emmake make -C legacy/            # plain Makefiles
+emconfigure ./configure && emmake make
+```
+
+```cmake title="CMakeLists.txt"
+add_executable(app main.cpp)
+if(EMSCRIPTEN)
+  set_target_properties(app PROPERTIES SUFFIX ".mjs")
+  target_link_options(app PRIVATE
+    -sMODULARIZE -sEXPORT_ES6
+    -sALLOW_MEMORY_GROWTH
+    -lembind --emit-tsd app.d.ts)
+endif()
+```
+
+`emcmake` passes the Emscripten toolchain file (`cmake/Modules/Platform/Emscripten.cmake`) so
+`EMSCRIPTEN` is defined in CMake. Static libraries (`.a`) are LLVM bitcode or Wasm object archives:
+build every dependency with the same Emscripten version.
+
+## Exceptions and setjmp
+
+| Flag | Mode |
+| :--- | :--- |
+| default | C++ `throw` works but **catching is disabled**: a throw aborts |
+| `-fexceptions` | JS-based exceptions (`invoke_*` wrappers); works everywhere, slower and larger |
+| `-fwasm-exceptions` | native Wasm exception handling; fast; all current browsers |
+| `-sEXCEPTION_STACK_TRACES` | stack traces on thrown `CppException` objects (with either mode above) |
+| `-sSUPPORT_LONGJMP=wasm` | `setjmp` / `longjmp` on Wasm EH |
+
+Pass the exception flag at **both** compile and link time.
+
+## Debugging
+
+| Flag | Gives |
+| :--- | :---- |
+| `-g` | DWARF debug info in the `.wasm` (use the Chrome C/C++ DevTools Support (DWARF) extension) |
+| `-gsource-map` | a source map: lines only, no variables; `-gsource-map=inline` embeds sources |
+| `-g2` | readable function names (name section) without full DWARF |
+| `-sASSERTIONS=2` | extra runtime checks and clearer errors |
+| `-sSAFE_HEAP` | traps on null and misaligned accesses |
+| `-sSTACK_OVERFLOW_CHECK=2` | detects shadow stack overflow on every call |
+| `-fsanitize=address` | AddressSanitizer: out-of-bounds, use-after-free, leaks |
+| `-fsanitize=undefined` | UBSan: overflow, bad shifts, null dereference |
+| `--profiling` / `--profiling-funcs` | keep function names in optimised builds for profilers |
+| `EMCC_DEBUG=1` | log and keep the compiler's intermediate files |
+
+Debug builds (`-O0`) enable `ASSERTIONS` by default, which catches most mistakes (missing exports,
+calling before the runtime is ready, `ccall` type mismatches).
+
+## Optimisation
+
+| Flag | Effect |
+| :--- | :----- |
+| `-O0` | no optimisation, fastest compile, assertions on |
+| `-O1`, `-O2` | normal release; `-O2` runs the full Binaryen pipeline |
+| `-O3` | more inlining and speed, bigger and slower to build |
+| `-Os`, `-Oz` | size-focused; `-Oz` smallest |
+| `-flto` | link-time optimisation across translation units |
+| `--closure 1` | Google Closure Compiler minifies the JS glue (needs Java on some platforms) |
+| `-sEVAL_CTORS` | run static constructors at compile time |
+| `-sMINIMAL_RUNTIME` | tiny glue without most runtime features |
+| `-sFILESYSTEM=0`, `-sENVIRONMENT=web` | drop unused runtime code |
+| `-msimd128` | enable Wasm SIMD (auto-vectorisation, `wasm_simd128.h`); SSE / NEON intrinsics headers are partly emulated |
+
+Use the same `-O` level at compile and link time: the link step runs `wasm-opt`, and settings such
+as `-flto` or `-pthread` must match across all objects.
+
+## wasi-sdk and plain clang
+
+Not every C library needs Emscripten's JS runtime. For a Wasm module used by your own JS or by a WASI
+runtime, a plain LLVM toolchain is smaller and simpler.
+
+```bash
+# freestanding: no libc, exports marked in source
+clang --target=wasm32 -O3 -nostdlib \
+  -Wl,--no-entry -o add.wasm add.c
+
+# wasi-sdk: clang + wasi-libc sysroot
+$WASI_SDK_PATH/bin/clang --target=wasm32-wasip1 \
+  -O2 main.c -o main.wasm
+wasmtime run main.wasm
+```
+
+```c title="add.c"
+__attribute__((export_name("add")))
+int add(int a, int b) { return a + b; }
+
+__attribute__((import_module("env"),
+               import_name("log")))
+void js_log(int x);
+```
+
+| Toolchain | libc | JS glue | Good for |
+| :-------- | :--- | :------ | :------- |
+| Emscripten | musl + JS syscalls | yes | ports of full apps, SDL / GL, file systems, pthreads in browsers |
+| wasi-sdk | wasi-libc | no | CLI tools and libraries for Wasmtime, Node `node:wasi`, components |
+| `clang --target=wasm32` | none | no | tiny numeric kernels loaded by hand-written TS |
+
+## Recipes
+
+### Typed ES module library
+Use to ship a C library to TypeScript with an async factory.
+
+```bash
+emcc lib.c -O3 -o dist/lib.mjs \
+  -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createLib \
+  -sENVIRONMENT=web,worker,node \
+  -sALLOW_MEMORY_GROWTH -sFILESYSTEM=0 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=cwrap,HEAPU8
+```
+
+```ts title="lib.ts"
+import createLib from "./dist/lib.mjs";
+
+export async function openLib() {
+  const M = await createLib();
+  type Crc = (p: number, n: number) => number;
+  const crc = M.cwrap("crc32", "number",
+    ["number", "number"]) as Crc;
+  return {
+    crc32(bytes: Uint8Array): number {
+      const p = M._malloc(bytes.length);
+      M.HEAPU8.set(bytes, p);
+      try { return crc(p, bytes.length) >>> 0; }
+      finally { M._free(p); }
+    },
+  };
+}
+```
+
+### Port a CLI to Node
+Use to run an existing command-line tool on Node with host files.
+
+```bash
+emcc tool.c -O2 -o tool.mjs \
+  -sENVIRONMENT=node -sNODERAWFS -sEXIT_RUNTIME \
+  -sEXPORT_ES6 -sMODULARIZE -sINVOKE_RUN=0 \
+  -sEXPORTED_RUNTIME_METHODS=callMain
+```
+
+```ts
+import createTool from "./tool.mjs";
+
+const M = await createTool();
+// argv[0] is supplied by the runtime; returns main's code
+const code = M.callMain(["--input", "data.csv"]);
+console.log("exit code", code);
+```
+
+`NODERAWFS` gives the program the real file system relative to the current directory, so relative
+paths in arguments work as they would natively.
+
+### Blocking C API over async JS
+Use when C code calls a function that must `await` (fetch, IndexedDB) and cannot be restructured.
+
+```c
+#include <emscripten/emscripten.h>
+
+EM_ASYNC_JS(int, fetch_len, (const char *url), {
+  const r = await fetch(UTF8ToString(url));
+  return (await r.arrayBuffer()).byteLength;
+});
+
+EMSCRIPTEN_KEEPALIVE
+int load(void) {
+  return fetch_len("/data.bin"); // suspends here
+}
+```
+
+```bash
+emcc async.c -O2 -o async.mjs -sJSPI \
+  -sMODULARIZE -sEXPORT_ES6 \
+  -sEXPORTED_RUNTIME_METHODS=ccall
+# fallback for engines without JSPI: -sASYNCIFY
+```
+
+```ts
+const n = await M.ccall("load", "number", [], [], {
+  async: true,
+});
+```
+
+### Persist saves with IDBFS
+Use for game saves and editor documents that must survive reloads.
+
+```c
+#include <emscripten/emscripten.h>
+#include <stdio.h>
+
+EMSCRIPTEN_KEEPALIVE
+void save_game(const char *json) {
+  FILE *f = fopen("/persist/save.json", "w");
+  fputs(json, f);
+  fclose(f);
+  EM_ASM(FS.syncfs(false, (e) => e && console.error(e)));
+}
+
+int main(void) {
+  EM_ASM(
+    FS.mkdir("/persist");
+    FS.mount(IDBFS, {}, "/persist");
+    FS.syncfs(true, (e) => e && console.error(e));
+  );
+  return 0;
+}
+```
+
+```bash
+emcc save.c -lidbfs.js -o save.js -sEXIT_RUNTIME=0
+```
+
+### Threaded build served locally
+Use to test a pthreads build; `emrun` sets the isolation headers.
+
+```bash
+emcc -pthread -O2 -sPTHREAD_POOL_SIZE=4 \
+  -sPROXY_TO_PTHREAD work.c -o work.html
+emrun --no-browser --port 8080 work.html
+# or any server that sends COOP: same-origin and
+# COEP: require-corp on the HTML, JS and Wasm
+```
+
+## References
+
+- [Emscripten documentation](https://emscripten.org/docs/): [emcc reference](https://emscripten.org/docs/tools_reference/emcc.html), [settings reference](https://emscripten.org/docs/tools_reference/settings_reference.html), [download and install](https://emscripten.org/docs/getting_started/downloads.html)
+- Emscripten: [interacting with code](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html), [embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html), [`emscripten.h` API](https://emscripten.org/docs/api_reference/emscripten.h.html), [File System API](https://emscripten.org/docs/api_reference/Filesystem-API.html), [packaging files](https://emscripten.org/docs/porting/files/packaging_files.html)
+- Emscripten: [pthreads](https://emscripten.org/docs/porting/pthreads.html), [Asyncify and JSPI](https://emscripten.org/docs/porting/asyncify.html), [building projects](https://emscripten.org/docs/compiling/Building-Projects.html), [debugging](https://emscripten.org/docs/porting/Debugging.html), [optimising code](https://emscripten.org/docs/optimizing/Optimizing-Code.html)
+- [Emscripten ChangeLog](https://github.com/emscripten-core/emscripten/blob/main/ChangeLog.md): read it before upgrading
+- [MDN: Compiling C/C++ to Wasm](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/C_to_Wasm), [Chrome DevTools: debug C/C++ Wasm](https://developer.chrome.com/docs/devtools/wasm)
+- [wasi-sdk](https://github.com/WebAssembly/wasi-sdk), [WebAssembly spec](https://webassembly.github.io/spec/)

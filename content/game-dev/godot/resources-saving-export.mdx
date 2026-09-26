@@ -1,0 +1,701 @@
+---
+title: Resources, saving & export
+date: 2026-09-26
+order: 6
+---
+
+Getting data in and out of a Godot 4.x game and shipping it: `res://` and `user://`, loading and threaded
+loading, saving Resources, ConfigFile, FileAccess, JSON and DirAccess, project settings and feature tags,
+export presets and the command line, the Web export, debugging tools, C# and version control. Custom Resource
+classes are introduced in [Nodes, scenes & signals](/game-dev/godot/nodes-scenes/#custom-resources).
+
+## Paths: res:// vs user://
+
+| Prefix | Points to | Writable | Notes |
+| :----- | :-------- | :------- | :---- |
+| `res://` | the project folder (in exports: the `.pck`) | editor only | read-only at runtime in exported games |
+| `user://` | per-user data folder | yes | saves, settings, logs, screenshots, downloaded content |
+| absolute | `C:/...`, `/home/...` | yes | desktop tools; not portable, blocked or sandboxed on Web and mobile |
+
+| Platform | `user://` location |
+| :------- | :----------------- |
+| Windows | `%APPDATA%\Godot\app_userdata\<project name>` |
+| macOS | `~/Library/Application Support/Godot/app_userdata/<project name>` |
+| Linux | `~/.local/share/godot/app_userdata/<project name>` |
+| Custom | Project Settings > Application > Config > Use Custom User Dir (drops the `Godot/app_userdata` part) |
+| Web | IndexedDB in the browser (persists per origin) |
+| Android / iOS | the app's private storage |
+
+```gdscript
+print(OS.get_user_data_dir())                  # absolute
+print(ProjectSettings.globalize_path("user://saves"))
+OS.shell_open(ProjectSettings.globalize_path("user://"))
+var p := "user://saves".path_join("slot_1.json")
+```
+
+Paths use `/` on every platform. `res://` paths are case-sensitive once exported (the `.pck` is), even if your
+Windows or macOS file system is not: a wrong-case `load()` that works in the editor fails in the export.
+
+## Loading resources
+
+```gdscript
+const PLAYER := preload("res://actors/player.tscn")
+
+func _ready() -> void:
+    var tex: Texture2D = load("res://art/icon.png")  # cached
+    var fresh := ResourceLoader.load("user://save.tres",
+        "", ResourceLoader.CACHE_MODE_IGNORE)
+    if ResourceLoader.exists("res://levels/level_9.tscn"):
+        pass
+```
+
+| API | Notes |
+| :-- | :---- |
+| `preload(path)` | constant path, loaded when the script loads; dependency visible to the exporter |
+| `load(path)` | runtime; returns the cached instance if already loaded |
+| `ResourceLoader.load(path, type_hint, cache_mode)` | control caching: `CACHE_MODE_IGNORE`, `REUSE` (default), `REPLACE`, `IGNORE_DEEP`, `REPLACE_DEEP` |
+| `ResourceLoader.exists(path)` | check without loading |
+| `ResourceLoader.list_directory(dir)` | lists resources as the loader sees them (works in exports where files are remapped) |
+| `resource.duplicate(deep)` | independent copy of a shared resource |
+| `resource.resource_path` | where it came from (`""` for built-in resources) |
+
+What is actually in an export: imported assets (`.png`, `.wav`, `.glb` ...) are shipped in their converted
+form from `.godot/imported/`, not the source file. So `load("res://icon.png")` works, but
+`FileAccess.open("res://icon.png")` and `Image.load_from_file` on `res://` fail. Plain data files the engine
+does not know (`.txt`, `.csv` set to not import, custom formats) are only exported if listed in the preset's
+"Filters to export non-resource files/folders" (for example `*.txt, data/*`).
+
+## Threaded loading
+
+```gdscript
+const LEVEL := "res://levels/level_2.tscn"
+
+func start() -> void:
+    ResourceLoader.load_threaded_request(LEVEL)
+
+func _process(_d: float) -> void:
+    var progress := []
+    var status := ResourceLoader.load_threaded_get_status(
+        LEVEL, progress)
+    match status:
+        ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+            $Bar.value = progress[0] * 100.0   # 0..1
+        ResourceLoader.THREAD_LOAD_LOADED:
+            var scene: PackedScene = \
+                ResourceLoader.load_threaded_get(LEVEL)
+            get_tree().change_scene_to_packed(scene)
+            set_process(false)
+        ResourceLoader.THREAD_LOAD_FAILED, \
+        ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+            push_error("could not load " + LEVEL)
+            set_process(false)
+```
+
+| Call | Notes |
+| :--- | :---- |
+| `load_threaded_request(path, type_hint, use_sub_threads, cache_mode)` | start in the background; `use_sub_threads` loads dependencies in parallel |
+| `load_threaded_get_status(path, progress_array)` | `THREAD_LOAD_IN_PROGRESS`, `LOADED`, `FAILED`, `INVALID_RESOURCE`; fills `progress[0]` |
+| `load_threaded_get(path)` | the resource; blocks if not finished yet |
+
+On the Web without thread support, "threaded" loading still works but runs on the main thread, so the progress
+bar updates in steps.
+
+## Saving Resources
+
+```gdscript title="save_data.gd"
+class_name SaveData
+extends Resource
+
+@export var level := "res://levels/level_1.tscn"
+@export var position := Vector2.ZERO
+@export var inventory: Dictionary[StringName, int] = {}
+@export var flags: PackedStringArray = []
+```
+
+```gdscript
+const PATH := "user://save.tres"   # .tres text, .res binary
+
+func save_game(data: SaveData) -> void:
+    var err := ResourceSaver.save(data, PATH)
+    if err != OK:
+        push_error(error_string(err))
+
+func load_game() -> SaveData:
+    if not ResourceLoader.exists(PATH):
+        return SaveData.new()
+    return ResourceLoader.load(PATH, "",
+        ResourceLoader.CACHE_MODE_IGNORE) as SaveData
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Format | extension picks it: `.tres` (text, diffable) or `.res` (binary, smaller) |
+| What is saved | `@export` properties (and `@export_storage`); typed arrays, dictionaries, nested resources |
+| Flags | `ResourceSaver.save(res, path, ResourceSaver.FLAG_COMPRESS)` and others |
+| Refactoring | renaming a `class_name` or property breaks old saves; add a `version` field |
+| Caching | load saves with `CACHE_MODE_IGNORE` so a second load re-reads the file |
+
+<Callout type="error" title="Never load untrusted .tres / .res files">
+A resource file can embed a script (a `GDScript` sub-resource with source code) that runs when it is loaded. A
+save file or mod downloaded from the internet can therefore execute arbitrary code. Use Resources only for data
+your own game wrote locally; for anything players share or download, use JSON (or `FileAccess.get_var()`,
+which refuses objects unless `allow_objects` is true) and validate every field.
+</Callout>
+
+## ConfigFile
+
+INI-style sections and keys holding any Variant. Ideal for settings.
+
+```gdscript
+const SETTINGS := "user://settings.cfg"
+var cfg := ConfigFile.new()
+
+func load_settings() -> void:
+    var err := cfg.load(SETTINGS)    # ERR_FILE_NOT_FOUND ok
+    var vol: float = cfg.get_value("audio", "music", 0.8)
+    var full: bool = cfg.get_value("video", "fullscreen",
+        false)
+    apply(vol, full)
+
+func save_settings(vol: float, full: bool) -> void:
+    cfg.set_value("audio", "music", vol)
+    cfg.set_value("video", "fullscreen", full)
+    cfg.save(SETTINGS)
+```
+
+```ini title="settings.cfg"
+[audio]
+
+music=0.8
+
+[video]
+
+fullscreen=false
+```
+
+| API | Notes |
+| :-- | :---- |
+| `set_value(section, key, v)`, `get_value(section, key, default)` | any Variant, including vectors and colours |
+| `has_section()`, `has_section_key()`, `get_sections()`, `get_section_keys()` | inspection |
+| `erase_section()`, `erase_section_key()` | removal |
+| `load(path)`, `save(path)` | return `Error` |
+| `load_encrypted_pass()`, `save_encrypted_pass()` | password-protected file |
+| `parse(text)`, `encode_to_text()` | from and to a String |
+
+## FileAccess
+
+```gdscript
+# Text
+var f := FileAccess.open("user://log.txt", FileAccess.WRITE)
+if f == null:
+    push_error(error_string(FileAccess.get_open_error()))
+    return
+f.store_line("started")
+f.store_string("no newline")
+f.close()                     # or let it go out of scope
+
+var text := FileAccess.get_file_as_string("user://log.txt")
+var r := FileAccess.open("user://log.txt", FileAccess.READ)
+while not r.eof_reached():
+    print(r.get_line())
+
+# Binary Variants (Godot's own serialisation)
+const BIN := "user://state.bin"
+var w := FileAccess.open(BIN, FileAccess.WRITE)
+w.store_var({"hp": 3, "pos": Vector2(4, 5)})
+w.close()
+var rd := FileAccess.open(BIN, FileAccess.READ)
+var state: Dictionary = rd.get_var()   # objects refused
+```
+
+| Member | Notes |
+| :----- | :---- |
+| Modes | `READ`, `WRITE` (truncates), `READ_WRITE`, `WRITE_READ` |
+| `FileAccess.open(path, mode)` | returns `null` on failure; check `get_open_error()` |
+| `file_exists(path)` | static |
+| `get_file_as_string(path)`, `get_file_as_bytes(path)` | static one-shot reads |
+| `store_string`, `store_line`, `get_line`, `get_as_text`, `get_csv_line`, `store_csv_line` | text |
+| `store_var(v, full_objects)`, `get_var(allow_objects)` | binary Variants; objects are off by default for safety |
+| `store_8/16/32/64`, `store_float`, `store_double`, `store_buffer` | raw binary (and matching `get_*`) |
+| `get_length()`, `get_position()`, `seek(pos)`, `eof_reached()` | cursor |
+| `open_encrypted_with_pass(path, mode, pass)` | AES-encrypted file (deters casual editing; the key ships with the game) |
+| `open_compressed(path, mode, compression)` | compressed file |
+| `flush()`, `close()` | writes are flushed on close or when the object is freed |
+
+## JSON
+
+```gdscript
+var data := {"name": "Ada", "level": 3, "tags": ["a", "b"]}
+var text := JSON.stringify(data, "\t")      # pretty
+
+var parsed = JSON.parse_string(text)        # null on error
+if parsed is Dictionary:
+    var level := int(parsed["level"])       # numbers: float
+
+var json := JSON.new()                      # with errors
+if json.parse(text) != OK:
+    push_error("line %d: %s" % [
+        json.get_error_line(), json.get_error_message()])
+else:
+    var d = json.data
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Numbers | every JSON number parses as `float`: convert ids and counts with `int()` |
+| Godot types | `Vector2`, `Color` ... are not JSON: store `[x, y]`, or use `JSON.from_native()` / `JSON.to_native()` |
+| Objects | `from_native` / `to_native` skip Objects unless you opt in: keep it off for untrusted input |
+| Key order | `stringify(data, indent, sort_keys := true)`; pass `false` to keep insertion order |
+| Precision | `stringify(..., full_precision := true)` for exact floats |
+| Alternative | `var_to_str()` / `str_to_var()` use Godot's own text format and keep all types (trusted data only) |
+
+## DirAccess
+
+```gdscript
+DirAccess.make_dir_recursive_absolute("user://saves/slots")
+print(DirAccess.dir_exists_absolute("user://saves"))
+
+for file in DirAccess.get_files_at("user://saves"):
+    if file.ends_with(".json"):
+        print(file)
+for dir in DirAccess.get_directories_at("user://"):
+    print(dir)
+
+DirAccess.rename_absolute("user://a.json", "user://b.json")
+DirAccess.remove_absolute("user://b.json")   # file or
+                                             # empty dir
+var d := DirAccess.open("user://saves")
+if d:
+    print(d.get_space_left())
+```
+
+| API | Notes |
+| :-- | :---- |
+| `DirAccess.open(path)` | instance for relative operations; `null` on failure |
+| `get_files_at(path)`, `get_directories_at(path)` | static listings |
+| `make_dir_absolute`, `make_dir_recursive_absolute` | create folders |
+| `dir_exists_absolute`, `remove_absolute`, `rename_absolute`, `copy_absolute` | static file ops |
+| `list_dir_begin()`, `get_next()`, `current_is_dir()`, `list_dir_end()` | manual iteration |
+| `OS.move_to_trash(global_path)` | recycle bin instead of delete (desktop) |
+
+In exported games, listing `res://` returns `.import` / `.remap` files rather than the originals; use
+`ResourceLoader.list_directory()` or keep an explicit list of resources.
+
+## Project settings & feature tags
+
+```ini title="project.godot (excerpt)"
+config_version=5
+
+[application]
+
+config/name="Slime Quest"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+```
+
+```gdscript
+var title: String = ProjectSettings.get_setting(
+    "application/config/name")
+if OS.has_feature("web"):
+    $QuitButton.hide()          # no quitting a browser tab
+if OS.has_feature("mobile"):
+    $TouchControls.show()
+if OS.is_debug_build():
+    $DebugOverlay.show()
+```
+
+| Feature tag | True when |
+| :---------- | :-------- |
+| `editor` / `template` | running in the editor / an exported build |
+| `debug` / `release` | debug or release template (the editor counts as debug) |
+| `windows`, `macos`, `linuxbsd`, `android`, `ios`, `web` | platform |
+| `pc`, `mobile` | platform family |
+| `web_android`, `web_ios` | Web export running on a mobile browser |
+| `movie` | Movie Maker mode |
+| custom tags | added in an export preset (for example `demo`, `steam`) |
+
+Settings can be overridden per feature tag in the Project Settings UI (the "Add override" option), which stores
+keys like `window/size/viewport_width.mobile`. An `override.cfg` next to the executable overrides settings in a
+shipped game.
+
+## Export presets & templates
+
+| Step | Detail |
+| :--- | :----- |
+| 1. Templates | Editor > Manage Export Templates: download templates that exactly match your editor version (4.7+ can fetch single platforms) |
+| 2. Preset | Project > Export > Add...: one preset per platform or variant; saved in `export_presets.cfg` |
+| 3. Resources tab | export all, selected scenes, selected resources, or all except; include/exclude filters |
+| 4. Options | icons, version, texture formats, architecture, embedded PCK, code signing, permissions |
+| 5. Export | Export Project (full build), Export PCK/ZIP (data only: patches, DLC, mods) |
+
+| Option | Notes |
+| :----- | :---- |
+| Debug vs release | debug templates keep `assert`, remote debugging and extra checks; release strips them |
+| Embed PCK | single executable on desktop |
+| GDScript export mode | text, binary tokens, or compressed binary tokens (4.3+): smaller and slightly obfuscated, not secure |
+| Encryption | encrypting the PCK requires custom-built templates with your key |
+| Texture compression | desktop uses S3TC/BPTC, mobile ETC2/ASTC; enable ETC2/ASTC import for mobile targets |
+| Credentials | keystore and signing passwords are stored in `.godot/export_credentials.cfg`, not in `export_presets.cfg` |
+| Custom templates | build from source with a build profile to strip unused modules and shrink size |
+
+```gdscript
+# Load a PCK exported separately (DLC, mods, patches)
+func mount_dlc(path: String) -> bool:
+    return ProjectSettings.load_resource_pack(path)
+# then load("res://dlc/new_level.tscn") works
+```
+
+## Command line
+
+```bash
+# CI: import assets (fresh checkouts have no .godot/)
+godot --headless --path . --import
+
+# Export with the preset's name as shown in the dialog
+godot --headless --path . \
+  --export-release "Web" build/web/index.html
+godot --headless --path . \
+  --export-debug "Windows Desktop" build/win/game.exe
+godot --headless --path . \
+  --export-pack "Linux" build/linux/game.pck
+godot --headless --path . \
+  --export-patch "Linux" build/patch_1.pck   # changed only
+
+# Run a script (tests, tools) and exit
+godot --headless --path . -s res://tools/build_atlas.gd
+godot --headless --path . --check-only -s res://main.gd
+
+# Run the game with debug helpers
+godot --path . --debug-collisions --debug-navigation
+godot --path . --rendering-method gl_compatibility
+godot --path . --write-movie out.avi --fixed-fps 60
+```
+
+| Flag | Meaning |
+| :--- | :------ |
+| `--headless` | no window, dummy audio (servers, CI, exports) |
+| `--path <dir>` | project folder containing `project.godot` |
+| `-e`, `--editor` | open the editor |
+| `--import` | import resources, then quit |
+| `--export-release <preset> <path>` | full export with release template |
+| `--export-debug <preset> <path>` | full export with debug template |
+| `--export-pack <preset> <path>` | `.pck` / `.zip` only |
+| `--export-patch <preset> <path>` | pack with changed files only |
+| `-s`, `--script <path>` | run a script (extends `SceneTree` or `MainLoop`) |
+| `--check-only` | parse the script and quit (with `--script`) |
+| `--quit`, `--quit-after <n>` | exit after 1 / n iterations |
+| `--rendering-method <m>` | `forward_plus`, `mobile`, `gl_compatibility` |
+| `--verbose`, `--log-file <path>` | logging |
+| `--remote-debug <uri>` | attach to a debugger, e.g. `tcp://127.0.0.1:6007` |
+| `--debug-collisions`, `--debug-navigation` | show shapes and navmeshes |
+| `--fixed-fps <n>`, `--write-movie <file>` | deterministic stepping; record video |
+| `--main-pack <file>` | run a specific `.pck` |
+| `-- <args>` | user args after `--`, read with `OS.get_cmdline_user_args()` |
+
+## Web export
+
+| Fact | Detail |
+| :--- | :----- |
+| Output | `.html`, `.js` loader, `.wasm` engine, `.pck` game data, plus audio worklet scripts and icons |
+| Renderer | Compatibility only (WebGL 2); Forward+ and Mobile are not available |
+| Threads | "Thread Support" export option, off by default since 4.3 (single-threaded runs anywhere) |
+| Threaded builds | need `SharedArrayBuffer`, so the page must be cross-origin isolated (headers below) |
+| Serve over HTTP | `file://` does not work; the editor's Run in Browser button starts a local server with the right headers |
+| C# | not supported in Godot 4.x Web exports |
+| GDExtension | needs "Extensions Support" and web-built extensions (and cross-origin isolation) |
+| Audio | defaults to Sample playback: low latency, but bus effects do not apply to samples |
+| Persistence | `user://` lives in IndexedDB; private browsing may wipe it |
+| Browser rules | fullscreen, pointer lock and audio start only from a user input event |
+| JS interop | `JavaScriptBridge.eval()`, `get_interface("console")`, `create_callback()` |
+
+```text
+Required response headers for a threaded (Thread Support) build:
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+MIME types:
+  .wasm  application/wasm   (enables streaming compilation)
+  .pck   application/octet-stream
+Compression: pre-compress .wasm and .pck with brotli/gzip and
+send Content-Encoding (gzip alone brings .wasm to about a quarter)
+```
+
+| Host | Notes |
+| :--- | :---- |
+| itch.io | upload a zip with `index.html`; tick SharedArrayBuffer support only for threaded builds |
+| GitHub Pages, static hosts without headers | use a single-threaded export, or the PWA option's service worker that injects the isolation headers |
+| Your own server | set the headers above (see Recipes) |
+
+Size tips: strip unused modules with a custom template and build profile, keep the `.pck` lean (compressed
+textures, Ogg instead of WAV for long audio), and serve compressed assets. WebAssembly background:
+[WebAssembly fundamentals](/typescript/webassembly/fundamentals/).
+
+## Desktop & mobile notes
+
+| Platform | Notes |
+| :------- | :---- |
+| Windows | `.exe` + `.pck` (or embedded); sign with `signtool` or osslsigncode to avoid SmartScreen warnings; D3D12 is the default driver since 4.6, Vulkan and OpenGL available |
+| macOS | universal `.app` or `.dmg`; code signing plus notarisation (Apple Developer ID) for Gatekeeper; export from any OS, notarise on macOS or via `rcodesign` |
+| Linux | x86_64 / arm64 binaries + `.pck`; ship as tarball, AppImage or Flatpak |
+| Android | needs Android SDK and a JDK configured in Editor Settings; debug keystore generated automatically; Play Store needs an AAB (Gradle build) |
+| iOS | exports an Xcode project; build and sign on macOS with Xcode |
+| Steam | embed PCK or ship both files; GodotSteam (GDExtension) for the Steamworks API |
+
+## Debugging tools
+
+| Tool | Where |
+| :--- | :---- |
+| Remote scene tree | Scene dock > Remote while the game runs; inspect and edit live node properties |
+| Embedded game view | the Game tab (4.4+): run inside the editor, select nodes by clicking in the game |
+| Debugger > Stack Trace, Errors | breakpoints (F9 or `breakpoint`), step in/over/out, variables; errors and warnings with stack |
+| Profiler | per-function script time and frame time; start it, then play |
+| Visual Profiler | CPU and GPU time per rendering stage |
+| Monitors | FPS, memory, object and orphan-node counts, draw calls, physics stats |
+| Network Profiler | RPC and sync bandwidth |
+| Video RAM | textures and meshes by size |
+| ObjectDB snapshots | capture and diff live objects to hunt leaks (4.6+) |
+| Debug menu | Visible Collision Shapes, Visible Paths, Visible Navigation, Deploy with Remote Debug, Synchronize Scene/Script Changes |
+
+```gdscript
+print_debug("state ", state)          # adds file:line
+print_rich("[color=orange]warn[/color]")
+print_verbose("only with --verbose")
+var fps := Performance.get_monitor(Performance.TIME_FPS)
+var mem := Performance.get_monitor(
+    Performance.MEMORY_STATIC)
+Performance.add_custom_monitor(
+    "game/enemies", _count_enemies)   # Monitors tab
+
+func _count_enemies() -> int:
+    return get_tree().get_nodes_in_group("enemies").size()
+```
+
+External profilers (Tracy, Perfetto, Instruments) are supported by engine builds with profiling enabled (4.6+),
+and release builds can print script backtraces for errors (4.5+).
+
+## C# (.NET) projects
+
+| Fact | Detail |
+| :--- | :----- |
+| Editor | the separate ".NET" download of Godot; needs the .NET SDK (8 or newer since 4.4) |
+| Build | the editor runs `dotnet build`; a `.csproj` and `.sln` sit next to `project.godot` |
+| Platforms | Windows, macOS, Linux, Android and iOS; **no Web export in Godot 4.x** |
+| Mixing | C# and GDScript can coexist and call each other through `Call()`, signals and properties |
+| Exports | use the .NET export templates (also a separate download) |
+| When | large codebases, existing .NET libraries, stronger tooling; GDScript for fastest iteration and Web |
+
+## Version control
+
+```text title=".gitignore"
+# Godot 4+ cache: imported assets, editor state, credentials
+.godot/
+# Android Gradle build template (reinstallable)
+/android/
+# Local builds
+build/
+```
+
+| Commit | Why |
+| :----- | :-- |
+| `project.godot`, `export_presets.cfg` | project and export configuration |
+| `*.tscn`, `*.tres`, `*.gd`, `*.gdshader` | text formats that diff and merge |
+| `*.import` | per-asset import settings (the imported output in `.godot/` is regenerated) |
+| `*.uid` (4.4+) | stable ids for scripts and shaders; keep them next to their source when moving files |
+| `.gitattributes` | `* text=auto eol=lf`; Godot generates it with the project |
+
+Use Git LFS for large binary assets (`.png`, `.wav`, `.ogg`, `.glb`, `.blend`). An empty `.gdignore` file in a
+folder hides it from the editor (raw art sources, docs, node_modules).
+
+## Recipes
+
+### JSON save with atomic write
+Use for save slots: write to a temp file, then rename, so a crash mid-write never corrupts the old save.
+
+```gdscript title="save_system.gd (autoload)"
+extends Node
+
+const DIR := "user://saves"
+const VERSION := 2
+
+func save_slot(slot: int, data: Dictionary) -> Error:
+    DirAccess.make_dir_recursive_absolute(DIR)
+    var path := DIR.path_join("slot_%d.json" % slot)
+    var tmp := path + ".tmp"
+    data["version"] = VERSION
+    var f := FileAccess.open(tmp, FileAccess.WRITE)
+    if f == null:
+        return FileAccess.get_open_error()
+    f.store_string(JSON.stringify(data, "\t"))
+    f.close()
+    return DirAccess.rename_absolute(tmp, path)
+
+func load_slot(slot: int) -> Dictionary:
+    var path := DIR.path_join("slot_%d.json" % slot)
+    if not FileAccess.file_exists(path):
+        return {}
+    var d = JSON.parse_string(
+        FileAccess.get_file_as_string(path))
+    if d is not Dictionary:
+        push_warning("corrupt save " + path)
+        return {}
+    return _migrate(d)
+
+func _migrate(d: Dictionary) -> Dictionary:
+    if int(d.get("version", 1)) < 2:
+        d["gold"] = d.get("coins", 0)   # renamed field
+    return d
+```
+
+### Settings with ConfigFile
+Use for an options menu: apply at startup, save on change.
+
+```gdscript title="settings.gd (autoload)"
+extends Node
+
+const PATH := "user://settings.cfg"
+var cfg := ConfigFile.new()
+
+func _ready() -> void:
+    cfg.load(PATH)                 # missing file is fine
+    apply()
+
+func setv(section: String, key: String, v: Variant) -> void:
+    cfg.set_value(section, key, v)
+    cfg.save(PATH)
+    apply()
+
+func apply() -> void:
+    var full: bool = cfg.get_value("video", "fullscreen",
+        false)
+    DisplayServer.window_set_mode(
+        DisplayServer.WINDOW_MODE_FULLSCREEN if full
+        else DisplayServer.WINDOW_MODE_WINDOWED)
+    var music: float = cfg.get_value("audio", "music", 0.8)
+    var i := AudioServer.get_bus_index("Music")
+    AudioServer.set_bus_volume_db(i, linear_to_db(music))
+```
+
+### Loading screen
+Use between large levels: load in the background, show progress, then swap scenes.
+
+```gdscript title="loading_screen.gd"
+extends Control
+
+var target := ""
+
+func load_level(path: String) -> void:
+    target = path
+    ResourceLoader.load_threaded_request(path, "", true)
+    set_process(true)
+
+func _process(_d: float) -> void:
+    var p := []
+    var s := ResourceLoader.load_threaded_get_status(
+        target, p)
+    if s == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+        %Bar.value = p[0] * 100.0
+    elif s == ResourceLoader.THREAD_LOAD_LOADED:
+        set_process(false)
+        var scene: PackedScene = \
+            ResourceLoader.load_threaded_get(target)
+        get_tree().change_scene_to_packed(scene)
+    else:
+        set_process(false)
+        push_error("failed to load " + target)
+```
+
+### Serve a threaded Web build
+Use to test or host a Thread Support export locally with the required isolation headers (Bun).
+
+```ts title="serve.ts"
+const root = "./build/web";
+const headers = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Embedder-Policy": "require-corp",
+};
+
+Bun.serve({
+  port: 8060,
+  async fetch(req) {
+    let path = new URL(req.url).pathname;
+    if (path === "/") path = "/index.html";
+    const file = Bun.file(root + path);
+    if (!(await file.exists())) {
+      return new Response("Not found", { status: 404 });
+    }
+    return new Response(file, { headers }); // MIME inferred
+  },
+});
+```
+
+### CI export on GitHub Actions
+Use to build a Web export on every push; pin the exact Godot version your project uses.
+
+```yaml title=".github/workflows/export.yml"
+name: export
+on: [push]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      V: 4.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot and templates
+        run: |
+          B=https://github.com/godotengine/godot/releases
+          B=$B/download/$V-stable
+          curl -sLO $B/Godot_v$V-stable_linux.x86_64.zip
+          curl -sLO $B/Godot_v$V-stable_export_templates.tpz
+          unzip -q Godot_v$V-stable_linux.x86_64.zip
+          mv Godot_v$V-stable_linux.x86_64 godot
+          T=~/.local/share/godot/export_templates/$V.stable
+          mkdir -p $T
+          unzip -q Godot_v$V-stable_export_templates.tpz
+          mv templates/* $T/
+      - name: Export
+        run: |
+          mkdir -p build/web
+          ./godot --headless --path . --import
+          ./godot --headless --path . \
+            --export-release "Web" build/web/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: build/web
+```
+
+### Screenshot to user://
+Use for a screenshot key or save-slot thumbnails.
+
+```gdscript
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("screenshot"):
+        var img := get_viewport().get_texture().get_image()
+        var stamp := Time.get_datetime_string_from_system() \
+            .replace(":", "-")
+        DirAccess.make_dir_recursive_absolute(
+            "user://screenshots")
+        img.save_png("user://screenshots/%s.png" % stamp)
+        # thumbnail: img.resize(320, 180) before saving
+```
+
+## References
+
+- [Godot docs: File paths in Godot projects](https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html): `res://`, `user://`, platform locations
+- [Godot docs: Saving games](https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html) and [Runtime file loading and saving](https://docs.godotengine.org/en/stable/tutorials/io/runtime_file_loading_and_saving.html)
+- [Godot docs: Background loading](https://docs.godotengine.org/en/stable/tutorials/io/background_loading.html)
+- [Godot docs: FileAccess](https://docs.godotengine.org/en/stable/classes/class_fileaccess.html), [ConfigFile](https://docs.godotengine.org/en/stable/classes/class_configfile.html), [JSON](https://docs.godotengine.org/en/stable/classes/class_json.html), [DirAccess](https://docs.godotengine.org/en/stable/classes/class_diraccess.html), [ResourceLoader](https://docs.godotengine.org/en/stable/classes/class_resourceloader.html)
+- [Godot docs: Exporting projects](https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html) and [Feature tags](https://docs.godotengine.org/en/stable/tutorials/export/feature_tags.html)
+- [Godot docs: Exporting for the Web](https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_web.html): threads, headers, hosting, limitations
+- [Godot docs: Command line tutorial](https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html)
+- [Godot docs: Overview of debugging tools](https://docs.godotengine.org/en/stable/tutorials/scripting/debug/overview_of_debugging_tools.html) and [The Profiler](https://docs.godotengine.org/en/stable/tutorials/scripting/debug/the_profiler.html)
+- [Godot docs: C#/.NET](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/index.html): setup and platform support
+- [Godot docs: Version control systems](https://docs.godotengine.org/en/stable/tutorials/best_practices/version_control_systems.html)
+- [Godot docs: Optimizing a build for size](https://docs.godotengine.org/en/stable/engine_details/development/compiling/optimizing_for_size.html)
+- [MDN: Cross-Origin-Embedder-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cross-Origin-Embedder-Policy): why threaded builds need isolation

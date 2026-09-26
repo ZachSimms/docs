@@ -1,0 +1,732 @@
+---
+title: UI, animation & audio
+date: 2026-09-26
+order: 4
+---
+
+Godot 4.x's presentation layer: Control nodes, anchors and containers, themes, fonts, focus and HUDs; the
+AnimationPlayer, AnimationTree and Tween APIs; sprite animation; and audio players, buses and effects. Material
+effects are in [Shaders](/game-dev/godot/shaders/); scene and pause mechanics in
+[Nodes, scenes & signals](/game-dev/godot/nodes-scenes/).
+
+## Control basics
+
+`Control` is the base of every UI node. It lives in 2D canvas space, has a rectangle (`position`, `size`),
+receives GUI input, and is laid out either by anchors or by a parent container.
+
+| Member | Notes |
+| :----- | :---- |
+| `position`, `size`, `global_position` | rect in parent coordinates; set by the container when inside one |
+| `custom_minimum_size` | the reliable way to size something inside containers |
+| `get_combined_minimum_size()` | what containers use for layout |
+| `pivot_offset`, `rotation`, `scale` | transform around the pivot (`pivot_offset_ratio` 0 to 1 in 4.6+) |
+| `mouse_filter` | `MOUSE_FILTER_STOP` (eat clicks), `PASS` (handle and let parents see), `IGNORE` (click-through) |
+| `focus_mode` | `FOCUS_NONE`, `FOCUS_CLICK`, `FOCUS_ALL` |
+| `tooltip_text` | hover tooltip |
+| `mouse_default_cursor_shape` | `CURSOR_POINTING_HAND` ... |
+| `clip_contents` | clip children to this rect |
+| `theme`, `theme_type_variation` | styling, inherited by children |
+| Signals | `resized`, `mouse_entered`, `mouse_exited`, `focus_entered`, `focus_exited`, `gui_input(event)` |
+
+<Note kind="tip">
+Full-screen decorative Controls (backgrounds, fade rects, HUD roots) default to `MOUSE_FILTER_STOP` and silently
+swallow clicks meant for the game. Set them to Ignore.
+</Note>
+
+## Anchors & offsets
+
+Each edge has an **anchor** (0 to 1, fraction of the parent's size) and an **offset** (pixels from that
+anchor). Layout presets set both at once.
+
+```text
+ parent rect
+ ┌──────────────────────────────────────────┐
+ │ anchor_left = 0.0         anchor_right=1 │
+ │   ┌──────────────────────────────────┐   │
+ │   │  offset_left = 16                │   │
+ │   │  offset_right = -16  (inset)     │   │  TOP_WIDE bar:
+ │   └──────────────────────────────────┘   │  anchors 0,0,1,0
+ │                                          │
+ │                   ┌────┐                 │  CENTER:
+ │                   │    │ anchors .5 .5   │  all anchors 0.5,
+ │                   └────┘ offsets ±w/2    │  offsets ±size/2
+ └──────────────────────────────────────────┘
+```
+
+| Preset | Anchors (L, T, R, B) | Typical use |
+| :----- | :------------------- | :---------- |
+| `PRESET_TOP_LEFT` | 0, 0, 0, 0 | score, debug text |
+| `PRESET_TOP_RIGHT` | 1, 0, 1, 0 | minimap, close button |
+| `PRESET_BOTTOM_LEFT` / `_RIGHT` | 0/1, 1, 0/1, 1 | ammo, abilities |
+| `PRESET_CENTER` | 0.5 everywhere | dialogs, crosshair |
+| `PRESET_TOP_WIDE` / `_BOTTOM_WIDE` | full width at one edge | top bar, dialogue box |
+| `PRESET_LEFT_WIDE` / `_RIGHT_WIDE` | full height at one edge | side panels |
+| `PRESET_FULL_RECT` | 0, 0, 1, 1 | backgrounds, overlays, HUD roots |
+
+```gdscript
+var panel := Panel.new()
+add_child(panel)
+panel.set_anchors_and_offsets_preset(
+    Control.PRESET_FULL_RECT)
+var hint := Label.new()
+hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+```
+
+`grow_horizontal` / `grow_vertical` decide which way a Control expands when its content outgrows its minimum
+size (for example a centred label that should grow both ways).
+
+## Containers & size flags
+
+A container positions and sizes its children; anchors of children are ignored. Nest containers instead of
+placing things by hand.
+
+| Container | Lays out |
+| :-------- | :------- |
+| `HBoxContainer` / `VBoxContainer` | a row / column; constant `separation`, property `alignment` |
+| `GridContainer` | `columns` wide grid; `h_separation`, `v_separation` |
+| `MarginContainer` | padding: constants `margin_left`, `margin_top`, `margin_right`, `margin_bottom` |
+| `CenterContainer` | centres children at their minimum size |
+| `PanelContainer` | background stylebox plus padding around one child |
+| `ScrollContainer` | scrolls one child; `horizontal_scroll_mode`, `vertical_scroll_mode` |
+| `HFlowContainer` / `VFlowContainer` | wraps like CSS flex-wrap |
+| `HSplitContainer` / `VSplitContainer` | two children with a draggable divider |
+| `TabContainer` | one tab per child; `current_tab` |
+| `AspectRatioContainer` | keeps a ratio |
+| `FoldableContainer` | collapsible section (4.5+) |
+| `SubViewportContainer` | shows a `SubViewport` (3D inside UI, pixel-art viewports) |
+
+| Size flag (`size_flags_horizontal` / `_vertical`) | Effect inside a box container |
+| :----------------------------------------------- | :---------------------------- |
+| `SIZE_FILL` (default) | fill the allotted cell |
+| `SIZE_EXPAND` | ask for extra space; shared by `size_flags_stretch_ratio` |
+| `SIZE_EXPAND_FILL` | expand and fill: the usual "take the rest" (CSS `flex: 1`) |
+| `SIZE_SHRINK_BEGIN` / `_CENTER` / `_END` | keep minimum size, align start / centre / end |
+
+```gdscript
+var row := HBoxContainer.new()
+row.add_theme_constant_override("separation", 12)
+var name_label := Label.new()
+name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+var btn := Button.new()
+btn.custom_minimum_size = Vector2(96, 0)
+row.add_child(name_label)
+row.add_child(btn)
+```
+
+## Stretch & resolution
+
+| Project setting (`display/window/...`) | Common values |
+| :------------------------------------- | :------------ |
+| `size/viewport_width`, `size/viewport_height` | base design size (default 1152 x 648) |
+| `stretch/mode` | `disabled`, `canvas_items` (crisp UI, most games), `viewport` (pixel art: render small, scale up) |
+| `stretch/aspect` | `keep` (letterbox), `expand` (show more; anchor UI to edges), `keep_width`, `keep_height`, `ignore` |
+| `stretch/scale` | extra UI scale factor |
+| `stretch/scale_mode` | `fractional` or `integer` (sharp pixel-art scaling) |
+
+Pixel art: set `stretch/mode = viewport`, `scale_mode = integer`, and the default texture filter
+(`rendering/textures/canvas_textures/default_texture_filter`) to Nearest.
+
+## Themes & overrides
+
+A `Theme` resource holds styles per control type (colours, constants, fonts, font sizes, icons, styleboxes).
+Set it project-wide (Project Settings > GUI > Theme > Custom) or on any Control's `theme` property: children
+inherit it.
+
+| Level | How | Scope |
+| :---- | :-- | :---- |
+| Project theme | `gui/theme/custom` | everything |
+| Node `theme` | inspector or `control.theme = preload(...)` | that branch |
+| Type variation | theme type `HeaderLabel` based on `Label`; set `theme_type_variation` | opt-in look, like a CSS class |
+| Local override | Inspector > Theme Overrides, or `add_theme_*_override` | one node |
+
+```gdscript
+label.add_theme_color_override("font_color", Color.GOLD)
+label.add_theme_font_size_override("font_size", 28)
+label.add_theme_constant_override("outline_size", 4)
+box.add_theme_constant_override("separation", 8)
+label.remove_theme_color_override("font_color")
+
+var sb := StyleBoxFlat.new()
+sb.bg_color = Color("#1e1e2e")
+sb.set_corner_radius_all(8)
+sb.set_border_width_all(2)
+sb.border_color = Color("#89b4fa")
+sb.set_content_margin_all(12)
+button.add_theme_stylebox_override("normal", sb)
+
+var c := get_theme_color("font_color", "Label")  # lookup
+label.theme_type_variation = &"HeaderLabel"
+```
+
+| Stylebox | Use |
+| :------- | :-- |
+| `StyleBoxFlat` | rounded rects, borders, shadows; resolution-independent |
+| `StyleBoxTexture` | nine-patch image skins |
+| `StyleBoxLine` | separators |
+| `StyleBoxEmpty` | remove a background (for example the `focus` box) |
+
+Button stylebox names: `normal`, `hover`, `pressed`, `disabled`, `focus`; colours `font_color`,
+`font_hover_color`, `font_pressed_color`, `font_disabled_color`. The Theme editor (bottom panel) lists every item a
+type supports.
+
+## Fonts & text
+
+| Resource / node | Notes |
+| :-------------- | :---- |
+| `FontFile` | imported `.ttf`, `.otf`, `.woff`, `.woff2`; enable MSDF in import for text that scales a lot |
+| `SystemFont` | OS fonts by family name with fallbacks |
+| `FontVariation` | variable-font axes, fake bold, extra spacing, OpenType features |
+| `LabelSettings` | per-Label font, size, colour, outline, shadow in one shareable resource |
+| `Label` | plain text; `autowrap_mode`, `horizontal_alignment`, `text_overrun_behavior`, `visible_ratio` |
+| `RichTextLabel` | BBCode, images, links, effects; `bbcode_enabled`, `append_text()`, `meta_clicked` |
+
+```gdscript
+rich.bbcode_enabled = true
+rich.text = "[b]Boss[/b] takes [color=red]12[/color] dmg"
+rich.append_text("\n[wave amp=30 freq=4]whoa[/wave]")
+rich.append_text("[url=help]Help[/url]")
+rich.meta_clicked.connect(func(meta): print(meta))
+```
+
+BBCode tags include `[b] [i] [u] [s] [code] [center] [right] [color=...] [bgcolor=...] [font_size=...]
+[font=...] [img] [url] [table=n] [cell]` and effects `[wave] [shake] [tornado] [fade] [rainbow]`. Set the
+default font in the project theme or Project Settings > GUI > Theme > Custom Font.
+
+## Focus & navigation
+
+Keyboard and gamepad menus work through focus: the focused Control receives `ui_accept`, and `ui_up` /
+`ui_down` / `ui_left` / `ui_right` move focus to the nearest neighbour.
+
+```gdscript
+func open_menu() -> void:
+    show()
+    $VBox/Resume.grab_focus()   # required for gamepads
+
+func _ready() -> void:
+    # explicit neighbours when the geometry guess is wrong
+    $VBox/Quit.focus_neighbor_bottom = ^"../Resume"
+    $VBox/Resume.focus_neighbor_top = ^"../Quit"
+    get_viewport().gui_focus_changed.connect(_on_focus)
+
+func _on_focus(c: Control) -> void:
+    $Sfx/Tick.play()
+```
+
+| API | Notes |
+| :-- | :---- |
+| `grab_focus()`, `release_focus()`, `has_focus()` | manage focus |
+| `focus_neighbor_left` / `_top` / `_right` / `_bottom` | NodePaths for arrow navigation |
+| `focus_next`, `focus_previous` | Tab order |
+| `get_viewport().gui_get_focus_owner()` | who has focus |
+| `gui_focus_changed(control)` | Viewport signal |
+| `focus` stylebox | the outline; mouse and keyboard focus can be styled separately in 4.6+ |
+
+## Common controls
+
+| Control | Key API |
+| :------ | :------ |
+| `Button` | `text`, `icon`, `pressed`, `toggle_mode` + `toggled(on)`, `button_group`, `shortcut`, `disabled` |
+| `TextureButton` | image states: `texture_normal`, `_hover`, `_pressed`, `_disabled`, `_focused` |
+| `CheckBox` / `CheckButton` | `button_pressed`, `toggled` |
+| `OptionButton` | `add_item(text, id)`, `selected`, `item_selected(index)` |
+| `MenuButton` / `PopupMenu` | `get_popup().add_item()`, `id_pressed(id)` |
+| `LineEdit` | `text`, `placeholder_text`, `max_length`, `secret`, `text_changed`, `text_submitted` |
+| `TextEdit` / `CodeEdit` | multiline editing |
+| `SpinBox`, `HSlider`, `VSlider` | `Range`: `min_value`, `max_value`, `step`, `value`, `value_changed` |
+| `ProgressBar` / `TextureProgressBar` | `Range` for health and loading; `fill_mode`, `show_percentage` |
+| `TextureRect` | image; `expand_mode`, `stretch_mode` |
+| `NinePatchRect` | scalable framed panel |
+| `ColorRect` | solid colour; fades and backgrounds |
+| `ItemList`, `Tree` | lists and hierarchies |
+| `TabBar`, `TabContainer` | tabs |
+| `AcceptDialog`, `ConfirmationDialog`, `FileDialog` | windows (`popup_centered()`) |
+| `SubViewport` + `SubViewportContainer` | render a 3D model into the UI |
+
+## CanvasLayer & HUD
+
+`CanvasLayer` draws its children on a separate layer that ignores the game camera, so a HUD stays put while the
+`Camera2D` moves.
+
+```tree title="level.tscn"
+Level (Node2D)
+  World (Node2D)
+    Player
+      Camera2D
+  HUD (CanvasLayer)        # layer = 1
+    Root (Control)         # PRESET_FULL_RECT, mouse Ignore
+      MarginContainer
+        HBoxContainer
+          HealthBar
+          Score (Label)
+  PauseMenu (CanvasLayer)  # layer = 10, process Always
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `layer` | draw order between layers (default 1; the world is layer 0; negative for backgrounds) |
+| `visible` | hide the whole layer |
+| `offset`, `rotation`, `scale` | transform the entire layer |
+| `follow_viewport_enabled` | make the layer follow the camera again (parallax-like layers) |
+
+For 3D games the same pattern applies: put the HUD in a CanvasLayer above the 3D view.
+
+## AnimationPlayer
+
+Animates any property of any node (plus method calls and audio) along a timeline. Create animations in the
+Animation bottom panel; key properties with the key icon next to each inspector property.
+
+| Track type | Animates |
+| :--------- | :------- |
+| Property (Value) | any property: `modulate`, `position`, `frame`, `visible`, shader params |
+| Position / Rotation / Scale 3D | fast transform tracks for 3D and skeletons |
+| Blend Shape | mesh morph targets |
+| Call Method | calls a function at a key (spawn a projectile on frame 3) |
+| Bezier Curve | a float with hand-edited curves |
+| Audio Playback | plays audio clips on an AudioStreamPlayer |
+| Animation Playback | triggers animations on another AnimationPlayer |
+
+| Update mode (value tracks) | Behaviour |
+| :------------------------- | :-------- |
+| Continuous | interpolate between keys |
+| Discrete | jump at each key (sprite frames, booleans) |
+| Capture | start from the current value, then follow the keys |
+
+```gdscript
+@onready var anim: AnimationPlayer = $AnimationPlayer
+
+func _ready() -> void:
+    anim.animation_finished.connect(_on_anim_finished)
+    anim.play("idle")
+    anim.play("walk", 0.2)           # 0.2 s cross-fade
+    anim.play("attack", -1, 1.5)     # 1.5x speed
+    anim.play_backwards("open")
+    anim.queue("idle")               # after the current
+    anim.speed_scale = 0.5
+    anim.seek(0.3, true)             # jump and update
+    print(anim.current_animation, anim.is_playing())
+
+func _on_anim_finished(name: StringName) -> void:
+    if name == &"attack":
+        anim.play("idle")
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Libraries | animations live in `AnimationLibrary` resources; the default library has an empty name (`"walk"`), others are addressed as `"combat/slash"` |
+| `RESET` animation | stores default values; the editor restores them on save so scenes are not saved mid-animation |
+| Autoplay | the "A" button in the Animation panel plays an animation on load |
+| Loop | per animation: none, linear, ping-pong; looping animations never emit `animation_finished` |
+| Blend times | `anim.set_blend_time("run", "idle", 0.15)` or `playback_default_blend_time` |
+| Callback mode | `callback_mode_process`: idle, physics or manual (`advance(delta)`) |
+| Shared base | `AnimationMixer` (4.2+) is the base of AnimationPlayer and AnimationTree |
+
+```gdscript
+# Build an animation in code
+var a := Animation.new()
+var t := a.add_track(Animation.TYPE_VALUE)
+a.track_set_path(t, "Sprite2D:modulate")
+a.track_insert_key(t, 0.0, Color.WHITE)
+a.track_insert_key(t, 0.1, Color.RED)
+a.track_insert_key(t, 0.2, Color.WHITE)
+a.length = 0.2
+var lib := AnimationLibrary.new()
+lib.add_animation("flash", a)
+anim.add_animation_library("fx", lib)
+anim.play("fx/flash")
+```
+
+## AnimationTree
+
+`AnimationTree` blends and sequences the animations of an AnimationPlayer (`anim_player` property) using a node
+graph: state machines, blend spaces and one-shots. Set `active = true`.
+
+| Root node type | Use |
+| :------------- | :-- |
+| `AnimationNodeStateMachine` | states with transitions: idle, run, jump, fall |
+| `AnimationNodeBlendTree` | a graph of blend nodes |
+| `AnimationNodeBlendSpace1D` | blend by one value (speed: idle, walk, run) |
+| `AnimationNodeBlendSpace2D` | blend by a vector (8-way strafing, aim offsets) |
+| `AnimationNodeOneShot` | fire an overlay once (attack, hit reaction) |
+| `AnimationNodeBlend2` / `Add2` | mix two inputs by amount |
+| `AnimationNodeTimeScale` | speed control |
+| `AnimationNodeTransition` | switch between inputs with cross-fades |
+
+```gdscript
+@onready var tree: AnimationTree = $AnimationTree
+@onready var playback: AnimationNodeStateMachinePlayback = \
+    tree.get("parameters/playback")
+
+func _physics_process(_d: float) -> void:
+    # BlendSpace2D named "Move" inside the state machine
+    tree.set("parameters/Move/blend_position",
+        velocity.normalized())
+    # Advance conditions on transitions
+    tree.set("parameters/conditions/on_floor", is_on_floor())
+    if Input.is_action_just_pressed("attack"):
+        playback.travel("Attack")   # path-finds transitions
+    print(playback.get_current_node())
+
+func hit() -> void:
+    tree.set("parameters/HitShot/request",
+        AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+```
+
+| Parameter path | Type |
+| :------------- | :--- |
+| `parameters/playback` | `AnimationNodeStateMachinePlayback`: `travel()`, `start()`, `stop()`, `get_current_node()` |
+| `parameters/conditions/<name>` | bool for transition advance conditions |
+| `parameters/<Node>/blend_position` | float or Vector2 for blend spaces |
+| `parameters/<Node>/blend_amount` | Blend2 / Add2 |
+| `parameters/<Node>/request` | OneShot fire / abort / fade out |
+| `parameters/<Node>/transition_request` | Transition node: target input name |
+| `parameters/<Node>/scale` | TimeScale |
+
+Hover a parameter in the inspector to copy its exact path. Transitions can also use an Advance Expression
+evaluated on the tree's `advance_expression_base_node`.
+
+## Tweens
+
+A `Tween` animates values from code with no editor setup. Create it with `create_tween()` (bound to the node:
+paused with it, killed when it is freed); it starts on the next frame and is invalid once finished.
+
+```gdscript
+func pop_in(node: Control) -> void:
+    node.scale = Vector2.ZERO
+    var t := create_tween()
+    t.tween_property(node, "scale", Vector2.ONE, 0.35) \
+        .set_trans(Tween.TRANS_BACK) \
+        .set_ease(Tween.EASE_OUT)
+    t.tween_interval(1.0)                     # wait
+    t.tween_property(node, "modulate:a", 0.0, 0.3)
+    t.parallel().tween_property(               # same time
+        node, "position:y", -20.0, 0.3).as_relative()
+    t.tween_callback(node.queue_free)          # at the end
+```
+
+| Tweener | Does |
+| :------ | :--- |
+| `tween_property(obj, "prop", final, sec)` | animate a property; sub-properties via `"modulate:a"`, `"position:x"` |
+| `tween_method(callable, from, to, sec)` | call a function with the interpolated value |
+| `tween_callback(callable)` | call once at that point in the sequence |
+| `tween_interval(sec)` | wait |
+| `tween_subtween(other)` | nest another tween |
+| `tween_await(signal)` | wait for a signal (4.7+) |
+
+| Modifier | On |
+| :------- | :- |
+| `.from(v)`, `.from_current()`, `.as_relative()`, `.set_delay(s)` | PropertyTweener |
+| `.set_trans(Tween.TRANS_*)`, `.set_ease(Tween.EASE_*)` | tweener or whole tween (default for later tweeners) |
+| `.parallel()` | the next tweener runs with the previous one |
+| `.set_parallel(true)` / `.chain()` | all parallel by default / back to sequence |
+| `.set_loops(n)` | repeat; 0 = forever (beware infinite loops with zero duration) |
+| `.set_speed_scale(k)`, `.set_ignore_time_scale()` | playback speed; ignore `Engine.time_scale` |
+| `.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)` | keep running while paused (menus) |
+| `.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)` | step in physics ticks |
+| `kill()`, `pause()`, `play()`, `stop()`, `is_running()`, `is_valid()` | control |
+| `finished`, `step_finished`, `loop_finished` | signals |
+
+| Transition | Feel |
+| :--------- | :--- |
+| `TRANS_LINEAR` | constant speed |
+| `TRANS_SINE`, `TRANS_QUAD`, `TRANS_CUBIC`, `TRANS_QUART`, `TRANS_QUINT`, `TRANS_EXPO`, `TRANS_CIRC` | increasingly sharp curves |
+| `TRANS_BACK` | overshoot |
+| `TRANS_ELASTIC`, `TRANS_SPRING` | wobble |
+| `TRANS_BOUNCE` | bounces |
+
+Eases: `EASE_IN` (slow start), `EASE_OUT` (slow end, the usual choice for UI), `EASE_IN_OUT`, `EASE_OUT_IN`.
+
+```gdscript
+var _tween: Tween
+
+func highlight() -> void:
+    if _tween:
+        _tween.kill()          # never stack tweens on a prop
+    _tween = create_tween().set_loops(3)
+    _tween.tween_property(self, "modulate", Color.RED, 0.1)
+    _tween.tween_property(self, "modulate", Color.WHITE, 0.1)
+    await _tween.finished
+```
+
+## Sprite animation
+
+| Approach | When |
+| :------- | :--- |
+| `AnimatedSprite2D` / `3D` + `SpriteFrames` | separate images or sheet regions; simple frame-based animation |
+| `Sprite2D` with `hframes` / `vframes` + AnimationPlayer keying `frame` | sprite sheets synced with hitboxes, sounds, method calls |
+| `AnimationTree` over the AnimationPlayer | many states, blending, directions |
+| Skeleton2D / Skeleton3D | cut-out and skeletal animation |
+
+```gdscript
+@onready var spr: AnimatedSprite2D = $AnimatedSprite2D
+
+func _ready() -> void:
+    spr.animation_finished.connect(_on_done)  # non-looping
+    spr.frame_changed.connect(_on_frame)
+
+func _physics_process(_d: float) -> void:
+    if velocity.x != 0.0:
+        spr.flip_h = velocity.x < 0.0
+    var next := &"run" if absf(velocity.x) > 5.0 else &"idle"
+    if spr.animation != next:
+        spr.play(next)           # restarts only on change
+
+func _on_frame() -> void:
+    if spr.animation == &"run" and spr.frame in [1, 5]:
+        $Footstep.play()
+
+func _on_done() -> void:
+    spr.play(&"idle")
+```
+
+| API | Notes |
+| :-- | :---- |
+| `play(name, custom_speed := 1.0, from_end := false)` | play; calling with the current name does not restart |
+| `play_backwards()`, `pause()`, `stop()` | control |
+| `animation`, `frame`, `frame_progress`, `speed_scale` | state |
+| `sprite_frames.set_animation_loop()`, `.set_animation_speed()` | per-animation settings (FPS) |
+| `animation_finished`, `animation_looped`, `frame_changed` | signals |
+| SpriteFrames editor | "Add frames from sprite sheet" slices a grid |
+
+## Audio players & streams
+
+| Node | Positional | Use |
+| :--- | :--------- | :-- |
+| `AudioStreamPlayer` | no | music, UI sounds |
+| `AudioStreamPlayer2D` | 2D distance and panning | in-world 2D sounds; `max_distance`, `attenuation`, `panning_strength` |
+| `AudioStreamPlayer3D` | 3D, doppler, occlusion by distance | `unit_size`, `max_db`, `max_distance`, `attenuation_model`, `doppler_tracking` |
+
+| Member | Notes |
+| :----- | :---- |
+| `stream` | the `AudioStream` resource |
+| `play(from := 0.0)`, `stop()`, `seek(t)`, `playing`, `stream_paused` | control |
+| `volume_db`, `volume_linear` | loudness (dB, or 0 to 1 linear in recent releases) |
+| `pitch_scale` | speed and pitch together |
+| `bus` | output bus name (`&"Master"` default) |
+| `max_polyphony` | overlapping plays of the same player (default 1: `play()` restarts) |
+| `autoplay` | play on enter tree |
+| `finished` | signal when a non-looping stream ends |
+| `playback_type` | Stream or Sample (Web defaults to Sample playback) |
+
+| Stream | Notes |
+| :----- | :---- |
+| `AudioStreamWAV` | uncompressed or IMA-ADPCM/QOA; cheap to decode, ideal for short SFX; loop set in import |
+| `AudioStreamOggVorbis` | compressed; music and ambience; loop and loop offset in import |
+| `AudioStreamMP3` | compressed; music |
+| `AudioStreamRandomizer` | pick from several streams with random pitch and volume: footsteps, hits |
+| `AudioStreamPlaylist` | play streams back to back |
+| `AudioStreamSynchronized` | layered stems kept in sync (vertical music) |
+| `AudioStreamInteractive` | clip-based adaptive music with transitions (4.3+) |
+| `AudioStreamGenerator` | push generated samples from code |
+| `AudioStreamMicrophone` | mic input (needs Project Settings > Audio > Driver > Enable Input) |
+
+```gdscript
+@onready var sfx: AudioStreamPlayer2D = $Sfx
+
+func play_hit() -> void:
+    sfx.pitch_scale = randf_range(0.9, 1.1)  # variation
+    sfx.play()
+
+# Fire-and-forget one-shot that outlives its emitter
+func play_detached(stream: AudioStream, at: Vector2) -> void:
+    var p := AudioStreamPlayer2D.new()
+    p.stream = stream
+    p.global_position = at
+    p.bus = &"SFX"
+    p.finished.connect(p.queue_free)
+    get_tree().current_scene.add_child(p)
+    p.play()
+```
+
+## Buses & effects
+
+The Audio bottom panel edits the bus layout (saved as `res://default_bus_layout.tres`). Every player outputs to a
+bus; buses route into others and finally into Master. Typical layout: Master, Music, SFX, UI, Voice.
+
+```gdscript
+func set_bus_volume(bus_name: String, linear: float) -> void:
+    var i := AudioServer.get_bus_index(bus_name)
+    AudioServer.set_bus_volume_db(i, linear_to_db(linear))
+    AudioServer.set_bus_mute(i, linear <= 0.001)
+
+func muffle(on: bool) -> void:   # e.g. while paused
+    var i := AudioServer.get_bus_index("Music")
+    AudioServer.set_bus_effect_enabled(i, 0, on)  # a filter
+```
+
+| AudioServer | Notes |
+| :---------- | :---- |
+| `get_bus_index(name)`, `get_bus_count()`, `get_bus_name(i)` | lookup |
+| `set_bus_volume_db(i, db)`, `get_bus_volume_db(i)` | volume; convert with `linear_to_db` / `db_to_linear` |
+| `set_bus_mute(i, on)`, `set_bus_solo(i, on)`, `set_bus_bypass_effects(i, on)` | mixer toggles |
+| `add_bus_effect(i, effect, at)`, `get_bus_effect(i, idx)`, `set_bus_effect_enabled(i, idx, on)` | effects |
+| `get_bus_peak_volume_left_db(i, 0)` | meters |
+| `set_bus_layout(layout)` | swap whole layouts |
+
+| Effect | Use |
+| :----- | :-- |
+| `AudioEffectReverb` | rooms, caves (often on a send bus) |
+| `AudioEffectLowPassFilter` / `HighPassFilter` / `BandPassFilter` | muffling underwater or when paused, radio voice |
+| `AudioEffectCompressor`, `AudioEffectLimiter`, `AudioEffectHardLimiter` | control peaks on Master |
+| `AudioEffectDelay`, `AudioEffectChorus`, `AudioEffectPhaser` | colour |
+| `AudioEffectDistortion`, `AudioEffectPitchShift` | stylised voices |
+| `AudioEffectEQ6` / `EQ10` / `EQ21` | equalisers |
+| `AudioEffectSpectrumAnalyzer` | music visualisers |
+| `AudioEffectRecord`, `AudioEffectCapture` | record or read mixed audio |
+
+Human hearing is logarithmic: map UI sliders (0 to 1) through `linear_to_db`, never straight to dB. Audio players
+pause with the tree unless their `process_mode` is Always (give the music player Always).
+
+## Recipes
+
+### Health bar with lag
+Use for a HUD bar where damage shows as a trailing "ghost" segment behind the real value.
+
+```gdscript title="health_bar.gd"
+extends Control
+
+@onready var bar: ProgressBar = $Bar           # front
+@onready var ghost: ProgressBar = $Ghost       # behind
+var _tween: Tween
+
+func setup(max_value: int) -> void:
+    for b: ProgressBar in [bar, ghost]:
+        b.max_value = max_value
+        b.value = max_value
+
+func set_health(v: int) -> void:
+    bar.value = v
+    if _tween:
+        _tween.kill()
+    _tween = create_tween()
+    _tween.tween_interval(0.3)
+    _tween.tween_property(ghost, "value", float(v), 0.4) \
+        .set_trans(Tween.TRANS_CUBIC) \
+        .set_ease(Tween.EASE_OUT)
+```
+
+### Pause menu
+Use as a CanvasLayer scene in each level; it runs while the tree is paused and grabs focus for gamepads.
+
+```gdscript title="pause_menu.gd"
+extends CanvasLayer
+
+@onready var resume: Button = %Resume
+@onready var quit: Button = %Quit
+
+func _ready() -> void:
+    layer = 10
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    visible = false
+    resume.pressed.connect(toggle)
+    quit.pressed.connect(get_tree().quit)
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("ui_cancel"):
+        toggle()
+        get_viewport().set_input_as_handled()
+
+func toggle() -> void:
+    var paused := not get_tree().paused
+    get_tree().paused = paused
+    visible = paused
+    if paused:
+        resume.grab_focus()
+```
+
+### Screen shake with a tween
+Use on a `Camera2D` for hits and explosions; the random offset decays to zero over the duration.
+
+```gdscript title="shake_camera.gd"
+extends Camera2D
+
+var _shake: Tween
+
+func shake(strength := 8.0, duration := 0.3) -> void:
+    if _shake:
+        _shake.kill()
+    _shake = create_tween()
+    _shake.tween_method(_apply, strength, 0.0, duration) \
+        .set_ease(Tween.EASE_OUT) \
+        .set_trans(Tween.TRANS_QUAD)
+    _shake.tween_callback(func(): offset = Vector2.ZERO)
+
+func _apply(s: float) -> void:
+    offset = Vector2(randf_range(-s, s), randf_range(-s, s))
+```
+
+### Fade to black
+Use for cutscene cuts, respawns and scene changes (full version with scene switching in
+[Nodes, scenes & signals](/game-dev/godot/nodes-scenes/#scene-switcher-with-fade)).
+
+```gdscript title="fader.gd"
+extends CanvasLayer
+# Child: ColorRect "Rect", black, full rect, mouse Ignore
+
+@onready var rect: ColorRect = $Rect
+
+func fade(to_alpha: float, time := 0.4) -> void:
+    var t := create_tween()
+    t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+    t.tween_property(rect, "color:a", to_alpha, time)
+    await t.finished
+
+# await Fader.fade(1.0); respawn(); await Fader.fade(0.0)
+```
+
+### Button SFX everywhere
+Use as an autoload scene with two AudioStreamPlayers (`Click`, `Hover`) on the UI bus: every Button in every
+scene gets sounds without per-scene wiring.
+
+```gdscript title="ui_sounds.gd (autoload)"
+extends Node
+
+@onready var click: AudioStreamPlayer = $Click
+@onready var hover: AudioStreamPlayer = $Hover
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS  # pause menus
+    click.max_polyphony = 4
+    get_tree().node_added.connect(_on_node_added)
+
+func _on_node_added(node: Node) -> void:
+    if node is BaseButton:
+        node.pressed.connect(click.play)
+        node.mouse_entered.connect(hover.play)
+        node.focus_entered.connect(hover.play)
+```
+
+### Volume slider
+Use in an options menu; one slider per bus, value 0 to 1.
+
+```gdscript title="volume_slider.gd"
+extends HSlider
+
+@export var bus_name := "Music"
+@onready var _bus := AudioServer.get_bus_index(bus_name)
+
+func _ready() -> void:
+    min_value = 0.0
+    max_value = 1.0
+    step = 0.05
+    value = db_to_linear(AudioServer.get_bus_volume_db(_bus))
+    value_changed.connect(_on_changed)
+
+func _on_changed(v: float) -> void:
+    AudioServer.set_bus_volume_db(_bus, linear_to_db(v))
+    AudioServer.set_bus_mute(_bus, v <= 0.0)
+```
+
+## References
+
+- [Godot docs: Size and anchors](https://docs.godotengine.org/en/stable/tutorials/ui/size_and_anchors.html) and [Using containers](https://docs.godotengine.org/en/stable/tutorials/ui/gui_containers.html)
+- [Godot docs: GUI skinning and themes](https://docs.godotengine.org/en/stable/tutorials/ui/gui_skinning.html) and [Theme type variations](https://docs.godotengine.org/en/stable/tutorials/ui/gui_theme_type_variations.html)
+- [Godot docs: Keyboard/controller navigation and focus](https://docs.godotengine.org/en/stable/tutorials/ui/gui_navigation.html)
+- [Godot docs: Multiple resolutions](https://docs.godotengine.org/en/stable/tutorials/rendering/multiple_resolutions.html): stretch modes and aspect
+- [Godot docs: BBCode in RichTextLabel](https://docs.godotengine.org/en/stable/tutorials/ui/bbcode_in_richtextlabel.html)
+- [Godot docs: Introduction to the animation features](https://docs.godotengine.org/en/stable/tutorials/animation/introduction.html) and [Using AnimationTree](https://docs.godotengine.org/en/stable/tutorials/animation/animation_tree.html)
+- [Godot docs: 2D sprite animation](https://docs.godotengine.org/en/stable/tutorials/2d/2d_sprite_animation.html)
+- [Godot docs: Tween class](https://docs.godotengine.org/en/stable/classes/class_tween.html)
+- [Godot docs: Audio buses](https://docs.godotengine.org/en/stable/tutorials/audio/audio_buses.html), [Audio streams](https://docs.godotengine.org/en/stable/tutorials/audio/audio_streams.html) and [Audio effects](https://docs.godotengine.org/en/stable/tutorials/audio/audio_effects.html)
+- [Godot docs: Canvas layers](https://docs.godotengine.org/en/stable/tutorials/2d/canvas_layers.html)
+- [easings.net](https://easings.net/): visual reference for the easing curves behind `TRANS_*` / `EASE_*`
