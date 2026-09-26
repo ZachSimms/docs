@@ -22,7 +22,7 @@ const Playground = dynamic(() => import("./Playground").then((m) => m.Playground
   ),
 });
 
-/** The playground, client-side only; `route="node"` on the WebContainer page. */
-export function PlaygroundLoader({ route = "main" }: { route?: "main" | "node" }) {
-  return <Playground route={route} />;
+/** The playground, client-side only. */
+export function PlaygroundLoader() {
+  return <Playground />;
 }

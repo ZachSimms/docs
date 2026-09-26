@@ -50,16 +50,6 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        // The Next.js playground boots a WebContainer, which needs SharedArrayBuffer, so a
-        // cross-origin-isolated page. `credentialless` (not `require-corp`) still lets the
-        // reference panel frame the site's own sheets and show DevDocs images.
-        source: "/playground/node/:path*",
-        headers: [
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
-        ],
-      },
     ];
   },
 };

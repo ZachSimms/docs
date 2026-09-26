@@ -73,7 +73,6 @@ export const DOCS_FOR: Readonly<Record<LanguageId, readonly string[]>> = {
   python: ["python~3.14"],
   bun: ["bun", "javascript", "http"],
   hono: ["bun", "http", "javascript"],
-  nextjs: ["nextjs", "react", "node"],
   cpp: ["cpp"],
   rust: ["rust"],
   gdscript: ["godot~4.7"],
@@ -86,9 +85,6 @@ export const FRAMED_FOR: Readonly<Partial<Record<LanguageId, readonly FramedSour
   web: [{ id: "tailwind", name: "Tailwind CSS docs", url: "https://tailwindcss.com/docs" }],
   react: [{ id: "tailwind", name: "Tailwind CSS docs", url: "https://tailwindcss.com/docs" }],
 };
-
-/** Current Next.js docs can't be framed (X-Frame-Options: DENY); DevDocs only has 14.2. */
-export const NEXTJS_CURRENT_DOCS = "https://nextjs.org/docs";
 
 /** The manifest's docsets, parsed. */
 export function parseManifest(json: unknown): Docset[] {

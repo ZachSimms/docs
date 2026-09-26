@@ -49,18 +49,7 @@ interface ReferencePanelProps {
   requestedDoc?: (DocRequest & { n: number }) | null;
   /** The requested docs page is on screen (the playground then forgets the request). */
   onDocShown?(): void;
-  /**
-   * The page is cross-origin isolated (the Node playground): sheets load in a
-   * `credentialless` frame, and sheets with third-party embeds (fitness videos) are left out.
-   */
-  isolated?: boolean;
 }
-
-/** Sheets with YouTube embeds, which can't load inside a cross-origin-isolated page. */
-const EMBED_TOPICS = ["/fitness/"];
-
-/** Frame attributes for an isolated page (React passes unknown attributes through). */
-const CREDENTIALLESS: Record<string, string> = { credentialless: "true" };
 
 /** Render the panel. */
 export function ReferencePanel({
@@ -72,7 +61,6 @@ export function ReferencePanel({
   requested,
   requestedDoc = null,
   onDocShown,
-  isolated = false,
 }: ReferencePanelProps) {
   const [query, setQuery] = useState("");
   const [docs, setDocs] = useState<SearchDoc[] | null>(null);
@@ -124,10 +112,7 @@ export function ReferencePanel({
     query.trim()
       ? hits.map((h) => ({ url: h.doc.url, label: docPath(h.doc) }))
       : suggestions.map((s) => ({ url: s.href, label: s.label }))
-  ).filter(
-    (item) =>
-      isSheetUrl(item.url) && !(isolated && EMBED_TOPICS.some((t) => item.url.startsWith(t))),
-  );
+  ).filter((item) => isSheetUrl(item.url));
   const current = Math.min(selected, Math.max(items.length - 1, 0));
 
   const onSearchKey = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -226,7 +211,6 @@ export function ReferencePanel({
                 // navigate the playground itself; the flags stay if the frame goes elsewhere.
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 title={`Reference: ${url}`}
-                {...(isolated ? CREDENTIALLESS : {})}
                 className="pg-refs-frame"
                 onLoad={syncTheme}
               />

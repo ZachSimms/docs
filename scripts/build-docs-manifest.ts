@@ -23,7 +23,6 @@ const SLUGS = [
   "rust",
   "godot~4.7",
   "react",
-  "nextjs",
   "bun",
   "node",
 ] as const;
@@ -41,7 +40,6 @@ const NAMES: Record<(typeof SLUGS)[number], string> = {
   rust: "Rust",
   "godot~4.7": "Godot 4.7",
   react: "React",
-  nextjs: "Next.js",
   bun: "Bun",
   node: "Node.js",
 };
@@ -90,5 +88,8 @@ const docs = SLUGS.map((slug) => {
 });
 
 const out = path.join(import.meta.dir, "..", "public", "playground", "docs-manifest.json");
-writeFileSync(out, `${JSON.stringify({ generated: new Date().toISOString().slice(0, 10), docs }, null, 2)}\n`);
+writeFileSync(
+  out,
+  `${JSON.stringify({ generated: new Date().toISOString().slice(0, 10), docs }, null, 2)}\n`,
+);
 console.log(`wrote ${docs.length} docsets to ${path.relative(process.cwd(), out)}`);

@@ -415,8 +415,7 @@ describe("reference panel helpers", () => {
   it("recognize the playground path and site-relative sheet URLs only", () => {
     expect(isPlaygroundPath("/playground/")).toBe(true);
     expect(isPlaygroundPath("/playground")).toBe(true);
-    expect(isPlaygroundPath("/playground/node/")).toBe(true);
-    expect(isPlaygroundPath("/playground/node")).toBe(true);
+    expect(isPlaygroundPath("/playground/node/")).toBe(false);
     expect(isPlaygroundPath("/playground/godot/")).toBe(false);
     expect(isPlaygroundPath("/python/")).toBe(false);
     expect(isSheetUrl("/design/css/tailwind/")).toBe(true);

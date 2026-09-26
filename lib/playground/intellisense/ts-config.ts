@@ -28,7 +28,6 @@ const TS_PROJECTS: ReadonlySet<LanguageId> = new Set([
   "react",
   "bun",
   "hono",
-  "nextjs",
 ]);
 
 /** Project types that see the emulated `Bun` global. */

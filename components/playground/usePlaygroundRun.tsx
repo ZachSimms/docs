@@ -209,8 +209,8 @@ export function usePlaygroundRun(): PlaygroundRun {
   const run = useCallback(
     (language: LanguageId, project: Project, stdin: string) => {
       const spec = getLanguage(language);
-      // The preview runs itself; Markdown only previews; Next.js runs on its own page.
-      if (spec.runner === "web" || spec.runner === "markdown" || spec.runner === "node") return;
+      // The preview runs itself; Markdown only previews.
+      if (spec.runner === "web" || spec.runner === "markdown") return;
       if (
         (spec.runner === "cpp" || spec.runner === "rust") &&
         performance.now() < nextRemote.current

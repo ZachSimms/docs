@@ -1,6 +1,6 @@
 /**
  * @file Starter projects for the web, server and notes project types:
- * HTML/CSS/TS, React, Bun (emulated), Bun + Hono, Next.js and Markdown.
+ * HTML/CSS/TS, React, Bun (emulated), Bun + Hono and Markdown.
  */
 
 import type { Project } from "./project";
@@ -11,17 +11,7 @@ function starter(entry: string, files: Record<string, string>): Project {
 }
 
 /** Versions the templates pin (checked against npm on 2026-09-26). */
-/**
- * Pinned versions. Next.js stays on 15.4.8: newer releases fail in WebContainers with
- * "Expected workUnitAsyncStorage to have a store" (stackblitz/webcontainer-core#1978), and
- * 15.4.8 is the newest release with both the security fixes and a WebAssembly SWC build.
- */
-export const TEMPLATE_VERSIONS = {
-  react: "19.3.0",
-  hono: "4.13.9",
-  next: "15.4.8",
-  nextReact: "19.2.0",
-} as const;
+export const TEMPLATE_VERSIONS = { react: "19.3.0", hono: "4.13.9" } as const;
 
 export const WEB_TS = starter("index.html", {
   "README.md": `# HTML/CSS/TS
@@ -273,87 +263,6 @@ export const logger = createMiddleware(async (c, next) => {
   "dependencies": {
     "hono": "${TEMPLATE_VERSIONS.hono}"
   }
-}
-`,
-});
-
-export const NEXTJS = starter("app/page.tsx", {
-  "README.md": `# Next.js
-
-A real \`next dev\` (Next.js ${TEMPLATE_VERSIONS.next}, App Router) running in a WebContainer in your
-browser. It needs desktop Chrome, Edge or Firefox; the first run installs about 200 MB into memory.
-
-Next.js 15.4 is the newest version that runs in WebContainers today (newer ones hit a
-WebContainer bug). Edits reload in the preview; press Run again after changing \`package.json\`.
-
-- \`app/page.tsx\` is the home page, \`app/layout.tsx\` wraps every page
-- \`app/api/hello/route.ts\` is a route handler at \`/api/hello\`
-`,
-  "app/layout.tsx": `import type { ReactNode } from "react";
-
-export const metadata = { title: "Next.js playground" };
-
-export default function RootLayout({ children }: { children: ReactNode }) {
-  return (
-    <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: "2rem" }}>{children}</body>
-    </html>
-  );
-}
-`,
-  "app/page.tsx": `export default async function Home() {
-  const time = new Date().toLocaleTimeString();
-  return (
-    <main>
-      <h1>Hello from Next.js</h1>
-      <p>Rendered on the server at {time}.</p>
-      <p>
-        <a href="/api/hello">/api/hello</a>
-      </p>
-    </main>
-  );
-}
-`,
-  "app/api/hello/route.ts": `export function GET() {
-  return Response.json({ hello: "world" });
-}
-`,
-  "next.config.ts": `import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {};
-
-export default nextConfig;
-`,
-  "package.json": `{
-  "name": "next-playground",
-  "private": true,
-  "scripts": { "dev": "next dev --port 3000" },
-  "dependencies": {
-    "next": "${TEMPLATE_VERSIONS.next}",
-    "react": "${TEMPLATE_VERSIONS.nextReact}",
-    "react-dom": "${TEMPLATE_VERSIONS.nextReact}"
-  },
-  "devDependencies": {
-    "@next/swc-wasm-nodejs": "${TEMPLATE_VERSIONS.next}",
-    "typescript": "5.9.3",
-    "@types/react": "19.2.2",
-    "@types/node": "24.13.3"
-  }
-}
-`,
-  "tsconfig.json": `{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "jsx": "preserve",
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noEmit": true,
-    "incremental": true,
-    "plugins": [{ "name": "next" }]
-  },
-  "include": ["**/*.ts", "**/*.tsx"]
 }
 `,
 });

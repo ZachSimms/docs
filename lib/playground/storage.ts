@@ -63,9 +63,11 @@ const prefsSchema = z.object({
     .partialRecord(z.enum(LANGUAGE_IDS), z.string().max(64 * 1024))
     .catch(DEFAULT_PREFS.stdin),
   treeOpen: z.boolean().catch(DEFAULT_PREFS.treeOpen),
+  // Ids of removed project types (like "nextjs") are dropped, keeping the other approvals.
   approvedDownloads: z
-    .array(z.enum(LANGUAGE_IDS))
-    .max(LANGUAGE_IDS.length)
+    .array(z.string())
+    .max(64)
+    .transform((ids) => ids.filter(isLanguageId))
     .catch([...DEFAULT_PREFS.approvedDownloads]),
 });
 
@@ -128,8 +130,23 @@ export function saveProject(
   return writeJson(storage, PROJECT_KEY_PREFIX + language, project);
 }
 
+/** Project types that no longer exist, whose saved projects are removed on load. */
+export const REMOVED_LANGUAGES: readonly string[] = ["nextjs"];
+
+/** Whether `id` is a current project type. */
+function isLanguageId(id: string): id is LanguageId {
+  return (LANGUAGE_IDS as readonly string[]).includes(id);
+}
+
 /** The saved preferences, with defaults for anything missing or invalid. */
 export function loadPrefs(storage: Storage | null = defaultStorage()): Prefs {
+  for (const id of REMOVED_LANGUAGES) {
+    try {
+      storage?.removeItem(PROJECT_KEY_PREFIX + id);
+    } catch {
+      // Storage disabled: nothing to clean up.
+    }
+  }
   const parsed = prefsSchema.safeParse(readJson(storage, PREFS_KEY) ?? {});
   return parsed.success ? parsed.data : DEFAULT_PREFS;
 }

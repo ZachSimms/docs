@@ -14,18 +14,9 @@ export const OPEN_REFERENCE_EVENT = "open-reference";
 /** The playground's route. */
 export const PLAYGROUND_PATH = "/playground/";
 
-/** The Next.js playground's route (a WebContainer page; see `lib/playground/webcontainer.ts`). */
-const NODE_PLAYGROUND_PATH = "/playground/node/";
-
-/**
- * Whether `pathname` is a playground page (`/playground/` or the Next.js one,
- * with or without the trailing slash): ⌘K results open in its reference panel
- * there, since leaving would lose the running project.
- */
+/** Whether `pathname` is the playground (with or without the trailing slash). */
 export function isPlaygroundPath(pathname: string): boolean {
-  return [PLAYGROUND_PATH, NODE_PLAYGROUND_PATH].some(
-    (path) => pathname === path || pathname === path.slice(0, -1),
-  );
+  return pathname === PLAYGROUND_PATH || pathname === PLAYGROUND_PATH.slice(0, -1);
 }
 
 /** Ask the reference panel to show a sheet. */

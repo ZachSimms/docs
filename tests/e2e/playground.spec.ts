@@ -597,55 +597,17 @@ test.describe("playground: project types", () => {
   });
 });
 
-test.describe("playground: Next.js (WebContainer)", () => {
-  test("only the Node page is cross-origin isolated, and the picker moves between pages", async ({
-    page,
-  }) => {
-    const main = await page.request.get("/playground/");
-    expect(main.headers()["cross-origin-embedder-policy"]).toBeUndefined();
-    const node = await page.request.get("/playground/node/");
-    expect(node.headers()["cross-origin-opener-policy"]).toBe("same-origin");
-    expect(node.headers()["cross-origin-embedder-policy"]).toBe("credentialless");
-
+test.describe("playground: project list", () => {
+  test("Next.js is gone: not in the picker, and its old page doesn't exist", async ({ page }) => {
     await openPlayground(page, "typescript");
-    await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: "Next.js" });
-    await expect(page).toHaveURL(/\/playground\/node\/$/);
-    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
-    await expect(page.getByRole("region", { name: "Next.js preview" })).toContainText(
-      "press Run (⌘↵) to start next dev",
-    );
-    // Sheets still open in the panel here (in a credentialless frame).
-    await page.getByRole("button", { name: /Refs/ }).first().click();
-    await page
-      .getByRole("complementary", { name: "Reference sheets" })
-      .getByRole("option")
-      .first()
-      .click();
-    await expect(page.frameLocator(".pg-refs-frame").locator("main h1")).toBeVisible();
-
-    await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: "Python" });
-    await expect(page).toHaveURL(/\/playground\/$/);
-  });
-
-  test("next dev runs in the WebContainer and edits reload (network)", async ({ page }) => {
-    test.skip(!process.env.E2E_NETWORK, "installs Next.js from npm (set E2E_NETWORK=1)");
-    test.setTimeout(300_000);
-    await page.addInitScript(() => {
-      try {
-        localStorage.setItem(
-          "playground:v1:prefs",
-          JSON.stringify({ language: "nextjs", approvedDownloads: ["nextjs"], welcomed: true }),
-        );
-      } catch {
-        // frames without storage
-      }
-    });
-    await page.goto("/playground/node/");
-    await page.getByRole("button", { name: /Run/ }).click();
-    const preview = page.frameLocator(".pg-node-frame");
-    await expect(preview.locator("h1")).toHaveText("Hello from Next.js", { timeout: 240_000 });
-    await page.locator('[role="treeitem"][data-path="app/page.tsx"]').click();
-    await setCode(page, "export default function Home() {\n  return <h1>Edited live</h1>;\n}\n");
-    await expect(preview.locator("h1")).toHaveText("Edited live", { timeout: 30_000 });
+    const labels = await page
+      .getByRole("combobox", { name: "Project" })
+      .locator("option")
+      .allTextContents();
+    expect(labels).not.toContain("Next.js");
+    expect(labels).toContain("React");
+    const old = await page.request.get("/playground/node/");
+    expect(old.status()).toBe(404);
+    expect(old.headers()["cross-origin-embedder-policy"]).toBeUndefined();
   });
 });

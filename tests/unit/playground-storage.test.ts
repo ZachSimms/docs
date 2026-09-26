@@ -74,6 +74,18 @@ describe("projects", () => {
 });
 
 describe("prefs", () => {
+  it("survive a removed project type: Next.js falls back, other approvals stay, its project is deleted", () => {
+    store.setItem(
+      PREFS_KEY,
+      JSON.stringify({ language: "nextjs", approvedDownloads: ["nextjs", "gdscript", "python"] }),
+    );
+    store.setItem(`${PROJECT_KEY_PREFIX}nextjs`, JSON.stringify({ files: {} }));
+    const prefs = loadPrefs(store);
+    expect(prefs.language).toBe(DEFAULT_PREFS.language);
+    expect(prefs.approvedDownloads).toEqual(["gdscript", "python"]);
+    expect(store.getItem(`${PROJECT_KEY_PREFIX}nextjs`)).toBeNull();
+  });
+
   it("returns defaults when empty or invalid, and round-trips valid prefs", () => {
     expect(loadPrefs(store)).toEqual(DEFAULT_PREFS);
     store.setItem(PREFS_KEY, JSON.stringify({ language: "cobol", layout: "wide" }));

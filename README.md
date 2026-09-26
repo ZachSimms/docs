@@ -81,7 +81,7 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
 - **Table of contents**: on wide viewports every sheet with two or more `##`/`###` headings gets a
   contents list in the right margin; the section on screen is underlined solid.
 - **Playground** (`/playground/`, linked from the home footer): a browser IDE for C++, Rust, Python,
-  JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, Next.js, GDScript and Markdown. Each
+  JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, GDScript and Markdown. Each
   is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
   intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets or the official docs
   (MDN and others) beside the code. See [Playground](#playground).
@@ -139,7 +139,6 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                 |
 | `/info/`                 | about                                                        |
 | `/playground/`           | the in-browser IDE                                           |
-| `/playground/node/`      | the IDE for Next.js (cross-origin isolated, runs a WebContainer) |
 
 The topic at `/math/` used to live at `/maths/`; old links redirect (`next.config.ts`).
 
@@ -179,7 +178,6 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 | React | the sandboxed live preview, TSX via Sucrase | packages from esm.sh at the `package.json` versions, all on one React (19.3) |
 | Bun | a worker with Bun's APIs **emulated** (not real Bun) | `Bun.serve`, `Bun.file`/`write` (in memory), `Bun.env` from `.env`; no `Bun.spawn`, `Bun.$`, `bun:sqlite`; requests come from the HTTP panel and never leave the browser |
 | Bun + Hono | the same, with real Hono (4.13) from esm.sh | `export default app` or `Bun.serve({ fetch: app.fetch })` |
-| Next.js | a real `next dev` in a WebContainer (StackBlitz), on `/playground/node/` | desktop Chrome, Edge or Firefox; ≈ 200 MB install on the first run (asked first); edits reload; iPhone and other browsers can open the project on StackBlitz. Pinned to Next.js 15.4.8: newer versions fail in WebContainers ([webcontainer-core#1978](https://github.com/stackblitz/webcontainer-core/issues/1978)) |
 | Markdown | nothing runs | GFM preview beside the editor (raw HTML is escaped); `.md` files in any project get the preview too |
 
 - **Intellisense:** hover, completions and diagnostics, loaded when the editor is first focused.
@@ -196,10 +194,9 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
   - On touch screens, the `ⓘ` key on the symbol row shows the hover for the name at the cursor.
 - **Official docs:** the reference panel's **Docs** tab searches the official references for the current project
   (MDN's HTML, CSS, JavaScript, Web APIs and HTTP; TypeScript; Python 3.14; cppreference; Rust; Godot 4.7; React;
-  Next.js; Bun; Node) through [DevDocs](https://devdocs.io/). Pages are sanitized with DOMPurify and shown in a
+  Bun; Node) through [DevDocs](https://devdocs.io/). Pages are sanitized with DOMPurify and shown in a
   scriptless frame with a `default-src 'none'` CSP, with their license and "via DevDocs"; links inside a
-  docset open in the panel. Hono and Tailwind docs are framed from their own sites; current Next.js docs open on
-  nextjs.org (DevDocs has 14.2). `bun scripts/build-docs-manifest.ts` refreshes the committed docset list.
+  docset open in the panel. Hono and Tailwind docs are framed from their own sites. `bun scripts/build-docs-manifest.ts` refreshes the committed docset list.
 - **Layout:** every pane edge is a drag handle (keyboard too: arrows, Shift for bigger steps, Home/End, Enter or
   double-click to reset), remembered per browser. Zen mode keeps only the code, the output and Refs.
 - **Help:** `?` (or `F1`) opens the getting-started help; a first-visit card offers a 1-minute tour of the
@@ -211,8 +208,7 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
   frames carrying the run's token, validates them with Zod and renders output as text. Site pages send
   `frame-ancestors 'self'`, so only the reference panel can frame them. The TypeScript and basedpyright workers
   run on the site's origin but only analyze code; downloaded `.d.ts` files and DevDocs pages are data, never run.
-  Next.js code runs on StackBlitz's origin (`*.webcontainer-api.io`); only `/playground/node/` is cross-origin
-  isolated (COOP `same-origin`, COEP `credentialless`), and sheets load there in `credentialless` frames.
+  The HTML preview also allows forms (`allow-forms`), which can only navigate the preview frame itself.
 - **Phones:** one pane at a time (`Code`, `Files`, `Output`, `Refs`), a symbol row above the keyboard, 16px text
   and 44px targets; edge double-taps are off on the playground.
 - **Rebuilding the GDScript runner:** `brew install --cask godot`, install the single-threaded web export templates
@@ -256,16 +252,11 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
   [Pyodide](https://pyodide.org/) (MPL-2.0), React, Hono and other npm packages via [esm.sh](https://esm.sh/).
   C++ and Rust run on [Compiler Explorer](https://godbolt.org/), [Wandbox](https://wandbox.org/) and the
   [Rust Playground](https://play.rust-lang.org/).
-- **WebContainers:** the Next.js playground uses the [WebContainer API](https://webcontainers.io/) (`@webcontainer/api`,
-  MIT) by StackBlitz, which relies on StackBlitz's hosted services and their
-  [Terms of Service](https://stackblitz.com/terms-of-service); commercial production use needs a WebContainer API
-  license from StackBlitz.
 - **Official docs:** the Docs tab and the hover docs show content from [DevDocs](https://devdocs.io/) (MPL-2.0
   application; content under each source's license): MDN Web Docs (© MDN contributors, CC BY-SA 2.5+),
   cppreference.com (CC BY-SA 3.0), the Python documentation (PSF License), the Rust documentation (MIT/Apache-2.0),
-  the Godot documentation (CC BY 3.0), React (CC BY 4.0), TypeScript (Apache-2.0), Next.js, Bun and Node.js
-  (MIT). Each page and
-  hover names its source and license (`public/playground/docs-manifest.json`).
+  the Godot documentation (CC BY 3.0), React (CC BY 4.0), TypeScript (Apache-2.0), Bun and Node.js
+  (MIT). Each page and hover names its source and license (`public/playground/docs-manifest.json`).
 - **Videos:** embedded YouTube videos belong to their channels, which are named in each caption.
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.

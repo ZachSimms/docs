@@ -61,19 +61,6 @@ test.describe("playground on a phone", () => {
     }).toPass({ timeout: 20_000 });
   });
 
-  test("iPhone gets the StackBlitz fallback for Next.js", async ({ page, browserName }) => {
-    test.skip(browserName !== "webkit", "WebKit (iPhone) only");
-    await openPlayground(page, "nextjs");
-    await page.goto("/playground/node/");
-    const panel = page.getByRole("region", { name: "Next.js preview" });
-    await page.getByRole("tab", { name: "Output" }).click();
-    await expect(panel).toContainText("don't run on iPhone or iPad");
-    await expect(
-      panel.getByRole("button", { name: /Open this project on StackBlitz/ }),
-    ).toBeVisible();
-    await expect(panel.locator('input[name="project[files][app/page.tsx]"]')).toHaveCount(1);
-  });
-
   test("touch targets are at least 44px", async ({ page }) => {
     await openPlayground(page, "typescript");
     const targets = [

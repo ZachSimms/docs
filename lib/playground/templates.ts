@@ -4,7 +4,7 @@
  */
 
 import type { Project } from "./project";
-import { BUN, HONO, MARKDOWN, NEXTJS, REACT, WEB_TS } from "./templates-extra";
+import { BUN, HONO, MARKDOWN, REACT, WEB_TS } from "./templates-extra";
 
 /** A project whose entry is open in a single tab, with a README that explains it. */
 function starter(entry: string, files: Record<string, string>, readme?: string): Project {
@@ -261,6 +261,5 @@ export const TEMPLATES = {
   react: REACT,
   bun: BUN,
   hono: HONO,
-  nextjs: NEXTJS,
   markdown: MARKDOWN,
 } as const satisfies Record<string, Project>;

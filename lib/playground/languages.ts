@@ -18,7 +18,6 @@ export const LANGUAGE_IDS = [
   "python",
   "bun",
   "hono",
-  "nextjs",
   "cpp",
   "rust",
   "gdscript",
@@ -36,11 +35,10 @@ export type LanguageId = (typeof LANGUAGE_IDS)[number];
  * - `cpp` / `rust`: Compiler Explorer (with a fallback service);
  * - `godot`: the self-hosted Godot web build in a sandboxed frame;
  * - `bun`: a worker with an emulation of Bun's APIs, driven by the HTTP panel;
- * - `node`: a WebContainer on its own isolated page (`/playground/node/`);
  * - `markdown`: nothing runs, the preview renders.
  */
 export type RunnerKind =
-  "script" | "web" | "python" | "cpp" | "rust" | "godot" | "bun" | "node" | "markdown";
+  "script" | "web" | "python" | "cpp" | "rust" | "godot" | "bun" | "markdown";
 
 /** Groups of the project picker, in order. */
 export const LANGUAGE_GROUPS = ["Web", "Scripts", "Servers", "Compiled", "Game", "Notes"] as const;
@@ -213,18 +211,6 @@ export const LANGUAGES: readonly LanguageSpec[] = [
       { method: "GET", path: "/users/1" },
       { method: "POST", path: "/users", body: '{ "name": "Grace" }' },
     ],
-  },
-  {
-    id: "nextjs",
-    label: "Next.js",
-    group: "Servers",
-    runner: "node",
-    stdin: false,
-    credit:
-      "Runs next dev in a WebContainer (StackBlitz) in your browser; desktop Chrome, Edge or Firefox.",
-    download: { what: "Next.js and its packages", megabytes: 200 },
-    template: TEMPLATES.nextjs,
-    refs: [sheet("/typescript/react/next-js/"), sheet("/typescript/react/react/")],
   },
   {
     id: "cpp",

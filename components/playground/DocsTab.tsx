@@ -15,7 +15,6 @@ import {
   DOCS_FOR,
   FRAMED_FOR,
   indexUrl,
-  NEXTJS_CURRENT_DOCS,
   parseIndex,
   parseManifest,
   searchDocs,
@@ -270,15 +269,6 @@ export function DocsTab({ language, requested = null, onShown }: DocsTabProps) {
               {sets?.map((s) => s.name).join(", ") || "…"}. Pages come via DevDocs and keep their
               licenses and attribution.
             </p>
-            {language === "nextjs" && (
-              <p>
-                DevDocs has Next.js 14.2 docs; for the current version open{" "}
-                <a href={NEXTJS_CURRENT_DOCS} target="_blank" rel="noopener noreferrer">
-                  <i>nextjs.org/docs</i>
-                </a>
-                .
-              </p>
-            )}
             {extras.map((extra) => (
               <p key={extra.id}>
                 <button type="button" className="link" onClick={() => setFramed(extra)}>
