@@ -97,6 +97,28 @@ export function nodeSupport(env: {
   return env.crossOriginIsolated ? null : "not-isolated";
 }
 
+/** `.env`, `.env.local`, `config/.env.production`, … */
+export function isEnvFile(path: string): boolean {
+  return /(?:^|\/)\.env(?:\.[\w-]+)?$/.test(path);
+}
+
+/**
+ * Whether a dev server URL from the WebContainer is one to show: HTTPS on
+ * StackBlitz's preview domains, never another origin (or a `javascript:` URL).
+ */
+export function isPreviewUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname.endsWith(".webcontainer-api.io") ||
+        parsed.hostname.endsWith(".webcontainer.io"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** StackBlitz's "open a project" endpoint (the form the StackBlitz SDK posts). */
 export const STACKBLITZ_RUN = "https://stackblitz.com/run";
 
@@ -109,9 +131,9 @@ export function stackblitzFields(project: Project, title: string): [name: string
     ["project[title]", title],
     ["project[description]", "From the easy-docs playground"],
     ["project[template]", "node"],
-    ...Object.entries(project.files).map(([path, contents]): [string, string] => [
-      `project[files][${path}]`,
-      contents,
-    ]),
+    ...Object.entries(project.files)
+      // Secrets stay in the browser: .env files are not sent.
+      .filter(([path]) => !isEnvFile(path))
+      .map(([path, contents]): [string, string] => [`project[files][${path}]`, contents]),
   ];
 }

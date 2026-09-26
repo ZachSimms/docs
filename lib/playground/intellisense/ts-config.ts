@@ -82,6 +82,8 @@ export function typesVersion(range: string): string {
 /**
  * Source text that makes type acquisition fetch each dependency's types at
  * the project's version (`// types: <version>` is its per-import hint).
+ * Packages without their own types fall back to DefinitelyTyped's `@types/*`,
+ * which type acquisition always takes at `latest`.
  */
 export function typesSource(files: Readonly<Record<string, string>>): string {
   const { versions } = readDependencies(files);

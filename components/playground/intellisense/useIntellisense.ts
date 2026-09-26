@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Extension } from "@codemirror/state";
 import type { LanguageId } from "@/lib/playground/languages";
 import { isPythonPath } from "@/lib/playground/intellisense/pyright-config";
@@ -51,14 +51,27 @@ export function useIntellisense(
   const python = armed && language === "python";
   const bun = usesBunTypes(language);
 
+  /** Which services this playground started, to stop them when it goes away. */
+  const started = useRef({ ts: false, python: false });
+  useEffect(
+    () => () => {
+      const { ts: usedTs, python: usedPython } = started.current;
+      if (usedTs) void import("./typescript").then((m) => m.stopTsService());
+      if (usedPython) void import("./python").then((m) => m.stopPythonService());
+    },
+    [],
+  );
+
   const loadAssist = useCallback(
     async (path: string): Promise<Extension> => {
       try {
         if (ts && isTsServicePath(path)) {
+          started.current.ts = true;
           const { tsExtensions, tsService } = await import("./typescript");
           return tsExtensions(await tsService(bun), path);
         }
         if (python && isPythonPath(path)) {
+          started.current.python = true;
           const { pythonExtensions, pythonService } = await import("./python");
           return pythonExtensions(await pythonService(), path);
         }
@@ -81,6 +94,7 @@ export function useIntellisense(
   useEffect(() => {
     if (!service) return;
     const timer = setTimeout(() => {
+      started.current[service] = true;
       const sync =
         service === "ts"
           ? import("./typescript")

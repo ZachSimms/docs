@@ -223,6 +223,14 @@ describe("ReferencePanel", () => {
   const docsManifest = {
     docs: [
       {
+        slug: "html",
+        name: "HTML (MDN)",
+        release: null,
+        mtime: 2,
+        home: "https://developer.mozilla.org/",
+        attribution: "© MDN contributors. CC BY-SA 2.5+.",
+      },
+      {
         slug: "python~3.14",
         name: "Python 3.14",
         release: "3.14",
@@ -321,6 +329,25 @@ describe("ReferencePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "← results" }));
     expect(screen.getByRole("combobox", { name: "Search the official docs" })).toHaveValue("print");
   });
+
+  it("an Open docs request replaces a framed site, and is reported as shown", async () => {
+    const shown: number[] = [];
+    const web = { ...props, language: "web" as const };
+    const { rerender } = render(<ReferencePanel {...web} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Docs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Tailwind CSS docs" }));
+    expect(screen.getByTitle("Tailwind CSS docs")).toBeInTheDocument();
+    rerender(
+      <ReferencePanel
+        {...web}
+        requestedDoc={{ slug: "html", path: "reference/elements/div", name: "div", n: 1 }}
+        onDocShown={() => shown.push(1)}
+      />,
+    );
+    expect(await screen.findByTitle("HTML (MDN): div")).toBeInTheDocument();
+    expect(screen.queryByTitle("Tailwind CSS docs")).toBeNull();
+    expect(shown.length).toBeGreaterThan(0);
+  });
 });
 
 describe("SymbolRow", () => {
@@ -375,6 +402,9 @@ describe("reference panel helpers", () => {
   it("recognize the playground path and site-relative sheet URLs only", () => {
     expect(isPlaygroundPath("/playground/")).toBe(true);
     expect(isPlaygroundPath("/playground")).toBe(true);
+    expect(isPlaygroundPath("/playground/node/")).toBe(true);
+    expect(isPlaygroundPath("/playground/node")).toBe(true);
+    expect(isPlaygroundPath("/playground/godot/")).toBe(false);
     expect(isPlaygroundPath("/python/")).toBe(false);
     expect(isSheetUrl("/design/css/tailwind/")).toBe(true);
     expect(isSheetUrl("/python/overview/#lists")).toBe(true);

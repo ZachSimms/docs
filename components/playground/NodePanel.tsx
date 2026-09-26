@@ -48,6 +48,7 @@ export function NodePanel({ support, url, running, project, resizer }: NodePanel
             ))}
             <button type="submit" className="link">
               <i>Open this project on StackBlitz</i>
+              <span className="pg-muted"> (sends its files there, except .env files)</span>
               <span className="sr-only"> (opens in a new tab)</span>
             </button>
           </form>

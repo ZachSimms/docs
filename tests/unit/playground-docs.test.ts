@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   buildDocSrcDoc,
   DOCS_FOR,
+  isDocPath,
   officialUrl,
   pageUrl,
   parseIndex,
@@ -107,6 +108,11 @@ describe("pages and links", () => {
     expect(resolveDocLink("javascript", "a/b", "javascript:alert(1)")).not.toMatchObject({
       url: "javascript:alert(1)",
     });
+    // Encoded links stay encoded (DevDocs names files with %40): never raw quotes or markup.
+    const encoded = resolveDocLink("godot~4.7", "classes/class_node", "class_%40gdscript#x");
+    expect(encoded).toEqual({ kind: "page", path: "classes/class_%40gdscript#x" });
+    const hostile = resolveDocLink("javascript", "a/b", "x%22%3E%3Cstyle%3E/y");
+    expect(JSON.stringify(hostile)).not.toMatch(/"x"|<style/);
   });
 
   it("links to the page on the official site where it can", () => {
@@ -119,6 +125,27 @@ describe("pages and links", () => {
     );
     const rust = manifest.find((d) => d.slug === "rust")!;
     expect(officialUrl(rust, { name: "Vec", path: "std/vec/struct.vec" })).toContain("search=Vec");
+  });
+});
+
+describe("isDocPath and parseIndex", () => {
+  it("accepts DevDocs paths and drops anything that could carry markup", () => {
+    for (const ok of [
+      "container/vector/operator*",
+      "properties/--*",
+      "classes/class_%40gdscript#x",
+      "functions/calc()",
+    ])
+      expect(isDocPath(ok)).toBe(true);
+    for (const bad of ['a/b"><meta', "a/../b", "a b", "", "a/<b>"])
+      expect(isDocPath(bad)).toBe(false);
+    const entries = parseIndex("cpp", {
+      entries: [
+        { name: "ok", path: "a/b", type: "t" },
+        { name: "bad", path: 'x"><style>', type: "t" },
+      ],
+    });
+    expect(entries.map((e) => e.name)).toEqual(["ok"]);
   });
 });
 
@@ -139,7 +166,8 @@ describe("buildDocSrcDoc", () => {
   it("sanitizes with scripts, styles, forms, frames and handlers forbidden, and adds a CSP and the attribution", () => {
     expect(doc).not.toContain("<script");
     expect(passed[0]).toMatchObject({
-      FORBID_TAGS: expect.arrayContaining(["script", "style", "form", "iframe"]),
+      FORBID_TAGS: expect.arrayContaining(["script", "style", "form", "iframe", "area"]),
+      FORBID_ATTR: expect.arrayContaining(["xlink:href"]),
     });
     expect(doc).toContain("default-src 'none'");
     expect(doc).toContain(
@@ -148,5 +176,11 @@ describe("buildDocSrcDoc", () => {
     expect(doc).toContain("MDN contributors");
     expect(doc).toContain("via DevDocs");
     expect(doc).toContain("color-scheme: dark;");
+  });
+
+  it("escapes the base URL, whatever the path holds", () => {
+    const hostile = buildDocSrcDoc("", set, 'x"><meta http-equiv="refresh">/y', (d) => d, null);
+    expect(hostile).not.toContain('"><meta');
+    expect(hostile).toContain("x&quot;&gt;&lt;meta");
   });
 });

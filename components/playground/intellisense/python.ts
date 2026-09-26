@@ -37,7 +37,7 @@ import {
 } from "@/lib/playground/intellisense/pyright-config";
 
 /** Requests can be slow while the first analysis runs. */
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 20_000;
 
 /** One project file as the server has it. */
 class ProjectFile implements WorkspaceFile {
@@ -204,47 +204,51 @@ let running: { ready: Promise<PythonService>; stop(): void } | null = null;
 
 /** The page's basedpyright, started on first use. */
 export function pythonService(): Promise<PythonService> {
+  // A failed start is remembered for the page's life, so edits don't reboot the workers again and again.
   if (running) return running.ready;
-  const purify = createDOMPurify(window);
-  if (!purify.isSupported) return Promise.reject(new Error("no safe HTML sanitizer here"));
-  const { foreground, stop } = bootWorkers();
-  const client = new LSPClient({
-    rootUri: PYRIGHT_ROOT,
-    initializationOptions: pyrightInitOptions(),
-    workspace: (c) => new ProjectWorkspace(c),
-    timeout: REQUEST_TIMEOUT_MS,
-    // Included in every file's plugin.
-    extensions: [
-      hoverTooltips(),
-      serverCompletion({ override: true }),
-      signatureHelp(),
-      serverDiagnostics(),
-    ],
-    sanitizeHTML: (html) => purify.sanitize(html, { FORBID_TAGS: ["style", "form", "img"] }),
-    notificationHandlers: {
-      "textDocument/publishDiagnostics": (
-        _client,
-        params: { diagnostics: { severity?: number }[] },
-      ) => {
-        // Soften in place, then let serverDiagnostics' own handler (tried after this one) show them.
-        params.diagnostics = softenDiagnostics(params.diagnostics);
-        return false;
+  let stopWorkers: () => void = () => undefined;
+  const ready = (async () => {
+    const purify = createDOMPurify(window);
+    if (!purify.isSupported) throw new Error("no safe HTML sanitizer here");
+    // Download the bundle (~3 MB compressed) before the client's request timeout starts counting.
+    const bundle = await fetch(PYRIGHT_WORKER_URL);
+    if (!bundle.ok) throw new Error(`basedpyright: HTTP ${bundle.status}`);
+    await bundle.arrayBuffer();
+    const { foreground, stop } = bootWorkers();
+    stopWorkers = stop;
+    const client = new LSPClient({
+      rootUri: PYRIGHT_ROOT,
+      initializationOptions: pyrightInitOptions(),
+      workspace: (c) => new ProjectWorkspace(c),
+      timeout: REQUEST_TIMEOUT_MS,
+      // Included in every file's plugin.
+      extensions: [
+        hoverTooltips(),
+        serverCompletion({ override: true }),
+        signatureHelp(),
+        serverDiagnostics(),
+      ],
+      sanitizeHTML: (html) => purify.sanitize(html, { FORBID_TAGS: ["style", "form", "img"] }),
+      notificationHandlers: {
+        "textDocument/publishDiagnostics": (
+          _client,
+          params: { diagnostics: { severity?: number }[] },
+        ) => {
+          // Soften in place, then let serverDiagnostics' own handler (tried after this one) show them.
+          params.diagnostics = softenDiagnostics(params.diagnostics);
+          return false;
+        },
+        // Progress and baseline chatter the client doesn't know.
+        "pyright/beginProgress": () => true,
+        "pyright/reportProgress": () => true,
+        "pyright/endProgress": () => true,
       },
-      // Progress and baseline chatter the client doesn't know.
-      "pyright/beginProgress": () => true,
-      "pyright/reportProgress": () => true,
-      "pyright/endProgress": () => true,
-    },
-  });
-  const ready = client
-    .connect(workerTransport(foreground))
-    .initializing.then(() => ({ client, workspace: client.workspace as ProjectWorkspace }));
-  const entry = { ready, stop };
-  ready.catch(() => {
-    stop();
-    if (running === entry) running = null;
-  });
-  running = entry;
+    });
+    await client.connect(workerTransport(foreground)).initializing;
+    return { client, workspace: client.workspace as ProjectWorkspace };
+  })();
+  ready.catch(() => stopWorkers());
+  running = { ready, stop: () => stopWorkers() };
   return ready;
 }
 

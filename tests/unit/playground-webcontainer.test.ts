@@ -2,13 +2,17 @@
 import { describe, expect, it } from "bun:test";
 import {
   fileChanges,
+  isEnvFile,
+  isPreviewUrl,
   needsInstall,
   nodeSupport,
   stackblitzFields,
   terminalText,
+  NODE_ROUTE,
   toFileTree,
 } from "@/lib/playground/webcontainer";
 import { TEMPLATES } from "@/lib/playground/templates";
+import { isPlaygroundPath } from "@/lib/reference-panel";
 
 describe("toFileTree", () => {
   it("nests files into directories", () => {
@@ -87,4 +91,31 @@ describe("stackblitzFields", () => {
     expect(fields.get("project[files][app/page.tsx]")).toBe(TEMPLATES.nextjs.files["app/page.tsx"]);
     expect(fields.get("project[files][package.json]")).toContain('"next"');
   });
+});
+
+describe("what leaves the page", () => {
+  it("keeps .env files out of the StackBlitz post", () => {
+    expect(isEnvFile(".env")).toBe(true);
+    expect(isEnvFile("config/.env.local")).toBe(true);
+    expect(isEnvFile("src/env.ts")).toBe(false);
+    const project = {
+      ...TEMPLATES.nextjs,
+      files: { ...TEMPLATES.nextjs.files, ".env.local": "SECRET=1" },
+    };
+    expect(stackblitzFields(project, "x").some(([name]) => name.includes(".env"))).toBe(false);
+  });
+
+  it("only shows previews on StackBlitz's HTTPS domains", () => {
+    expect(isPreviewUrl("https://abc--3000--def.local-credentialless.webcontainer-api.io")).toBe(
+      true,
+    );
+    expect(isPreviewUrl("http://abc.webcontainer-api.io")).toBe(false);
+    expect(isPreviewUrl("https://webcontainer-api.io.evil.test")).toBe(false);
+    expect(isPreviewUrl("javascript:alert(1)")).toBe(false);
+    expect(isPreviewUrl("not a url")).toBe(false);
+  });
+});
+
+it("⌘K treats the Next.js page as a playground (results open in its panel)", () => {
+  expect(isPlaygroundPath(NODE_ROUTE)).toBe(true);
 });

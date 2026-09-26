@@ -47,6 +47,8 @@ interface ReferencePanelProps {
   requested: { url: string; n: number } | null;
   /** A docs page asked for from an editor hover; `n` changes on every request. */
   requestedDoc?: (DocRequest & { n: number }) | null;
+  /** The requested docs page is on screen (the playground then forgets the request). */
+  onDocShown?(): void;
   /**
    * The page is cross-origin isolated (the Node playground): sheets load in a
    * `credentialless` frame, and sheets with third-party embeds (fitness videos) are left out.
@@ -69,6 +71,7 @@ export function ReferencePanel({
   onClose,
   requested,
   requestedDoc = null,
+  onDocShown,
   isolated = false,
 }: ReferencePanelProps) {
   const [query, setQuery] = useState("");
@@ -173,7 +176,7 @@ export function ReferencePanel({
         </button>
       </div>
       {tab === "docs" ? (
-        <DocsTab language={language} requested={requestedDoc} />
+        <DocsTab language={language} requested={requestedDoc} onShown={onDocShown} />
       ) : (
         <div className="pg-refs-body">
           <div className="pg-bar">

@@ -134,6 +134,8 @@ export function Playground({ route = "main" }: PlaygroundProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ url: string; n: number } | null>(null);
   const [requestedDoc, setRequestedDoc] = useState<(DocRequest & { n: number }) | null>(null);
+  /** Counts docs requests, so a repeat request (after the last was shown and cleared) is new. */
+  const docRequests = useRef(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [touring, setTouring] = useState(false);
   /** Preview beside the editor for `.md` files (always on in the Markdown project). */
@@ -200,7 +202,8 @@ export function Playground({ route = "main" }: PlaygroundProps) {
     const onDocs = (event: Event) => {
       const doc = parseDocRequest((event as CustomEvent).detail);
       if (!doc) return;
-      setRequestedDoc((current) => ({ ...doc, n: (current?.n ?? 0) + 1 }));
+      docRequests.current += 1;
+      setRequestedDoc({ ...doc, n: docRequests.current });
       setRefsOpen(true);
       setPane("refs");
     };
@@ -629,6 +632,7 @@ export function Playground({ route = "main" }: PlaygroundProps) {
             onClose={() => (setRefsOpen(false), pane === "refs" && setPane("code"))}
             requested={requested}
             requestedDoc={requestedDoc}
+            onDocShown={() => setRequestedDoc(null)}
             isolated={onNodeRoute}
           />
         )}

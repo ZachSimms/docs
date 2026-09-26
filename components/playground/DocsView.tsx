@@ -22,6 +22,15 @@ import {
   type Docset,
 } from "@/lib/playground/docs";
 
+/** A fragment as an element id (`%40` → `@`); malformed escapes are used as written. */
+function decodeFragment(fragment: string): string {
+  try {
+    return decodeURIComponent(fragment);
+  } catch {
+    return fragment;
+  }
+}
+
 /** Props for {@link DocsView}. */
 interface DocsViewProps {
   set: Docset;
@@ -86,20 +95,39 @@ export function DocsView({ set, path, name, onNavigate }: DocsViewProps) {
     } else problem = "This browser can't show docs pages safely here.";
   }
 
-  /** Catch clicks inside the page once it has loaded. */
+  // The click handler outlives renders (it's added once per load): read the latest props.
+  const latest = useRef({ path, onNavigate });
+  useEffect(() => {
+    latest.current = { path, onNavigate };
+  });
+
+  /** Scroll to the path's `#fragment`, if the page has it. */
+  const scrollToFragment = (doc: Document, target: string) => {
+    const fragment = splitFragment(target).fragment;
+    if (fragment) doc.getElementById(decodeFragment(fragment))?.scrollIntoView();
+  };
+
+  // Another member of the same page: the frame document is unchanged (no load event), so scroll here.
+  useEffect(() => {
+    const doc = frame.current?.contentDocument;
+    if (doc?.readyState === "complete") scrollToFragment(doc, path);
+  }, [path]);
+
+  /** Scroll to the fragment and catch clicks inside the page once it has loaded. */
   const onLoad = () => {
     const doc = frame.current?.contentDocument;
     if (!doc) return;
-    const fragment = splitFragment(path).fragment;
-    if (fragment) doc.getElementById(fragment)?.scrollIntoView();
+    scrollToFragment(doc, latest.current.path);
     doc.addEventListener("click", (event) => {
       const link = (event.target as Element | null)?.closest?.("a[href]");
       if (!link) return;
       event.preventDefault();
-      const target = resolveDocLink(set.slug, path, link.getAttribute("href") ?? "");
-      if (target.kind === "anchor") doc.getElementById(target.fragment)?.scrollIntoView();
+      const { path: current, onNavigate: navigate } = latest.current;
+      const target = resolveDocLink(set.slug, current, link.getAttribute("href") ?? "");
+      if (target.kind === "anchor")
+        doc.getElementById(decodeFragment(target.fragment))?.scrollIntoView();
       else if (target.kind === "page")
-        onNavigate(target.path, link.textContent?.trim() || target.path);
+        navigate(target.path, link.textContent?.trim() || target.path);
       else window.open(target.url, "_blank", "noopener,noreferrer");
     });
   };

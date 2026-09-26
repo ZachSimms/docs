@@ -78,10 +78,12 @@ interface DocsTabProps {
   language: LanguageId;
   /** A page to show (from an editor hover); `n` changes on every request. */
   requested?: (DocRequest & { n: number }) | null;
+  /** The requested page is showing. */
+  onShown?(): void;
 }
 
 /** Render the tab. */
-export function DocsTab({ language, requested = null }: DocsTabProps) {
+export function DocsTab({ language, requested = null, onShown }: DocsTabProps) {
   /** Every docset (a hover can open one the project doesn't list). */
   const [allSets, setAllSets] = useState<Docset[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -90,18 +92,31 @@ export function DocsTab({ language, requested = null }: DocsTabProps) {
   const [entries, setEntries] = useState<DocEntry[]>([]);
   const [selected, setSelected] = useState(0);
   const [stack, setStack] = useState<readonly Opened[]>(requested ? [requested] : []);
+  const [framed, setFramed] = useState<FramedSource | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  // A page asked for from a hover replaces whatever the tab shows, framed sites included.
   const [seen, setSeen] = useState(requested?.n ?? 0);
   if (requested && requested.n !== seen) {
     setSeen(requested.n);
     setStack([requested]);
+    setFramed(null);
   }
-  const [framed, setFramed] = useState<FramedSource | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (requested) onShown?.();
+  }, [requested, onShown]);
+
+  // Another project: its own docsets, so forget a source picked for the last one.
+  const [sourceFor, setSourceFor] = useState(language);
+  if (sourceFor !== language) {
+    setSourceFor(language);
+    setSource("all");
+  }
 
   useEffect(() => {
     let live = true;
     loadManifest().then(
-      (all) => live && setAllSets(all),
+      (all) => live && (setAllSets(all), setFailed(false)),
       () => live && setFailed(true),
     );
     return () => {
@@ -126,7 +141,7 @@ export function DocsTab({ language, requested = null }: DocsTabProps) {
     Promise.allSettled(active.map(loadIndex)).then((results) => {
       if (!live) return;
       setEntries(results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])));
-      if (results.every((r) => r.status === "rejected")) setFailed(true);
+      setFailed(results.every((r) => r.status === "rejected"));
     });
     return () => {
       live = false;
@@ -177,8 +192,9 @@ export function DocsTab({ language, requested = null }: DocsTabProps) {
           src={framed.url}
           title={framed.name}
           className="pg-docs-frame"
-          // Their own site and scripts, but it may never navigate the playground.
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          // Their own site and scripts, but it may never navigate the playground; its popups
+          // stay sandboxed too, so they can't navigate it through `opener` either.
+          sandbox="allow-scripts allow-same-origin allow-popups"
           referrerPolicy="no-referrer"
         />
       </div>

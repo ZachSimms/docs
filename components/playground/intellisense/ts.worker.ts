@@ -61,7 +61,7 @@ let env: VirtualTypeScriptEnvironment | undefined;
 /** Paths mirrored from the project (not lib or downloaded files). */
 let mirrored = new Set<string>();
 let pendingTypes = 0;
-/** Types arrived since the page was last told. */
+/** Types arrived, or diagnostics were held back, since the page was last told. */
 let received = false;
 let acquire: ((source: string) => Promise<void>) | undefined;
 
@@ -104,12 +104,18 @@ function upsert(target: VirtualTypeScriptEnvironment, path: string, code: string
   } else target.createFile(path, code || " ");
 }
 
-/** Fetch types for the project's dependencies (and anything its files import). */
-async function acquireTypes(source: string) {
-  if (!acquire || !source.trim()) return;
+/**
+ * Fetch types: first for `package.json`'s dependencies at their versions, then
+ * for anything else the files import. In that order, because type acquisition
+ * skips modules it already has, so a file's `import "react"` doesn't fetch
+ * `react@latest` on top of the pinned version.
+ */
+async function acquireTypes(pinned: string, sources: string) {
+  if (!acquire) return;
   pendingTypes += 1;
   try {
-    await acquire(source);
+    if (pinned.trim()) await acquire(pinned);
+    if (sources.trim()) await acquire(sources);
   } catch {
     // Types are a nicety: a failed download leaves `any` behind, never an error.
   } finally {
@@ -142,11 +148,13 @@ const service = {
     for (const [path, code] of Object.entries(files)) upsert(env, path, code);
     mirrored = new Set(Object.keys(files));
     const project = Object.fromEntries(Object.entries(files).map(([p, c]) => [p.slice(1), c]));
-    void acquireTypes([typesSource(project), ...Object.values(files)].join("\n"));
+    void acquireTypes(typesSource(project), Object.values(files).join("\n"));
   },
 
   /** Diagnostics, minus the ones the playground makes moot (and "missing module" while types load). */
   getLints({ path }: { path: string }) {
+    // Held back now: lint again when the downloads settle, even if nothing arrived (a package without types).
+    if (pendingTypes > 0) received = true;
     return base.getLints({
       path,
       diagnosticCodesToIgnore:

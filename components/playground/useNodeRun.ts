@@ -15,7 +15,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebContainer, WebContainerProcess } from "@webcontainer/api";
 import { appendOutput, EMPTY_OUTPUT, type Output, type Stream } from "@/lib/playground/output";
 import type { Project } from "@/lib/playground/project";
-import { fileChanges, needsInstall, terminalText, toFileTree } from "@/lib/playground/webcontainer";
+import {
+  fileChanges,
+  isPreviewUrl,
+  needsInstall,
+  terminalText,
+  toFileTree,
+} from "@/lib/playground/webcontainer";
 import type { RunPhase } from "./usePlaygroundRun";
 
 /** Wait after the last edit before writing it into the container. */
@@ -55,12 +61,24 @@ export function useNodeRun(): NodeRun {
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [status, setStatus] = useState("");
   const [url, setUrl] = useState<string | null>(null);
-  /** The dev server process, and a counter that retires old runs' callbacks. */
+  /** The running process (npm install, then the dev server), and a counter that retires old runs' callbacks. */
   const server = useRef<WebContainerProcess | null>(null);
   const runId = useRef(0);
   /** The files as the container has them. */
   const written = useRef<Record<string, string> | null>(null);
   const writeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The `package.json` whose dependencies last installed successfully (a stopped install doesn't count). */
+  const installed = useRef<string | undefined>(undefined);
+  /** The dev server is up, so edits should reach it. */
+  const serving = useRef(false);
+
+  /** Kill whatever runs and forget pending writes. */
+  const halt = useCallback(() => {
+    clearTimeout(writeTimer.current);
+    server.current?.kill();
+    server.current = null;
+    serving.current = false;
+  }, []);
 
   const append = useCallback((stream: Stream, text: string) => {
     setOutput((current) => appendOutput(current, stream, text));
@@ -69,13 +87,14 @@ export function useNodeRun(): NodeRun {
   /** Copy a process's terminal to the console until it ends; resolves with its exit code. */
   const pipe = useCallback(
     (process: WebContainerProcess, id: number) => {
-      void process.output.pipeTo(
-        new WritableStream({
-          write: (chunk) => {
-            if (runId.current === id) append("stdout", terminalText(chunk));
-          },
-        }),
-      );
+      void (async () => {
+        const reader = process.output.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          if (runId.current === id) append("stdout", terminalText(value));
+        }
+      })().catch(() => undefined); // the stream ends with the process
       return process.exit;
     },
     [append],
@@ -83,17 +102,15 @@ export function useNodeRun(): NodeRun {
 
   const stop = useCallback(() => {
     runId.current += 1;
-    server.current?.kill();
-    server.current = null;
+    halt();
     setUrl(null);
     setPhase((p) => (p === "running" ? "stopped" : p));
     setStatus((s) => (s ? "stopped" : s));
-  }, []);
+  }, [halt]);
 
   const run = useCallback(
     (project: Project) => {
-      server.current?.kill();
-      server.current = null;
+      halt();
       const id = ++runId.current;
       const live = () => runId.current === id;
       setUrl(null);
@@ -110,32 +127,46 @@ export function useNodeRun(): NodeRun {
             for (const path of fileChanges(before, project.files).remove)
               await wc.fs.rm(path, { force: true, recursive: true });
           written.current = { ...project.files };
-          if (needsInstall(before?.["package.json"], project.files["package.json"])) {
+          const pkg = project.files["package.json"];
+          if (needsInstall(installed.current, pkg)) {
             setStatus("npm install (the first time downloads ~200 MB)…");
             append("info", "$ npm install\n");
+            installed.current = undefined;
             const install = await wc.spawn("npm", ["install", "--no-audit", "--no-fund"], {
               env: ENV,
             });
+            // Stop or another Run kills it: a half-finished install is never reused.
+            server.current = install;
             const code = await pipe(install, id);
             if (!live()) return;
-            if (code !== 0) {
-              written.current = null; // install again next time
-              throw new Error(`npm install exited with ${code}`);
-            }
+            server.current = null;
+            if (code !== 0) throw new Error(`npm install exited with ${code}`);
+            installed.current = pkg;
           }
           setStatus("starting next dev…");
           append("info", "$ npm run dev\n");
           const off = wc.on("server-ready", (_port, serverUrl) => {
             if (!live()) return;
+            if (!isPreviewUrl(serverUrl)) {
+              append("stderr", `Not showing an unexpected preview address: ${serverUrl}\n`);
+              return;
+            }
             setUrl(serverUrl);
             setStatus("dev server running");
           });
           const dev = await wc.spawn("npm", ["run", "dev"], { env: ENV });
+          if (!live()) {
+            dev.kill();
+            off();
+            return;
+          }
           server.current = dev;
+          serving.current = true;
           const code = await pipe(dev, id);
           off();
           if (!live()) return;
           server.current = null;
+          serving.current = false;
           setUrl(null);
           setPhase(code === 0 ? "done" : "failed");
           setStatus(`dev server exited · exit ${code}`);
@@ -147,11 +178,11 @@ export function useNodeRun(): NodeRun {
         }
       })();
     },
-    [append, pipe],
+    [append, pipe, halt],
   );
 
   const sync = useCallback((project: Project) => {
-    if (!written.current || !server.current) return;
+    if (!written.current || !serving.current) return;
     clearTimeout(writeTimer.current);
     writeTimer.current = setTimeout(() => {
       const before = written.current;
@@ -173,7 +204,7 @@ export function useNodeRun(): NodeRun {
   const clear = useCallback(() => setOutput(EMPTY_OUTPUT), []);
 
   // Leaving the page: stop the server (the container goes with the page).
-  useEffect(() => () => server.current?.kill(), []);
+  useEffect(() => halt, [halt]);
 
   return { output, phase, status, url, run, stop, clear, sync };
 }

@@ -12,7 +12,7 @@
 import { autocompletion } from "@codemirror/autocomplete";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { StateEffect, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { ViewPlugin, type EditorView } from "@codemirror/view";
 import {
   tsAutocompleteWorker,
   tsFacetWorker,
@@ -60,10 +60,8 @@ export function tsService(bunTypes: boolean): Promise<Running> {
   const ready = remote
     .start({ libUrl: TS_LIB_URL, bunTypes }, Comlink.proxy(onTypes))
     .then(() => ({ remote, views, worker }));
-  ready.catch(() => {
-    worker.terminate();
-    if (running?.ready === ready) running = null;
-  });
+  // A failed start (offline, old browser) is remembered, so edits don't restart it again and again.
+  ready.catch(() => worker.terminate());
   running = { bunTypes, ready };
   return ready;
 }
@@ -128,10 +126,10 @@ export function tsExtensions(service: Running, path: string): Extension {
     ),
     autocompletion({ override: [tsAutocompleteWorker()] }),
     tsHoverWorker({ renderTooltip: renderHover }),
-    EditorView.updateListener.of((update) => {
-      // Track live views so downloaded types re-lint them.
-      if (update.view.dom.isConnected) service.views.add(update.view);
-      else service.views.delete(update.view);
+    // Track live views so downloaded types re-lint them; destroyed or reconfigured views drop out.
+    ViewPlugin.define((view) => {
+      service.views.add(view);
+      return { destroy: () => service.views.delete(view) };
     }),
   ];
 }

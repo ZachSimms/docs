@@ -10,7 +10,10 @@
  */
 
 import { z } from "zod";
+import { isDocPath, splitFragment } from "./doc-path";
 import type { LanguageId } from "./languages";
+
+export { isDocPath, splitFragment };
 
 /** Where DevDocs serves documents. */
 export const DEVDOCS = "https://documents.devdocs.io/";
@@ -97,7 +100,11 @@ export const indexUrl = (set: Docset) => `${DEVDOCS}${set.slug}/index.json?${set
 
 /** Entries of a fetched `index.json`. */
 export function parseIndex(slug: string, json: unknown): DocEntry[] {
-  return indexSchema.parse(json).entries.map((e) => ({ slug, ...e }));
+  // Entries with unusual paths are dropped rather than trusted (the index is third-party data).
+  return indexSchema
+    .parse(json)
+    .entries.filter((e) => isDocPath(e.path))
+    .map((e) => ({ slug, ...e }));
 }
 
 /**
@@ -134,14 +141,6 @@ export function searchDocs(entries: readonly DocEntry[], query: string, limit = 
     .map((s) => s.entry);
 }
 
-/** Split `path#fragment`. */
-export function splitFragment(path: string): { page: string; fragment: string | null } {
-  const hash = path.indexOf("#");
-  return hash === -1
-    ? { page: path, fragment: null }
-    : { page: path.slice(0, hash), fragment: path.slice(hash + 1) || null };
-}
-
 /** URL of a page's HTML. */
 export function pageUrl(set: Docset, path: string): string {
   const { page } = splitFragment(path);
@@ -171,11 +170,11 @@ export function resolveDocLink(slug: string, path: string, href: string): DocLin
   }
   const prefix = `${DEVDOCS}${slug}/`;
   if (target.href.startsWith(prefix) && target.protocol === "https:") {
-    const page = decodeURIComponent(target.pathname.slice(`/${slug}/`.length)).replace(
-      /\.html$/,
-      "",
-    );
-    return { kind: "page", path: target.hash ? `${page}${target.hash}` : page };
+    // Kept percent-encoded: that is how the index names pages (`class_%40gdscript`); pageUrl encodes it again.
+    const page = target.pathname.slice(`/${slug}/`.length).replace(/\.html$/, "");
+    const path = target.hash ? `${page}${target.hash}` : page;
+    // A link to a path no index would hold opens on DevDocs instead.
+    return isDocPath(path) ? { kind: "page", path } : { kind: "external", url: target.href };
   }
   return { kind: "external", url: /^https?:$/.test(target.protocol) ? target.href : base.href };
 }
@@ -257,8 +256,11 @@ const SANITIZE = {
     "link",
     "meta",
     "base",
+    // Image maps link without an <a>, past the frame's click handling.
+    "map",
+    "area",
   ],
-  FORBID_ATTR: ["style", "srcset"],
+  FORBID_ATTR: ["style", "srcset", "xlink:href"],
   ALLOW_DATA_ATTR: false,
 };
 
@@ -282,11 +284,11 @@ export function buildDocSrcDoc(
   const { page } = splitFragment(path);
   const dir = page.includes("/") ? page.slice(0, page.lastIndexOf("/") + 1) : "";
   const escape = (text: string) =>
-    text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const version = set.release ? ` ${set.release}` : "";
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'">
-<base href="${DEVDOCS}${set.slug}/${dir}">
+<base href="${escape(`${DEVDOCS}${set.slug}/${dir}`)}">
 <style>:root { color-scheme: ${theme ?? "light dark"};${DOC_CSS}</style></head><body>
 ${sanitize(html, SANITIZE)}
 <p class="pg-doc-footer">${escape(set.name)}${escape(version)} · ${escape(set.attribution)} · via DevDocs</p>
