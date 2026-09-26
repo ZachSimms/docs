@@ -23,6 +23,7 @@ import { Note } from "@/components/Note";
 import { Step, Steps } from "@/components/Steps";
 import { Contrast, Scale, Swatches } from "@/components/Swatches";
 import { Tab, Tabs } from "@/components/Tabs";
+import { YouTube } from "@/components/YouTube";
 
 /**
  * Render Markdown links as inline {@link DottedLink}s.
@@ -48,8 +49,8 @@ function MdxAnchor({
  * every sheet without an import: `Note`, `Callout`, `Tabs`/`Tab`,
  * `Steps`/`Step`, `Cards`/`Card`, `FileTree` for directory layouts,
  * `Graph` for function plots, `Swatches`/`Scale`/`Contrast` for colours,
- * `Demo` for live HTML/CSS (inserted by `lib/remark-demo.ts`) and `Diagram`
- * for inline SVG diagrams.
+ * `Demo` for live HTML/CSS (inserted by `lib/remark-demo.ts`), `Diagram`
+ * for inline SVG diagrams and `YouTube` for embedded videos.
  */
 const defaults: MDXComponents = {
   a: MdxAnchor,
@@ -70,6 +71,7 @@ const defaults: MDXComponents = {
   Contrast,
   Demo,
   Diagram,
+  YouTube,
 };
 
 /**

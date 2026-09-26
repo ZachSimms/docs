@@ -22,15 +22,22 @@ async function effectsFlushed(page: Page) {
   );
 }
 
+/** YouTube player hosts; embeds get a stub page so the suite never hits the network for video. */
+const YOUTUBE = /^https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\//;
+
+test.beforeEach(async ({ context }) => {
+  await context.route(YOUTUBE, (route) => route.fulfill({ body: "stub" }));
+});
+
 test.describe("home", () => {
-  test("lists the twelve topics, the v link and the Info footer", async ({ page }) => {
+  test("lists the thirteen topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(12);
-    await expect(nav.locator("span").first()).toHaveText("12.");
+    await expect(nav.locator("a")).toHaveCount(13);
+    await expect(nav.locator("span").first()).toHaveText("13.");
     await expect(nav.locator("span").last()).toHaveText("01.");
     await expect(nav.locator("a").first()).toHaveText("Maths");
     await expect(nav.locator("a").last()).toHaveText("Design");
@@ -664,9 +671,10 @@ test.describe("new topics", () => {
   test("databases and infrastructure are listed after TypeScript", async ({ page }) => {
     await page.goto("/");
     const links = page.locator("main nav a");
-    await expect(links.nth(4)).toHaveText("TypeScript");
-    await expect(links.nth(5)).toHaveText("Databases");
-    await expect(links.nth(6)).toHaveText("Infrastructure");
+    await expect(links.nth(3)).toHaveText("Fitness");
+    await expect(links.nth(5)).toHaveText("TypeScript");
+    await expect(links.nth(6)).toHaveText("Databases");
+    await expect(links.nth(7)).toHaveText("Infrastructure");
     await page.goto("/infrastructure/");
     await expect(page.locator("main nav a")).toHaveText([
       "Linux/",
@@ -1091,6 +1099,55 @@ test.describe("python, physics and ml-ai", () => {
   });
 });
 
+test.describe("fitness", () => {
+  test("the topic lists its three directories in order", async ({ page }) => {
+    await page.goto("/fitness/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toEqual([
+      "/fitness/training/",
+      "/fitness/nutrition/",
+      "/fitness/recovery-mobility/",
+    ]);
+  });
+
+  test("a directory intro carries the not-medical-advice note", async ({ page }) => {
+    await page.goto("/fitness/nutrition/");
+    await expect(page.locator("main aside.note")).toContainText("not medical advice");
+    await expect(page.locator("main nav a").first()).toHaveAttribute(
+      "href",
+      "/fitness/nutrition/nutrition-hydration/",
+    );
+  });
+
+  test("videos embed lazily at 16:9 inside the column, with a watch link", async ({ page }) => {
+    await page.goto("/fitness/recovery-mobility/running-warmup-drills/");
+    const video = page.locator("main figure.video").first();
+    const iframe = video.locator("iframe");
+    await expect(iframe).toHaveAttribute("src", /^https:\/\/www\.youtube-nocookie\.com\/embed\//);
+    await expect(iframe).toHaveAttribute("loading", "lazy");
+    await expect(iframe).toHaveAttribute("title", /^YouTube video: /);
+    await video.scrollIntoViewIfNeeded();
+    const frame = await video.locator(".video-frame").boundingBox();
+    const main = await page.locator("main").boundingBox();
+    expect(frame && main).toBeTruthy();
+    expect(Math.abs((frame?.width ?? 0) / (frame?.height ?? 1) - 16 / 9)).toBeLessThan(0.05);
+    expect((frame?.x ?? 0) + (frame?.width ?? 0)).toBeLessThanOrEqual((main?.x ?? 0) + (main?.width ?? 0) + 1);
+    await expect(video.locator("figcaption a")).toHaveAttribute(
+      "href",
+      /^https:\/\/www\.youtube\.com\/watch\?v=/,
+    );
+  });
+
+  test("the training sheets draw their diagrams", async ({ page }) => {
+    for (const url of ["/fitness/training/energy-systems/", "/fitness/training/training-plans/"]) {
+      await page.goto(url);
+      await expect(page.locator("main figure.diagram svg").first()).toBeVisible();
+    }
+  });
+});
+
 /** Phone and tablet sizes checked by the responsive tests. */
 const SIZES = [
   { name: "small phone", width: 360, height: 740 },
@@ -1106,6 +1163,8 @@ const HEAVY_SHEETS = [
   "/python/language/fundamentals/",
   "/design/css/css/",
   "/design/principles/color-theory/",
+  "/fitness/recovery-mobility/running-warmup-drills/",
+  "/fitness/nutrition/vitamins-minerals/",
 ];
 
 /** Height of the transparent fade at the bottom of the top bar (1em). */

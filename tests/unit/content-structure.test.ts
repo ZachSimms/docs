@@ -93,6 +93,14 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       data: ["numpy", "pandas"],
     },
   },
+  fitness: {
+    entries: ["training/", "nutrition/", "recovery-mobility/"],
+    directories: {
+      training: ["energy-systems", "strength-training", "endurance", "training-plans"],
+      nutrition: ["nutrition-hydration", "vitamins-minerals"],
+      "recovery-mobility": ["running-warmup-drills", "stretching-recovery"],
+    },
+  },
 };
 
 /** Loose entry that is a topic's coming-soon page, not a reference sheet (checked further down). */
@@ -156,6 +164,14 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "std-library",
   "packages",
   "python/engineering/design-patterns",
+  "fitness/training/energy-systems",
+  "fitness/training/strength-training",
+  "fitness/training/endurance",
+  "fitness/training/training-plans",
+  "fitness/nutrition/nutrition-hydration",
+  "fitness/nutrition/vitamins-minerals",
+  "fitness/recovery-mobility/running-warmup-drills",
+  "fitness/recovery-mobility/stretching-recovery",
 ]);
 
 /** Visual components or live demos each design sheet must use at least this many times. */

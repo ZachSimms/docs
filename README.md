@@ -100,6 +100,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | colour chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
 | ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
 | `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
+| `<YouTube id="…" title="…" channel="…" start={30} />`                   | lazy 16:9 embed (youtube-nocookie) with a caption link; bad ids fail the build |
 | `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
 | `##` / `###` headings                                                   | table of contents in the right margin (wide viewports)           |
 
@@ -119,7 +120,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 | Route                    | Content                                                      |
 | ------------------------ | ------------------------------------------------------------ |
-| `/`                      | the twelve topics, numbered, plus `v` to all sheets          |
+| `/`                      | the thirteen topics, numbered, plus `v` to all sheets          |
 | `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug` |
 | `/<topic>/`              | that topic's directories and sheets                          |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                 |
@@ -158,6 +159,16 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
 - **React Hook Flow Diagram:** `public/images/typescript/hook-flow.png`, © 2019 Donavon West,
   from [donavon/hook-flow](https://github.com/donavon/hook-flow), MIT License (full text next to it in
   `hook-flow.LICENSE`).
+- **Fitness images** (from Wikimedia Commons, resized; each is also credited under the image in its sheet):
+  - `public/images/fitness/energy-systems-mitochondrion.png`: [Animal mitochondrion diagram](https://commons.wikimedia.org/wiki/File:Animal_mitochondrion_diagram_en.svg)
+    by Mariana Ruiz Villarreal (LadyofHats), public domain.
+  - `public/images/fitness/strength-training-muscles.jpg`: [Anterior and posterior views of muscles](https://commons.wikimedia.org/wiki/File:1105_Anterior_and_Posterior_Views_of_Muscles.jpg)
+    by OpenStax, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - `public/images/fitness/nutrition-hydration-nutrition-facts-label.png`: [Nutrition Facts label (2016)](https://commons.wikimedia.org/wiki/File:FDA_Nutrition_Facts_Label_2016.png)
+    by the U.S. Food and Drug Administration, public domain.
+  - `public/images/fitness/stretching-recovery-calf-muscles.png`: [Lower leg muscles](https://commons.wikimedia.org/wiki/File:Lower_leg_muscles.svg)
+    by InjuryMap, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+- **Videos:** embedded YouTube videos belong to their channels, which are named in each caption.
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.
 
