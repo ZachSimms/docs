@@ -18,7 +18,7 @@ export interface Topic {
  * All topics in display order.
  *
  * The first entry is listed first on the home page and receives the highest
- * number (`14.`); the last entry receives `01.`, mirroring the original site's
+ * number (`15.`); the last entry receives `01.`, mirroring the original site's
  * newest-first numbering.
  */
 export const TOPICS: readonly Topic[] = [
@@ -26,6 +26,7 @@ export const TOPICS: readonly Topic[] = [
   { slug: "physics", name: "Physics" },
   { slug: "biology", name: "Biology" },
   { slug: "fitness", name: "Fitness" },
+  { slug: "economics", name: "Economics" },
   { slug: "ml-ai", name: "ML/AI" },
   { slug: "typescript", name: "TypeScript" },
   { slug: "databases", name: "Databases" },
@@ -54,7 +55,7 @@ export function getTopic(slug: string): Topic | undefined {
 /**
  * The number shown next to a topic on the home page.
  *
- * Numbers count down from the list length, so with fourteen topics the first is `14`
+ * Numbers count down from the list length, so with fifteen topics the first is `15`
  * and the last is `1`.
  *
  * @param slug - The topic slug.

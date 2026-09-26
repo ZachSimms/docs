@@ -30,14 +30,14 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("lists the fourteen topics, the v link and the Info footer", async ({ page }) => {
+  test("lists the fifteen topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(14);
-    await expect(nav.locator("span").first()).toHaveText("14.");
+    await expect(nav.locator("a")).toHaveCount(15);
+    await expect(nav.locator("span").first()).toHaveText("15.");
     await expect(nav.locator("span").last()).toHaveText("01.");
     await expect(nav.locator("a").first()).toHaveText("Maths");
     await expect(nav.locator("a").last()).toHaveText("Design");
@@ -641,10 +641,10 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"]):not([href$="/overview/"])',
+        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(98);
+    expect(hrefs).toHaveLength(101);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -675,9 +675,10 @@ test.describe("new topics", () => {
     await page.goto("/");
     const links = page.locator("main nav a");
     await expect(links.nth(3)).toHaveText("Fitness");
-    await expect(links.nth(5)).toHaveText("TypeScript");
-    await expect(links.nth(6)).toHaveText("Databases");
-    await expect(links.nth(7)).toHaveText("Infrastructure");
+    await expect(links.nth(4)).toHaveText("Economics");
+    await expect(links.nth(6)).toHaveText("TypeScript");
+    await expect(links.nth(7)).toHaveText("Databases");
+    await expect(links.nth(8)).toHaveText("Infrastructure");
     await page.goto("/infrastructure/");
     await expect(page.locator("main nav a")).toHaveText([
       "Linux/",
@@ -693,9 +694,9 @@ test.describe("new topics", () => {
   test("game dev sits after C++ and holds the Godot directory", async ({ page }) => {
     await page.goto("/");
     const links = page.locator("main nav a");
-    await expect(links.nth(9)).toHaveText("C++");
-    await expect(links.nth(10)).toHaveText("Game dev");
-    await links.nth(10).click();
+    await expect(links.nth(10)).toHaveText("C++");
+    await expect(links.nth(11)).toHaveText("Game dev");
+    await links.nth(11).click();
     await expect(page).toHaveURL(/\/game-dev\/$/);
     await expect(page.locator("main nav a")).toHaveText(["Godot/"]);
     await page.goto("/game-dev/godot/");
@@ -1171,6 +1172,41 @@ test.describe("fitness", () => {
   });
 });
 
+test.describe("economics and C++", () => {
+  test("economics lists microeconomics then macroeconomics", async ({ page }) => {
+    await page.goto("/economics/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toEqual(["/economics/microeconomics/", "/economics/macroeconomics/"]);
+  });
+
+  test("the economics sheets draw their diagrams and typeset their maths", async ({ page }) => {
+    for (const [url, diagrams] of [
+      ["/economics/microeconomics/", 3],
+      ["/economics/macroeconomics/", 2],
+    ] as const) {
+      await page.goto(url);
+      await expect(page.locator("main figure.diagram svg")).toHaveCount(diagrams);
+      await expect(page.locator("main .katex").first()).toBeVisible();
+      await expect(page.locator("main .katex-error")).toHaveCount(0);
+    }
+  });
+
+  test("C++ has the fundamentals sheet and no coming-soon overview", async ({ page }) => {
+    await page.goto("/cpp/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toEqual(["/cpp/fundamentals/"]);
+    const response = await page.goto("/cpp/overview/");
+    expect(response?.status()).toBe(404);
+    await page.goto("/cpp/fundamentals/");
+    await expect(page.locator("main h2").last()).toHaveText("References");
+    await expect(page.locator("main pre code").first()).toBeVisible();
+  });
+});
+
 /** Phone and tablet sizes checked by the responsive tests. */
 const SIZES = [
   { name: "small phone", width: 360, height: 740 },
@@ -1188,6 +1224,8 @@ const HEAVY_SHEETS = [
   "/design/principles/color-theory/",
   "/fitness/recovery-mobility/running-warmup-drills/",
   "/fitness/nutrition/vitamins-minerals/",
+  "/economics/microeconomics/",
+  "/cpp/fundamentals/",
 ];
 
 /** Height of the transparent fade at the bottom of the top bar (1em). */
