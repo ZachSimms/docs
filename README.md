@@ -81,9 +81,10 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
 - **Table of contents**: on wide viewports every sheet with two or more `##`/`###` headings gets a
   contents list in the right margin; the section on screen is underlined solid.
 - **Playground** (`/playground/`, linked from the home footer): a browser IDE for C++, Rust, Python,
-  JavaScript, TypeScript, HTML/CSS/JS and GDScript. Each language is a project of files and folders (imports,
-  modules, headers), saved in `localStorage`. A reference panel (`Refs`, or `⌘K` on that page) searches the
-  sheets and shows one beside the code. See [Playground](#playground).
+  JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, Next.js, GDScript and Markdown. Each
+  is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
+  intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets or the official docs
+  (MDN and others) beside the code. See [Playground](#playground).
 - **Images**: put files under `public/images/<topic>/` and reference them as
   `![alt](/images/<topic>/name.png)`. Dimensions are read at build time and rendered through `next/image`;
   remote URLs fall back to a lazy plain `<img>`.
@@ -123,6 +124,9 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `⌘↵` / `Ctrl+↵` | playground editor | run the project |
 | `⌘K` | playground | search sheets and open the result in the reference panel |
 | `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree | move, fold/unfold, open, rename, delete (asks first) |
+| right-click, `Shift+F10`, Menu key | playground file tree | file menu: rename, delete, set as entry, new file/folder here, copy path, preview |
+| `⌘⌥Z` / `Ctrl+Alt+Z` | playground | zen mode (only the code, output and Refs); `Esc` outside the editor leaves it |
+| `F1` / `⌘/` | playground | help: getting started, shortcuts, and the 1-minute tour |
 
 ## Site map
 
@@ -135,6 +139,9 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                 |
 | `/info/`                 | about                                                        |
 | `/playground/`           | the in-browser IDE                                           |
+| `/playground/node/`      | the IDE for Next.js (cross-origin isolated, runs a WebContainer) |
+
+The topic at `/math/` used to live at `/maths/`; old links redirect (`next.config.ts`).
 
 ## Layout
 
@@ -151,9 +158,11 @@ Available in every sheet without an import. All are rendered in the site's own i
   `lib/keys.ts` (keyboard shortcuts), `lib/toc.ts`
 - `mdx-components.tsx` maps MDX `a` and `img` to the house style; inline code is styled by CSS
 - `lib/tailwind-demo.ts` + `components/TailwindDemo.tsx` (```` ```html demo tailwind ```` fences)
-- Playground: `app/playground/` (route + `playground.css`), `components/playground/` (UI, editor, sandbox frames),
-  `lib/playground/` (project model, languages, linker, runners, sandbox runtime), `playground/godot-runner/` (Godot
-  project behind the GDScript runner), `public/playground/godot/` (its web export)
+- Playground: `app/playground/` (routes + `playground.css`), `components/playground/` (UI, editor, sandbox frames,
+  `intellisense/` workers and editor extensions), `lib/playground/` (project model, languages, linker, runners,
+  sandbox runtime, docs, hover data), `playground/godot-runner/` (Godot project behind the GDScript runner),
+  `public/playground/` (Godot export, DevDocs manifest, TypeScript lib files, hover docs; basedpyright is copied
+  there at `dev`/`build` time and not committed)
 - `tests/unit`, `tests/e2e` (`*.mobile.spec.ts` also run on emulated Pixel 7 and iPhone 14), `tests/fixtures`
 
 ## Playground
@@ -166,12 +175,44 @@ Available in every sheet without an import. All are rendered in the site's own i
 | C++ | Compiler Explorer (CMake, g++ 16.2, C++23), falling back to Wandbox | code is sent to godbolt.org and logged there for 32 days; stdin box |
 | Rust | Compiler Explorer (rustc 1.98, edition 2024), falling back to the Rust Playground | `mod x;` files are inlined into one crate; errors point back at the file |
 | GDScript | a self-hosted Godot 4.7 web build in a sandboxed frame | ≈ 10 MB on the first run; `preload("res://…")` works across files, `class_name` globals don't |
+| HTML/CSS/TS | the sandboxed live preview | module scripts in TypeScript, types stripped |
+| React | the sandboxed live preview, TSX via Sucrase | packages from esm.sh at the `package.json` versions, all on one React (19.3) |
+| Bun | a worker with Bun's APIs **emulated** (not real Bun) | `Bun.serve`, `Bun.file`/`write` (in memory), `Bun.env` from `.env`; no `Bun.spawn`, `Bun.$`, `bun:sqlite`; requests come from the HTTP panel and never leave the browser |
+| Bun + Hono | the same, with real Hono (4.13) from esm.sh | `export default app` or `Bun.serve({ fetch: app.fetch })` |
+| Next.js | a real `next dev` in a WebContainer (StackBlitz), on `/playground/node/` | desktop Chrome, Edge or Firefox; ≈ 200 MB install on the first run (asked first); edits reload; iPhone and other browsers can open the project on StackBlitz. Pinned to Next.js 15.4.8: newer versions fail in WebContainers ([webcontainer-core#1978](https://github.com/stackblitz/webcontainer-core/issues/1978)) |
+| Markdown | nothing runs | GFM preview beside the editor (raw HTML is escaped); `.md` files in any project get the preview too |
+
+- **Intellisense:** hover, completions and diagnostics, loaded when the editor is first focused.
+  - JS/TS projects: a TypeScript 6.0 language service in a worker (npm alias `typescript-ls`, so the repo's own
+    `tsc` is unchanged), with types for `package.json` dependencies from jsDelivr (`@typescript/ata`) and the
+    standard library served from `public/playground/ts-lib/` (`bun scripts/build-ts-lib.ts`). Bun projects see
+    types for the emulated `Bun` global.
+  - Python: [basedpyright](https://docs.basedpyright.com/) in the browser (experimental), with every project file
+    open so imports resolve.
+  - Type errors show as warnings, since runs strip types; syntax errors stay errors.
+  - C++, Rust, GDScript, HTML and CSS: hovers and completions from the official references, generated from
+    DevDocs by `bun scripts/build-hover-docs.ts` into `public/playground/hover/` (committed), each with its
+    source's attribution and an **Open docs** button.
+  - On touch screens, the `ⓘ` key on the symbol row shows the hover for the name at the cursor.
+- **Official docs:** the reference panel's **Docs** tab searches the official references for the current project
+  (MDN's HTML, CSS, JavaScript, Web APIs and HTTP; TypeScript; Python 3.14; cppreference; Rust; Godot 4.7; React;
+  Next.js; Bun; Node) through [DevDocs](https://devdocs.io/). Pages are sanitized with DOMPurify and shown in a
+  scriptless frame with a `default-src 'none'` CSP, with their license and "via DevDocs"; links inside a
+  docset open in the panel. Hono and Tailwind docs are framed from their own sites; current Next.js docs open on
+  nextjs.org (DevDocs has 14.2). `bun scripts/build-docs-manifest.ts` refreshes the committed docset list.
+- **Layout:** every pane edge is a drag handle (keyboard too: arrows, Shift for bigger steps, Home/End, Enter or
+  double-click to reset), remembered per browser. Zen mode keeps only the code, the output and Refs.
+- **Help:** `?` (or `F1`) opens the getting-started help; a first-visit card offers a 1-minute tour of the
+  real controls. Every template has a `README.md` that explains it.
 
 - **Security:** user code never runs on the site's origin. JS, TS and Python run in
   `<iframe sandbox="allow-scripts">` (an opaque origin with no storage, cookies or DOM access) and, inside it, a
   worker that Stop or the time limit (JS 10 s, Python 30 s) kills. The page only accepts messages from its own
   frames carrying the run's token, validates them with Zod and renders output as text. Site pages send
-  `frame-ancestors 'self'`, so only the reference panel can frame them.
+  `frame-ancestors 'self'`, so only the reference panel can frame them. The TypeScript and basedpyright workers
+  run on the site's origin but only analyze code; downloaded `.d.ts` files and DevDocs pages are data, never run.
+  Next.js code runs on StackBlitz's origin (`*.webcontainer-api.io`); only `/playground/node/` is cross-origin
+  isolated (COOP `same-origin`, COEP `credentialless`), and sheets load there in `credentialless` frames.
 - **Phones:** one pane at a time (`Code`, `Files`, `Output`, `Refs`), a symbol row above the keyboard, 16px text
   and 44px targets; edge double-taps are off on the playground.
 - **Rebuilding the GDScript runner:** `brew install --cask godot`, install the single-threaded web export templates
@@ -205,10 +246,26 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
     by InjuryMap, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 - **Godot Engine:** `public/playground/godot/` is a web export of [Godot](https://godotengine.org/) 4.7.2,
   © Godot Engine contributors, MIT License (`GODOT_LICENSE.txt`; third-party notices in `GODOT_COPYRIGHT.txt`).
-- **Playground libraries:** [CodeMirror](https://codemirror.net/) (MIT), [Sucrase](https://github.com/alangpierce/sucrase)
-  (MIT), [es-module-lexer](https://github.com/guybedford/es-module-lexer) (MIT) and, loaded at run time,
-  [Pyodide](https://pyodide.org/) (MPL-2.0). C++ and Rust run on [Compiler Explorer](https://godbolt.org/),
-  [Wandbox](https://wandbox.org/) and the [Rust Playground](https://play.rust-lang.org/).
+- **Playground libraries:** [CodeMirror](https://codemirror.net/) (MIT, including `@codemirror/lsp-client`),
+  [Sucrase](https://github.com/alangpierce/sucrase) (MIT), [es-module-lexer](https://github.com/guybedford/es-module-lexer)
+  (MIT), [micromark](https://github.com/micromark/micromark) (MIT), [DOMPurify](https://github.com/cure53/DOMPurify)
+  (MPL-2.0 or Apache-2.0), [TypeScript](https://www.typescriptlang.org/) (Apache-2.0; its `lib.*.d.ts` files are
+  in `public/playground/ts-lib/`), `@typescript/vfs` and `@typescript/ata` (MIT),
+  [codemirror-ts](https://github.com/val-town/codemirror-ts) (MIT), [Comlink](https://github.com/GoogleChromeLabs/comlink)
+  (Apache-2.0), [browser-basedpyright](https://github.com/DetachHead/basedpyright) (MIT) and, loaded at run time,
+  [Pyodide](https://pyodide.org/) (MPL-2.0), React, Hono and other npm packages via [esm.sh](https://esm.sh/).
+  C++ and Rust run on [Compiler Explorer](https://godbolt.org/), [Wandbox](https://wandbox.org/) and the
+  [Rust Playground](https://play.rust-lang.org/).
+- **WebContainers:** the Next.js playground uses the [WebContainer API](https://webcontainers.io/) (`@webcontainer/api`,
+  MIT) by StackBlitz, which relies on StackBlitz's hosted services and their
+  [Terms of Service](https://stackblitz.com/terms-of-service); commercial production use needs a WebContainer API
+  license from StackBlitz.
+- **Official docs:** the Docs tab and the hover docs show content from [DevDocs](https://devdocs.io/) (MPL-2.0
+  application; content under each source's license): MDN Web Docs (© MDN contributors, CC BY-SA 2.5+),
+  cppreference.com (CC BY-SA 3.0), the Python documentation (PSF License), the Rust documentation (MIT/Apache-2.0),
+  the Godot documentation (CC BY 3.0), React (CC BY 4.0), TypeScript (Apache-2.0), Next.js, Bun and Node.js
+  (MIT). Each page and
+  hover names its source and license (`public/playground/docs-manifest.json`).
 - **Videos:** embedded YouTube videos belong to their channels, which are named in each caption.
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.

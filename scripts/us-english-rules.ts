@@ -280,6 +280,7 @@ export const KEEP: readonly RegExp[] = [
   /\bcancelling\(\)/, // asyncio.Task.cancelling()
   /https?:\/\/[^\s)"'>\]]*/, // external URLs keep their spelling
   /"\/maths\/[^"]*"/, // the redirect from the old topic URL (next.config.ts)
+  /`\/maths\/[^`]*`/, // the old URL, named in the README
   /from "Maths"/,
 ];
 
