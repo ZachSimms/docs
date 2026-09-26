@@ -112,7 +112,8 @@ body:has(.playground) .theme-toggle-rail {
 }
 
 .pg-files {
-  width: 17rem;
+  position: relative;
+  width: var(--pg-tree, 17rem);
   min-height: 0;
   overflow: auto;
   border-right: var(--pg-rule);
@@ -126,13 +127,10 @@ body:has(.playground) .theme-toggle-rail {
 
 .pg-work {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(9rem, 36%);
+  /* The output height comes from the layout, capped so the editor keeps some room. */
+  grid-template-rows: auto minmax(0, 1fr) min(var(--pg-output, 280px), calc(100% - 7rem));
   min-width: 0;
   min-height: 0;
-}
-
-.playground[data-runner="web"] .pg-work {
-  grid-template-rows: auto minmax(0, 1fr) minmax(12rem, 45%);
 }
 
 /* ---- Tabs and editor ---- */
@@ -196,6 +194,7 @@ body:has(.playground) .theme-toggle-rail {
 /* ---- Output: console, preview ---- */
 
 .pg-out {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 0;
@@ -203,15 +202,16 @@ body:has(.playground) .theme-toggle-rail {
 }
 
 .playground[data-runner="web"] .pg-out {
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: min(var(--pg-preview, 560px), calc(100% - 12rem)) minmax(0, 1fr);
 }
 
 .playground[data-runner="godot"] .pg-out {
-  grid-template-columns: minmax(0, 1fr) minmax(12rem, 22rem);
+  grid-template-columns: minmax(0, 1fr) min(var(--pg-godot, 320px), calc(100% - 12rem));
 }
 
 /* The Godot view is visible (not a hidden sandbox) so the engine's frames keep running. */
 .pg-godot {
+  position: relative;
   order: 2;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -307,6 +307,7 @@ body:has(.playground) .theme-toggle-rail {
 }
 
 .pg-preview {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
@@ -413,7 +414,7 @@ body:has(.playground) .theme-toggle-rail {
 
 .pg-refs {
   position: relative;
-  width: var(--pg-panel-w, 420px);
+  width: var(--pg-refs, 420px);
   max-width: 70vw;
   min-height: 0;
   display: grid;
@@ -422,25 +423,90 @@ body:has(.playground) .theme-toggle-rail {
   background: var(--bg);
 }
 
-.pg-resizer {
+/* ---- Splitters: drag handles on pane edges ---- */
+
+.pg-splitter {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -5px;
-  width: 10px;
-  z-index: 2;
-  cursor: col-resize;
+  z-index: 3;
   touch-action: none;
 }
 
-.pg-resizer:hover,
-.pg-resizer:focus-visible {
+.pg-splitter[data-edge="left"],
+.pg-splitter[data-edge="right"] {
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+}
+
+.pg-splitter[data-edge="left"] {
+  left: -5px;
+}
+
+.pg-splitter[data-edge="right"] {
+  right: -5px;
+}
+
+.pg-splitter[data-edge="top"],
+.pg-splitter[data-edge="bottom"] {
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: row-resize;
+}
+
+.pg-splitter[data-edge="top"] {
+  top: -5px;
+}
+
+.pg-splitter[data-edge="bottom"] {
+  bottom: -5px;
+}
+
+.pg-splitter:is(:hover, :focus-visible, [data-dragging])[data-edge="left"],
+.pg-splitter:is(:hover, :focus-visible, [data-dragging])[data-edge="right"] {
   background: linear-gradient(
     to right,
     transparent 4px,
     var(--dot-mobile) 4px 6px,
     transparent 6px
   );
+  outline: none;
+}
+
+.pg-splitter:is(:hover, :focus-visible, [data-dragging])[data-edge="top"],
+.pg-splitter:is(:hover, :focus-visible, [data-dragging])[data-edge="bottom"] {
+  background: linear-gradient(
+    to bottom,
+    transparent 4px,
+    var(--dot-mobile) 4px 6px,
+    transparent 6px
+  );
+  outline: none;
+}
+
+@media (pointer: coarse) {
+  .pg-splitter[data-edge="left"],
+  .pg-splitter[data-edge="right"] {
+    width: 24px;
+  }
+
+  .pg-splitter[data-edge="left"] {
+    left: -12px;
+  }
+
+  .pg-splitter[data-edge="right"] {
+    right: -12px;
+  }
+
+  .pg-splitter[data-edge="top"],
+  .pg-splitter[data-edge="bottom"] {
+    height: 24px;
+  }
+
+  .pg-splitter[data-edge="top"] {
+    top: -12px;
+  }
 }
 
 .pg-refs-search {
@@ -587,12 +653,12 @@ body:has(.playground) .theme-toggle-rail {
     position: absolute;
     inset: 0 0 0 auto;
     z-index: 9;
-    width: min(var(--pg-panel-w, 420px), 90vw);
+    width: min(var(--pg-refs, 420px), 90vw);
     max-width: 90vw;
     box-shadow: -1px 0 0 var(--pre-border);
   }
 
-  .pg-resizer {
+  .pg-refs .pg-splitter {
     display: none;
   }
 }
@@ -677,6 +743,10 @@ body:has(.playground) .theme-toggle-rail {
     border-top: var(--pg-rule);
   }
 
+  .pg-splitter {
+    display: none;
+  }
+
   .pg-panes {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -695,5 +765,214 @@ body:has(.playground) .theme-toggle-rail {
     font-weight: bold;
     text-decoration: underline;
     text-underline-offset: 0.3em;
+  }
+}
+
+/* ---- Zen mode: only the editor, output and Refs ---- */
+
+/* A thin top strip holds the zen bar and the theme toggle, so neither covers the panes. */
+.playground[data-zen="on"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding-top: 2.4em;
+}
+
+.playground[data-zen="on"] :is(.pg-files, .pg-tabs) {
+  display: none;
+}
+
+.playground[data-zen="on"] .pg-main {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.playground[data-zen="on"] .pg-work {
+  grid-template-rows: minmax(0, 1fr) min(var(--pg-output, 280px), calc(100% - 5rem));
+}
+
+.pg-zenbar {
+  position: fixed;
+  top: 0.35em;
+  right: 3.5em;
+  z-index: 6;
+  display: flex;
+  gap: 1.5ch;
+  padding: 0.15em 1ch;
+  background: var(--bg);
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.pg-zenbar:is(:hover, :focus-within) {
+  opacity: 1;
+}
+
+/* ---- File menu ---- */
+
+.pg-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 13rem;
+  padding: 0.25em 0;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px dotted currentColor;
+  box-shadow: 0 6px 24px color-mix(in srgb, #000 20%, transparent);
+}
+
+.pg-menu li {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  padding: 0.3em 1.25ch;
+  cursor: pointer;
+  text-indent: 0;
+}
+
+.pg-menu li::before {
+  content: none;
+}
+
+.pg-menu li:focus,
+.pg-menu li:hover {
+  background: var(--sel-bg);
+  color: var(--sel-fg);
+  outline: none;
+}
+
+.pg-menu kbd {
+  opacity: 0.6;
+}
+
+@media (pointer: coarse) {
+  .pg-menu li {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+
+/* ---- Help dialog, tour, welcome card ---- */
+
+.pg-help {
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px dotted currentColor;
+}
+
+.pg-help::backdrop {
+  background: color-mix(in srgb, #000 35%, transparent);
+}
+
+.pg-help-body {
+  padding: 0 1.5ch 1.25em;
+}
+
+.pg-help h2,
+.pg-help h3 {
+  margin: 0.75em 0 0.35em;
+  font-size: inherit;
+}
+
+.pg-help .pg-bar {
+  justify-content: space-between;
+  margin: 0 -1.5ch;
+  padding-inline: 1.5ch;
+}
+
+.pg-help p,
+.pg-help ol,
+.pg-help ul,
+.pg-help table {
+  margin: 0 0 0.6em;
+}
+
+.pg-help-steps {
+  padding-left: 3ch;
+}
+
+.pg-help-steps li {
+  list-style: decimal;
+  text-indent: 0;
+}
+
+.pg-help-steps li::before {
+  content: none;
+}
+
+.pg-help td {
+  padding: 0.15em 1.5ch 0.15em 0;
+  vertical-align: top;
+}
+
+.pg-tour-mark {
+  position: fixed;
+  z-index: 40;
+  border: 2px solid var(--graph-0);
+  border-radius: 4px;
+  box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 30%, transparent);
+  pointer-events: none;
+}
+
+.pg-tour-card {
+  position: fixed;
+  z-index: 41;
+  width: min(20rem, calc(100vw - 16px));
+  padding: 0.6em 1.5ch;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px dotted currentColor;
+  box-shadow: 0 6px 24px color-mix(in srgb, #000 25%, transparent);
+}
+
+.pg-tour-card:not([style]) {
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+}
+
+.pg-tour-card h2 {
+  margin: 0.2em 0;
+  font-size: inherit;
+}
+
+.pg-tour-card p {
+  margin: 0 0 0.5em;
+}
+
+.pg-tour-actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pg-welcome {
+  padding: 0.5em 1ch;
+  border-bottom: var(--pg-rule);
+  background: var(--pre-bg);
+}
+
+.pg-welcome p {
+  margin: 0 0 0.25em;
+}
+
+@media (max-width: 767px) {
+  /* Zen on phones: the toolbar extras go, the tab bar stays. */
+  .playground[data-zen="on"] {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .pg-zenbar {
+    right: 3em;
+  }
+
+  /* The tour card becomes a bottom sheet above the tab bar. */
+  .pg-tour-card[style] {
+    left: 8px !important;
+    right: 8px;
+    top: auto !important;
+    bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+    width: auto;
   }
 }

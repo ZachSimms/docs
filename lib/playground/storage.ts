@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { DEFAULT_LANGUAGE, getLanguage, LANGUAGE_IDS, type LanguageId } from "./languages";
+import { DEFAULT_LAYOUT, layoutSchema, type Layout } from "./layout";
 import { parseProject, PROJECT_LIMITS, type Project } from "./project";
 
 /** Key prefix for each language's project (`playground:v1:project:rust`). */
@@ -24,8 +25,12 @@ const MAX_STORED_CHARS = PROJECT_LIMITS.maxBytes * 3;
 export interface Prefs {
   /** The language shown on load. */
   readonly language: LanguageId;
-  /** Reference panel width in CSS pixels (desktop). */
-  readonly panelWidth: number;
+  /** Sizes of the resizable parts (desktop and tablet). */
+  readonly layout: Layout;
+  /** Zen mode: only the editor, output and reference panel. */
+  readonly zen: boolean;
+  /** Whether the first-visit welcome card was dismissed (or the tour taken). */
+  readonly welcomed: boolean;
   /** Soft-wrap long lines in the editor. */
   readonly wrap: boolean;
   /** The stdin box per language. */
@@ -39,7 +44,9 @@ export interface Prefs {
 /** Preferences for a first visit. */
 export const DEFAULT_PREFS: Prefs = {
   language: DEFAULT_LANGUAGE,
-  panelWidth: 420,
+  layout: DEFAULT_LAYOUT,
+  zen: false,
+  welcomed: false,
   wrap: false,
   stdin: {},
   treeOpen: true,
@@ -48,7 +55,9 @@ export const DEFAULT_PREFS: Prefs = {
 
 const prefsSchema = z.object({
   language: z.enum(LANGUAGE_IDS).catch(DEFAULT_PREFS.language),
-  panelWidth: z.number().int().min(240).max(1600).catch(DEFAULT_PREFS.panelWidth),
+  layout: layoutSchema,
+  zen: z.boolean().catch(DEFAULT_PREFS.zen),
+  welcomed: z.boolean().catch(DEFAULT_PREFS.welcomed),
   wrap: z.boolean().catch(DEFAULT_PREFS.wrap),
   stdin: z
     .partialRecord(z.enum(LANGUAGE_IDS), z.string().max(64 * 1024))

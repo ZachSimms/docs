@@ -12,8 +12,9 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { BreakablePath } from "@/components/BreakablePath";
+import { Splitter } from "@/components/playground/Splitter";
 import { useTheme } from "@/components/useTheme";
 import { padNumber } from "@/lib/format";
 import type { SheetRef } from "@/lib/playground/languages";
@@ -23,8 +24,6 @@ import { docPath, rankSearch, type SearchDoc } from "@/lib/search-rank";
 
 /** Most results listed. */
 const RESULT_LIMIT = 12;
-/** Width bounds for the resizer, in CSS pixels. */
-export const PANEL_WIDTH = { min: 280, max: 900, step: 24 } as const;
 
 /** Props for {@link ReferencePanel}. */
 interface ReferencePanelProps {
@@ -36,10 +35,6 @@ interface ReferencePanelProps {
   /** A sheet asked for from elsewhere (⌘K); `n` changes on every request. */
   requested: { url: string; n: number } | null;
 }
-
-/** Clamp a width into {@link PANEL_WIDTH}. */
-const clampWidth = (w: number) =>
-  Math.round(Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, w)));
 
 /** Render the panel. */
 export function ReferencePanel({
@@ -112,49 +107,9 @@ export function ReferencePanel({
     }
   };
 
-  const onResizeKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const delta =
-      event.key === "ArrowLeft"
-        ? PANEL_WIDTH.step
-        : event.key === "ArrowRight"
-          ? -PANEL_WIDTH.step
-          : 0;
-    if (!delta) return;
-    event.preventDefault();
-    onWidth(clampWidth(width + delta));
-  };
-
-  const onResizeStart = (event: PointerEvent<HTMLDivElement>) => {
-    const startX = event.clientX;
-    const startWidth = width;
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
-    const onMove = (move: globalThis.PointerEvent) =>
-      onWidth(clampWidth(startWidth + (startX - move.clientX)));
-    const onUp = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onUp);
-      handle.removeEventListener("pointercancel", onUp);
-    };
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onUp);
-    handle.addEventListener("pointercancel", onUp);
-  };
-
   return (
     <aside className="pg-refs" aria-label="Reference sheets">
-      <div
-        className="pg-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize reference panel"
-        aria-valuenow={width}
-        aria-valuemin={PANEL_WIDTH.min}
-        aria-valuemax={PANEL_WIDTH.max}
-        tabIndex={0}
-        onKeyDown={onResizeKey}
-        onPointerDown={onResizeStart}
-      />
+      <Splitter part="refs" edge="left" size={width} onSize={onWidth} />
       <div className="pg-bar">
         <label className="pg-refs-search">
           <span>Refs</span>

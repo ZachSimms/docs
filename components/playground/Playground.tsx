@@ -3,10 +3,12 @@
  *
  * Client component (loaded without SSR by `PlaygroundLoader`, since everything
  * it shows comes from `localStorage`). Layout by width, in CSS:
- * - ≥ 1024px: tree | editor + console (or preview) | reference panel;
+ * - ≥ 1024px: tree | editor + console (or preview) | reference panel, every
+ *   part resizable from its edge (sizes in `Prefs.layout`);
  * - 768–1023px: the tree and the panel become drawers;
  * - < 768px: one pane at a time, switched by the bottom tab bar
  *   (Code, Files, Output, Refs); Run jumps to Output.
+ * Zen mode (⌘⌥Z) keeps only the editor, output and reference panel.
  *
  * Security: this component never evaluates user code. Running goes through
  * `usePlaygroundRun` (sandboxed frames and remote services).
@@ -15,32 +17,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { DottedLink } from "@/components/DottedLink";
-import { getLanguage, LANGUAGES, modeForPath, type LanguageId } from "@/lib/playground/languages";
+import { isTypingTarget } from "@/lib/keys";
+import { getLanguage, modeForPath, type LanguageId } from "@/lib/playground/languages";
+import { layoutStyle, resize, type LayoutPart } from "@/lib/playground/layout";
 import {
   addDir,
   addFile,
+  basename,
   closeTab,
   remove,
   rename,
   setEntry,
   setOpen,
   updateFile,
-  basename,
 } from "@/lib/playground/project";
+import { isHelpShortcut, isZenShortcut, type TourStep } from "@/lib/playground/shortcuts";
 import { loadPrefs, savePrefs, type Prefs } from "@/lib/playground/storage";
 import { isSheetUrl, OPEN_REFERENCE_EVENT } from "@/lib/reference-panel";
 import { CodeEditor, type EditorHandle } from "./CodeEditor";
 import { ConsolePane } from "./ConsolePane";
 import { FileTree, type TreeCommand } from "./FileTree";
+import { HelpPanel } from "./HelpPanel";
+import { PlaygroundToolbar } from "./PlaygroundToolbar";
 import { ReferencePanel } from "./ReferencePanel";
+import { Splitter } from "./Splitter";
 import { SymbolRow } from "./SymbolRow";
+import { Tour } from "./Tour";
 import { usePlaygroundRun } from "./usePlaygroundRun";
 import { useProjects } from "./useProjects";
 import { WebPreview } from "./WebPreview";
 
 /** The panes a phone shows one at a time. */
-export type Pane = "code" | "files" | "output" | "refs";
+export type Pane = TourStep["pane"];
 const PANES: readonly { id: Pane; label: string }[] = [
   { id: "code", label: "Code" },
   { id: "files", label: "Files" },
@@ -72,12 +80,13 @@ export function Playground() {
   const [pane, setPane] = useState<Pane>("code");
   const [refsOpen, setRefsOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
-  const [confirmReset, setConfirmReset] = useState(false);
   const [askDownload, setAskDownload] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
   const [editorFocused, setEditorFocused] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ url: string; n: number } | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [touring, setTouring] = useState(false);
   const editor = useRef<EditorHandle | null>(null);
   const coarse = useCoarsePointer();
 
@@ -89,6 +98,36 @@ export function Playground() {
   useEffect(() => {
     savePrefs(prefs);
   }, [prefs]);
+
+  const setSize = useCallback(
+    (part: LayoutPart) => (size: number) =>
+      setPrefs((current) => ({ ...current, layout: resize(current.layout, part, size) })),
+    [],
+  );
+
+  const toggleZen = useCallback(
+    () => setPrefs((current) => ({ ...current, zen: !current.zen })),
+    [],
+  );
+
+  // Zen mode (⌘⌥Z) and help (F1, ⌘/) from anywhere; Esc outside the editor leaves zen mode.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (isZenShortcut(event)) {
+        event.preventDefault();
+        toggleZen();
+      } else if (isHelpShortcut(event)) {
+        event.preventDefault();
+        setHelpOpen(true);
+      } else if (event.key === "Escape" && prefs.zen && !isTypingTarget(event.target)) {
+        event.preventDefault(); // handled: page-level Esc (go up a level) must not also fire
+        updatePrefs({ zen: false });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [prefs.zen, toggleZen, updatePrefs]);
 
   // New output while another pane is showing on a phone marks the Output tab;
   // looking at the Output pane clears it.
@@ -140,7 +179,6 @@ export function Playground() {
     runState.stop();
     runState.clear();
     setAskDownload(false);
-    setConfirmReset(false);
     updatePrefs({ language: id });
     setResetKey((k) => k + 1);
   };
@@ -196,12 +234,40 @@ export function Playground() {
     runState.clear();
     setProject(spec.template);
     setResetKey((k) => k + 1);
-    setConfirmReset(false);
   };
+
+  const startTour = () => {
+    setHelpOpen(false);
+    updatePrefs({ welcomed: true, zen: false });
+    setTouring(true);
+  };
+
+  const endTour = useCallback(() => setTouring(false), []);
 
   const isRunning = runState.phase === "running";
   const code = project.files[project.open] ?? "";
   const indent = modeForPath(project.open) === "gdscript" ? "\t" : "  ";
+  const showTree = !prefs.zen && (prefs.treeOpen || pane === "files");
+  const showRefs = refsOpen || pane === "refs";
+  const welcome =
+    prefs.welcomed || runState.output.chunks.length > 0 ? null : (
+      <div className="pg-welcome" role="note">
+        <p>New here? Pick a project, edit, press ▶ Run (⌘↵).</p>
+        <p>
+          <button type="button" className="link" onClick={startTour}>
+            <i>take the 1-minute tour</i>
+          </button>
+          {"  ·  "}
+          <button type="button" className="link" onClick={() => setHelpOpen(true)}>
+            <i>help (F1)</i>
+          </button>
+          {"  ·  "}
+          <button type="button" className="link" onClick={() => updatePrefs({ welcomed: true })}>
+            <i>dismiss</i>
+          </button>
+        </p>
+      </div>
+    );
 
   return (
     <div
@@ -209,108 +275,82 @@ export function Playground() {
       data-no-tap-nav=""
       data-pane={pane}
       data-runner={spec.runner}
-      data-refs={refsOpen ? "open" : "closed"}
+      data-refs={showRefs ? "open" : "closed"}
       data-tree={prefs.treeOpen ? "open" : "closed"}
-      style={{ "--pg-panel-w": `${prefs.panelWidth}px` } as CSSProperties}
+      data-zen={prefs.zen ? "on" : "off"}
+      style={layoutStyle(prefs.layout) as CSSProperties}
     >
-      <header className="pg-toolbar">
-        <DottedLink href="/" ariaLabel="Back to home">
-          ../
-        </DottedLink>
-        <h1 className="pg-title">Playground</h1>
-        <label className="pg-language">
-          <span className="sr-only">Language</span>
-          <select
-            value={language}
-            onChange={(event) => chooseLanguage(event.target.value as LanguageId)}
-          >
-            {LANGUAGES.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="link pg-run"
-          onClick={run}
-          disabled={isRunning}
-          aria-keyshortcuts="Meta+Enter Control+Enter"
-        >
-          <i>▶ Run</i>
-          <span className="pg-kbd" aria-hidden="true">
-            {" "}
-            ⌘↵
-          </span>
-        </button>
-        {spec.runner !== "web" && (
+      {prefs.zen ? (
+        <div className="pg-zenbar" role="toolbar" aria-label="Zen mode">
+          <button type="button" className="link" onClick={run} disabled={isRunning}>
+            <i>▶ Run</i>
+          </button>
           <button
             type="button"
             className="link"
-            onClick={runState.stop}
-            disabled={!isRunning && !runState.live}
-          >
-            <i>Stop</i>
-          </button>
-        )}
-        {confirmReset ? (
-          <span className="pg-confirm" role="group" aria-label="Reset project">
-            reset to the starter project?{" "}
-            <button type="button" className="link" onClick={reset}>
-              <i>yes</i>
-            </button>{" "}
-            <button type="button" className="link" onClick={() => setConfirmReset(false)}>
-              <i>no</i>
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="link pg-reset" onClick={() => setConfirmReset(true)}>
-            <i>Reset</i>
-          </button>
-        )}
-        <span className="pg-toolbar-end">
-          {(saveFailed || notice) && (
-            <span className="pg-notice" role="status">
-              {saveFailed ? "couldn't save (storage full or disabled)" : notice}
-            </span>
-          )}
-          <button
-            type="button"
-            className="link pg-refs-toggle"
             aria-expanded={refsOpen}
-            aria-keyshortcuts="Meta+K Control+K"
-            onClick={() => setRefsOpen((open) => !open)}
+            onClick={() => setRefsOpen((o) => !o)}
           >
             <i>Refs</i>
-            <span className="pg-kbd" aria-hidden="true">
-              {" "}
-              ⌘K
-            </span>
           </button>
-        </span>
-      </header>
+          <button
+            type="button"
+            className="link"
+            onClick={toggleZen}
+            title="Leave zen mode (Esc, ⌘⌥Z)"
+          >
+            <i>✕ zen</i>
+          </button>
+        </div>
+      ) : (
+        <PlaygroundToolbar
+          spec={spec}
+          running={isRunning}
+          canStop={isRunning || runState.live}
+          refsOpen={refsOpen}
+          notice={saveFailed ? "couldn't save (storage full or disabled)" : notice}
+          onLanguage={chooseLanguage}
+          onRun={run}
+          onStop={runState.stop}
+          onReset={reset}
+          onZen={toggleZen}
+          onHelp={() => setHelpOpen(true)}
+          onRefs={() => setRefsOpen((open) => !open)}
+        />
+      )}
 
       <div className="pg-main">
-        <nav className="pg-files" aria-label="Files">
-          {prefs.treeOpen || pane === "files" ? (
-            <FileTree
-              key={language}
-              project={project}
-              onOpen={openFile}
-              onCommand={onTreeCommand}
-              onHide={() => (pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false }))}
-            />
+        <nav className="pg-files" aria-label="Files" data-tour="files">
+          {showTree ? (
+            <>
+              <FileTree
+                key={language}
+                project={project}
+                onOpen={openFile}
+                onCommand={onTreeCommand}
+                onHide={() =>
+                  pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false })
+                }
+              />
+              <Splitter
+                part="tree"
+                edge="right"
+                size={prefs.layout.tree}
+                onSize={setSize("tree")}
+              />
+            </>
           ) : (
-            <button
-              type="button"
-              className="link pg-tree-show"
-              aria-label="Show files"
-              title="Show files"
-              onClick={() => updatePrefs({ treeOpen: true })}
-            >
-              <i>»</i>
-            </button>
+            !prefs.zen && (
+              <button
+                type="button"
+                className="link pg-tree-show"
+                aria-label="Show files"
+                title="Show files"
+                onClick={() => updatePrefs({ treeOpen: true })}
+              >
+                <i>»</i>
+              </button>
+            )
           )}
         </nav>
 
@@ -352,7 +392,12 @@ export function Playground() {
               </button>
             </span>
           </div>
-          <div className="pg-code" role="region" aria-label={`Editing ${project.open}`}>
+          <div
+            className="pg-code"
+            role="region"
+            aria-label={`Editing ${project.open}`}
+            data-tour="editor"
+          >
             <CodeEditor
               path={project.open}
               paths={Object.keys(project.files)}
@@ -365,17 +410,37 @@ export function Playground() {
               onFocusChange={setEditorFocused}
             />
           </div>
-          <div className="pg-out">
+          <div className="pg-out" data-tour="output">
+            <Splitter
+              part="output"
+              edge="top"
+              size={prefs.layout.output}
+              onSize={setSize("output")}
+            />
             {spec.runner === "web" && (
               <WebPreview
                 project={project}
                 refreshKey={previewKey}
                 onReload={runState.clear}
                 onOutput={runState.appendExternal}
+                resizer={
+                  <Splitter
+                    part="preview"
+                    edge="right"
+                    size={prefs.layout.preview}
+                    onSize={setSize("preview")}
+                  />
+                }
               />
             )}
             {spec.runner === "godot" && (
               <section className="pg-godot" aria-label="Godot view">
+                <Splitter
+                  part="godot"
+                  edge="left"
+                  size={prefs.layout.godot}
+                  onSize={setSize("godot")}
+                />
                 <div className="pg-bar">
                   <span>Godot</span>
                   <span className="pg-status">
@@ -396,15 +461,16 @@ export function Playground() {
               askDownload={askDownload}
               onApproveDownload={approveDownload}
               onCancelDownload={() => setAskDownload(false)}
+              welcome={welcome}
             />
           </div>
         </div>
 
-        {(refsOpen || pane === "refs") && (
+        {showRefs && (
           <ReferencePanel
             suggestions={spec.refs}
-            width={prefs.panelWidth}
-            onWidth={(panelWidth) => updatePrefs({ panelWidth })}
+            width={prefs.layout.refs}
+            onWidth={setSize("refs")}
             onClose={() => (setRefsOpen(false), pane === "refs" && setPane("code"))}
             requested={requested}
           />
@@ -418,6 +484,7 @@ export function Playground() {
             type="button"
             role="tab"
             aria-selected={pane === p.id}
+            data-tour={p.id === "refs" ? "refs" : p.id === "files" ? "files" : undefined}
             onClick={() => setPane(p.id)}
           >
             {p.label}
@@ -436,6 +503,10 @@ export function Playground() {
         indent={indent}
         visible={coarse && editorFocused && pane === "code"}
       />
+      {helpOpen && (
+        <HelpPanel open spec={spec} onClose={() => setHelpOpen(false)} onTour={startTour} />
+      )}
+      {touring && <Tour onPane={setPane} onDone={endTour} />}
       <div className="pg-frames">{runState.frames}</div>
     </div>
   );

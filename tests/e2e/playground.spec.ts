@@ -41,7 +41,7 @@ test.describe("playground: running code", () => {
     await expect(page.locator('[role="treeitem"][data-path="more.js"]')).toBeVisible();
 
     await page.getByRole("button", { name: "Actions for more.js" }).click();
-    await page.getByRole("button", { name: "delete" }).click();
+    await page.getByRole("menuitem", { name: /Delete/ }).click();
     await page.getByRole("button", { name: "yes" }).click();
     await expect(page.locator('[role="treeitem"][data-path="more.js"]')).toHaveCount(0);
     await run(page);
@@ -280,5 +280,94 @@ test.describe("playground: security", () => {
     const response = await request.get("/design/css/tailwind/");
     expect(response.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
     expect(response.headers()["x-frame-options"]).toBe("SAMEORIGIN");
+  });
+});
+
+test.describe("playground: layout, zen, menu, help", () => {
+  test("every pane edge resizes, and the sizes survive a reload", async ({ page }) => {
+    await openPlayground(page, "web");
+    const tree = page.getByRole("separator", { name: "Resize file tree width" });
+    await tree.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    await expect(tree).toHaveAttribute("aria-valuenow", "336");
+    const output = page.getByRole("separator", { name: "Resize output height" });
+    const box = (await output.boundingBox())!;
+    await page.mouse.move(box.x + 200, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 200, box.y - 100, { steps: 4 });
+    await page.mouse.up();
+    const height = Number(await output.getAttribute("aria-valuenow"));
+    expect(height).toBeGreaterThan(350);
+    await expect(page.getByRole("separator", { name: "Resize preview width" })).toBeVisible();
+    await page.getByRole("button", { name: /Refs/ }).click();
+    await expect(
+      page.getByRole("separator", { name: "Resize reference panel width" }),
+    ).toBeVisible();
+    await page.waitForTimeout(300);
+    await page.reload();
+    await expect(page.getByRole("separator", { name: "Resize file tree width" })).toHaveAttribute(
+      "aria-valuenow",
+      "336",
+    );
+    await expect(page.getByRole("separator", { name: "Resize output height" })).toHaveAttribute(
+      "aria-valuenow",
+      String(height),
+    );
+  });
+
+  test("zen mode (⌘⌥Z / Ctrl+Alt+Z) keeps only the code, output and Refs; Esc leaves it", async ({
+    page,
+  }) => {
+    await openPlayground(page, "typescript");
+    await page.keyboard.press("Control+Alt+z");
+    await expect(page.locator(".playground")).toHaveAttribute("data-zen", "on");
+    await expect(page.getByRole("tree", { name: "Project files" })).toBeHidden();
+    await expect(page.locator(".pg-toolbar")).toHaveCount(0);
+    await expect(page.locator(".cm-editor")).toBeVisible();
+    await expect(page.getByLabel("Program output")).toBeVisible();
+    await page
+      .getByRole("toolbar", { name: "Zen mode" })
+      .getByRole("button", { name: "Refs" })
+      .click();
+    await expect(page.getByRole("complementary", { name: "Reference sheets" })).toBeVisible();
+    await page
+      .getByRole("toolbar", { name: "Zen mode" })
+      .getByRole("button", { name: /Run/ })
+      .click();
+    await expect(page.getByLabel("Program output")).toContainText("Hello, playground!");
+    await page.locator("body").press("Escape");
+    await expect(page.locator(".playground")).toHaveAttribute("data-zen", "off");
+    await expect(page.getByRole("tree", { name: "Project files" })).toBeVisible();
+  });
+
+  test("right-clicking a file offers rename, delete and set as entry", async ({ page }) => {
+    await openPlayground(page, "javascript");
+    await page.locator('[role="treeitem"][data-path="lib/greet.js"]').click({ button: "right" });
+    const menu = page.getByRole("menu", { name: "Actions for lib/greet.js" });
+    await menu.getByRole("menuitem", { name: /Set as entry/ }).click();
+    await expect(page.locator('[data-path="lib/greet.js"] .pg-tree-entry')).toBeVisible();
+    await page.locator('[role="treeitem"][data-path="lib/greet.js"]').click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Rename/ }).click();
+    const rename = page.getByRole("textbox", { name: "Rename lib/greet.js" });
+    await rename.fill("hello.js");
+    await rename.press("Enter");
+    await expect(page.locator('[data-path="lib/hello.js"]')).toBeVisible();
+    await page.locator('[role="treeitem"][data-path="lib/math.js"]').click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Delete/ }).click();
+    await page.getByRole("button", { name: "yes" }).click();
+    await expect(page.locator('[data-path="lib/math.js"]')).toHaveCount(0);
+  });
+
+  test("help opens with F1 and the tour walks through every step", async ({ page }) => {
+    await openPlayground(page, "typescript");
+    await page.locator("body").press("F1");
+    const help = page.getByRole("dialog", { name: "Playground help" });
+    await expect(help).toBeVisible();
+    await help.getByRole("button", { name: "take the 1-minute tour" }).click();
+    const card = page.locator(".pg-tour-card");
+    await expect(card).toContainText("Pick a project");
+    for (let i = 0; i < 7; i++) await card.getByRole("button", { name: /next|done/ }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.locator(".pg-welcome")).toHaveCount(0); // taking the tour dismisses the welcome card
   });
 });

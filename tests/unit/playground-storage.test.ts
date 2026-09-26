@@ -76,12 +76,14 @@ describe("projects", () => {
 describe("prefs", () => {
   it("returns defaults when empty or invalid, and round-trips valid prefs", () => {
     expect(loadPrefs(store)).toEqual(DEFAULT_PREFS);
-    store.setItem(PREFS_KEY, JSON.stringify({ language: "cobol", panelWidth: -5 }));
+    store.setItem(PREFS_KEY, JSON.stringify({ language: "cobol", layout: "wide" }));
     expect(loadPrefs(store)).toEqual(DEFAULT_PREFS);
     const prefs = {
       ...DEFAULT_PREFS,
       language: "cpp" as const,
-      panelWidth: 480,
+      layout: { ...DEFAULT_PREFS.layout, refs: 480, tree: 300 },
+      zen: true,
+      welcomed: true,
       wrap: true,
       stdin: { cpp: "21" },
       approvedDownloads: ["python" as const],
@@ -93,6 +95,15 @@ describe("prefs", () => {
   it("keeps valid fields when others are missing", () => {
     store.setItem(PREFS_KEY, JSON.stringify({ language: "rust" }));
     expect(loadPrefs(store).language).toBe("rust");
-    expect(loadPrefs(store).panelWidth).toBe(DEFAULT_PREFS.panelWidth);
+    expect(loadPrefs(store).layout).toEqual(DEFAULT_PREFS.layout);
+  });
+
+  it("clamps stored sizes and fills in missing ones", () => {
+    store.setItem(PREFS_KEY, JSON.stringify({ layout: { tree: 5, refs: 99999, output: "x" } }));
+    const { layout } = loadPrefs(store);
+    expect(layout.tree).toBe(160);
+    expect(layout.refs).toBe(1200);
+    expect(layout.output).toBe(DEFAULT_PREFS.layout.output);
+    expect(layout.godot).toBe(DEFAULT_PREFS.layout.godot);
   });
 });

@@ -137,7 +137,8 @@ describe("FileTree", () => {
   it("offers the actions behind the ⋯ button, including set as entry", () => {
     const { commands } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Actions for shapes/circle.py" }));
-    fireEvent.click(screen.getByRole("button", { name: "set as entry" }));
+    const menu = screen.getByRole("menu", { name: "Actions for shapes/circle.py" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Set as entry" }));
     expect(commands).toEqual([{ type: "set-entry", path: "shapes/circle.py" }]);
   });
 });
@@ -259,10 +260,10 @@ describe("ReferencePanel", () => {
       />,
     );
     expect(screen.getByTitle("Reference: /cpp/fundamentals/")).toBeInTheDocument();
-    const handle = screen.getByRole("separator", { name: "Resize reference panel" });
+    const handle = screen.getByRole("separator", { name: "Resize reference panel width" });
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
     fireEvent.keyDown(handle, { key: "ArrowRight" });
-    expect(widths).toEqual([444, 396]);
+    expect(widths).toEqual([436, 404]);
   });
 });
 

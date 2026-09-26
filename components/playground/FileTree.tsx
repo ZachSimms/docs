@@ -4,9 +4,10 @@
  * Client component, drawn with the same `├──` connectors as the site's MDX
  * file trees. Keyboard: ↑/↓ move, →/← expand/collapse (or step in/out),
  * Enter opens a file or toggles a folder, F2 renames, Delete asks to delete.
- * Pointer and touch: tap a row to open; the `⋯` button shows the actions
- * inline (no long-press menus, no browser dialogs). Rows are at least 44px
- * tall on touch screens (CSS).
+ * Right-click (or Shift+F10 / the Menu key, or the `⋯` button on touch)
+ * opens the file menu: rename, delete, set as entry, new file or folder,
+ * copy path. Rename and delete continue inline (no browser dialogs). Rows are
+ * at least 44px tall on touch screens (CSS).
  *
  * The tree never changes the project itself: it asks the parent through
  * `onCommand`, which returns an error message to show inline, or `null`.
@@ -14,7 +15,16 @@
 
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { FileMenu, type FileMenuItem } from "./FileMenu";
 import {
   basename,
   dirname,
@@ -40,6 +50,8 @@ interface FileTreeProps {
   onCommand(command: TreeCommand): string | null;
   /** Collapse the tree panel (desktop) or close the Files pane (phones). */
   onHide?(): void;
+  /** Show a Markdown file's preview (offered in the menu for `.md` files). */
+  onPreview?(path: string): void;
 }
 
 /** One visible row. */
@@ -77,10 +89,11 @@ const containerOf = (node: TreeNode | undefined) =>
   !node ? "" : node.kind === "dir" ? node.path : dirname(node.path);
 
 /** Render the tree. */
-export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) {
+export function FileTree({ project, onOpen, onCommand, onHide, onPreview }: FileTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [focused, setFocused] = useState<string>(project.open);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  /** The open context menu: for a row, or for the tree itself (`node: null`). */
+  const [menu, setMenu] = useState<{ node: TreeNode | null; x: number; y: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +132,7 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
   };
 
   const startNew = (mode: "new-file" | "new-dir", parent: string) => {
-    setMenuFor(null);
+    setMenu(null);
     setError(null);
     if (parent) toggle(parent, true);
     setEditing({ mode, parent, value: "" });
@@ -194,9 +207,13 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
         case "Delete":
         case "Backspace":
           return (setConfirmDelete(node.path), true);
+        case "ContextMenu":
+          return (openMenuAtRow(node), true);
+        case "F10":
+          if (!event.shiftKey) return false;
+          return (openMenuAtRow(node), true);
         case "Escape":
-          if (!menuFor && !confirmDelete && !error) return false;
-          setMenuFor(null);
+          if (!confirmDelete && !error) return false;
           setConfirmDelete(null);
           setError(null);
           return true;
@@ -205,6 +222,69 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
       }
     })();
     if (handled) event.preventDefault();
+  };
+
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  /** Open the menu under a row (keyboard). */
+  const openMenuAtRow = (node: TreeNode) => {
+    const rect = rowRefs.current.get(node.path)?.getBoundingClientRect();
+    setMenu({ node, x: (rect?.left ?? 0) + 24, y: rect?.bottom ?? 0 });
+  };
+
+  /** Right-click: a row's menu, or the tree's own on empty space. */
+  const onContextMenu = (event: MouseEvent<HTMLElement>, node: TreeNode | null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setConfirmDelete(null);
+    if (node) setFocused(node.path);
+    setMenu({ node, x: event.clientX, y: event.clientY });
+  };
+
+  /** What the menu offers for a row, or for the tree root. */
+  const menuItems = (node: TreeNode | null): FileMenuItem[] => {
+    const where = containerOf(node ?? undefined);
+    const create: FileMenuItem[] = [
+      {
+        id: "new-file",
+        label: node ? "New file here" : "New file",
+        run: () => startNew("new-file", where),
+      },
+      {
+        id: "new-dir",
+        label: node ? "New folder here" : "New folder",
+        run: () => startNew("new-dir", where),
+      },
+    ];
+    if (!node) return create;
+    const isEntry = node.path === project.entry;
+    return [
+      ...(node.kind === "file" && onPreview && node.path.toLowerCase().endsWith(".md")
+        ? [{ id: "preview", label: "Preview", run: () => onPreview(node.path) }]
+        : []),
+      {
+        id: "rename",
+        label: "Rename",
+        hint: "F2",
+        run: () => setEditing({ mode: "rename", path: node.path, value: node.name }),
+      },
+      { id: "delete", label: "Delete", hint: "Del", run: () => setConfirmDelete(node.path) },
+      ...(node.kind === "file" && !isEntry
+        ? [
+            {
+              id: "entry",
+              label: "Set as entry",
+              run: () => void apply({ type: "set-entry", path: node.path }),
+            },
+          ]
+        : []),
+      ...create,
+      {
+        id: "copy",
+        label: "Copy path",
+        run: () => void navigator.clipboard?.writeText(node.path).catch(() => undefined),
+      },
+    ];
   };
 
   const nameInput = (value: string, label: string) => (
@@ -266,7 +346,13 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
           )}
         </span>
       </div>
-      <ul role="tree" aria-label="Project files" className="pg-tree-list" onKeyDown={onTreeKey}>
+      <ul
+        role="tree"
+        aria-label="Project files"
+        className="pg-tree-list"
+        onKeyDown={onTreeKey}
+        onContextMenu={(event) => onContextMenu(event, null)}
+      >
         {newRowFor("", 0)}
         {rows.map(({ node, depth, prefix }, index) => {
           const isOpen = node.kind === "file" && node.path === project.open;
@@ -296,6 +382,7 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
               onDoubleClick={() =>
                 setEditing({ mode: "rename", path: node.path, value: node.name })
               }
+              onContextMenu={(event) => onContextMenu(event, node)}
             >
               <span className="pg-tree-prefix" aria-hidden="true">
                 {prefix}
@@ -324,62 +411,19 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
                 className="pg-tree-more"
                 tabIndex={-1}
                 aria-label={`Actions for ${node.path}`}
-                aria-expanded={menuFor === node.path}
-                onClick={() => {
+                aria-haspopup="menu"
+                aria-expanded={menu?.node?.path === node.path}
+                onClick={(event) => {
                   setConfirmDelete(null);
-                  setMenuFor(menuFor === node.path ? null : node.path);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setMenu(
+                    menu?.node?.path === node.path ? null : { node, x: rect.left, y: rect.bottom },
+                  );
                 }}
               >
                 ⋯
               </button>
             </li>,
-            menuFor === node.path && (
-              <li key={`${node.path}#menu`} className="pg-tree-menu" role="none">
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => (
-                    setMenuFor(null),
-                    setEditing({ mode: "rename", path: node.path, value: node.name })
-                  )}
-                >
-                  <i>rename</i>
-                </button>
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => (setMenuFor(null), setConfirmDelete(node.path))}
-                >
-                  <i>delete</i>
-                </button>
-                {node.kind === "file" && !isEntry && (
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => (
-                      setMenuFor(null),
-                      apply({ type: "set-entry", path: node.path })
-                    )}
-                  >
-                    <i>set as entry</i>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => startNew("new-file", containerOf(node))}
-                >
-                  <i>new file here</i>
-                </button>
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => startNew("new-dir", containerOf(node))}
-                >
-                  <i>new folder here</i>
-                </button>
-              </li>
-            ),
             confirmDelete === node.path && (
               <li key={`${node.path}#delete`} className="pg-tree-menu" role="none">
                 <span>
@@ -415,6 +459,15 @@ export function FileTree({ project, onOpen, onCommand, onHide }: FileTreeProps) 
         <p className="pg-tree-error" role="alert">
           {error}
         </p>
+      )}
+      {menu && (
+        <FileMenu
+          label={menu.node ? `Actions for ${menu.node.path}` : "Project files"}
+          items={menuItems(menu.node)}
+          x={menu.x}
+          y={menu.y}
+          onClose={closeMenu}
+        />
       )}
     </div>
   );

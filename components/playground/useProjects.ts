@@ -9,7 +9,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LanguageId } from "@/lib/playground/languages";
 import type { Project } from "@/lib/playground/project";
 import { loadProject, saveProject } from "@/lib/playground/storage";
@@ -37,19 +37,15 @@ export function useProjects(language: LanguageId): ProjectsState {
   }));
   const [saveFailed, setSaveFailed] = useState(false);
   const dirty = useRef(new Set<LanguageId>());
+  /**
+   * The projects as of the latest change, updated synchronously by `setProject`,
+   * so a save straight after an edit (pagehide) never writes the previous version.
+   */
   const latest = useRef(projects);
 
-  useEffect(() => {
-    latest.current = projects;
-  });
-
-  // Load a language's project the first time it is shown (state adjusted while rendering).
-  const loaded = projects[language];
-  if (!loaded)
-    setProjects((current) =>
-      current[language] ? current : { ...current, [language]: loadProject(language) },
-    );
-  const project = loaded ?? loadProject(language);
+  // A language not edited yet this session shows its stored project (read once per language).
+  const stored = useMemo(() => loadProject(language), [language]);
+  const project = projects[language] ?? stored;
 
   const flush = useCallback(() => {
     let ok = true;
@@ -86,13 +82,14 @@ export function useProjects(language: LanguageId): ProjectsState {
 
   const setProject = useCallback(
     (next: Project | ((current: Project) => Project)) => {
-      // Marked before the (pure) updater runs; saving an unchanged project is harmless.
+      const current = latest.current;
+      const base = current[language] ?? loadProject(language);
+      const value = typeof next === "function" ? next(base) : next;
+      if (value === base) return;
+      const updated = { ...current, [language]: value };
+      latest.current = updated;
       dirty.current.add(language);
-      setProjects((current) => {
-        const base = current[language] ?? loadProject(language);
-        const value = typeof next === "function" ? next(base) : next;
-        return value === base ? current : { ...current, [language]: value };
-      });
+      setProjects(updated);
     },
     [language],
   );

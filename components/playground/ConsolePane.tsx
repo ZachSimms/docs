@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LanguageSpec } from "@/lib/playground/languages";
 import { outputText, type Output } from "@/lib/playground/output";
 import type { RunPhase } from "./usePlaygroundRun";
@@ -26,6 +26,8 @@ interface ConsolePaneProps {
   askDownload: boolean;
   onApproveDownload(): void;
   onCancelDownload(): void;
+  /** A first-visit welcome card shown above the output, if any. */
+  welcome?: ReactNode;
 }
 
 /** Whether the browser asked to save data (Chrome's `navigator.connection.saveData`). */
@@ -47,6 +49,7 @@ export function ConsolePane(props: ConsolePaneProps) {
     askDownload,
     onApproveDownload,
     onCancelDownload,
+    welcome,
   } = props;
   const pre = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
@@ -93,6 +96,7 @@ export function ConsolePane(props: ConsolePaneProps) {
           </button>
         </span>
       </div>
+      {welcome}
       {askDownload && spec.download && (
         <div className="pg-download" role="group" aria-label="Download needed">
           <p>

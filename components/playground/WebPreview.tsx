@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { linkWebDocument, replaceModuleUrls } from "@/lib/playground/module-linker";
 import type { Stream } from "@/lib/playground/output";
 import type { Project } from "@/lib/playground/project";
@@ -31,10 +31,12 @@ interface WebPreviewProps {
   onReload(): void;
   /** Console output from the page. */
   onOutput(stream: Stream, text: string): void;
+  /** A drag handle on the preview's edge. */
+  resizer?: ReactNode;
 }
 
 /** Render the preview frame. */
-export function WebPreview({ project, refreshKey, onReload, onOutput }: WebPreviewProps) {
+export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }: WebPreviewProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const token = useRef<string | null>(null);
   const urls = useRef<ReadonlyMap<string, string>>(new Map());
@@ -92,6 +94,7 @@ export function WebPreview({ project, refreshKey, onReload, onOutput }: WebPrevi
 
   return (
     <section className="pg-preview" aria-label="Preview">
+      {resizer}
       <div className="pg-bar">
         <span>Preview</span>
         <span className="pg-status">updates as you type</span>
@@ -100,7 +103,7 @@ export function WebPreview({ project, refreshKey, onReload, onOutput }: WebPrevi
         ref={frame}
         sandbox={SANDBOX_FLAGS}
         srcDoc={doc}
-        title="Preview of index.html"
+        title={`Preview of ${project.entry}`}
         className="pg-preview-frame"
       />
     </section>
