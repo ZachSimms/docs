@@ -124,7 +124,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `⌘↵` / `Ctrl+↵` | playground editor | run the project |
 | `⌘K` | playground | search sheets and open the result in the reference panel |
 | `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree | move, fold/unfold, open, rename, delete (asks first) |
-| right-click, `Shift+F10`, Menu key | playground file tree | file menu: rename, delete, set as entry, new file/folder here, copy path, preview |
+| right-click, `Shift+F10`, Menu key | playground file tree | file menu: rename, delete, set as entry, new file/folder here, copy path, preview, download (a file; a folder or the whole project as `.zip`) |
 | `⌘⌥Z` / `Ctrl+Alt+Z` | playground | zen mode (only the code, output and Refs); `Esc` outside the editor leaves it |
 | `F1` / `⌘/` | playground | help: getting started, shortcuts, and the 1-minute tour |
 

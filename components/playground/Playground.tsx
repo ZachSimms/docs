@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { isTypingTarget } from "@/lib/keys";
 import { getLanguage, modeForPath, type LanguageId } from "@/lib/playground/languages";
+import { projectArchiveName } from "@/lib/playground/download";
 import { layoutStyle, resize, type LayoutPart } from "@/lib/playground/layout";
 import {
   addDir,
@@ -357,6 +358,7 @@ export function Playground() {
               <FileTree
                 key={language}
                 project={project}
+                archiveName={projectArchiveName(language)}
                 onOpen={openFile}
                 onCommand={onTreeCommand}
                 onHide={() =>

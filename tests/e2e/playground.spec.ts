@@ -1,4 +1,5 @@
 /** Playwright tests for `/playground/` on desktop: runners, files, reference panel and the sandbox's security. */
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import {
   fixture,
@@ -517,6 +518,34 @@ test.describe("playground: layout, zen, menu, help", () => {
     await page.getByRole("menuitem", { name: /Delete/ }).click();
     await page.getByRole("button", { name: "yes" }).click();
     await expect(page.locator('[data-path="lib/math.js"]')).toHaveCount(0);
+  });
+
+  test("the file menu downloads a file, a folder and the project", async ({ page }) => {
+    await openPlayground(page, "python");
+    const tree = page.getByRole("tree", { name: "Project files" });
+
+    await page.locator('[role="treeitem"][data-path="main.py"]').click({ button: "right" });
+    let pending = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: /^Download$/ }).click();
+    const file = await pending;
+    expect(file.suggestedFilename()).toBe("main.py");
+    const text = readFileSync((await file.path())!, "utf8");
+    expect(text).toContain("from shapes import Circle");
+
+    await page.locator('[role="treeitem"][data-path="shapes"]').click({ button: "right" });
+    pending = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: "Download folder (.zip)" }).click();
+    const folder = await pending;
+    expect(folder.suggestedFilename()).toBe("shapes.zip");
+    const zip = readFileSync((await folder.path())!);
+    expect(zip.subarray(0, 4).toString("hex")).toBe("504b0304"); // "PK\x03\x04"
+    expect(zip.includes(Buffer.from("shapes/circle.py"))).toBe(true);
+
+    // Right-click on the tree itself (not a row): the project's menu.
+    await tree.dispatchEvent("contextmenu", { clientX: 30, clientY: 30 });
+    pending = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: "Download project (.zip)" }).click();
+    expect((await pending).suggestedFilename()).toBe("python-playground.zip");
   });
 
   test("help opens with F1 and the tour walks through every step", async ({ page }) => {

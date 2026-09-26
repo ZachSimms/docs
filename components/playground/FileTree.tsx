@@ -6,7 +6,7 @@
  * Enter opens a file or toggles a folder, F2 renames, Delete asks to delete.
  * Right-click (or Shift+F10 / the Menu key, or the `⋯` button on touch)
  * opens the file menu: rename, delete, set as entry, new file or folder,
- * copy path. Rename and delete continue inline (no browser dialogs). Rows are
+ * copy path, download (a file as itself, a folder or the project as a ZIP). Rename and delete continue inline (no browser dialogs). Rows are
  * at least 44px tall on touch screens (CSS).
  *
  * The tree never changes the project itself: it asks the parent through
@@ -24,7 +24,9 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { fileDownload, zipDownload } from "@/lib/playground/download";
 import { FileMenu, type FileMenuItem } from "./FileMenu";
+import { saveDownload } from "./saveDownload";
 import {
   basename,
   dirname,
@@ -52,6 +54,8 @@ interface FileTreeProps {
   onHide?(): void;
   /** Show a Markdown file's preview (offered in the menu for `.md` files). */
   onPreview?(path: string): void;
+  /** The project archive's folder name ("Download project" saves `<name>.zip`). */
+  archiveName?: string;
 }
 
 /** One visible row. */
@@ -89,7 +93,14 @@ const containerOf = (node: TreeNode | undefined) =>
   !node ? "" : node.kind === "dir" ? node.path : dirname(node.path);
 
 /** Render the tree. */
-export function FileTree({ project, onOpen, onCommand, onHide, onPreview }: FileTreeProps) {
+export function FileTree({
+  project,
+  onOpen,
+  onCommand,
+  onHide,
+  onPreview,
+  archiveName = "project",
+}: FileTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [focused, setFocused] = useState<string>(project.open);
   /** The open context menu: for a row, or for the tree itself (`node: null`). */
@@ -256,7 +267,12 @@ export function FileTree({ project, onOpen, onCommand, onHide, onPreview }: File
         run: () => startNew("new-dir", where),
       },
     ];
-    if (!node) return create;
+    const downloadProject: FileMenuItem = {
+      id: "download-project",
+      label: "Download project (.zip)",
+      run: () => saveDownload(zipDownload(project, null, archiveName)),
+    };
+    if (!node) return [...create, downloadProject];
     const isEntry = node.path === project.entry;
     return [
       ...(node.kind === "file" && onPreview && node.path.toLowerCase().endsWith(".md")
@@ -284,6 +300,20 @@ export function FileTree({ project, onOpen, onCommand, onHide, onPreview }: File
         label: "Copy path",
         run: () => void navigator.clipboard?.writeText(node.path).catch(() => undefined),
       },
+      node.kind === "file"
+        ? {
+            id: "download",
+            label: "Download",
+            run: () => {
+              const file = fileDownload(project, node.path);
+              if (file) saveDownload(file);
+            },
+          }
+        : {
+            id: "download",
+            label: "Download folder (.zip)",
+            run: () => saveDownload(zipDownload(project, node.path, archiveName)),
+          },
     ];
   };
 

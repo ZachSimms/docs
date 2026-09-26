@@ -115,6 +115,7 @@ describe("FileTree menu", () => {
       "New file here",
       "New folder here",
       "Copy path",
+      "Download",
     ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: /Rename/ }));
     expect(screen.getByRole("textbox", { name: "Rename shapes/circle.py" })).toBeInTheDocument();
@@ -133,7 +134,7 @@ describe("FileTree menu", () => {
       within(rootMenu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["New file", "New folder"]);
+    ).toEqual(["New file", "New folder", "Download project (.zip)"]);
   });
 });
 
