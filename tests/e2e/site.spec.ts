@@ -1449,3 +1449,22 @@ test.describe("external links", () => {
     await expect(page).toHaveURL(/\/typescript\/web-apis\/fetch-api\/$/);
   });
 });
+
+test.describe("links in lists", () => {
+  test("a link's text starts at the link, not over the bullet or the words before it", async ({
+    page,
+  }) => {
+    for (const url of ["/typescript/web-apis/fetch-api/", "/info/"]) {
+      await page.goto(url);
+      const shifted = await page.locator("main ul li a").evaluateAll((links) =>
+        links
+          .filter((a) => {
+            const text = a.querySelector("i") ?? a;
+            return text.getBoundingClientRect().left < a.getBoundingClientRect().left - 0.5;
+          })
+          .map((a) => a.textContent),
+      );
+      expect(shifted, url).toEqual([]);
+    }
+  });
+});
