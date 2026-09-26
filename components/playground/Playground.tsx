@@ -16,7 +16,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
 import { isTypingTarget } from "@/lib/keys";
 import { getLanguage, modeForPath, type LanguageId } from "@/lib/playground/languages";
 import { layoutStyle, resize, type LayoutPart } from "@/lib/playground/layout";
@@ -33,18 +40,28 @@ import {
 } from "@/lib/playground/project";
 import { isHelpShortcut, isZenShortcut, type TourStep } from "@/lib/playground/shortcuts";
 import { loadPrefs, savePrefs, type Prefs } from "@/lib/playground/storage";
-import { isSheetUrl, OPEN_REFERENCE_EVENT } from "@/lib/reference-panel";
+import { NODE_ROUTE, nodeSupport, type NodeSupport } from "@/lib/playground/webcontainer";
+import {
+  isSheetUrl,
+  OPEN_DOCS_EVENT,
+  OPEN_REFERENCE_EVENT,
+  parseDocRequest,
+  PLAYGROUND_PATH,
+  type DocRequest,
+} from "@/lib/reference-panel";
 import { CodeEditor, type EditorHandle } from "./CodeEditor";
 import { ConsolePane } from "./ConsolePane";
 import { FileTree, type TreeCommand } from "./FileTree";
 import { HelpPanel } from "./HelpPanel";
 import { HttpClient } from "./HttpClient";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { NodePanel } from "./NodePanel";
 import { PlaygroundToolbar } from "./PlaygroundToolbar";
 import { ReferencePanel } from "./ReferencePanel";
 import { Splitter } from "./Splitter";
 import { SymbolRow } from "./SymbolRow";
 import { Tour } from "./Tour";
+import { useNodeRun } from "./useNodeRun";
 import { usePlaygroundRun } from "./usePlaygroundRun";
 import { useProjects } from "./useProjects";
 import { useIntellisense } from "./intellisense/useIntellisense";
@@ -73,14 +90,41 @@ function useCoarsePointer(): boolean {
   return coarse;
 }
 
+/** Whether this browser can run a WebContainer (see `nodeSupport`); fixed for the page's life. */
+function useNodeSupport(): NodeSupport | "checking" {
+  return useSyncExternalStore(
+    () => () => undefined,
+    () =>
+      nodeSupport({
+        crossOriginIsolated: window.crossOriginIsolated === true,
+        userAgent: navigator.userAgent,
+        maxTouchPoints: navigator.maxTouchPoints ?? 0,
+      }),
+    () => "checking" as const,
+  );
+}
+
+/** Props for {@link Playground}. */
+interface PlaygroundProps {
+  /** `node`: the cross-origin-isolated WebContainer page, which only runs Node projects. */
+  route?: "main" | "node";
+}
+
 /** Render the playground. */
-export function Playground() {
+export function Playground({ route = "main" }: PlaygroundProps) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
-  const language = prefs.language;
+  const onNodeRoute = route === "node";
+  // The Node page shows the Next.js project whatever was last picked on the main page.
+  const language: LanguageId =
+    onNodeRoute && getLanguage(prefs.language).runner !== "node" ? "nextjs" : prefs.language;
   const spec = getLanguage(language);
   const { project, setProject, saveFailed } = useProjects(language);
   const intellisense = useIntellisense(language, project.files, project.open);
   const runState = usePlaygroundRun();
+  const nodeRun = useNodeRun();
+  const support = useNodeSupport();
+  /** What the console and Stop act on: the WebContainer on the Node page. */
+  const active = onNodeRoute ? { ...nodeRun, live: nodeRun.phase === "running" } : runState;
   const [pane, setPane] = useState<Pane>("code");
   const [refsOpen, setRefsOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
@@ -89,6 +133,7 @@ export function Playground() {
   const [editorFocused, setEditorFocused] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [requested, setRequested] = useState<{ url: string; n: number } | null>(null);
+  const [requestedDoc, setRequestedDoc] = useState<(DocRequest & { n: number }) | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [touring, setTouring] = useState(false);
   /** Preview beside the editor for `.md` files (always on in the Markdown project). */
@@ -137,7 +182,7 @@ export function Playground() {
 
   // New output while another pane is showing on a phone marks the Output tab;
   // looking at the Output pane clears it.
-  const outputSize = runState.output.size;
+  const outputSize = active.output.size;
   const [seenOutput, setSeenOutput] = useState(0);
   if (pane === "output" && seenOutput !== outputSize) setSeenOutput(outputSize);
   const unread = pane !== "output" && outputSize > 0 && outputSize !== seenOutput;
@@ -151,8 +196,20 @@ export function Playground() {
       setRefsOpen(true);
       setPane("refs");
     };
+    // "Open docs" in an editor hover: show the page in the panel's Docs tab.
+    const onDocs = (event: Event) => {
+      const doc = parseDocRequest((event as CustomEvent).detail);
+      if (!doc) return;
+      setRequestedDoc((current) => ({ ...doc, n: (current?.n ?? 0) + 1 }));
+      setRefsOpen(true);
+      setPane("refs");
+    };
     window.addEventListener(OPEN_REFERENCE_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_REFERENCE_EVENT, onOpen);
+    window.addEventListener(OPEN_DOCS_EVENT, onDocs);
+    return () => {
+      window.removeEventListener(OPEN_REFERENCE_EVENT, onOpen);
+      window.removeEventListener(OPEN_DOCS_EVENT, onDocs);
+    };
   }, []);
 
   const stdin = prefs.stdin[language] ?? spec.stdinExample ?? "";
@@ -160,11 +217,19 @@ export function Playground() {
   const startRun = useCallback(() => {
     if (spec.runner === "web") {
       setPreviewKey((k) => k + 1);
+    } else if (spec.runner === "node") {
+      if (onNodeRoute && support === null) nodeRun.run(project);
     } else {
       runState.run(language, project, stdin);
     }
     setPane("output");
-  }, [spec.runner, runState, language, project, stdin]);
+  }, [spec.runner, runState, nodeRun, onNodeRoute, support, language, project, stdin]);
+
+  // Edits reach the running dev server.
+  const syncNode = nodeRun.sync;
+  useEffect(() => {
+    if (onNodeRoute) syncNode(project);
+  }, [onNodeRoute, syncNode, project]);
 
   const run = useCallback(() => {
     if (spec.download && !prefs.approvedDownloads.includes(language)) {
@@ -182,13 +247,19 @@ export function Playground() {
   };
 
   const chooseLanguage = (id: LanguageId) => {
-    if (getLanguage(id).runner === "node") {
+    if (onNodeRoute && getLanguage(id).runner !== "node") {
+      // Back to the main page (a full load drops this page's isolation headers).
+      nodeRun.stop();
+      savePrefs({ ...prefs, language: id });
+      window.location.assign(PLAYGROUND_PATH);
+      return;
+    }
+    if (!onNodeRoute && getLanguage(id).runner === "node") {
       // Next.js runs on its own cross-origin-isolated page, which needs a full page load.
       updatePrefs({ language: id });
       savePrefs({ ...prefs, language: id });
       // A full page load, not client-side navigation: the isolation headers only apply to a new document.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      window.location.assign("/playground/node/");
+      window.location.assign(NODE_ROUTE);
       return;
     }
     runState.stop();
@@ -245,8 +316,8 @@ export function Playground() {
   };
 
   const reset = () => {
-    runState.stop();
-    runState.clear();
+    active.stop();
+    active.clear();
     setProject(spec.template);
     setResetKey((k) => k + 1);
   };
@@ -261,13 +332,13 @@ export function Playground() {
 
   const isMarkdownFile = modeForPath(project.open) === "markdown";
   const showMdPreview = isMarkdownFile && (spec.runner === "markdown" || mdPreview);
-  const isRunning = runState.phase === "running";
+  const isRunning = active.phase === "running";
   const code = project.files[project.open] ?? "";
   const indent = modeForPath(project.open) === "gdscript" ? "\t" : "  ";
   const showTree = !prefs.zen && (prefs.treeOpen || pane === "files");
   const showRefs = refsOpen || pane === "refs";
   const welcome =
-    prefs.welcomed || runState.output.chunks.length > 0 ? null : (
+    prefs.welcomed || active.output.chunks.length > 0 ? null : (
       <div className="pg-welcome" role="note">
         <p>New here? Pick a project, edit, press ▶ Run (⌘↵).</p>
         <p>
@@ -324,12 +395,12 @@ export function Playground() {
         <PlaygroundToolbar
           spec={spec}
           running={isRunning}
-          canStop={isRunning || runState.live}
+          canStop={isRunning || active.live}
           refsOpen={refsOpen}
           notice={saveFailed ? "couldn't save (storage full or disabled)" : notice}
           onLanguage={chooseLanguage}
           onRun={run}
-          onStop={runState.stop}
+          onStop={active.stop}
           onReset={reset}
           onZen={toggleZen}
           onHelp={() => setHelpOpen(true)}
@@ -504,14 +575,43 @@ export function Playground() {
                 {runState.godotFrame}
               </section>
             )}
+            {spec.runner === "node" &&
+              (onNodeRoute ? (
+                <NodePanel
+                  support={support}
+                  url={nodeRun.url}
+                  running={isRunning}
+                  project={project}
+                  resizer={
+                    <Splitter
+                      part="preview"
+                      edge="right"
+                      size={prefs.layout.preview}
+                      onSize={setSize("preview")}
+                    />
+                  }
+                />
+              ) : (
+                <section className="pg-preview pg-node" aria-label="Next.js preview">
+                  <div className="pg-node-unsupported" role="note">
+                    <p>Next.js runs on its own page, which can host a WebContainer.</p>
+                    <p>
+                      {/* A plain link (a full page load): the isolation headers only apply to a new document. */}
+                      <a href={NODE_ROUTE}>
+                        <i>open the Next.js playground →</i>
+                      </a>
+                    </p>
+                  </div>
+                </section>
+              ))}
             <ConsolePane
               spec={spec}
-              output={runState.output}
-              phase={runState.phase}
-              status={runState.status}
+              output={active.output}
+              phase={active.phase}
+              status={active.status}
               stdin={stdin}
               onStdin={(value) => updatePrefs({ stdin: { ...prefs.stdin, [language]: value } })}
-              onClear={runState.clear}
+              onClear={active.clear}
               askDownload={askDownload}
               onApproveDownload={approveDownload}
               onCancelDownload={() => setAskDownload(false)}
@@ -528,6 +628,8 @@ export function Playground() {
             onWidth={setSize("refs")}
             onClose={() => (setRefsOpen(false), pane === "refs" && setPane("code"))}
             requested={requested}
+            requestedDoc={requestedDoc}
+            isolated={onNodeRoute}
           />
         )}
       </div>

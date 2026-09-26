@@ -170,7 +170,8 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     runner: "python",
     stdin: true,
     stdinExample: "world",
-    credit: "Runs in your browser with Pyodide (CPython on WebAssembly).",
+    credit:
+      "Runs in your browser with Pyodide (CPython on WebAssembly). Hovers and checks: basedpyright (experimental).",
     download: { what: "the Python runtime", megabytes: 6 },
     template: TEMPLATES.python,
     refs: [
@@ -217,7 +218,8 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     group: "Servers",
     runner: "node",
     stdin: false,
-    credit: "Runs next dev in a WebContainer (StackBlitz) in your browser; desktop Chrome or Edge.",
+    credit:
+      "Runs next dev in a WebContainer (StackBlitz) in your browser; desktop Chrome, Edge or Firefox.",
     download: { what: "Next.js and its packages", megabytes: 200 },
     template: TEMPLATES.nextjs,
     refs: [sheet("/typescript/react/next-js/"), sheet("/typescript/react/react/")],

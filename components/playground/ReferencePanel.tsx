@@ -20,7 +20,7 @@ import { Splitter } from "@/components/playground/Splitter";
 import { useTheme } from "@/components/useTheme";
 import { padNumber } from "@/lib/format";
 import type { LanguageId, SheetRef } from "@/lib/playground/languages";
-import { isSheetUrl } from "@/lib/reference-panel";
+import { isSheetUrl, type DocRequest } from "@/lib/reference-panel";
 import { loadSearchIndex } from "@/lib/search-index-client";
 import { docPath, rankSearch, type SearchDoc } from "@/lib/search-rank";
 
@@ -45,7 +45,20 @@ interface ReferencePanelProps {
   onClose(): void;
   /** A sheet asked for from elsewhere (⌘K); `n` changes on every request. */
   requested: { url: string; n: number } | null;
+  /** A docs page asked for from an editor hover; `n` changes on every request. */
+  requestedDoc?: (DocRequest & { n: number }) | null;
+  /**
+   * The page is cross-origin isolated (the Node playground): sheets load in a
+   * `credentialless` frame, and sheets with third-party embeds (fitness videos) are left out.
+   */
+  isolated?: boolean;
 }
+
+/** Sheets with YouTube embeds, which can't load inside a cross-origin-isolated page. */
+const EMBED_TOPICS = ["/fitness/"];
+
+/** Frame attributes for an isolated page (React passes unknown attributes through). */
+const CREDENTIALLESS: Record<string, string> = { credentialless: "true" };
 
 /** Render the panel. */
 export function ReferencePanel({
@@ -55,13 +68,20 @@ export function ReferencePanel({
   onWidth,
   onClose,
   requested,
+  requestedDoc = null,
+  isolated = false,
 }: ReferencePanelProps) {
   const [query, setQuery] = useState("");
   const [docs, setDocs] = useState<SearchDoc[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState(0);
   const [url, setUrl] = useState<string | null>(requested?.url ?? null);
-  const [tab, setTab] = useState<RefsTab>("sheets");
+  const [tab, setTab] = useState<RefsTab>(requestedDoc ? "docs" : "sheets");
+  const [seenDoc, setSeenDoc] = useState(requestedDoc?.n ?? 0);
+  if (requestedDoc && requestedDoc.n !== seenDoc) {
+    setSeenDoc(requestedDoc.n);
+    setTab("docs");
+  }
   const frame = useRef<HTMLIFrameElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const theme = useTheme();
@@ -101,7 +121,10 @@ export function ReferencePanel({
     query.trim()
       ? hits.map((h) => ({ url: h.doc.url, label: docPath(h.doc) }))
       : suggestions.map((s) => ({ url: s.href, label: s.label }))
-  ).filter((item) => isSheetUrl(item.url));
+  ).filter(
+    (item) =>
+      isSheetUrl(item.url) && !(isolated && EMBED_TOPICS.some((t) => item.url.startsWith(t))),
+  );
   const current = Math.min(selected, Math.max(items.length - 1, 0));
 
   const onSearchKey = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -150,7 +173,7 @@ export function ReferencePanel({
         </button>
       </div>
       {tab === "docs" ? (
-        <DocsTab language={language} />
+        <DocsTab language={language} requested={requestedDoc} />
       ) : (
         <div className="pg-refs-body">
           <div className="pg-bar">
@@ -200,6 +223,7 @@ export function ReferencePanel({
                 // navigate the playground itself; the flags stay if the frame goes elsewhere.
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 title={`Reference: ${url}`}
+                {...(isolated ? CREDENTIALLESS : {})}
                 className="pg-refs-frame"
                 onLoad={syncTheme}
               />

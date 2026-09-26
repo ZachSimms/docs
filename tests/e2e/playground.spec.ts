@@ -278,6 +278,48 @@ test.describe("playground: intellisense", () => {
     await expect(page.locator(".cm-tooltip-autocomplete")).toContainText("mean");
   });
 
+  test("Python: basedpyright hovers across modules, completes, and softens type errors", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openPlayground(page, "python");
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.insertText("\nc = Circle(2)\nc.nope\nif True\n    pass\n");
+    await expect(page.locator(".cm-lintRange-warning")).toHaveCount(1, { timeout: 30_000 });
+    // A syntax error stays an error: it stops the program.
+    await expect(page.locator(".cm-lintRange-error, .cm-lintPoint-error")).not.toHaveCount(0);
+    await expectHover(page, "Circle", "class Circle(radius: float)");
+    await page.mouse.move(0, 0);
+    await expect(page.locator(".cm-tooltip-hover")).toBeHidden();
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("c.");
+    await expect(page.locator(".cm-tooltip-autocomplete")).toContainText("area");
+  });
+
+  test("C++: docs hovers from cppreference, and Open docs shows the page in the Docs tab", async ({
+    page,
+  }) => {
+    await page.route("https://documents.devdocs.io/cpp/algorithm/sort.html*", (route) =>
+      route.fulfill({
+        body: "<h1>std::sort</h1><p>Sorts the elements.</p>",
+        contentType: "text/html",
+      }),
+    );
+    await openPlayground(page, "cpp");
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.insertText("\nstd::sort(v.begin(), v.end());\n");
+    await expectHover(page, "sort", "Sorts the elements in the range");
+    const card = page.locator(".cm-tooltip-hover");
+    await expect(card).toContainText("cppreference.com");
+    await expect(card).toContainText("via DevDocs");
+    await card.getByRole("button", { name: "Open docs" }).click();
+    await expect(page.getByRole("tab", { name: "Docs" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.frameLocator(".pg-docs-frame").locator("h1")).toHaveText("std::sort");
+  });
+
   test("Bun: the emulated Bun global has types", async ({ page }) => {
     await openPlayground(page, "bun");
     await page.locator('[role="treeitem"][data-path="index.ts"]').click();
@@ -530,5 +572,58 @@ test.describe("playground: project types", () => {
     await expect(preview.locator("body")).toContainText("<script>");
     await expect(page).not.toHaveTitle("pwned");
     await expect(page.locator(".pg-md-preview iframe")).toHaveAttribute("sandbox", "");
+  });
+});
+
+test.describe("playground: Next.js (WebContainer)", () => {
+  test("only the Node page is cross-origin isolated, and the picker moves between pages", async ({
+    page,
+  }) => {
+    const main = await page.request.get("/playground/");
+    expect(main.headers()["cross-origin-embedder-policy"]).toBeUndefined();
+    const node = await page.request.get("/playground/node/");
+    expect(node.headers()["cross-origin-opener-policy"]).toBe("same-origin");
+    expect(node.headers()["cross-origin-embedder-policy"]).toBe("credentialless");
+
+    await openPlayground(page, "typescript");
+    await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: "Next.js" });
+    await expect(page).toHaveURL(/\/playground\/node\/$/);
+    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+    await expect(page.getByRole("region", { name: "Next.js preview" })).toContainText(
+      "press Run (⌘↵) to start next dev",
+    );
+    // Sheets still open in the panel here (in a credentialless frame).
+    await page.getByRole("button", { name: /Refs/ }).first().click();
+    await page
+      .getByRole("complementary", { name: "Reference sheets" })
+      .getByRole("option")
+      .first()
+      .click();
+    await expect(page.frameLocator(".pg-refs-frame").locator("main h1")).toBeVisible();
+
+    await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: "Python" });
+    await expect(page).toHaveURL(/\/playground\/$/);
+  });
+
+  test("next dev runs in the WebContainer and edits reload (network)", async ({ page }) => {
+    test.skip(!process.env.E2E_NETWORK, "installs Next.js from npm (set E2E_NETWORK=1)");
+    test.setTimeout(300_000);
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem(
+          "playground:v1:prefs",
+          JSON.stringify({ language: "nextjs", approvedDownloads: ["nextjs"], welcomed: true }),
+        );
+      } catch {
+        // frames without storage
+      }
+    });
+    await page.goto("/playground/node/");
+    await page.getByRole("button", { name: /Run/ }).click();
+    const preview = page.frameLocator(".pg-node-frame");
+    await expect(preview.locator("h1")).toHaveText("Hello from Next.js", { timeout: 240_000 });
+    await page.locator('[role="treeitem"][data-path="app/page.tsx"]').click();
+    await setCode(page, "export default function Home() {\n  return <h1>Edited live</h1>;\n}\n");
+    await expect(preview.locator("h1")).toHaveText("Edited live", { timeout: 30_000 });
   });
 });
