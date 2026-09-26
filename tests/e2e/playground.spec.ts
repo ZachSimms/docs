@@ -185,6 +185,67 @@ test.describe("playground: reference panel", () => {
   });
 });
 
+test.describe("playground: official docs", () => {
+  const HOSTILE_MAP = [
+    "<h1>Array.prototype.map()</h1>",
+    "<p>The <code>map()</code> method creates a new array.</p>",
+    "<script>window.top.pwned = 'script'</script>",
+    `<img src="x.png" onerror="window.top.pwned = 'onerror'">`,
+    `<form action="https://evil.test"><input name="q"></form>`,
+    `<p><a href="../array">Array</a> · <a href="#syntax">Syntax</a> · <a href="https://tc39.es/">spec</a></p>`,
+    `<h2 id="syntax">Syntax</h2>`,
+  ].join("");
+
+  test("searches DevDocs, renders a sanitized MDN page with attribution, and follows its links", async ({
+    page,
+  }) => {
+    await page.route("https://documents.devdocs.io/**", (route) => {
+      const url = new URL(route.request().url());
+      const json = (entries: unknown[]) => route.fulfill({ json: { entries } });
+      if (url.pathname === "/javascript/index.json")
+        return json([
+          { name: "Array.prototype.map()", path: "global_objects/array/map", type: "Array" },
+          { name: "Array", path: "global_objects/array", type: "Array" },
+        ]);
+      if (url.pathname.endsWith("/index.json")) return json([]);
+      if (url.pathname === "/javascript/global_objects/array/map.html")
+        return route.fulfill({ body: HOSTILE_MAP, contentType: "text/html" });
+      if (url.pathname === "/javascript/global_objects/array.html")
+        return route.fulfill({ body: "<h1>Array</h1>", contentType: "text/html" });
+      return route.fulfill({ status: 404 });
+    });
+    await openPlayground(page, "web");
+    await page.getByRole("button", { name: /Refs/ }).click();
+    await page.getByRole("tab", { name: "Docs" }).click();
+    const box = page.getByRole("combobox", { name: "Search the official docs" });
+    await box.fill("map");
+    const results = page.getByRole("listbox", { name: "Docs" });
+    await expect(results.getByRole("option").first()).toContainText("Array.prototype.map()");
+    await box.press("Enter");
+
+    const doc = page.frameLocator(".pg-docs-frame");
+    await expect(doc.locator("h1")).toHaveText("Array.prototype.map()");
+    await expect(doc.locator(".pg-doc-footer")).toContainText("MDN contributors");
+    await expect(doc.locator(".pg-doc-footer")).toContainText("via DevDocs");
+    await expect(doc.locator("script, form, input, [onerror]")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as { pwned?: string }).pwned)).toBeUndefined();
+    await expect(page.getByRole("link", { name: /official/ })).toHaveAttribute(
+      "href",
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/global_objects/array/map",
+    );
+
+    await page.context().route("https://tc39.es/**", (route) => route.fulfill({ body: "spec" }));
+    const popup = page.waitForEvent("popup");
+    await doc.getByRole("link", { name: "spec" }).click();
+    await (await popup).waitForURL("https://tc39.es/");
+
+    await doc.getByRole("link", { name: "Array", exact: true }).click();
+    await expect(doc.locator("h1")).toHaveText("Array");
+    await page.getByRole("button", { name: "← back" }).click();
+    await expect(doc.locator("h1")).toHaveText("Array.prototype.map()");
+  });
+});
+
 test.describe("playground: security", () => {
   test("user code runs at an opaque origin, without the site's storage", async ({ page }) => {
     await openPlayground(page, "javascript");

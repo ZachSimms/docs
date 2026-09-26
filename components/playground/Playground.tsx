@@ -516,6 +516,7 @@ export function Playground() {
 
         {showRefs && (
           <ReferencePanel
+            language={language}
             suggestions={spec.refs}
             width={prefs.layout.refs}
             onWidth={setSize("refs")}

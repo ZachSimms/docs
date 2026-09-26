@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { createRef } from "react";
 import type { EditorHandle } from "@/components/playground/CodeEditor";
 import { ConsolePane } from "@/components/playground/ConsolePane";
+import { DOCS_MANIFEST_URL, resetDocsCache } from "@/components/playground/DocsTab";
 import { FileTree, type TreeCommand } from "@/components/playground/FileTree";
 import { ReferencePanel } from "@/components/playground/ReferencePanel";
 import { SymbolRow } from "@/components/playground/SymbolRow";
@@ -219,16 +220,45 @@ describe("ReferencePanel", () => {
       text: "lists",
     },
   ];
+  const docsManifest = {
+    docs: [
+      {
+        slug: "python~3.14",
+        name: "Python 3.14",
+        release: "3.14",
+        mtime: 1,
+        home: "https://docs.python.org/",
+        attribution: "© Python Software Foundation. Licensed under the PSF License.",
+      },
+    ],
+  };
+  const docsIndex = {
+    entries: [
+      { name: "print()", path: "library/functions#print", type: "Built-in Functions" },
+      { name: "pprint", path: "library/pprint", type: "Data Types" },
+    ],
+  };
   const originalFetch = globalThis.fetch;
+  const fetched: string[] = [];
   beforeEach(() => {
     resetSearchIndexCache();
-    globalThis.fetch = (async () => new Response(JSON.stringify(docs))) as unknown as typeof fetch;
+    resetDocsCache();
+    fetched.length = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetched.push(url);
+      if (url === DOCS_MANIFEST_URL) return new Response(JSON.stringify(docsManifest));
+      if (url.endsWith("/index.json?1")) return new Response(JSON.stringify(docsIndex));
+      if (url.includes("documents.devdocs.io")) return new Response("<h1>Built-in Functions</h1>");
+      return new Response(JSON.stringify(docs));
+    }) as unknown as typeof fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
   });
 
   const props = {
+    language: "python" as const,
     suggestions: getLanguage("python").refs,
     width: 420,
     onWidth: () => undefined,
@@ -266,6 +296,30 @@ describe("ReferencePanel", () => {
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
     fireEvent.keyDown(handle, { key: "ArrowRight" });
     expect(widths).toEqual([436, 404]);
+  });
+
+  it("searches the official docs for the project and opens a page with its attribution link", async () => {
+    render(<ReferencePanel {...props} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Docs" }));
+    const box = await screen.findByRole("combobox", { name: "Search the official docs" });
+    await waitFor(() => expect(screen.getByText(/from Python 3\.14/)).toBeInTheDocument());
+    fireEvent.change(box, { target: { value: "print" } });
+    const results = screen.getByRole("listbox", { name: "Docs" });
+    await waitFor(() =>
+      expect(within(results).getAllByRole("option")[0]).toHaveTextContent("print()"),
+    );
+    expect(fetched).toContain("https://documents.devdocs.io/python~3.14/index.json?1");
+    fireEvent.keyDown(box, { key: "Enter" });
+    const frame = await screen.findByTitle("Python 3.14: print()");
+    expect(frame).toHaveAttribute("sandbox", "allow-same-origin");
+    expect(frame.getAttribute("srcdoc")).toContain("default-src 'none'");
+    expect(fetched).toContain("https://documents.devdocs.io/python~3.14/library/functions.html?1");
+    expect(screen.getByRole("link", { name: /official/ })).toHaveAttribute(
+      "href",
+      "https://docs.python.org/3.14/library/functions.html#print",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "← results" }));
+    expect(screen.getByRole("combobox", { name: "Search the official docs" })).toHaveValue("print");
   });
 });
 
