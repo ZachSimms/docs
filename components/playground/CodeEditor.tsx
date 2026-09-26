@@ -51,6 +51,8 @@ interface CodeEditorProps {
   handleRef?: RefObject<EditorHandle | null>;
   /** Called when the editor gains or loses focus. */
   onFocusChange?(focused: boolean): void;
+  /** Hover, completions and diagnostics for a file (see `useIntellisense`); a new function reloads them. */
+  loadAssist?(path: string): Promise<Extension>;
 }
 
 /** Keep the latest value of a prop in a ref, for listeners created once. */
@@ -72,6 +74,7 @@ export function CodeEditor({
   wrap,
   handleRef,
   onFocusChange,
+  loadAssist,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -79,6 +82,8 @@ export function CodeEditor({
   const currentPath = useRef(path);
   const language = useRef(new Compartment());
   const wrapping = useRef(new Compartment());
+  const assist = useRef(new Compartment());
+  const loadAssistRef = useLatest(loadAssist);
   const onChangeRef = useLatest(onChange);
   const onRunRef = useLatest(onRun);
   const onFocusRef = useLatest(onFocusChange);
@@ -93,6 +98,7 @@ export function CodeEditor({
         keymap.of([{ key: "Mod-Enter", run: () => (onRunRef.current(), true) }, indentWithTab]),
       ),
       language.current.of([]),
+      assist.current.of([]),
       wrapping.current.of(wrapRef.current ? EditorView.lineWrapping : []),
       indentUnit.of(modeForPath(filePath) === "gdscript" ? "\t" : "  "),
       editorTheme,
@@ -117,6 +123,18 @@ export function CodeEditor({
     void loadLanguage(modeForPath(filePath)).then((ext) => {
       if (currentPath.current === filePath && view.current) {
         view.current.dispatch({ effects: language.current.reconfigure(ext) });
+      }
+    });
+    applyAssist(filePath);
+  };
+
+  /** Load the file's intellisense and apply it if that file is still open. */
+  const applyAssist = (filePath: string) => {
+    const load = loadAssistRef.current;
+    if (!load) return;
+    void load(filePath).then((ext) => {
+      if (currentPath.current === filePath && view.current) {
+        view.current.dispatch({ effects: assist.current.reconfigure(ext) });
       }
     });
   };
@@ -165,6 +183,12 @@ export function CodeEditor({
     const live = new Set(pathKey.split("\n"));
     for (const key of states.current.keys()) if (!live.has(key)) states.current.delete(key);
   }, [pathKey]);
+
+  // Intellisense became available (or changed): reload it for the open file.
+  useEffect(() => {
+    if (view.current) applyAssist(currentPath.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadAssist]);
 
   // Soft wrap on/off.
   useEffect(() => {

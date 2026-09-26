@@ -61,3 +61,28 @@ export async function stubJson(page: Page, url: string | RegExp, body: unknown, 
     }),
   );
 }
+
+/**
+ * Rest the pointer on the first highlighted `word` in the editor until its
+ * hover card contains `expected` (the language service may still be starting).
+ */
+export async function expectHover(
+  page: Page,
+  word: string,
+  expected: string | RegExp,
+  timeout = 20_000,
+) {
+  const card = page.locator(".cm-tooltip-hover");
+  await expect(async () => {
+    await page.mouse.move(0, 0);
+    const box = await page
+      .locator(".cm-content")
+      .getByText(word, { exact: true })
+      .first()
+      .boundingBox();
+    if (!box) throw new Error(`"${word}" isn't on screen`);
+    // Several small moves: CodeMirror shows a hover after the pointer rests on the text.
+    for (let i = 0; i < 4; i++) await page.mouse.move(box.x + 2 + i, box.y + box.height / 2);
+    await expect(card).toContainText(expected, { timeout: 2_000 });
+  }).toPass({ timeout });
+}

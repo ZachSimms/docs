@@ -47,6 +47,7 @@ import { SymbolRow } from "./SymbolRow";
 import { Tour } from "./Tour";
 import { usePlaygroundRun } from "./usePlaygroundRun";
 import { useProjects } from "./useProjects";
+import { useIntellisense } from "./intellisense/useIntellisense";
 import { WebPreview } from "./WebPreview";
 
 /** The panes a phone shows one at a time. */
@@ -78,6 +79,7 @@ export function Playground() {
   const language = prefs.language;
   const spec = getLanguage(language);
   const { project, setProject, saveFailed } = useProjects(language);
+  const intellisense = useIntellisense(language, project.files, project.open);
   const runState = usePlaygroundRun();
   const [pane, setPane] = useState<Pane>("code");
   const [refsOpen, setRefsOpen] = useState(false);
@@ -438,7 +440,11 @@ export function Playground() {
               key={`${language}:${resetKey}`}
               wrap={prefs.wrap}
               handleRef={editor}
-              onFocusChange={setEditorFocused}
+              onFocusChange={(focused) => (
+                setEditorFocused(focused),
+                focused && intellisense.arm()
+              )}
+              loadAssist={intellisense.loadAssist}
             />
             {showMdPreview && <MarkdownPreview source={code} path={project.open} />}
           </div>

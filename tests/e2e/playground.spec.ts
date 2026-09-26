@@ -1,6 +1,14 @@
 /** Playwright tests for `/playground/` on desktop: runners, files, reference panel and the sandbox's security. */
 import { expect, test } from "@playwright/test";
-import { fixture, openPlayground, output, run, setCode, stubJson } from "./playground-helpers";
+import {
+  fixture,
+  expectHover,
+  openPlayground,
+  output,
+  run,
+  setCode,
+  stubJson,
+} from "./playground-helpers";
 
 test.describe("playground: running code", () => {
   test("the home page links to the playground", async ({ page }) => {
@@ -243,6 +251,38 @@ test.describe("playground: official docs", () => {
     await expect(doc.locator("h1")).toHaveText("Array");
     await page.getByRole("button", { name: "← back" }).click();
     await expect(doc.locator("h1")).toHaveText("Array.prototype.map()");
+  });
+});
+
+test.describe("playground: intellisense", () => {
+  test("TypeScript: hover types across files, completions, and type errors as warnings", async ({
+    page,
+  }) => {
+    await openPlayground(page, "typescript");
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.insertText(
+      "\nconst total = [1, 2].reduce((sum, x) => sum + x, 0);\nconst label: string = total;\n",
+    );
+    await expect(page.locator(".cm-lintRange-warning")).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.locator(".cm-lintRange-error")).toHaveCount(0);
+    await expectHover(page, "reduce", "(method) Array<number>.reduce");
+    await expectHover(page, "add", "add(a: number, b: number): number");
+    await page.mouse.move(0, 0);
+    await expect(page.locator(".cm-tooltip-hover")).toBeHidden();
+
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("stats.");
+    await expect(page.locator(".cm-tooltip-autocomplete")).toContainText("count");
+    await expect(page.locator(".cm-tooltip-autocomplete")).toContainText("mean");
+  });
+
+  test("Bun: the emulated Bun global has types", async ({ page }) => {
+    await openPlayground(page, "bun");
+    await page.locator('[role="treeitem"][data-path="index.ts"]').click();
+    await page.locator(".cm-content").click();
+    await expectHover(page, "serve", "serve(options: BunServeOptions)");
   });
 });
 
