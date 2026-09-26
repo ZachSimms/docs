@@ -30,14 +30,14 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("lists the thirteen topics, the v link and the Info footer", async ({ page }) => {
+  test("lists the fourteen topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(13);
-    await expect(nav.locator("span").first()).toHaveText("13.");
+    await expect(nav.locator("a")).toHaveCount(14);
+    await expect(nav.locator("span").first()).toHaveText("14.");
     await expect(nav.locator("span").last()).toHaveText("01.");
     await expect(nav.locator("a").first()).toHaveText("Maths");
     await expect(nav.locator("a").last()).toHaveText("Design");
@@ -576,7 +576,7 @@ test.describe("mdx showcase", () => {
 });
 
 test.describe("typescript topic and directories", () => {
-  test("the topic lists its seven directories, then its loose sheet", async ({ page }) => {
+  test("the topic lists its nine directories, then its loose sheet", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "TypeScript" }).click();
     await expect(page).toHaveURL(/\/typescript\/$/);
@@ -590,10 +590,13 @@ test.describe("typescript topic and directories", () => {
       "React/",
       "Web APIs/",
       "Backend/",
+      "Three.js/",
+      "WebAssembly/",
       "Testing",
     ]);
     await expect(links.nth(1)).toHaveAttribute("href", "/typescript/design-architecture/");
-    await expect(page.locator("main nav span").last()).toHaveText("07.");
+    await expect(links.nth(7)).toHaveAttribute("href", "/typescript/three-js/");
+    await expect(page.locator("main nav span").last()).toHaveText("09.");
   });
 
   test("a directory page shows its intro and sheets; ../ returns to the topic", async ({
@@ -638,10 +641,10 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"]):not([href$="/overview/"])',
+        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(81);
+    expect(hrefs).toHaveLength(98);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -685,6 +688,26 @@ test.describe("new topics", () => {
       "Communication networks",
       "System design",
     ]);
+  });
+
+  test("game dev sits after C++ and holds the Godot directory", async ({ page }) => {
+    await page.goto("/");
+    const links = page.locator("main nav a");
+    await expect(links.nth(9)).toHaveText("C++");
+    await expect(links.nth(10)).toHaveText("Game dev");
+    await links.nth(10).click();
+    await expect(page).toHaveURL(/\/game-dev\/$/);
+    await expect(page.locator("main nav a")).toHaveText(["Godot/"]);
+    await page.goto("/game-dev/godot/");
+    await expect(page.locator("main nav a")).toHaveText([
+      "GDScript",
+      "Nodes, scenes & signals",
+      "Input & physics",
+      "UI, animation & audio",
+      "Shaders",
+      "Resources, saving & export",
+    ]);
+    await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/game-dev/");
   });
 
   test("the design showcase is titled Demo", async ({ page }) => {

@@ -1,0 +1,617 @@
+---
+title: Fundamentals
+date: 2026-09-26
+order: 1
+---
+
+WebAssembly from the TypeScript side: the execution model, module anatomy, value types, the
+`WebAssembly.*` JS API, moving strings and arrays through linear memory, loading in bundlers and
+runtimes, feature status and tooling. The text format is in [WAT](/typescript/webassembly/wat/);
+compilers in [Rust](/typescript/webassembly/rust/) and [Emscripten](/typescript/webassembly/emscripten/).
+
+## What Wasm is
+
+| Property | Meaning in practice |
+| :------- | :------------------ |
+| Binary instruction format | a compact, typed bytecode (`.wasm`) that engines validate, then compile to machine code |
+| Stack machine | instructions pop operands and push results; there are no registers in the format |
+| Structured control flow | `block` / `loop` / `if` with branch labels; no arbitrary `goto`, so validation is one pass |
+| Sandboxed | no ambient access to anything: every capability (I/O, time, DOM) arrives as an **import** |
+| Linear memory | a flat, bounds-checked, little-endian byte array (`ArrayBuffer` in JS), grown in 64 KiB pages |
+| Deterministic-ish | the same inputs give the same outputs except NaN bit patterns, relaxed SIMD and resource exhaustion |
+| No DOM or GC access | the core has no DOM API; you call JS imports (bindings generators write them for you) |
+| Host-agnostic | the same module runs in browsers, Node/Deno/Bun, Wasmtime and edge platforms |
+| Near-native speed | predictable AOT/tiered compilation, but crossing to JS and copying data costs time |
+
+```text
+ source (Rust, C, C++, Go, Zig, Kotlin, ...)
+        │  compiler (LLVM, Emscripten, wasm-bindgen, ...)
+        ▼
+   module.wasm ── fetch ──► compile ──► WebAssembly.Module
+                                        (stateless, shareable,
+                                         postMessage-able)
+                                              │ + import object
+                                              ▼
+                                    WebAssembly.Instance
+                                    ├─ exports.fn(...)   ◄─ JS
+                                    ├─ exports.memory    (bytes)
+                                    └─ imports ─► JS / host
+```
+
+A **module** is compiled code; an **instance** is a module plus its own memory, tables, globals and
+the imports it was linked with. One module can be instantiated many times (for example once per
+worker).
+
+## Module anatomy
+
+Sections appear in a fixed order in the binary; every one is optional.
+
+```text
+ module.wasm
+ ├─ magic \0asm, version 1
+ ├─ type      function signatures (and GC struct/array types)
+ ├─ import    funcs, tables, memories, globals, tags from host
+ ├─ function  index → type for each defined function
+ ├─ table     tables of references (funcref / externref)
+ ├─ memory    linear memories: min / max pages, shared?
+ ├─ tag       exception tags (exception handling)
+ ├─ global    typed globals, mutable or immutable
+ ├─ export    names for funcs / tables / memories / globals
+ ├─ start     function run automatically at instantiation
+ ├─ elem      element segments: fill tables (call_indirect)
+ ├─ datacount number of data segments (bulk memory)
+ ├─ code      function bodies: locals + instructions
+ ├─ data      data segments: initial bytes for memory
+ └─ custom    "name", DWARF ".debug_*", "producers",
+              "sourceMappingURL", "target_features", ...
+```
+
+| Concept | Index space | Notes |
+| :------ | :---------- | :---- |
+| Function | imports first, then defined | exported functions become JS functions |
+| Table | same rule | holds references; `call_indirect` goes through one |
+| Memory | same rule | several allowed since multi-memory (Wasm 3.0) |
+| Global | same rule | imported mutable globals are shared live cells |
+| Tag | same rule | the type of an exception payload |
+| Custom section | none | ignored by the engine; names, debug info, tool metadata |
+
+`WebAssembly.Module.imports(mod)` / `.exports(mod)` list descriptors (`module`, `name`, `kind`);
+`WebAssembly.Module.customSections(mod, "name")` returns the raw bytes of matching custom sections.
+
+## Value types
+
+| Type | Size | Notes |
+| :--- | :--- | :---- |
+| `i32` | 32 bit | integers without sign; each op picks signed or unsigned (`div_s` / `div_u`) |
+| `i64` | 64 bit | same; the JS boundary uses `BigInt` |
+| `f32` | 32 bit | IEEE 754 single |
+| `f64` | 64 bit | IEEE 754 double, same as JS `number` |
+| `v128` | 128 bit | SIMD vector; lane shape chosen per instruction (`i32x4`, `f32x4`, ...) |
+| `funcref` | ref | reference to a function; nullable |
+| `externref` | ref | opaque host (JS) value; Wasm can store and pass it but not inspect it |
+| `(ref $t)` / `(ref null $t)` | ref | typed references (Wasm 3.0) |
+| `anyref`, `eqref`, `i31ref` | ref | GC hierarchy; `i31ref` is an unboxed 31-bit integer |
+| `structref`, `arrayref` | ref | GC heap objects declared with `struct` / `array` types |
+| `exnref` | ref | a caught exception, rethrowable (exception handling) |
+
+There are no `bool`, `string`, `u8` or pointer types: booleans are `i32`, pointers are `i32` offsets
+into memory (`i64` with memory64), and strings are bytes in memory or `externref` JS strings.
+
+## JS ↔ Wasm type mapping
+
+| Wasm | JS → Wasm | Wasm → JS |
+| :--- | :-------- | :-------- |
+| `i32` | `ToInt32` (wraps, `3.7` → `3`) | `number`, **signed** (use `>>> 0` for unsigned) |
+| `i64` | must be a `BigInt` (`TypeError` for `number`) | `bigint`, signed (`BigInt.asUintN(64, x)`) |
+| `f32` | `number`, rounded to single | `number` |
+| `f64` | `number` | `number` |
+| `v128` | `TypeError` | `TypeError`: SIMD values cannot cross |
+| `externref` | any value, including `undefined` | the same value |
+| `funcref` | an exported Wasm function or `null` | a JS-callable function or `null` |
+| GC refs | only objects that came from Wasm | opaque objects: no field access from JS |
+| `exnref` | `TypeError` | `TypeError` |
+| multi-value result | n/a | an array |
+
+```ts
+const { add64, count } = instance.exports as {
+  add64(a: bigint, b: bigint): bigint;
+  count(): number; // i32
+};
+add64(1n, 2n);            // 3n
+add64(1, 2);              // TypeError: must be BigInt
+const u = count() >>> 0;  // reinterpret i32 as unsigned
+```
+
+## JS API
+
+| API | Returns | Use |
+| :-- | :------ | :-- |
+| `WebAssembly.instantiateStreaming(resp, imports)` | `Promise<{ module, instance }>` | default loader: compiles while downloading; needs `application/wasm` |
+| `WebAssembly.compileStreaming(resp)` | `Promise<Module>` | compile once, instantiate later or in many workers |
+| `WebAssembly.instantiate(bytes, imports)` | `Promise<{ module, instance }>` | from an `ArrayBuffer` / typed array |
+| `WebAssembly.instantiate(module, imports)` | `Promise<Instance>` | from a compiled `Module` (note: different result shape) |
+| `WebAssembly.compile(bytes, options?)` | `Promise<Module>` | async compile; `options` for builtins |
+| `WebAssembly.validate(bytes)` | `boolean` | feature-detect a proposal with a tiny test module |
+| `new WebAssembly.Module(bytes)` | `Module` | synchronous compile; browsers cap the size on the main thread |
+| `new WebAssembly.Instance(mod, imports)` | `Instance` | synchronous instantiation |
+| `instance.exports` | frozen object | functions, `Memory`, `Table`, `Global`, `Tag` |
+| `new WebAssembly.Memory({ initial, maximum?, shared? })` | `Memory` | sizes in 64 KiB pages |
+| `memory.buffer` | `ArrayBuffer` / `SharedArrayBuffer` | view it with typed arrays or `DataView` |
+| `memory.grow(pages)` | old size in pages | detaches the old non-shared `buffer` |
+| `new WebAssembly.Table({ element, initial, maximum? })` | `Table` | `element`: `"anyfunc"` or `"externref"`; `get`, `set`, `grow`, `length` |
+| `new WebAssembly.Global({ value, mutable }, init)` | `Global` | `.value` reads / writes; `value`: `"i32"`, `"i64"`, ... |
+| `new WebAssembly.Tag({ parameters })` | `Tag` | exception tag, e.g. `{ parameters: ["i32"] }` |
+| `new WebAssembly.Exception(tag, payload)` | `Exception` | `.is(tag)`, `.getArg(tag, i)`; throwable from JS into Wasm |
+| `WebAssembly.JSTag` | `Tag` | lets Wasm `catch` ordinary JS exceptions (with `exnref`) |
+| `WebAssembly.CompileError` | error class | invalid or unsupported bytes |
+| `WebAssembly.LinkError` | error class | missing or mistyped import |
+| `WebAssembly.RuntimeError` | error class | traps: `unreachable`, out-of-bounds, divide by zero, stack overflow |
+
+```ts
+const imports = {
+  env: {
+    log: (x: number) => console.log(x),
+    now: () => performance.now(),
+  },
+};
+const { instance, module } =
+  await WebAssembly.instantiateStreaming(
+    fetch("/app.wasm"), imports,
+  );
+const mem = instance.exports.memory as WebAssembly.Memory;
+```
+
+The import object is two-level: `imports[moduleName][fieldName]`, matching `(import "env" "log" ...)`
+in the module. A missing field throws `LinkError` at instantiation, not at call time.
+
+### Memory and detached buffers
+
+```ts
+const mem = new WebAssembly.Memory({
+  initial: 1,    // 64 KiB
+  maximum: 256,  // 16 MiB
+});
+let u8 = new Uint8Array(mem.buffer);
+mem.grow(1);           // or Wasm's memory.grow / malloc
+u8.length;             // 0: the old buffer is detached
+u8 = new Uint8Array(mem.buffer); // re-view after growth
+```
+
+Any Wasm call can grow memory (an allocator calls `memory.grow`), so **never cache a typed array
+across a call into Wasm**. Re-create views from `memory.buffer` each time, or check `u8.byteLength`.
+
+| Memory fact | Value |
+| :---------- | :---- |
+| Page size | 64 KiB (the custom-page-sizes proposal is at phase 3) |
+| 32-bit maximum | 65 536 pages = 4 GiB |
+| memory64 on the web | limited to 16 GiB (Wasm 3.0 announcement) |
+| Shrinking | impossible; memory only grows |
+| Endianness | little-endian: use `DataView` with `true` or typed arrays on little-endian hosts |
+| Shared memory | `shared: true` requires `maximum`; `buffer` is a `SharedArrayBuffer` |
+| Shared growth | the old `SharedArrayBuffer` is not detached but keeps its old length: re-read `buffer` |
+
+The JS API spec also defines `memory.toResizableBuffer()` / `toFixedLengthBuffer()` so a resizable
+`ArrayBuffer` can track growth; engine support is recent, so feature-detect before relying on it.
+
+## Serving and loading
+
+| Requirement | Detail |
+| :---------- | :----- |
+| MIME type | `instantiateStreaming` / `compileStreaming` reject unless the response is `Content-Type: application/wasm` |
+| CORS | cross-origin `.wasm` needs normal CORS headers for `fetch` |
+| Compression | serve Brotli or gzip; `.wasm` compresses well |
+| Caching | content-hash the file name and cache it immutably; engines also cache compiled code |
+| CSP | `script-src 'wasm-unsafe-eval'` allows Wasm compilation without allowing JS `eval` |
+| Fallback | if the server cannot set the MIME type, `fetch` then `arrayBuffer()` then `instantiate` (see Recipes) |
+
+```text
+Content-Type: application/wasm
+Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'
+Cross-Origin-Opener-Policy: same-origin      (threads only)
+Cross-Origin-Embedder-Policy: require-corp   (threads only)
+```
+
+Without `'wasm-unsafe-eval'` (or `'unsafe-eval'`), a CSP with `script-src` blocks all Wasm
+compilation. Supported since Chrome 97, Firefox 102 and Safari 16.
+
+## Strings and arrays via memory
+
+Linear memory only holds bytes, so rich values cross as `(pointer, length)` pairs. The module must
+export an allocator (`alloc` / `free`, `malloc` / `free`) so JS can reserve space it owns.
+
+```text
+ linear memory (Uint8Array over memory.buffer)
+ 0        ptr                  ptr+len             end
+ ├────────┼── "héllo" UTF-8 ──┼───────────────────┤
+          ▲ JS writes here via TextEncoder.encodeInto
+          └ Wasm reads (ptr, len); returns (ptr, len)
+```
+
+```ts
+type Exports = {
+  memory: WebAssembly.Memory;
+  alloc(len: number): number; // returns ptr
+  free(ptr: number, len: number): void;
+  upper(ptr: number, len: number): number; // new len
+};
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function callUpper(x: Exports, s: string): string {
+  const bytes = enc.encode(s);
+  const ptr = x.alloc(bytes.length);
+  // view AFTER alloc: alloc may have grown memory
+  new Uint8Array(x.memory.buffer, ptr, bytes.length)
+    .set(bytes);
+  const len = x.upper(ptr, bytes.length);
+  const out = new Uint8Array(x.memory.buffer, ptr, len);
+  const result = dec.decode(out);
+  x.free(ptr, bytes.length);
+  return result;
+}
+```
+
+| Data | Pattern |
+| :--- | :------ |
+| String in | `TextEncoder.encodeInto(str, view)` into allocated bytes; pass `ptr, len` |
+| String out | return `ptr` and write `len` to an out-pointer, or return a packed `i64` |
+| `Float32Array` in | `new Float32Array(mem.buffer, ptr, n).set(arr)`; `ptr` must be 4-byte aligned |
+| Zero copy | let Wasm own the buffer and give JS a view; valid only until memory grows |
+| Structs | agree on a layout and read fields with `DataView` (little-endian) |
+| Shared memory | `TextDecoder.decode` rejects views on `SharedArrayBuffer`: copy with `slice()` first |
+| JS strings, no copy | JS String Builtins: import `wasm:js-string` functions, pass strings as `externref` |
+
+Bindings generators write all of this for you: wasm-bindgen (Rust), embind (C++), jco (components).
+Hand-rolled glue is for small, hot, numeric interfaces.
+
+### JS String Builtins
+
+```ts
+const { instance } = await WebAssembly.instantiate(
+  bytes,
+  imports,
+  {
+    builtins: ["js-string"],      // wasm:js-string imports
+    importedStringConstants: "'", // (import "'" "hi" ...)
+  },
+);
+```
+
+A module that imports `"wasm:js-string" "length"` etc. gets engine-provided, inlinable string
+operations on `externref` JS strings, avoiding UTF-8 copies. Mostly used by GC-targeting compilers
+(Kotlin, Dart, Java via J2Wasm). Part of the Wasm 3.0 release; Chrome 130, Firefox 134, Safari 26.2.
+
+## Bundlers and runtimes
+
+| Environment | How to load |
+| :---------- | :---------- |
+| Browser, no bundler | `instantiateStreaming(fetch(new URL("./a.wasm", import.meta.url)))` |
+| Vite | `import init from "./a.wasm?init"` then `await init(imports)` returns an `Instance` |
+| Vite, URL only | `import url from "./a.wasm?url"` then `instantiateStreaming(fetch(url))` |
+| Vite, direct (recent) | `import { add } from "./a.wasm"` (ESM integration; needs top-level await in the target) |
+| webpack 5 | `experiments: { asyncWebAssembly: true }`, then `import` the `.wasm` |
+| Node 22.19+ / 24.5+ | `import { add } from "./a.wasm"` works unflagged; `import source mod from "./a.wasm"` gives a `Module` |
+| Node, any version | `WebAssembly.instantiate(await readFile(path), imports)` |
+| Deno 2.1+ | `import { add } from "./add.wasm"` with type-checked exports |
+| Bun | `WebAssembly.instantiate(await Bun.file(p).arrayBuffer())`; `bun ./app.wasm` runs a WASI command |
+| Cloudflare Workers | import the `.wasm` as a `WebAssembly.Module` and instantiate it (no runtime compile) |
+
+```ts
+// Vite: typed ?init import
+import init from "./math.wasm?init";
+
+const instance = await init({ env: { abort() {} } });
+const { add } = instance.exports as {
+  add(a: number, b: number): number;
+};
+```
+
+```ts
+// Node: source phase import (Node 24.5+ / 22.19+)
+import source mathMod from "./math.wasm";
+
+const a = await WebAssembly.instantiate(mathMod, {});
+const b = await WebAssembly.instantiate(mathMod, {});
+```
+
+TypeScript does not know `.wasm` shapes. For Vite's direct import enable `allowArbitraryExtensions`
+and write `math.d.wasm.ts`; for `?init`, `vite/client` types it as returning `WebAssembly.Instance`.
+Generated bindings (wasm-bindgen, embind `--emit-tsd`, jco) ship their own `.d.ts`.
+
+## Performance realities
+
+| Wasm tends to win | JS tends to win |
+| :---------------- | :-------------- |
+| tight numeric loops over typed data (codecs, physics, image filters) | DOM work, string building, JSON |
+| reusing a mature C/C++/Rust library instead of porting it | small functions called millions of times from JS |
+| predictable performance: no deopts, no GC pauses in linear memory | code that allocates many short-lived objects (JIT + GC are great) |
+| SIMD (`v128`) and threads with shared memory | startup-critical paths: `.wasm` download and compile cost |
+| large codebases (Figma, Photoshop, AutoCAD, SQLite) | glue that just shuffles data between Web APIs |
+
+| Cost | Mitigation |
+| :--- | :--------- |
+| Each JS ↔ Wasm call | cheap in modern engines, but not free: batch work into fewer, bigger calls |
+| Copying strings (UTF-16 ↔ UTF-8) | pass indices / handles, use JS String Builtins, or keep text on one side |
+| Marshalling objects | flatten to typed arrays or structs in memory |
+| Download size | `wasm-opt -Oz`, strip custom sections, Brotli, lazy-load |
+| Compile time | `instantiateStreaming`; engines tier up (baseline then optimising) and cache |
+| Web API calls from Wasm | each is a round trip through a JS import |
+
+Measure: a 2× win in a kernel can vanish if every call copies a megabyte both ways.
+
+## Feature status
+
+Per [webassembly.org/features](https://webassembly.org/features/) in September 2026 (first shipping
+version; "flag" means behind a flag or preview only).
+
+| Feature | Standard | Chrome | Firefox | Safari | Node |
+| :------ | :------- | :----- | :------ | :----- | :--- |
+| MVP (1.0) | W3C Rec 2019 | 57 | 52 | 11 | 8 |
+| Bulk memory, ref types, multi-value, sign-ext | Wasm 2.0 | 74–96 | 62–79 | 13.1–15 | 12–17.2 |
+| Fixed-width SIMD | Wasm 2.0 | 91 | 89 | 16.4 | 16.4 |
+| BigInt ↔ `i64` | JS API | 85 | 78 | 15 | 15 |
+| Threads & atomics | phase 4 | 74 | 79 | 14.1 | 16.4 |
+| Tail calls | Wasm 3.0 | 112 | 121 | 18.2 | 20 |
+| Typed function refs | Wasm 3.0 | 119 | 120 | 18 | 22 |
+| GC | Wasm 3.0 | 119 | 120 | 18.2 | 22 |
+| Multiple memories | Wasm 3.0 | 120 | 125 | no | 22 |
+| Relaxed SIMD | Wasm 3.0 | 114 | 145 | flag | 21 |
+| Exception handling (`exnref`) | Wasm 3.0 | 137 | 131 | 18.4 | 24.15 |
+| Legacy exceptions (`try`/`delegate`) | inactive | 95 | 100 | 15.2 | 17 |
+| Memory64 | Wasm 3.0 | 133 | 134 | flag | 24 |
+| JS String Builtins | Wasm 3.0 JS API | 130 | 134 | 26.2 | flag / ESM |
+| JSPI | phase 5 | 137 | 153 | 27 | 26 |
+| Branch hinting | phase 5 | 137 | flag | 16 | flag |
+| ESM integration | phase 3 | no | Nightly pref | no | 22.19 / 24.5 |
+| Stack switching | phase 3 | flag | no | no | no |
+| Wide arithmetic | phase 4 | flag | flag | flag | flag |
+| Shared-everything threads | phase 1 | no | no | no | no |
+| Component model | phase 1 (CG) | no | no | no | via jco |
+
+- **Wasm 3.0** (announced 17 September 2025) folded in memory64, multiple memories, GC, typed
+  references, tail calls, exception handling with `exnref`, relaxed SIMD, a deterministic profile, a
+  custom annotation syntax for the text format, and JS String Builtins.
+- **Threads** are still a phase-4 proposal but have shipped everywhere for years; on the web they need
+  `SharedArrayBuffer`, which needs a cross-origin isolated page (see below).
+- **Source phase imports** (`import source x from "./m.wasm"`) are the TC39 half of ESM integration:
+  Node and Deno support them; Firefox 153 ships the syntax, but browser Wasm source imports are
+  still experimental. Treat browser ESM integration as not yet available.
+- Safari lags on multi-memory, memory64 and relaxed SIMD: feature-detect with `WebAssembly.validate`
+  on a tiny module, or ship two builds.
+
+## Threads and workers
+
+```text
+ main thread                     worker × N
+ ───────────                     ──────────
+ compileStreaming ─ Module ─────► postMessage({ module, memory })
+ new Memory({ shared: true }) ──► instantiate(module, { env: { memory } })
+                                  Atomics.wait / notify on memory
+```
+
+| Requirement | Detail |
+| :---------- | :----- |
+| Shared memory | `new WebAssembly.Memory({ initial, maximum, shared: true })` |
+| Cross-origin isolation | page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (or `credentialless`) |
+| Check | `self.crossOriginIsolated === true`, otherwise `SharedArrayBuffer` is unavailable |
+| Blocking | `Atomics.wait` is not allowed on the browser main thread: block in workers only |
+| Threads | each thread is a Web Worker with its own instance of the same module and the shared memory |
+| Toolchains | Emscripten `-pthread`; Rust nightly with `+atomics` and wasm-bindgen-rayon |
+
+Even without threads, run heavy Wasm in a worker to keep the main thread responsive. `Module` objects
+are structured-cloneable, so compile once and post them (see
+[Web Workers](/typescript/web-apis/web-workers/)).
+
+```ts title="wasm.worker.ts"
+self.onmessage = async (e: MessageEvent<{
+  mod: WebAssembly.Module; input: Float32Array;
+}>) => {
+  const inst = await WebAssembly.instantiate(e.data.mod, {});
+  const x = inst.exports as {
+    memory: WebAssembly.Memory;
+    alloc(n: number): number;
+    process(ptr: number, n: number): void;
+  };
+  const n = e.data.input.length;
+  const ptr = x.alloc(n * 4);
+  const view = new Float32Array(x.memory.buffer, ptr, n);
+  view.set(e.data.input);
+  x.process(ptr, n);
+  const out = view.slice(); // copy out before posting
+  self.postMessage(out, [out.buffer]);
+};
+```
+
+## JSPI and async
+
+Wasm code is synchronous; a JS import cannot `await`. **JS Promise Integration** lets a Wasm call stack
+suspend on a promise and resume later, without rewriting the code (the old way was Emscripten's
+Asyncify transform, which costs size and speed).
+
+```ts
+const imports = {
+  env: {
+    // async import: Wasm sees a normal sync call
+    fetchLen: new WebAssembly.Suspending(
+      async (id: number): Promise<number> => {
+        const r = await fetch(`/item/${id}`);
+        return (await r.arrayBuffer()).byteLength;
+      },
+    ),
+  },
+};
+const { instance } = await WebAssembly.instantiate(
+  bytes, imports,
+);
+// export returns a Promise now
+const run = WebAssembly.promising(
+  instance.exports.run as (id: number) => number,
+);
+const n: number = await run(7);
+```
+
+Standardised (phase 5); shipped in Chrome 137 and Firefox 153, listed for Safari 27. Emscripten exposes it
+as `-sJSPI`.
+
+## Debugging
+
+| Tool | Use |
+| :--- | :-- |
+| Chrome DevTools | steps through Wasm, shows locals / stack / memory inspector; disassembly view without debug info |
+| C/C++ DevTools Support (DWARF) | Chrome extension: source-level C/C++ (and Rust) debugging from DWARF in the `.wasm` |
+| Source maps | `sourceMappingURL` custom section maps to original lines (Emscripten `-gsource-map`); no variables |
+| Firefox DevTools | debugger, source maps; Wasm frames in the profiler |
+| Name section | keep it (`-g`, `--keep-debug`) so stack traces show function names instead of `wasm-function[123]` |
+| `console.log` import | the simplest tracing: import a JS function and call it |
+| Traps | `RuntimeError: unreachable` usually means a Rust panic or C `abort()`; add a panic hook |
+| `wasm-tools print` / `wasm2wat` | read what the compiler emitted (see [WAT](/typescript/webassembly/wat/)) |
+| Profilers | browser performance panel shows Wasm functions by name when the name section exists |
+
+## Languages and toolchains
+
+| Language | Toolchain | Output and notes |
+| :------- | :-------- | :--------------- |
+| Rust | `wasm32-unknown-unknown` + wasm-bindgen; `wasm32-wasip1` / `wasip2` | best-in-class; small binaries, no GC runtime ([Rust](/typescript/webassembly/rust/)) |
+| C / C++ | Emscripten (`emcc`); wasi-sdk or `clang --target=wasm32` | Emscripten emulates POSIX, SDL, GL in JS ([Emscripten](/typescript/webassembly/emscripten/)) |
+| AssemblyScript | `asc` | TypeScript-like syntax, strict types, compiles directly to Wasm |
+| Go | `GOOS=js GOARCH=wasm`, `GOOS=wasip1` (1.21+) | large binaries (runtime + GC); `//go:wasmexport` since 1.24 |
+| TinyGo | `tinygo build -target wasm` / `wasip2` | much smaller Go subset, good for plugins and components |
+| Zig | `-target wasm32-freestanding` / `wasm32-wasi` | tiny output, manual memory |
+| Kotlin | Kotlin/Wasm (`wasmJs`, `wasmWasi`) | uses Wasm GC; Compose Multiplatform for web |
+| Dart / Flutter | `dart compile wasm`, `flutter build web --wasm` | Wasm GC; falls back to JS where unsupported |
+| C# / .NET | Blazor WebAssembly, `wasi` workloads | .NET runtime shipped as Wasm; AOT option; large download |
+| Python | Pyodide (CPython on Emscripten) | full CPython + NumPy etc. in the browser; multi-MB |
+| Java | TeaVM, J2CL / J2Wasm, CheerpJ | GC-based backends are the modern route |
+| JS itself | jco componentize (StarlingMonkey) | JS engine inside Wasm, for components |
+
+Languages with their own GC either ship it inside the module (Go, .NET, Python) or target Wasm GC and
+let the browser collect (Kotlin, Dart, Java, OCaml, Scheme), which gives far smaller output.
+
+## Recipes
+
+### Load with streaming fallback
+Use as the default loader for a hand-written or `--target web` module.
+
+```ts
+export async function loadWasm<T>(
+  url: string | URL,
+  imports: WebAssembly.Imports = {},
+): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  const type = res.headers.get("content-type") ?? "";
+  const { instance } = type.startsWith("application/wasm")
+    ? await WebAssembly.instantiateStreaming(res, imports)
+    : await WebAssembly.instantiate(
+        await res.arrayBuffer(), imports,
+      );
+  return instance.exports as T;
+}
+```
+
+### Feature-detect a proposal
+Use to choose between two builds (for example SIMD vs scalar) before downloading either.
+
+```ts
+// (func (result v128) i32.const 0 i8x16.splat i8x16.popcnt)
+const SIMD = new Uint8Array([
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+  3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98,
+  11,
+]);
+const hasSimd = WebAssembly.validate(SIMD);
+const url = hasSimd ? "/app.simd.wasm" : "/app.wasm";
+```
+
+For a maintained set of these probes use the `wasm-feature-detect` npm package.
+
+### Typed wrapper over exports
+Use to hide pointers and re-view memory safely after every call.
+
+```ts
+interface Raw {
+  memory: WebAssembly.Memory;
+  alloc(n: number): number;
+  free(p: number, n: number): void;
+  sum_f32(p: number, n: number): number;
+}
+export function wrap(x: Raw) {
+  return {
+    sum(values: Float32Array): number {
+      const bytes = values.length * 4;
+      const p = x.alloc(bytes);
+      try {
+        new Float32Array(x.memory.buffer, p, values.length)
+          .set(values);
+        return x.sum_f32(p, values.length);
+      } finally {
+        x.free(p, bytes);
+      }
+    },
+  };
+}
+```
+
+### Share a compiled module
+Use when many workers run the same code: compile once on the main thread.
+
+```ts
+const mod = await WebAssembly.compileStreaming(
+  fetch("/kernel.wasm"),
+);
+const workers = Array.from(
+  { length: navigator.hardwareConcurrency },
+  () => new Worker(
+    new URL("./wasm.worker.ts", import.meta.url),
+    { type: "module" },
+  ),
+);
+for (const w of workers) w.postMessage({ mod });
+```
+
+### JS callbacks and a table
+Use for callbacks from Wasm into JS and for handing JS objects to Wasm as `externref`.
+
+```ts
+const table = new WebAssembly.Table({
+  element: "externref", initial: 4,
+});
+table.set(0, document.body); // any JS value
+const imports = {
+  env: {
+    table,
+    log: (ptr: number, len: number) =>
+      console.log(readStr(ptr, len)),
+    onTick: (dt: number) => update(dt),
+  },
+};
+```
+
+### Serve correctly in Node
+Use in a hand-written static server so streaming compilation and threads work.
+
+```ts
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+
+createServer(async (req, res) => {
+  const file = `./dist${req.url}`;
+  if (file.endsWith(".wasm")) {
+    res.setHeader("Content-Type", "application/wasm");
+  }
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader(
+    "Cross-Origin-Embedder-Policy", "require-corp",
+  );
+  res.end(await readFile(file));
+}).listen(8080);
+```
+
+## References
+
+- [WebAssembly specification](https://webassembly.github.io/spec/): [core](https://webassembly.github.io/spec/core/), [JS API](https://webassembly.github.io/spec/js-api/), [Web API](https://webassembly.github.io/spec/web-api/)
+- [webassembly.org](https://webassembly.org/): [feature status](https://webassembly.org/features/), [Wasm 3.0 completed](https://webassembly.org/news/2025-09-17-wasm-3.0/), [proposals](https://github.com/WebAssembly/proposals)
+- MDN: [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly), [JavaScript interface](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface), [`Memory`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory), [`instantiateStreaming`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/instantiateStreaming_static)
+- MDN: [Loading and running](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Loading_and_running), [Exported functions](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Exported_functions), [JavaScript builtins](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/JavaScript_builtins), [`Suspending` (JSPI)](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Suspending)
+- [Node.js: Wasm modules in ESM](https://nodejs.org/api/esm.html#wasm-modules), [Vite: WebAssembly](https://vite.dev/guide/features.html#webassembly), [Deno: Wasm](https://docs.deno.com/runtime/reference/wasm/)
+- [V8: JSPI](https://v8.dev/blog/jspi), [V8: BigInt integration](https://v8.dev/features/wasm-bigint), [Chrome DevTools: debug Wasm](https://developer.chrome.com/docs/devtools/wasm)

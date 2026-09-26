@@ -1,0 +1,830 @@
+---
+title: GDScript
+date: 2026-09-26
+order: 1
+---
+
+GDScript for Godot 4.x (current stable 4.7) from a TypeScript developer's point of view: syntax, static typing,
+classes, properties, annotations, strings, signals and `await`, errors, the built-in maths types and the style
+guide. The node model is in [Nodes, scenes & signals](/game-dev/godot/nodes-scenes/); gameplay code in
+[Input & physics](/game-dev/godot/input-physics/).
+
+## GDScript vs TypeScript
+
+| Concept | TypeScript | GDScript |
+| :------ | :--------- | :------- |
+| Blocks | braces | `:` + indentation (tabs by convention) |
+| Variable | `let x = 1` / `const X = 1` | `var x := 1` / `const X := 1` |
+| Type annotation | `let x: number` | `var x: int` / `var x: float` |
+| Inference | automatic | only with `:=` (plain `=` is `Variant`) |
+| Any | `any` / `unknown` | untyped / `Variant` |
+| Nullability | `T \| null` | only `Object` types can be `null`; `int` never is |
+| Array | `number[]` | `Array[int]`, or `PackedInt32Array` |
+| Record | `Record<string, number>` | `Dictionary[String, int]` (4.4+) |
+| Function | `function f(a: number): number` | `func f(a: int) -> int:` |
+| Arrow fn | `(x) => x * 2` | `func(x): return x * 2` |
+| Class | `class A extends B` (one per file or many) | one class per file: `class_name A extends B` |
+| Interface | `interface` | none: duck typing, `has_method`, or `@abstract` (4.5+) |
+| Constructor | `constructor()` | `func _init():` |
+| `this` | `this` | `self` (usually implicit) |
+| Super call | `super.m()` | `super.m()` / `super()` |
+| Getters/setters | `get x()` / `set x(v)` | `var x: set = ..., get = ...` |
+| Enum | `enum E { A, B }` | `enum E { A, B }` (ints) |
+| Template string | `` `hi ${name}` `` | `"hi %s" % name`, `"hi {n}".format(...)` |
+| Equality | `===` | `==` (typed, no coercion between String and int) |
+| Logical | `&&` `\|\|` `!` | `and` `or` `not` (symbols also work) |
+| Ternary | `c ? a : b` | `a if c else b` |
+| Exceptions | `try`/`catch` | none: `Error` return codes, `assert`, `push_error` |
+| Async | `Promise`, `await` | signals, `await` a signal or coroutine |
+| Events | `EventEmitter` | `signal` + `.emit()` / `.connect()` |
+| Modules | `import` / `export` | `class_name` (global), `preload("res://x.gd")` |
+| Memory | GC | ref counting (`RefCounted`), manual for `Node` (`queue_free`) |
+
+## Syntax basics
+
+```gdscript title="player.gd"
+class_name Player
+extends CharacterBody2D
+## Doc comment: shown in the editor's help.
+
+signal died
+
+const MAX_HP := 100
+
+@export var speed := 200.0
+var hp := MAX_HP
+
+func _ready() -> void:
+    print("ready with ", hp, " hp")
+
+func take_damage(amount: int) -> void:
+    hp -= amount
+    if hp <= 0:
+        died.emit()
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Indentation | tabs are the Godot style (snippets here use 4 spaces for width); never mix in one file |
+| Comments | `#` line comment; `##` doc comment above a member or at the top of the class |
+| Statements | one per line; `;` allowed but unidiomatic |
+| Line continuation | inside `()` `[]` `{}` a line may break freely; elsewhere end the line with `\` |
+| Empty body | `pass` |
+| Script = class | a `.gd` file is an anonymous class; `class_name` registers it globally |
+| Default base | a script without `extends` extends `RefCounted` |
+| Entry point | none: scripts attach to nodes; the engine calls `_ready`, `_process`, ... |
+| Keywords | `var const func static class class_name extends signal enum await`, `is as in not and or`, `self super null true false`, `breakpoint preload` |
+
+## Variables, constants & enums
+
+```gdscript
+var a = 5            # Variant: can later hold a String
+var b: int = 5       # typed, explicit
+var c := 5           # typed, inferred as int
+var d: float         # default 0.0 (int 0, bool false,
+                     # String "", Object null)
+const GRAVITY := 980.0
+const DIRS: Array[Vector2] = [Vector2.UP, Vector2.DOWN]
+static var instances := 0  # shared by all instances
+
+enum State { IDLE, RUN, JUMP }       # State.IDLE == 0
+enum Tier { LOW = 1, MID = 5, HIGH = 10 }
+enum { UNNAMED_A, UNNAMED_B }        # plain int constants
+
+var state: State = State.IDLE
+```
+
+| Enum operation | Result |
+| :------------- | :----- |
+| `State.RUN` | `1` |
+| `State.keys()` | `["IDLE", "RUN", "JUMP"]` |
+| `State.values()` | `[0, 1, 2]` |
+| `State.find_key(1)` | `"RUN"` |
+| `State.size()` | `3` |
+| `State` as a type | `var s: State`; the inspector shows a dropdown when exported |
+| Enum across files | `Player.State.RUN` (via `class_name`) |
+
+`const` must be a constant expression (literals, other constants, `preload`); arrays and dictionaries
+declared `const` are read-only.
+
+## Types & static typing
+
+| Type | Notes |
+| :--- | :---- |
+| `bool` | `true` / `false` |
+| `int` | 64-bit signed |
+| `float` | 64-bit double in GDScript (vectors hold 32-bit floats unless you build with double precision) |
+| `String` | UTF-32 internally, immutable value semantics |
+| `StringName` | interned string, `&"name"`; cheap comparisons |
+| `NodePath` | pre-parsed path, `^"Path/To"` |
+| `Array`, `Array[T]` | reference type, ordered, typed variant checks element types |
+| `Dictionary`, `Dictionary[K, V]` | reference type, keeps insertion order; typed form is 4.4+ |
+| `Callable`, `Signal` | first-class function and signal references |
+| `Object` and subclasses | `RefCounted` (auto-freed), `Node` (tree-owned), `Resource` (ref-counted assets) |
+| `Variant` | any of the above; the default when no type is given |
+
+```gdscript
+var names: Array[String] = ["ada", "lin"]
+var scores: Dictionary[String, int] = {"ada": 3}
+var enemies: Array[Enemy] = []           # custom class
+var target: Node2D = null          # Objects may be null
+
+var n := get_node("Sprite2D") as Sprite2D  # or null
+if n is Sprite2D:                          # narrowing check
+    n.flip_h = true
+if n is not AnimatedSprite2D:              # 4.3+
+    pass
+
+for name: String in names:   # typed loop variable
+    print(name.to_upper())
+
+# Array.map returns an untyped Array; assign() converts
+var lengths: Array[int] = []
+lengths.assign(names.map(func(s): return s.length()))
+```
+
+| Why type everything | Detail |
+| :------------------ | :------ |
+| Errors at parse time | wrong method names, wrong argument types, missing returns |
+| Autocompletion | full completion for typed values, including `get_node(...) as T` |
+| Speed | typed code compiles to optimised opcodes (noticeably faster in hot loops) |
+| Safe lines | the editor gutter marks lines whose types are fully known |
+| Enforce it | Project Settings > Debug > GDScript: set `untyped_declaration` to Warn or Error |
+
+<Note kind="tip">
+Typed containers cannot nest: `Array[Array[int]]` is not allowed. Use `Array[PackedInt32Array]` or a
+small `class` for structured rows.
+</Note>
+
+## Arrays & dictionaries
+
+```gdscript
+var a: Array[int] = [3, 1, 2]
+a.append(4)          # push_back
+a.insert(0, 9)
+a.erase(9)           # remove first matching value
+a.remove_at(0)       # by index
+var last: int = a.pop_back()  # Variant return
+a.sort()             # in place
+a.sort_custom(func(x, y): return x > y)   # descending
+var evens := a.filter(func(x): return x % 2 == 0)
+var total: int = a.reduce(func(acc, x): return acc + x, 0)
+var any_big := a.any(func(x): return x > 10)
+print(a.has(2), a.find(2), a.size(), a.is_empty())
+print(a.slice(1, 3), a.front(), a.back(), a.max())
+var copy := a.duplicate()        # shallow; true for deep
+var pick: int = a.pick_random()
+
+var d := {"hp": 10, "name": "slime"}
+d["hp"] -= 1
+d.speed = 3.0              # dot access for String keys
+print(d.get("armor", 0))   # default when missing
+print(d.has("hp"), "hp" in d, d.keys(), d.values())
+d.erase("speed")
+d.merge({"xp": 5})         # overwrite=false by default
+for key in d:
+    print(key, " = ", d[key])
+```
+
+| Packed array | Element | Use |
+| :----------- | :------ | :-- |
+| `PackedByteArray` | byte | binary data, `FileAccess` buffers, network |
+| `PackedInt32Array` / `PackedInt64Array` | int | tile ids, indices |
+| `PackedFloat32Array` / `PackedFloat64Array` | float | samples, heights |
+| `PackedStringArray` | String | `split()` results, file lists |
+| `PackedVector2Array` / `PackedVector3Array` | vector | polygons, lines, mesh vertices |
+| `PackedColorArray` | Color | vertex colours |
+| `PackedVector4Array` | Vector4 | 4.3+ |
+
+Packed arrays are contiguous and far smaller than `Array` (which stores a `Variant` per slot). Engine APIs
+such as `Line2D.points` or `Polygon2D.polygon` expect them.
+
+## Operators
+
+| Operator | Meaning |
+| :------- | :------ |
+| `+ - * /` | `int / int` is integer division: `7 / 2 == 3`; use `7 / 2.0` |
+| `%` | integer remainder (sign follows the left operand); `fmod`, `fposmod`, `posmod` for others |
+| `**` | power: `2 ** 10 == 1024` |
+| `== != < > <= >=` | no coercion: `1 == "1"` is never true; ordering mismatched types is an error |
+| `and or not` / `&& \|\| !` | short-circuit; operands need not be bool |
+| `& \| ^ ~ << >>` | bitwise on int (collision layers, flags) |
+| `in` / `not in` | membership in Array, Dictionary keys, String (substring) |
+| `is` / `is not` | type test, works with built-ins, classes and `class_name` scripts |
+| `as` | cast; on Objects returns `null` on failure, on built-ins it converts or errors |
+| `a if c else b` | conditional expression |
+| `+= -= *= /= %= **= &= \|= ^= <<= >>=` | compound assignment |
+
+Truthiness: `0`, `0.0`, `""`, `[]`, `{}`, `null` and empty vectors are falsy. A freed object is not
+`null`: test with `is_instance_valid(obj)`.
+
+## Control flow & match
+
+```gdscript
+if hp <= 0:
+    die()
+elif hp < 20:
+    warn()
+else:
+    pass
+
+for i in 5:                   # 0..4
+    pass
+for i in range(10, 0, -2):    # 10, 8, 6, 4, 2
+    pass
+for child in get_children():
+    pass
+for key in dict:              # keys; dict[key] for value
+    pass
+for ch in "hey":              # characters
+    pass
+
+while queue.size() > 0:
+    var item = queue.pop_front()
+    if item == null:
+        continue
+    if item.done:
+        break
+```
+
+```gdscript
+match value:
+    0:
+        print("zero")
+    1, 2, 3:                         # several patterns
+        print("small")
+    State.RUN:                       # constants and enums
+        print("running")
+    [var x, var y]:                  # array, binds x and y
+        print(x, y)
+    [1, ..]:                         # open-ended array
+        print("starts with 1")
+    {"type": "hit", "dmg": var dmg}: # dictionary
+        print(dmg)
+    var n when n is int and n > 100: # guard with `when`
+        print("big ", n)
+    _:                               # wildcard / default
+        print("other")
+```
+
+`match` compares with `==` after a type check (`1` does not match `1.0`), never falls through, and runs only
+the first matching branch.
+
+## Functions & lambdas
+
+```gdscript
+func add(a: int, b: int = 1) -> int:
+    return a + b
+
+static func clamp01(x: float) -> float:   # no self
+    return clampf(x, 0.0, 1.0)
+
+func sum(first: float, ...rest: Array) -> float:  # 4.5+
+    var t := first
+    for v in rest:
+        t += v
+    return t
+
+func log_all(...args: Array) -> void:     # variadic
+    print(" ".join(args.map(str)))
+```
+
+```gdscript
+# Lambdas are Callables; single-line or indented block
+var double := func(x: int) -> int: return x * 2
+var greet := func(name: String) -> void:
+    print("hi ", name)
+    print("bye")
+
+double.call(4)                 # 8
+double.callv([4])              # args as an Array
+var bound := add.bind(10)      # appends args: add(x, 10)
+bound.call(1)                  # 11
+var method := Callable(self, "add")  # dynamic by name
+method.is_valid()
+button.pressed.connect(func(): print("clicked"))
+
+# Captures copy values at creation: reassigning a
+# captured local does not reach the outer scope. Mutate
+# a container instead.
+var count := [0]
+var inc := func(): count[0] += 1
+```
+
+| Callable method | Does |
+| :-------------- | :--- |
+| `call(...)` / `callv(arr)` | invoke |
+| `call_deferred(...)` | invoke at the end of the frame (idle time) |
+| `bind(...)` / `bindv(arr)` | append extra args (signal-handler context) |
+| `unbind(n)` | drop the last `n` args (ignore signal parameters) |
+| `get_object()`, `get_method()` | target and method name |
+| `is_valid()` | target alive and method exists |
+
+Built-in functions are Callables too (4.3+): `print.callv(["a", 1])`.
+
+## Classes & inheritance
+
+```gdscript title="weapon.gd"
+@abstract                       # 4.5+: cannot .new()
+class_name Weapon
+extends Resource
+
+@export var damage := 1
+
+@abstract func fire(from: Vector2) -> void
+
+func describe() -> String:
+    return "%s (%d dmg)" % [get_class(), damage]
+```
+
+```gdscript title="shotgun.gd"
+class_name Shotgun
+extends Weapon
+
+func _init(dmg := 4) -> void:   # constructor
+    damage = dmg
+
+func fire(from: Vector2) -> void:
+    for i in 5:
+        print("pellet from ", from)
+
+func describe() -> String:
+    return "Shotgun: " + super()   # parent method
+```
+
+```gdscript
+# Inner classes: namespaced under the outer script
+class Stats:                    # extends RefCounted
+    var hp := 10
+    var armour := 0
+    func _init(h: int) -> void:
+        hp = h
+
+var s := Stats.new(20)          # outside: Player.Stats
+var gun := Shotgun.new(6)
+const EnemyScript := preload("res://enemy.gd")
+var e = EnemyScript.new()      # no class_name needed
+```
+
+| Base | Lifetime | Use for |
+| :--- | :------- | :------ |
+| `Object` | manual `free()` | rare; low-level |
+| `RefCounted` | freed when the last reference drops (cycles leak) | plain data objects, helpers |
+| `Resource` | ref-counted, serialisable, cached by path | data assets (see [Resources](/game-dev/godot/resources-saving-export/)) |
+| `Node` | freed with its parent or `queue_free()` | anything in the scene tree |
+
+| Reflection | Example |
+| :--------- | :------ |
+| Class name | `obj.get_class()` returns the engine class; `obj.get_script().get_global_name()` the `class_name` |
+| Method exists | `obj.has_method("fire")` |
+| Dynamic call | `obj.call("fire", pos)` |
+| Dynamic property | `obj.get("hp")`, `obj.set("hp", 5)` |
+| Property list | `obj.get_property_list()` |
+| Weak reference | `var w := weakref(obj)`, then `w.get_ref()` |
+
+Static members: `static var` and `static func` belong to the class. `@static_unload` lets the class's static
+data be freed when no instance remains.
+
+## Properties: setters & getters
+
+```gdscript
+signal health_changed(value: int)
+
+@export var max_health := 100
+
+var health := 100:
+    set(value):
+        health = clampi(value, 0, max_health)  # no recursion
+        health_changed.emit(health)
+    get:
+        return health
+
+var ratio: float:                 # computed, no storage
+    get:
+        return float(health) / max_health
+
+var speed: float = 1.0: set = set_speed
+
+func set_speed(v: float) -> void:
+    speed = maxf(v, 0.0)
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Inside the setter | assigning the property itself writes the backing field directly (no infinite loop) |
+| Elsewhere in the class | `health = 5` and `self.health = 5` both call the setter in 4.x |
+| Exported + setter | the setter runs when the scene loads (before `_ready`), so guard node access with `is_node_ready()` |
+| `@tool` scripts | setters also run in the editor, handy for live previews |
+
+## Annotations
+
+| Annotation | Effect |
+| :--------- | :----- |
+| `@export var x := 1` | editable in the inspector, saved in the scene |
+| `@export_range(0, 100, 1, "or_greater")` | slider; extra hints `"or_less"`, `"exp"`, `"suffix:px"`, `"radians_as_degrees"` |
+| `@export_enum("Warrior", "Mage")` | int or String dropdown |
+| `@export_flags("Fire", "Water")` | bit-flag checkboxes |
+| `@export_flags_2d_physics` | collision-layer picker (`_3d_physics`, `_2d_render` ...) |
+| `@export_file("*.json")`, `@export_dir` | path pickers (`@export_global_file` for absolute paths) |
+| `@export_multiline`, `@export_placeholder("...")` | text inputs |
+| `@export_color_no_alpha` | colour picker without alpha |
+| `@export_exp_easing` | easing curve editor for a float |
+| `@export_node_path("Button")` | NodePath restricted to types; prefer `@export var b: Button` |
+| `@export_group("Movement")`, `@export_subgroup`, `@export_category` | inspector grouping |
+| `@export_storage` | saved but hidden in the inspector (4.3+) |
+| `@export_custom(hint, "hint string")` | any `PROPERTY_HINT_*` (4.3+) |
+| `@export_tool_button("Bake", "Bake")` | inspector button calling a Callable, `@tool` only (4.4+) |
+| `@onready var s := $Sprite2D` | assigned just before `_ready` |
+| `@tool` | script runs in the editor (first line) |
+| `@icon("res://icons/enemy.svg")` | icon in the scene tree and create dialog |
+| `@warning_ignore("unused_parameter")` | silence one warning for the next statement or function |
+| `@static_unload` | allow static data to be unloaded |
+| `@abstract` | abstract class or method (4.5+) |
+| `@rpc("any_peer", "reliable")` | multiplayer remote call |
+
+```gdscript
+@tool
+extends Node2D
+
+@export_group("Shape")
+@export_range(1.0, 500.0, 0.5, "suffix:px")
+var radius := 32.0:
+    set(v):
+        radius = v
+        queue_redraw()   # live preview in the editor
+@export var colour := Color.TOMATO
+@export var resource: Weapon            # typed resource slot
+@export var targets: Array[Node2D] = [] # node references
+
+func _draw() -> void:
+    draw_circle(Vector2.ZERO, radius, colour)
+```
+
+In a `@tool` script, guard game-only code with `if Engine.is_editor_hint(): return`.
+
+## Strings & formatting
+
+```gdscript
+var s := "Hello"
+var multi := """line 1
+line 2"""
+var raw := r"C:\no\escapes"      # raw string
+var sn := &"jump"                # StringName literal
+var np := ^"UI/HealthBar"        # NodePath literal
+
+"%s has %d hp" % ["slime", 5]    # printf-style
+"%.2f" % 3.14159                 # 3.14
+"%05d" % 42                      # 00042
+"%-8s|" % "ab"                   # left-aligned: "ab      |"
+"%x" % 255                       # ff
+"%*d" % [4, 7]                   # width from args: "   7"
+"{0} vs {1}".format(["a", "b"])
+"{name} lv{lvl}".format({"name": "Ada", "lvl": 3})
+str(42) + " " + str(Vector2(1, 2))  # "42 (1, 2)"
+String.num(3.14159, 2)           # "3.14"
+```
+
+| Method | Example / result |
+| :----- | :--------------- |
+| `length()`, `is_empty()` | `"abc".length() == 3` |
+| `to_upper()`, `to_lower()`, `capitalize()` | `"move_left".capitalize()` is `"Move Left"` |
+| `to_snake_case()`, `to_pascal_case()`, `to_camel_case()` | identifier conversion |
+| `split(",", false)` | `PackedStringArray`, skip empties |
+| `", ".join(arr)` | join (called on the separator) |
+| `strip_edges()`, `lstrip(chars)`, `rstrip(chars)` | trim |
+| `begins_with()`, `ends_with()`, `contains()`, `"x" in s` | tests |
+| `find()`, `rfind()`, `count()` | search; `-1` when absent |
+| `replace(a, b)`, `substr(from, len)`, `left(n)`, `right(n)` | slicing |
+| `to_int()`, `to_float()`, `is_valid_int()`, `is_valid_float()` | parsing |
+| `pad_zeros(n)`, `lpad(n, " ")`, `rpad(n)` | padding |
+| `path_join()`, `get_extension()`, `get_file()`, `get_base_dir()`, `get_basename()` | paths |
+| `sha256_text()`, `md5_text()`, `uri_encode()`, `uri_decode()` | hashing, URLs |
+| `s[0]`, `s.unicode_at(0)`, `String.chr(65)` | characters |
+
+`print(a, b)` concatenates, `prints(a, b)` separates with spaces, `printt` with tabs, `print_rich("[b]x[/b]")`
+uses BBCode in the Output panel.
+
+## Signals & await
+
+```gdscript
+signal hit(damage: int, source: Node)
+signal died
+
+func _ready() -> void:
+    hit.connect(_on_hit)
+    died.connect(func(): print("dead"), CONNECT_ONE_SHOT)
+
+func _on_hit(damage: int, source: Node) -> void:
+    print(source.name, " dealt ", damage)
+
+func take(dmg: int, src: Node) -> void:
+    hit.emit(dmg, src)
+```
+
+```gdscript
+# await pauses this function until the signal fires
+func flash() -> void:
+    modulate = Color.RED
+    await get_tree().create_timer(0.1).timeout
+    modulate = Color.WHITE
+
+# A function that awaits is a coroutine; await its result
+func ask() -> bool:
+    $Dialog.popup()
+    var ok: bool = await $Dialog.answered  # 1 arg: value
+    return ok
+
+func _on_button_pressed() -> void:
+    if await ask():
+        print("confirmed")
+    await get_tree().process_frame    # wait one frame
+    await get_tree().physics_frame    # wait one tick
+    await $Anim.animation_finished
+```
+
+| Fact | Detail |
+| :--- | :----- |
+| Signal with several args | `await` returns them as an `Array` |
+| Calling a coroutine without `await` | runs until its first `await`, then returns to the caller (fire and forget) |
+| Freed emitter | a pending `await` on a freed object's signal never resumes |
+| No `Promise.all` | await signals one by one, or count completions with a counter and a signal |
+| Timers | `get_tree().create_timer(sec)` is one-shot and cheap; use a `Timer` node for repeating |
+
+More on connections, flags and `bind` in [Nodes, scenes & signals](/game-dev/godot/nodes-scenes/#signals).
+
+## Errors & debugging
+
+GDScript has no exceptions. A runtime error in a debug build pauses the game in the debugger; in a release build
+it is logged, the current function aborts, and the game carries on.
+
+```gdscript
+var err := ResourceSaver.save(res, "user://a.tres")
+if err != OK:
+    push_error("save failed: %s" % error_string(err))
+    return
+
+var f := FileAccess.open("user://x.txt", FileAccess.READ)
+if f == null:                           # null on failure
+    push_warning(str(FileAccess.get_open_error()))
+
+assert(speed > 0.0, "speed must be positive")  # debug only
+print_debug("reached")   # adds file:line (debug builds)
+print_stack()            # current GDScript call stack
+breakpoint               # keyword: pause here in debugger
+```
+
+| Tool | Behaviour |
+| :--- | :-------- |
+| `Error` enum | `OK` (0), `FAILED`, `ERR_FILE_NOT_FOUND`, `ERR_INVALID_PARAMETER`, `ERR_CANT_OPEN` ... |
+| `error_string(err)` | readable name for an `Error` |
+| `assert(cond, msg)` | stripped from release exports; never put side effects inside |
+| `push_error(msg)`, `push_warning(msg)` | Debugger > Errors tab plus stderr; execution continues |
+| `printerr(...)` | plain stderr |
+| Nullable returns | many APIs return `null` (`get_node_or_null`, `FileAccess.open`, `load`) |
+| Result pattern | return `{ok, value}` Dictionaries or a small class when a failure needs data |
+
+## Built-in maths types
+
+| Type | Key members |
+| :--- | :---------- |
+| `Vector2`, `Vector2i` | `x y`, `length()`, `normalized()`, `dot()`, `cross()` (float), `angle()`, `angle_to()`, `direction_to()`, `distance_to()`, `rotated()`, `lerp()`, `move_toward()`, `limit_length()`, `slide()`, `bounce()`, `reflect()`, `snapped()` |
+| `Vector3`, `Vector3i` | as above plus `cross()` (Vector3), `slerp()`, `signed_angle_to()` |
+| `Vector4`, `Vector4i` | shader-style data |
+| Constants | `Vector2.ZERO ONE UP DOWN LEFT RIGHT`; `Vector3.FORWARD` is `(0, 0, -1)` |
+| `Rect2`, `Rect2i` | `position size end`, `has_point()`, `intersects()`, `encloses()`, `grow()`, `get_center()`, `merge()` |
+| `Transform2D` | `origin`, `x y` (basis axes), `rotation`, `scale`; `*` composes; `affine_inverse()` |
+| `Transform3D` | `basis`, `origin`; `looking_at()`, `rotated()`, `translated()`, `orthonormalized()` |
+| `Basis` | 3x3 rotation/scale; `x y z` columns; forward is `-basis.z`; `from_euler()`, `get_euler()` |
+| `Quaternion` | `slerp()`, `get_euler()`; `Basis(q)` to convert |
+| `AABB`, `Plane` | 3D bounds, plane tests |
+| `Color` | `r g b a` in 0 to 1, `Color("#ff8800")`, `Color.from_hsv()`, `lerp()`, `lightened()`, `darkened()`, `to_html()`; named constants like `Color.TOMATO` |
+
+```gdscript
+var dir := (target.global_position - global_position)
+var n := dir.normalized()          # safe on ZERO: ZERO
+var facing := Vector2.RIGHT.rotated(rotation)
+position += n * speed * delta      # position.x += 1 works
+look_at(get_global_mouse_position())  # Node2D helper
+var local := to_local(world_point)    # and to_global()
+
+var t := Transform3D.IDENTITY.looking_at(
+    Vector3(0, 0, -5), Vector3.UP)
+var fwd := -global_transform.basis.z  # 3D forward
+var c := Color.WHITE.lerp(Color.RED, 0.5)
+```
+
+Built-in maths types, `String` and `Callable` are value types (copied on assignment); `Array`, `Dictionary`
+and Objects are references. `a.duplicate(true)` deep-copies containers.
+
+## Maths helpers
+
+| Function | Notes |
+| :------- | :---- |
+| `lerp(a, b, t)` | Variant: floats, vectors, colours; `lerpf` for typed floats |
+| `inverse_lerp(a, b, v)`, `remap(v, a0, a1, b0, b1)` | map between ranges |
+| `move_toward(from, to, delta)` | step by at most `delta`; vectors have their own `move_toward` |
+| `clamp(v, lo, hi)`, `clampf`, `clampi` | typed variants avoid Variant returns |
+| `snappedf(v, step)`, `snappedi` | round to a grid |
+| `wrapf(v, lo, hi)`, `wrapi`, `pingpong(v, len)` | cyclic values, angles |
+| `lerp_angle(a, b, t)`, `angle_difference(a, b)` | shortest-path rotation |
+| `smoothstep(a, b, x)`, `ease(x, curve)` | easing |
+| `deg_to_rad`, `rad_to_deg`, `PI`, `TAU`, `INF`, `NAN` | angles are radians everywhere |
+| `absf`, `signf`, `floorf`, `ceilf`, `roundf`, `floori`, `roundi` | typed versions of `abs`, `sign` ... |
+| `fmod`, `fposmod`, `posmod` | float remainder, always-positive remainder |
+| `is_equal_approx(a, b)`, `is_zero_approx(x)` | float comparison |
+| `randf()`, `randi()`, `randf_range(a, b)`, `randi_range(a, b)`, `randfn(mean, dev)` | global RNG, auto-seeded at startup |
+| `seed(n)` | make the global RNG deterministic |
+| `RandomNumberGenerator.new()` | independent RNG with its own `seed` and `state` |
+| `arr.pick_random()`, `arr.shuffle()` | random element, in-place shuffle |
+
+```gdscript
+# Frame-rate independent smoothing (exponential decay)
+var k := 10.0
+pos = pos.lerp(target, 1.0 - exp(-k * delta))
+```
+
+## Style guide
+
+| Item | Convention |
+| :--- | :--------- |
+| Files | `snake_case.gd`, `snake_case.tscn` |
+| `class_name`, node names | `PascalCase` |
+| Functions, variables | `snake_case` |
+| Private members | leading `_`: `_velocity`, `_on_timer_timeout` |
+| Constants, enum members | `CONSTANT_CASE` |
+| Enum names | `PascalCase` |
+| Signals | past tense: `died`, `health_changed`, `door_opened` |
+| Signal handlers | `_on_<node>_<signal>`: `_on_start_button_pressed` |
+| Booleans | `is_`, `can_`, `has_` prefixes |
+| Indentation | tabs; two indents for continuation lines |
+| Line length | around 100 characters |
+| Quotes | double quotes unless the string contains them |
+| Numbers | `1.0` not `1.` ; `0.5` not `.5`; `1_000_000` separators allowed |
+
+Code order in a script: `@tool`, `class_name`, `extends`, `##` doc comment, signals, enums, constants,
+`@export` variables, public variables, private variables, `@onready` variables, `_init`, `_enter_tree`,
+`_ready`, `_process`, `_physics_process`, other virtuals, public methods, private methods, inner classes.
+
+## C# differences
+
+| GDScript | C# (.NET build of Godot) |
+| :------- | :----------------------- |
+| `extends Node2D` | `public partial class Player : Node2D` (must be `partial`) |
+| `func _ready():` | `public override void _Ready()` (PascalCase API) |
+| `_process(delta)` float | `_Process(double delta)` |
+| `@export var speed := 200.0` | `[Export] public float Speed { get; set; } = 200f;` |
+| `$Sprite2D` | `GetNode<Sprite2D>("Sprite2D")` |
+| `signal died` | `[Signal] public delegate void DiedEventHandler();` |
+| `died.emit()` | `EmitSignal(SignalName.Died)` |
+| `died.connect(f)` | `Died += F;` |
+| `await timer.timeout` | `await ToSignal(timer, Timer.SignalName.Timeout);` |
+| `position.x = 3` | `Position = Position with { X = 3 };` (structs returned by value) |
+| `print()` / `lerp()` | `GD.Print()` / `Mathf.Lerp()` |
+| `Array[int]`, `Dictionary` | `Godot.Collections.Array<int>`, or plain .NET collections for internal data |
+
+C# needs the .NET editor build and cannot export to the Web in Godot 4.x; see
+[Resources, saving & export](/game-dev/godot/resources-saving-export/#c-net-projects).
+
+## Recipes
+
+### Enum state machine
+Use for a small actor with a handful of states; switch to state nodes when states need their own data.
+
+```gdscript
+enum State { IDLE, RUN, ATTACK }
+var state := State.IDLE
+
+func _physics_process(delta: float) -> void:
+    match state:
+        State.IDLE:
+            if Input.get_axis("left", "right") != 0.0:
+                _enter(State.RUN)
+        State.RUN:
+            _move(delta)
+            if Input.is_action_just_pressed("attack"):
+                _enter(State.ATTACK)
+        State.ATTACK:
+            pass  # animation_finished returns to IDLE
+
+func _enter(next: State) -> void:
+    if next == state:
+        return
+    state = next
+    $Anim.play(State.keys()[next].to_lower())
+```
+
+### Cooldown without a Timer node
+Use for abilities and weapons: compare engine time instead of counting down in `_process`.
+
+```gdscript
+@export var cooldown := 0.4
+var _ready_at := 0.0
+
+func try_fire() -> bool:
+    var now := Time.get_ticks_msec() / 1000.0
+    if now < _ready_at:
+        return false
+    _ready_at = now + cooldown
+    _spawn_bullet()
+    return true
+```
+
+### Weighted random pick
+Use for loot tables and spawn tables; weights need not sum to 1.
+
+```gdscript
+static func weighted_pick(
+    items: Array, weights: PackedFloat32Array,
+) -> Variant:
+    var total := 0.0
+    for w in weights:
+        total += w
+    var r := randf() * total
+    for i in items.size():
+        r -= weights[i]
+        if r <= 0.0:
+            return items[i]
+    return items.back()
+
+# weighted_pick(["common", "rare"], [9.0, 1.0])
+```
+
+### Typed data class
+Use for plain structured data that never touches the scene tree (inventory rows, AI blackboards).
+
+```gdscript title="item_stack.gd"
+class_name ItemStack
+extends RefCounted
+
+var id: StringName
+var count: int
+
+func _init(p_id: StringName, p_count := 1) -> void:
+    id = p_id
+    count = p_count
+
+func _to_string() -> String:   # used by print() / str()
+    return "%s x%d" % [id, count]
+
+# var s := ItemStack.new(&"potion", 3); print(s)
+```
+
+### Debounce a Callable
+Use to collapse bursts of calls (text search, window resize) into one call after a quiet period.
+
+```gdscript
+var _gen := 0
+
+func debounce(fn: Callable, wait := 0.3) -> void:
+    _gen += 1
+    var my_gen := _gen
+    await get_tree().create_timer(wait).timeout
+    if my_gen == _gen:        # nothing newer arrived
+        fn.call()
+
+func _on_search_text_changed(t: String) -> void:
+    debounce(_run_search.bind(t))
+```
+
+### Abstract strategy (4.5+)
+Use when several interchangeable behaviours share one contract, such as AI targeting rules.
+
+```gdscript title="targeting.gd"
+@abstract
+class_name Targeting
+extends RefCounted
+
+@abstract func pick(from: Node2D, all: Array) -> Node2D
+```
+
+```gdscript title="nearest_targeting.gd"
+class_name NearestTargeting
+extends Targeting
+
+func pick(from: Node2D, all: Array) -> Node2D:
+    var best: Node2D = null
+    var best_d := INF
+    for n: Node2D in all:
+        var p := n.global_position
+        var d := from.global_position.distance_squared_to(p)
+        if d < best_d:
+            best = n
+            best_d = d
+    return best
+
+# var t: Targeting = NearestTargeting.new()
+# Targeting.new() is an error (abstract)
+```
+
+## References
+
+- [Godot docs: GDScript reference](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_basics.html): syntax, `match`, lambdas, properties, variadic and abstract (4.5+)
+- [Godot docs: Static typing in GDScript](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/static_typing.html): typed arrays and dictionaries, safe lines, warnings
+- [Godot docs: GDScript exported properties](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_exports.html): every `@export_*` annotation
+- [Godot docs: GDScript format strings](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_format_string.html): `%` placeholders and modifiers
+- [Godot docs: GDScript style guide](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html): naming and code order
+- [Godot docs: GDScript warning system](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/warning_system.html): per-project warning levels and `@warning_ignore`
+- [Godot docs: @GlobalScope](https://docs.godotengine.org/en/stable/classes/class_@globalscope.html): maths helpers, `Error` codes, random functions
+- [Godot docs: C# basics](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/index.html) and [C# API differences](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_differences.html)
+- [Godot release notes](https://godotengine.org/releases/4.7/): what changed in each 4.x release
+- [GDQuest](https://www.gdquest.com/): tutorials and a free GDScript learning app

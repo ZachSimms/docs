@@ -1,0 +1,696 @@
+---
+title: Rust & wasm-bindgen
+date: 2026-09-26
+order: 3
+---
+
+Rust to WebAssembly for TypeScript projects: targets, `cdylib` crates, wasm-bindgen attributes and
+type mapping, `js-sys` / `web-sys`, closures, async, serde, wasm-pack and the wasm-bindgen CLI, size
+optimisation, testing and threads. WASI and components are in
+[WASI & components](/typescript/webassembly/wasi-components/); the JS API in
+[Fundamentals](/typescript/webassembly/fundamentals/).
+
+## Project status
+
+| Project | Status (September 2026) |
+| :------ | :---------------------- |
+| rustwasm GitHub org | **sunset**: announced July 2025, archived since; the Rust and Wasm working group had been inactive for years |
+| wasm-bindgen, js-sys, web-sys, wasm-bindgen-futures | moved to the new [wasm-bindgen org](https://github.com/wasm-bindgen) with new maintainers; very active (0.2.12x releases) |
+| wasm-pack | also moved to `wasm-bindgen/wasm-pack`; maintained again, 0.15.0 (May 2026) |
+| Guide | now at `wasm-bindgen.github.io/wasm-bindgen/` (old `rustwasm.github.io` pages are frozen) |
+| twiggy, gloo, walrus, weedle, old book | left archived or transferred to individual maintainers: usable, but check activity before depending on them |
+| console_error_panic_hook | unchanged since 2021; still works |
+
+The toolchain itself (rustc targets, LLVM) never depended on that org and is unaffected.
+
+## Targets
+
+| Target | Output | Use |
+| :----- | :----- | :-- |
+| `wasm32-unknown-unknown` | core module, no OS imports | browsers and JS runtimes via wasm-bindgen |
+| `wasm32v1-none` | core module, Wasm 1.0 features only, `no_std` | the most conservative engines |
+| `wasm32-wasip1` | core module importing `wasi_snapshot_preview1` | CLIs, Wasmtime, Node `node:wasi` |
+| `wasm32-wasip1-threads` | as above, with shared memory and threads | wasi-threads hosts |
+| `wasm32-wasip2` | a **component** targeting WASI 0.2 | Wasmtime, Spin, wasmCloud, jco |
+| `wasm32-wasip3` | component, WASI 0.3 | tier 3 (nightly, `-Zbuild-std`) |
+| `wasm32-unknown-emscripten` | links with emcc | mixing Rust into a C/C++ Emscripten app |
+| `wasm64-unknown-unknown` | memory64 | tier 3, experimental |
+
+`wasm32-wasi` was renamed `wasm32-wasip1` (Rust 1.78 added the new name; the old one was removed in
+Rust 1.84, January 2025). Rust 1.82 made `wasm32-wasip2` tier 2.
+
+```bash
+rustup target add wasm32-unknown-unknown wasm32-wasip2
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Default features on `wasm32-unknown-unknown` follow LLVM: multivalue, mutable-globals,
+reference-types, sign-ext, and since Rust 1.87 bulk-memory and nontrapping-fptoint. SIMD is opt-in
+(`-C target-feature=+simd128`). For ancient engines use `-Ctarget-cpu=mvp` with `-Zbuild-std`.
+
+## Crate setup
+
+```toml title="Cargo.toml"
+[package]
+name = "geom"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"] # rlib: for tests/benches
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["console", "Window", "Document", "Element"]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "z"     # or "s"; try 3 for speed
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+```
+
+`cdylib` produces a `.wasm` with only the exported symbols. The `wasm-bindgen` crate version and the
+`wasm-bindgen` CLI version must match **exactly** (wasm-pack handles this; pin the CLI otherwise).
+
+## Exports with #[wasm_bindgen]
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(start)]
+fn start() {
+    console_error_panic_hook::set_once();
+}
+
+#[wasm_bindgen]
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[wasm_bindgen(js_name = parseCsv)]
+pub fn parse_csv(text: &str) -> Result<Vec<f64>, JsError> {
+    text.split(',')
+        .map(|s| s.trim().parse::<f64>())
+        .collect::<Result<_, _>>()
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub struct Counter {
+    count: u32,
+    #[wasm_bindgen(readonly)]
+    pub step: u32,
+}
+
+#[wasm_bindgen]
+impl Counter {
+    #[wasm_bindgen(constructor)]
+    pub fn new(step: u32) -> Counter {
+        Counter { count: 0, step }
+    }
+    pub fn tick(&mut self) -> u32 {
+        self.count += self.step;
+        self.count
+    }
+    #[wasm_bindgen(getter)]
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_count(&mut self, v: u32) {
+        self.count = v;
+    }
+}
+```
+
+```ts
+import init, { add, parseCsv, Counter } from "./pkg/geom.js";
+
+await init(); // --target web only; bundler target self-inits
+add(2, 3);                  // 5
+parseCsv("1, 2.5");         // Float64Array [1, 2.5]
+const c = new Counter(2);
+c.tick(); c.count = 10;     // getter / setter
+c.free();                   // or `using c = new Counter(2)`
+```
+
+| Attribute | On | Effect |
+| :-------- | :- | :----- |
+| `#[wasm_bindgen]` | `fn`, `struct`, `impl`, `enum`, `extern` block | export or import across the boundary |
+| `start` | a `fn()` | runs automatically when the module is initialised |
+| `js_name = x` | fn, type, method | JS-side name (camelCase your API) |
+| `js_class = "X"` | `impl` block | attach methods to a renamed class |
+| `constructor` | method | becomes `new X(...)` |
+| `getter` / `setter` | method | property accessors (`set_foo` → `foo`) |
+| `getter_with_clone` | struct / field | getters for non-`Copy` pub fields (clones) |
+| `readonly` | pub field | getter only |
+| `skip` | pub field | not exposed |
+| `skip_typescript` | item | omit from `.d.ts` |
+| `typescript_custom_section` | `const &str` | append raw TypeScript to the `.d.ts` |
+| `unchecked_return_type = "T"`, `unchecked_param_type = "T"` | fn / param | override the emitted TS type |
+| `inspectable` | struct | `toJSON` / `toString` for pub fields |
+
+Exported structs live in Wasm memory: JS holds a handle and **must** call `.free()` (or rely on the
+`FinalizationRegistry` cleanup that current wasm-bindgen output registers, which is not prompt).
+Recent output also adds `[Symbol.dispose]`, so TypeScript's `using` works.
+
+## Imports from JS
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    // global function
+    fn alert(s: &str);
+
+    // namespaced: console.log
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_str(s: &str);
+
+    // throws? -> Result
+    #[wasm_bindgen(catch, js_namespace = JSON)]
+    fn parse(s: &str) -> Result<JsValue, JsValue>;
+
+    // a JS class with methods and properties
+    type Player;
+    #[wasm_bindgen(constructor)]
+    fn new(name: &str) -> Player;
+    #[wasm_bindgen(method)]
+    fn play(this: &Player, track: u32);
+    #[wasm_bindgen(method, getter)]
+    fn volume(this: &Player) -> f64;
+    #[wasm_bindgen(method, setter)]
+    fn set_volume(this: &Player, v: f64);
+}
+
+// module = ... goes on the whole extern block
+#[wasm_bindgen(module = "/js/storage.js")]
+extern "C" {
+    fn save(key: &str, value: &str);
+}
+```
+
+| Import attribute | Meaning |
+| :--------------- | :------ |
+| `js_namespace = console` / `= ["a", "b"]` | look the item up on a namespace object |
+| `module = "/js/x.js"` | import from a local ES module (path from the crate root) |
+| `module = "npm-pkg"` / `raw_module = "./x.js"` | bare specifier / verbatim path |
+| `catch` | JS exceptions become `Err(JsValue)` instead of aborting |
+| `method`, `structural`, `static_method_of = X` | calling conventions for JS classes |
+| `variadic` | last param is a slice spread as arguments |
+| `extends = Parent` | `Deref` and `AsRef` to the parent type |
+| `typescript_type = "T"` | the TS type for an imported `type` |
+| `thread_local_v2` | a lazily initialised JS static: `static WINDOW: JsValue` |
+
+## Type mapping
+
+| Rust | TypeScript | Notes |
+| :--- | :--------- | :---- |
+| `i8`..`i32`, `u8`..`u32`, `f32`, `f64` | `number` | |
+| `i64`, `u64`, `i128`, `u128` | `bigint` | |
+| `bool` | `boolean` | |
+| `char` | `string` | one code point |
+| `&str`, `String` | `string` | copied and re-encoded UTF-16 ↔ UTF-8 each crossing |
+| `Vec<u8>`, `&[u8]`, `Box<[u8]>` | `Uint8Array` | copy; likewise `Float32Array`, `Int32Array`, ... |
+| `Vec<String>`, `Vec<T>` of exported structs | `string[]`, `T[]` | |
+| `Option<T>` | `T \| undefined` | numbers, strings, structs, `JsValue` |
+| `Result<T, E>` | returns `T`, throws `E` | `E: Into<JsValue>`; use `JsError` for real `Error`s |
+| `JsValue` | `any` | any JS value, kept in a JS-side heap slab |
+| `js_sys::Array`, `Object`, `Promise`, ... | the JS type | zero-copy handles |
+| `#[wasm_bindgen] struct` | a class | handle into Wasm memory; `.free()` |
+| C-style `#[wasm_bindgen] enum` | numeric enum | string enums with `enum E { A = "a" }` on imports |
+| `impl Fn` / closures | `Function` | see Closures |
+| `async fn` returning `Result<T, E>` | `Promise<T>` | wasm-bindgen-futures |
+
+```rust
+// Zero-copy view of Wasm memory (unsafe: invalidated
+// by any allocation that grows memory)
+let v: Vec<f32> = vec![0.0; 1024];
+let view = unsafe { js_sys::Float32Array::view(&v) };
+// Copy into a fresh JS array instead (safe):
+let copy = js_sys::Float32Array::from(v.as_slice());
+```
+
+## js-sys and web-sys
+
+| Crate | Covers | Pattern |
+| :---- | :----- | :------ |
+| `js-sys` | ECMAScript built-ins: `Array`, `Object`, `Reflect`, `Promise`, `Date`, `Map`, `JSON`, typed arrays | always complete; no features |
+| `web-sys` | every Web API from WebIDL | **each type is a cargo feature**; methods returning errors return `Result<_, JsValue>` |
+
+```rust
+use wasm_bindgen::prelude::*;
+use web_sys::{Document, Element, Window};
+
+pub fn render(msg: &str) -> Result<(), JsValue> {
+    let window: Window =
+        web_sys::window().ok_or("no window")?;
+    let doc: Document =
+        window.document().ok_or("no document")?;
+    let el: Element = doc.create_element("p")?;
+    el.set_text_content(Some(msg));
+    doc.body().ok_or("no body")?.append_child(&el)?;
+    web_sys::console::log_1(&"rendered".into());
+    Ok(())
+}
+```
+
+| Gotcha | Fix |
+| :----- | :-- |
+| "no method named `foo`" on a web-sys type | enable the feature for that type **and** for every type in the method's signature |
+| Downcasting (`Element` → `HtmlCanvasElement`) | `el.dyn_into::<HtmlCanvasElement>()?` (checked) or `unchecked_into` |
+| Options dictionaries | `web_sys::RequestInit::new()` then setters such as `set_method("POST")` |
+| Unstable APIs (WebGPU, etc.) | `RUSTFLAGS=--cfg=web_sys_unstable_apis` |
+| Reading JS object fields | `js_sys::Reflect::get(&obj, &"key".into())?` or `serde_wasm_bindgen::from_value` |
+
+## Closures
+
+| Need | API |
+| :--- | :-- |
+| Sync callback used only during the call | `&dyn Fn(...)` / `&mut dyn FnMut(...)` parameter |
+| Listener JS keeps; Rust keeps a handle | `Closure::new(\|e: web_sys::Event\| ...)`, store it, pass `closure.as_ref().unchecked_ref()` |
+| Hand ownership to JS | pass `Closure` by value (JS GC frees it) or `closure.into_js_value()` |
+| Fire and forget, never removed | `closure.forget()`: **leaks** the closure deliberately |
+| One-shot (promise handler, timeout) | `Closure::once(...)` or `Closure::once_into_js(...)` |
+| Borrowing non-`'static` data | `Closure::borrow` / `borrow_mut` (recent wasm-bindgen; scoped) |
+| Older code | `Closure::wrap(Box::new(f) as Box<dyn FnMut(_)>)`: same as `new`, explicit box |
+
+```rust
+use wasm_bindgen::prelude::*;
+use web_sys::{EventTarget, MouseEvent};
+
+pub fn on_click(
+    target: &EventTarget,
+) -> Result<Closure<dyn FnMut(MouseEvent)>, JsValue> {
+    let cb = Closure::new(move |e: MouseEvent| {
+        web_sys::console::log_1(&e.client_x().into());
+    });
+    target.add_event_listener_with_callback(
+        "click",
+        cb.as_ref().unchecked_ref(),
+    )?;
+    Ok(cb) // caller stores it; dropping it disables the
+           // JS function ("closure invoked ... after being
+           // dropped" error), so remove the listener first
+}
+```
+
+Recent releases rename the underlying type `ScopedClosure` (with `Closure` kept as the `'static`
+alias) and add `own` / `borrow` constructors plus `_aborting` variants; the classic `new`, `wrap`,
+`once`, `forget` and `into_js_value` still work.
+
+## Async and promises
+
+```rust
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::{spawn_local, JsFuture};
+use web_sys::Response;
+
+// Exported async fn -> Promise<string> in TS
+#[wasm_bindgen]
+pub async fn fetch_text(
+    url: String,
+) -> Result<String, JsValue> {
+    let window = web_sys::window().unwrap();
+    let resp: Response =
+        JsFuture::from(window.fetch_with_str(&url))
+            .await?
+            .dyn_into()?;
+    let text = JsFuture::from(resp.text()?).await?;
+    Ok(text.as_string().unwrap_or_default())
+}
+
+// Kick off a future from sync code (no return value)
+pub fn background() {
+    spawn_local(async {
+        let _ = fetch_text("/ping".into()).await;
+    });
+}
+```
+
+| Item | Use |
+| :--- | :-- |
+| `JsFuture::from(promise)` | `Promise` → Rust `Future<Output = Result<JsValue, JsValue>>` |
+| `promise.await` | recent js-sys: `Promise` implements `IntoFuture` directly |
+| `wasm_bindgen_futures::future_to_promise(fut)` | Rust future → JS `Promise` by hand |
+| `spawn_local(fut)` | run a `!Send` future on the JS microtask queue |
+| `#[wasm_bindgen] pub async fn` | exported; returns a `Promise` |
+
+There is no blocking on the browser main thread: never busy-wait for a promise. Timers come from
+`web_sys` (`set_timeout_with_callback...`) or the `gloo-timers` crate.
+
+## serde and JsValue
+
+```rust
+use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
+
+#[derive(Serialize, Deserialize)]
+pub struct Config {
+    pub name: String,
+    pub size: [u32; 2],
+    pub tags: Vec<String>,
+}
+
+#[wasm_bindgen]
+pub fn normalise(
+    input: JsValue,
+) -> Result<JsValue, JsValue> {
+    let mut cfg: Config =
+        serde_wasm_bindgen::from_value(input)?;
+    cfg.tags.sort();
+    Ok(serde_wasm_bindgen::to_value(&cfg)?)
+}
+```
+
+| Option | Trade-off |
+| :----- | :-------- |
+| `serde-wasm-bindgen` | builds real JS objects directly; small code; the usual choice |
+| `JsValue::from_serde` / `into_serde` | deprecated (went through JSON); do not use in new code |
+| JSON string + `serde_json` | simple and sometimes faster for big payloads; costs a parse on each side |
+| `tsify` crate | derives TypeScript types for serde structs so the `.d.ts` is not `any` |
+| Flat typed arrays | fastest for numeric bulk data |
+
+`serde_wasm_bindgen::to_value` turns maps into `Map` by default; use a `Serializer` with
+`serialize_maps_as_objects(true)` for plain objects, and `u64` / `i64` become `bigint` only with
+`serialize_large_number_types_as_bigints(true)`.
+
+## wasm-pack
+
+```bash
+cargo install wasm-pack      # or the installer script
+wasm-pack new my-lib         # template project
+wasm-pack build --target web --release
+wasm-pack build --target bundler --out-dir pkg --scope me
+wasm-pack test --headless --firefox
+wasm-pack publish            # publishes pkg/ to npm
+```
+
+| `--target` | Output | Load with |
+| :--------- | :----- | :-------- |
+| `bundler` (default) | ESM that `import`s the `.wasm` | webpack 5 (`asyncWebAssembly`), Vite / Rollup with a Wasm ESM plugin such as `vite-plugin-wasm` |
+| `web` | ESM with an `init()` default export | `<script type="module">`, no bundler |
+| `nodejs` | CommonJS, loads `.wasm` synchronously with `fs` | `require` |
+| `deno` | ESM for Deno | `import` |
+| `no-modules` | global `wasm_bindgen` object | classic scripts, `importScripts` in workers |
+
+| Flag | Effect |
+| :--- | :----- |
+| `--dev` / `--profiling` / `--release` | debug assertions / optimised with debug info / optimised (default) |
+| `--out-dir pkg`, `--out-name x` | output location and file prefix |
+| `--scope me` | `@me/crate` in the generated `package.json` |
+| `--no-typescript` | skip `.d.ts` |
+| `--no-opt` | skip `wasm-opt` |
+| `-- --features foo` | anything after `--` goes to `cargo build` |
+
+wasm-pack runs `cargo build`, then `wasm-bindgen`, then `wasm-opt`, and writes a `package.json`.
+Configure `wasm-opt` per profile in `Cargo.toml` under `[package.metadata.wasm-pack.profile.release]`
+with `wasm-opt = ["-Oz"]` (or `false`).
+
+## wasm-bindgen CLI directly
+
+```bash
+cargo install wasm-bindgen-cli --version 0.2.129 # = crate
+cargo build --release --target wasm32-unknown-unknown
+wasm-bindgen --target web --out-dir pkg \
+  target/wasm32-unknown-unknown/release/geom.wasm
+wasm-opt -Oz pkg/geom_bg.wasm -o pkg/geom_bg.wasm
+```
+
+| `--target` | Extra over wasm-pack |
+| :--------- | :------------------- |
+| `bundler`, `web`, `nodejs`, `deno`, `no-modules` | as above |
+| `experimental-nodejs-module` | Node ESM output |
+| `module` | uses source phase imports (`import source`) to get the module; esbuild and Node 24+ only |
+
+| Flag | Effect |
+| :--- | :----- |
+| `--typescript` / `--no-typescript` | `.d.ts` on (default) / off |
+| `--debug`, `--keep-debug` | extra checks; keep DWARF for DevTools |
+| `--split-debug-info` | write debug info to a separate file |
+| `--no-demangle` | keep mangled Rust names |
+| `--omit-default-module-path` | `init()` has no default `.wasm` URL |
+| `--browser` | bundler output assumes a browser only |
+
+Using the CLI directly avoids wasm-pack's opinions, fits Cargo workspaces and custom pipelines, and
+is what Trunk and Leptos tooling do under the hood.
+
+## Size optimisation
+
+| Step | Typical effect |
+| :--- | :------------- |
+| `opt-level = "z"` (or `"s"`) | smaller code than `3`; measure speed |
+| `lto = true`, `codegen-units = 1` | cross-crate inlining and dead-code removal |
+| `panic = "abort"` | drops unwinding machinery |
+| `strip = true` or `wasm-tools strip` | removes name and debug sections |
+| `wasm-opt -Oz` (binaryen) | often another 10-20% |
+| Avoid `format!` / `fmt` in hot paths | `core::fmt` pulls in tens of KB |
+| Avoid `serde_json` if you only need JS objects | `serde-wasm-bindgen` is smaller |
+| Fewer generic monomorphisations | `dyn Trait` at boundaries |
+| `twiggy top` / `twiggy dominators` | find what is big (twiggy lives on outside the archived org) |
+| Serve with Brotli | text-like compression on top |
+
+```bash
+twiggy top -n 15 pkg/geom_bg.wasm
+twiggy dominators pkg/geom_bg.wasm | head -40
+twiggy garbage pkg/geom_bg.wasm   # unreachable code
+```
+
+A "hello world" wasm-bindgen crate is roughly 15-30 KB after these steps; pulling in `std::fmt`,
+`regex` or `serde_json` can each add 50-300 KB.
+
+## Testing
+
+```rust
+// tests/web.rs
+use wasm_bindgen::JsValue;
+use wasm_bindgen_test::*;
+
+wasm_bindgen_test_configure!(run_in_browser);
+
+#[wasm_bindgen_test]
+fn adds() {
+    assert_eq!(geom::add(2, 2), 4);
+}
+
+#[wasm_bindgen_test]
+async fn fetches() {
+    let p = js_sys::Promise::resolve(&JsValue::from(42));
+    let v = wasm_bindgen_futures::JsFuture::from(p)
+        .await
+        .unwrap();
+    assert_eq!(v, 42);
+}
+```
+
+```bash
+wasm-pack test --node
+wasm-pack test --headless --chrome --firefox
+
+# without wasm-pack
+cargo install wasm-bindgen-cli --version 0.2.129
+# .cargo/config.toml:
+# [target.wasm32-unknown-unknown]
+# runner = "wasm-bindgen-test-runner"
+WASM_BINDGEN_USE_BROWSER=1 \
+  cargo test --target wasm32-unknown-unknown
+```
+
+Tests default to Node; `run_in_browser`, `run_in_dedicated_worker`, `run_in_shared_worker` and
+`run_in_service_worker` pick other environments. Keep pure logic in plain `#[test]`s that run
+natively (hence `rlib` in `crate-type`).
+
+## Panics and errors
+
+| Situation | Behaviour |
+| :-------- | :-------- |
+| Panic, default (`panic=abort`) | `RuntimeError: unreachable` in JS; the instance may be left inconsistent: reload it |
+| With `console_error_panic_hook` | the Rust message and location are logged via `console.error` first |
+| `Result<T, JsError>` | JS gets a real `Error` with a message; the recommended error path |
+| `Result<T, JsValue>` | JS gets whatever `JsValue` you return (often a string) |
+| `panic=unwind` (nightly, `-Zbuild-std`) | recent wasm-bindgen catches panics and throws a `PanicError`; needs Wasm exception handling in the host |
+
+## Threads
+
+Rust's precompiled `std` for `wasm32-unknown-unknown` has no atomics. Threads need nightly:
+
+```toml title=".cargo/config.toml"
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[build]
+target = "wasm32-unknown-unknown"
+rustflags = ["-C", "target-feature=+atomics"]
+```
+
+- Memory becomes **imported and shared**, so use `--target web` (or `no-modules`) and a
+  cross-origin isolated page (COOP/COEP headers).
+- The `wasm-bindgen-rayon` crate spins up a Web Worker pool so `rayon` parallel iterators work.
+- The main browser thread cannot block: run the parallel entry point from a worker.
+
+## Recipes
+
+### Minimal web crate with Vite
+Use as the starting point for a browser feature written in Rust.
+
+```bash
+cargo new --lib geom && cd geom
+cargo add wasm-bindgen
+# Cargo.toml: [lib] crate-type = ["cdylib"]
+wasm-pack build --target web --out-dir ../web/src/geom
+```
+
+```ts title="web/src/main.ts"
+import init, { add } from "./geom/geom.js";
+import wasmUrl from "./geom/geom_bg.wasm?url";
+
+await init({ module_or_path: wasmUrl });
+document.body.textContent = `2 + 3 = ${add(2, 3)}`;
+```
+
+Passing an object (`module_or_path`) is the current `init` signature; bare URL arguments are
+deprecated. `initSync({ module })` takes bytes or a compiled `WebAssembly.Module`.
+
+### Edit image pixels in place
+Use for pixel work: JS hands over bytes, Rust mutates them, JS gets them back.
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn grayscale(px: &mut [u8]) {
+    for p in px.chunks_exact_mut(4) {
+        let y = (0.299 * p[0] as f32
+            + 0.587 * p[1] as f32
+            + 0.114 * p[2] as f32) as u8;
+        p[0] = y;
+        p[1] = y;
+        p[2] = y;
+    }
+}
+```
+
+```ts
+const img = ctx.getImageData(0, 0, w, h);
+const bytes = new Uint8Array(img.data.buffer);
+grayscale(bytes); // copied in, mutated, copied back
+ctx.putImageData(img, 0, 0);
+```
+
+A `&mut [u8]` parameter is copied into Wasm and written back to the same JS array after the call.
+
+### Keep a stateful engine in Rust
+Use when state is large (a simulation, a parser) and JS should only hold a handle.
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct World {
+    pos: Vec<f32>,
+    vel: Vec<f32>,
+}
+
+#[wasm_bindgen]
+impl World {
+    #[wasm_bindgen(constructor)]
+    pub fn new(n: usize) -> World {
+        World { pos: vec![0.0; n], vel: vec![1.0; n] }
+    }
+    pub fn step(&mut self, dt: f32) {
+        for (p, v) in self.pos.iter_mut().zip(&self.vel) {
+            *p += v * dt;
+        }
+    }
+    /// Pointer into Wasm memory for zero-copy reads.
+    pub fn positions_ptr(&self) -> *const f32 {
+        self.pos.as_ptr()
+    }
+    pub fn len(&self) -> usize {
+        self.pos.len()
+    }
+}
+```
+
+```ts
+import init, { World } from "./pkg/sim.js";
+const wasm = await init(); // exports, including memory
+const world = new World(10_000);
+world.step(1 / 60);
+const pos = new Float32Array(
+  wasm.memory.buffer, world.positions_ptr(), world.len(),
+); // re-create after any call that may allocate
+```
+
+### Call an async JS API from Rust
+Use to await `fetch`, IndexedDB wrappers or any promise-returning import.
+
+```rust
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+
+#[wasm_bindgen(module = "/js/api.js")]
+extern "C" {
+    #[wasm_bindgen(catch)]
+    fn loadUser(id: u32) -> Result<js_sys::Promise, JsValue>;
+}
+
+#[wasm_bindgen]
+pub async fn user_name(id: u32) -> Result<String, JsValue> {
+    let v = JsFuture::from(loadUser(id)?).await?;
+    let name = js_sys::Reflect::get(&v, &"name".into())?;
+    name.as_string().ok_or_else(|| "no name".into())
+}
+```
+
+### requestAnimationFrame loop
+Use for a render loop owned by Rust; the closure re-schedules itself.
+
+```rust
+use std::{cell::RefCell, rc::Rc};
+use wasm_bindgen::prelude::*;
+
+fn raf(f: &Closure<dyn FnMut(f64)>) {
+    web_sys::window()
+        .unwrap()
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .unwrap();
+}
+
+#[wasm_bindgen]
+pub fn run() {
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+    *g.borrow_mut() = Some(Closure::new(move |t: f64| {
+        let _ = t; // draw frame at time t (ms)
+        raf(f.borrow().as_ref().unwrap());
+    }));
+    raf(g.borrow().as_ref().unwrap());
+}
+```
+
+The `Rc` cycle keeps the closure alive for the page lifetime (the classic wasm-bindgen pattern). Needs
+the `Window` web-sys feature.
+
+## References
+
+- [wasm-bindgen guide](https://wasm-bindgen.github.io/wasm-bindgen/), [CLI reference](https://wasm-bindgen.github.io/wasm-bindgen/reference/cli.html), [deployment targets](https://wasm-bindgen.github.io/wasm-bindgen/reference/deployment.html), [passing closures](https://wasm-bindgen.github.io/wasm-bindgen/reference/passing-rust-closures-to-js.html)
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/), [wasm-pack book](https://wasm-bindgen.github.io/wasm-pack/book/), [build command](https://wasm-bindgen.github.io/wasm-pack/book/commands/build.html)
+- API docs: [wasm-bindgen](https://docs.rs/wasm-bindgen), [js-sys](https://docs.rs/js-sys), [web-sys](https://docs.rs/web-sys), [wasm-bindgen-futures](https://docs.rs/wasm-bindgen-futures), [serde-wasm-bindgen](https://docs.rs/serde-wasm-bindgen)
+- Rust targets: [wasm32-unknown-unknown](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html), [wasm32-wasip1](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip1.html), [wasm32-wasip2](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip2.html), [Updates to Rust's WASI targets](https://blog.rust-lang.org/2024/04/09/updates-to-rusts-wasi-targets/)
+- [Inside Rust: sunsetting the rustwasm GitHub org](https://blog.rust-lang.org/inside-rust/2025/07/21/sunsetting-the-rustwasm-github-org/)
+- [Rust and WebAssembly book](https://rustwasm.github.io/docs/book/) (archived, still a good tutorial), [MDN: Rust to Wasm](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Rust_to_Wasm)

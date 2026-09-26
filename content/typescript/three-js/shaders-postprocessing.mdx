@@ -1,0 +1,605 @@
+---
+title: Shaders, post-processing & WebGPU
+date: 2026-09-26
+order: 5
+---
+
+Custom rendering in Three.js r18x: `ShaderMaterial` and `RawShaderMaterial` with typed uniforms, the
+built-ins three injects, patching stock materials with `onBeforeCompile`, `EffectComposer` post-processing
+and why it ends with `OutputPass`, render targets, then `WebGPURenderer` from `three/webgpu`: node materials,
+TSL, the `RenderPipeline` post stack and compute. Raw APIs underneath: [WebGL](/typescript/web-apis/webgl/),
+[WebGPU](/typescript/web-apis/webgpu/); scene setup in [Fundamentals](/typescript/three-js/fundamentals/).
+
+## Two renderers, two shader paths
+
+| | `WebGLRenderer` (`three`) | `WebGPURenderer` (`three/webgpu`) |
+| :- | :------------------------ | :-------------------------------- |
+| Backend | WebGL2 | WebGPU, **falls back to WebGL2** automatically |
+| Custom shaders | GLSL: `ShaderMaterial`, `RawShaderMaterial`, `onBeforeCompile` | TSL node graphs → WGSL or GLSL |
+| Stock materials | `MeshStandardMaterial` … | same classes converted internally, or `*NodeMaterial` |
+| Post-processing | `EffectComposer` + passes (addons) | `RenderPipeline` + TSL nodes |
+| Compute | none | `renderer.compute(node)` with TSL |
+| Init | synchronous | **async**: `await renderer.init()` |
+| Maturity | stable, most examples and libraries | production-usable, API still moving between releases |
+
+GLSL materials do not run on `WebGPURenderer`, and TSL node materials need `WebGPURenderer`. Pick one
+path per project.
+
+## ShaderMaterial vs Raw
+
+| | `ShaderMaterial` | `RawShaderMaterial` |
+| :- | :--------------- | :------------------ |
+| Prefix injected | `#version 300 es`, precision, matrices, `position`/`normal`/`uv`, defines | only `#version` handling |
+| `gl_FragColor`, `texture2D` | work (macro-mapped to GLSL ES 3.00) | write your own `out vec4` |
+| `#include <chunk>` | yes | yes, but you declare what chunks need |
+| Tone mapping / colour space | only if you include the chunks | never |
+| Fog, lights, shadows | opt-in (`fog: true`, `lights: true` + `UniformsLib`) | manual |
+| Use for | most custom effects | full control, porting existing shaders |
+
+Set `glslVersion: GLSL3` to write GLSL ES 3.00 (`in`/`out`, your own fragment output) in either class.
+
+```ts
+import { Color, ShaderMaterial } from "three";
+import type { IUniform } from "three";
+
+type WaveUniforms = {
+  uTime: IUniform<number>;
+  uColor: IUniform<Color>;
+};
+const uniforms: WaveUniforms = {
+  uTime: { value: 0 },
+  uColor: { value: new Color("#4f8cff") },
+};
+
+const mat = new ShaderMaterial({
+  uniforms,
+  vertexShader: VERT,
+  fragmentShader: FRAG,
+  transparent: false,
+});
+// per frame: typed, no string lookups
+uniforms.uTime.value = timer.getElapsed();
+```
+
+```glsl title="wave.vert"
+uniform float uTime;
+varying vec2 vUv;
+varying float vH;
+
+void main() {
+  vUv = uv;
+  vec3 p = position;
+  p.z += sin(p.x * 4.0 + uTime) * 0.1;
+  vH = p.z;
+  gl_Position = projectionMatrix * modelViewMatrix
+    * vec4(p, 1.0);
+}
+```
+
+```glsl title="wave.frag"
+uniform vec3 uColor;
+varying vec2 vUv;
+varying float vH;
+
+void main() {
+  vec3 c = uColor * (0.7 + vH * 3.0);
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+```
+
+Without the last two includes a `ShaderMaterial` writes linear values straight to the sRGB canvas and
+looks dark and saturated compared with stock materials.
+
+## Built-in uniforms & attributes
+
+`ShaderMaterial` (not `RawShaderMaterial`) prepends these declarations:
+
+| Name | Type | Stage | Meaning |
+| :--- | :--- | :---- | :------ |
+| `modelMatrix` | `mat4` | vertex | object → world |
+| `modelViewMatrix` | `mat4` | vertex | object → camera |
+| `projectionMatrix` | `mat4` | vertex | camera → clip |
+| `viewMatrix` | `mat4` | both | world → camera |
+| `normalMatrix` | `mat3` | vertex | object normals → camera space |
+| `cameraPosition` | `vec3` | both | camera in world space |
+| `isOrthographic` | `bool` | both | camera type |
+| `position` | `vec3` attribute | vertex | |
+| `normal` | `vec3` attribute | vertex | |
+| `uv` | `vec2` attribute | vertex | extra sets (`uv1`…) and `color` appear when used |
+
+Uniform value types map to GLSL as: `number` → `float`/`int`, `Vector2/3/4` → `vec2/3/4`, `Color` →
+`vec3`, `Matrix3/4` → `mat3/4`, `Texture` → `sampler2D`, `CubeTexture` → `samplerCube`, arrays → arrays.
+Instanced meshes add `instanceMatrix` (`USE_INSTANCING`); include `<begin_vertex>` / `<project_vertex>`
+chunks or multiply by it yourself.
+
+## Useful material options
+
+| Option | Notes |
+| :----- | :---- |
+| `uniforms` | `{ name: { value } }`; mutate `.value`, never replace the object |
+| `defines` | `{ COUNT: 4 }` → `#define COUNT 4`; changing them needs `needsUpdate = true` |
+| `glslVersion` | `null` (GLSL 1 style, auto-mapped) or `GLSL3` |
+| `lights` | `true` to receive three's light uniforms (merge `UniformsLib.lights`) |
+| `fog` | `true` + fog chunks |
+| `transparent`, `depthWrite`, `blending`, `side` | as for any material |
+| `wireframe`, `clipping` | supported |
+| `uniformsGroups` | UBOs (`UniformsGroup`) shared across materials |
+
+Load `.glsl` files with your bundler (`vite-plugin-glsl`, or `import src from "./a.frag?raw"` in Vite)
+and declare the module type: `declare module "*.frag?raw" { const s: string; export default s; }`.
+
+## Patching stock materials
+
+`onBeforeCompile` edits the generated GLSL of a built-in material, keeping all of its PBR, shadows and
+fog. You replace `#include <chunk>` markers with your own code.
+
+```ts
+const uTime = { value: 0 };               // shared ref
+const mat = new MeshStandardMaterial({ color: "teal" });
+
+mat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = uTime;
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", /* glsl */ `
+      #include <common>
+      uniform float uTime;`)
+    .replace("#include <begin_vertex>", /* glsl */ `
+      #include <begin_vertex>
+      transformed.y += sin(position.x * 3.0 + uTime)
+        * 0.2;`);
+};
+// distinct cache key if variants differ
+mat.customProgramCacheKey = () => "wave-v1";
+```
+
+| Chunk | Contains / use to hook |
+| :---- | :--------------------- |
+| `common` | helpers and constants; add declarations after it |
+| `begin_vertex` | `vec3 transformed = vec3(position);` edit vertex positions after it |
+| `beginnormal_vertex` | `objectNormal`; fix normals after displacing |
+| `project_vertex` | `mvPosition`, `gl_Position` |
+| `worldpos_vertex` | `worldPosition` (shadows, env) |
+| `color_fragment` / `map_fragment` | `diffuseColor`: tint or replace base colour |
+| `emissivemap_fragment` | `totalEmissiveRadiance` |
+| `normal_fragment_maps` | perturb `normal` |
+| `opaque_fragment` | writes `gl_FragColor` from `outgoingLight` |
+| `tonemapping_fragment`, `colorspace_fragment` | output transforms |
+| `fog_fragment`, `dithering_fragment` | last steps |
+
+Read a material's full source in `THREE.ShaderLib.standard.vertexShader`/`fragmentShader` or in
+`src/renderers/shaders/ShaderChunk/`. Chunk names change occasionally between releases (e.g.
+`encodings_fragment` became `colorspace_fragment`, `output_fragment` became `opaque_fragment`), so pin
+your three version. Libraries like `three-custom-shader-material` wrap this pattern.
+
+## EffectComposer (WebGL)
+
+```text
+ RenderPass ─► rtA ─► UnrealBloomPass ─► rtB ─► … ─► OutputPass ─► canvas
+ (linear HDR, HalfFloat targets)                    tone map + sRGB
+```
+
+```ts
+import { EffectComposer } from
+  "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from
+  "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from
+  "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from
+  "three/addons/postprocessing/OutputPass.js";
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(
+  new Vector2(innerWidth, innerHeight),
+  0.8,   // strength
+  0.4,   // radius
+  0.85,  // threshold (luminance)
+));
+composer.addPass(new OutputPass());
+
+renderer.setAnimationLoop(() => composer.render());
+// on resize: composer.setSize(w, h)
+// and composer.setPixelRatio(renderer.getPixelRatio())
+```
+
+**Why `OutputPass`.** Passes work in linear HDR render targets; tone mapping and the sRGB conversion
+normally happen when three draws to the canvas. With a composer the last pass must do that work itself:
+`OutputPass` applies `renderer.toneMapping`, `toneMappingExposure` and `outputColorSpace`. Without it
+the image is too dark and highlights clip. It replaces the old `ShaderPass(GammaCorrectionShader)`.
+Put `FXAAPass` **after** `OutputPass` (it expects sRGB input).
+
+| Pass (addons) | Effect |
+| :------------ | :----- |
+| `RenderPass` | draws the scene; first pass |
+| `UnrealBloomPass` | HDR bloom |
+| `OutputPass` | tone mapping + colour space; last before AA |
+| `FXAAPass`, `SMAAPass`, `TAARenderPass`, `SSAARenderPass` | anti-aliasing (composer bypasses canvas MSAA) |
+| `GTAOPass`, `SAOPass`, `SSAOPass` | ambient occlusion |
+| `SSRPass` | screen-space reflections |
+| `OutlinePass` | selection outlines |
+| `BokehPass` | depth of field |
+| `FilmPass`, `GlitchPass`, `AfterimagePass`, `DotScreenPass`, `HalftonePass` | stylised |
+| `LUTPass` | colour grading with a 3D LUT |
+| `RenderPixelatedPass` | pixel-art look |
+| `ShaderPass(shader)` | your full-screen GLSL (`tDiffuse` is the input) |
+
+Anti-aliasing: canvas `antialias` does not apply to the composer's targets. Pass a
+`WebGLRenderTarget` with `samples: 4` to `new EffectComposer(renderer, rt)`, or add an AA pass.
+Alternatives: the [`postprocessing`](https://github.com/pmndrs/postprocessing) library merges effects
+into fewer passes; r182+ also offers `outputBufferType: HalfFloatType` with `renderer.setEffects([...])`
+for passes without a composer (no `OutputPass` needed there).
+
+## Render targets
+
+```ts
+const rt = new WebGLRenderTarget(512, 512, {
+  samples: 4,              // MSAA inside the target
+  type: HalfFloatType,     // HDR headroom
+});
+const screen = new Mesh(
+  new PlaneGeometry(2, 1),
+  new MeshBasicMaterial({ map: rt.texture }),
+);
+
+renderer.setAnimationLoop(() => {
+  screen.visible = false;          // avoid feedback
+  renderer.setRenderTarget(rt);
+  renderer.render(monitorScene, monitorCam);
+  renderer.setRenderTarget(null);  // back to canvas
+  screen.visible = true;
+  renderer.render(scene, camera);
+});
+```
+
+| API | Use |
+| :-- | :-- |
+| `WebGLRenderTarget(w, h, opts)` | `samples`, `type`, `format`, `depthBuffer`, `depthTexture`, `count` (MRT) |
+| `rt.texture` | the colour output; linear data, no sRGB conversion applied |
+| `rt.depthTexture = new DepthTexture(w, h)` | sample depth later (soft particles, fog) |
+| `rt.setSize(w, h)` | on resize; also rebuilds MSAA buffers |
+| `WebGLCubeRenderTarget` + `CubeCamera` | dynamic reflections / env maps |
+| `WebGL3DRenderTarget`, `WebGLArrayRenderTarget` | volumes, layers |
+| `renderer.readRenderTargetPixelsAsync(rt, x, y, w, h, buf)` | GPU → CPU (picking, screenshots) without stalling |
+| `renderer.copyTextureToTexture` | blit regions |
+| `rt.dispose()` | free GPU memory |
+
+A mesh must not sample the target it is being rendered into: hide it for that pass or ping-pong between
+two targets.
+
+## WebGPURenderer
+
+```ts
+import * as THREE from "three/webgpu";
+
+const renderer = new THREE.WebGPURenderer({
+  antialias: true,
+  // forceWebGL: true,  // test the WebGL2 backend
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+
+await renderer.init();   // picks WebGPU or WebGL2
+console.log(renderer.backend.isWebGPUBackend
+  ? "WebGPU" : "WebGL2 fallback");
+renderer.setAnimationLoop(() => {
+  renderer.render(scene, camera);
+});
+```
+
+| Rule | Detail |
+| :--- | :----- |
+| Import from `three/webgpu` | it re-exports core (shared `three.core.js` since r171, so addons importing `three` still work) |
+| TSL from `three/tsl` | `Fn`, `uniform`, `uv`, `time`, `color`, … |
+| Initialise first | `render()` before `init()` throws; `setAnimationLoop` awaits `init()` itself |
+| `renderAsync()`, `clearAsync()`, `hasFeatureAsync()` | deprecated since r181: `await init()`, then use the sync versions |
+| `computeAsync()` | still fine when you need to await a compute pass |
+| `PCFSoftShadowMap` | removed; `PCFShadowMap` with `shadow.radius` |
+| Stock materials | work (converted to node materials) |
+| `ShaderMaterial`, `onBeforeCompile`, `EffectComposer` | **not supported**: port to TSL / `RenderPipeline` |
+| Generated shader | `await renderer.debug.getShaderAsync(scene, camera, mesh)` |
+| Profiling | `Inspector` addon (`three/addons/inspector/Inspector.js`), `renderer.inspector = new Inspector()` |
+| Detect WebGPU | `navigator.gpu` / `three/addons/capabilities/WebGPU.js`; usually unnecessary thanks to the fallback |
+
+## Node materials & TSL
+
+TSL (Three Shading Language) builds shader graphs with JavaScript calls; the renderer compiles them to
+WGSL (WebGPU) or GLSL (WebGL2 fallback). You assign nodes to **slots** on `*NodeMaterial` classes.
+
+| Slot | Replaces |
+| :--- | :------- |
+| `colorNode` | base colour (`vec3`/`vec4`) |
+| `opacityNode`, `alphaTestNode` | alpha |
+| `positionNode` | local vertex position (displacement) |
+| `normalNode` | normal |
+| `emissiveNode`, `roughnessNode`, `metalnessNode`, `aoNode` | PBR inputs |
+| `outputNode` | final colour after lighting |
+| `fragmentNode`, `vertexNode` | whole stage (unlit, full control) |
+| `castShadowNode`, `receivedShadowNode`, `depthNode`, `mrtNode` | advanced |
+
+```ts
+import * as THREE from "three/webgpu";
+import {
+  color, mix, normalLocal, positionLocal, sin, time,
+  uniform, uv,
+} from "three/tsl";
+
+const tint = uniform(new THREE.Color("#ff6a3d"));
+const amp = uniform(0.05);
+
+const mat = new THREE.MeshStandardNodeMaterial();
+mat.colorNode = mix(color("#1b2a49"), tint, uv().y);
+mat.positionNode = positionLocal.add(
+  normalLocal.mul(
+    sin(time.mul(2).add(positionLocal.y.mul(8))).mul(amp),
+  ),
+);
+mat.roughnessNode = uv().x;  // 0..1 across the mesh
+
+// runtime updates: no recompilation
+tint.value.set("#3dffb0");
+amp.value = 0.1;
+```
+
+| TSL building block | Examples |
+| :----------------- | :------- |
+| Constants / constructors | `float(1)`, `int(2)`, `vec2()`, `vec3(1, 0, 0)`, `vec4()`, `color("#fff")`, `mat3()` |
+| Uniforms | `uniform(0.5)`, `uniform(new Color())`, `uniform(new Vector3())`; update `.value` |
+| Geometry | `positionLocal`, `positionWorld`, `normalLocal`, `normalWorld`, `normalView`, `uv()`, `attribute("name")` |
+| Scene | `cameraPosition`, `modelWorldMatrix`, `screenUV`, `instanceIndex` |
+| Time | `time`, `deltaTime` (seconds, updated per render) |
+| Maths (chainable) | `.add()`, `.sub()`, `.mul()`, `.div()`, `sin`, `cos`, `mix`, `smoothstep`, `clamp`, `length`, `dot`, `normalize` |
+| Textures | `texture(tex, uv())`, `texture(tex).sample(uv)` |
+| Noise / hash | `hash(seed)`, `mx_noise_float(p)` (MaterialX noise) |
+| Variables | `.toVar()`, `.assign()`, `.addAssign()`, `varying(node)` |
+| Control flow | `If(cond, () => {})`, `.ElseIf()`, `.Else()`, `Loop(n, ({ i }) => {})`, `select(c, a, b)`, `Discard()` |
+| Functions | `Fn(() => { … })` returns a callable node; `Fn(([a, b]) => …)` for parameters |
+
+```ts
+import { Fn, If, float, uv, vec3, Discard } from "three/tsl";
+
+// a reusable function: ring mask with discard
+const ring = Fn(() => {
+  const d = uv().sub(0.5).length();
+  If(d.greaterThan(0.5), () => { Discard(); });
+  const edge = d.smoothstep(0.35, 0.4).oneMinus()
+    .mul(d.smoothstep(0.25, 0.3));
+  return vec3(edge, edge.mul(0.6), float(0.2));
+});
+mat.colorNode = ring();
+```
+
+The TSL editor example (`webgpu_tsl_editor`) shows TSL next to the WGSL/GLSL it generates; the
+[TSL docs page](https://threejs.org/docs/#TSL) lists every function.
+
+## WebGPU post-processing
+
+`PostProcessing` was renamed **`RenderPipeline`** in r183 (the old name still works with a deprecation
+warning). Effects are TSL nodes combined into one `outputNode`.
+
+```ts
+import * as THREE from "three/webgpu";
+import { pass } from "three/tsl";
+import { bloom } from
+  "three/addons/tsl/display/BloomNode.js";
+
+const pipeline = new THREE.RenderPipeline(renderer);
+const scenePass = pass(scene, camera);
+const sceneColor = scenePass.getTextureNode("output");
+const glow = bloom(sceneColor, 1.0, 0.4, 0.85);
+pipeline.outputNode = sceneColor.add(glow);
+
+renderer.setAnimationLoop(() => pipeline.render());
+// tweak live: glow.strength.value = 1.5
+```
+
+| Piece | Notes |
+| :---- | :---- |
+| `pass(scene, camera)` | renders the scene into textures; `getTextureNode("output")`, `getTextureNode("depth")` |
+| `mrt({ output, emissive, normal })` + `scenePass.setMRT(...)` | multiple outputs (selective bloom, SSR, AO inputs) |
+| `pipeline.outputColorTransform` | `true`: tone mapping + sRGB applied at the end automatically |
+| `renderOutput(node)` | apply that transform yourself mid-chain (e.g. before FXAA) with `outputColorTransform = false` |
+| Effect nodes | `three/addons/tsl/display/*`: `bloom`, `fxaa`, `smaa`, `traa`, `ao` (GTAO), `ssr`, `dof`, `gaussianBlur`, `outline`, `film`, `lut3D`, … |
+| `pipeline.needsUpdate = true` | after replacing `outputNode` |
+
+Check the addon file for each effect's exact function name and parameters; they are still evolving.
+
+## Compute with TSL
+
+`WebGPURenderer` runs TSL compute shaders on storage buffers. On the WebGL2 fallback, compute is emulated
+with transform feedback, so workgroup-level features are unavailable; test both backends.
+
+```ts
+import * as THREE from "three/webgpu";
+import {
+  Fn, If, deltaTime, hash, instanceIndex, instancedArray,
+  uniform, vec3,
+} from "three/tsl";
+
+const COUNT = 100_000;
+const pos = instancedArray(COUNT, "vec3"); // GPU buffer
+const vel = instancedArray(COUNT, "vec3");
+const gravity = uniform(-9.8);
+
+const init = Fn(() => {
+  const p = pos.element(instanceIndex);
+  p.assign(vec3(hash(instanceIndex).sub(0.5).mul(10),
+    hash(instanceIndex.add(1)).mul(10),
+    hash(instanceIndex.add(2)).sub(0.5).mul(10)));
+})().compute(COUNT);
+
+const step = Fn(() => {
+  const p = pos.element(instanceIndex);
+  const v = vel.element(instanceIndex);
+  v.y.addAssign(gravity.mul(deltaTime));
+  p.addAssign(v.mul(deltaTime));
+  If(p.y.lessThan(0), () => {
+    p.y.assign(0);
+    v.y.assign(v.y.negate().mul(0.6)); // bounce
+  });
+})().compute(COUNT);
+```
+
+Draw the buffer without a CPU round trip: `SpriteNodeMaterial` with `positionNode = pos.toAttribute()`,
+and `sprite.count = COUNT` (see the recipe).
+
+## Recipes
+
+### Fresnel rim on a stock material
+Use to add a rim glow to `MeshStandardMaterial` while keeping its lighting, shadows and fog (WebGL).
+
+```ts
+import { Color, MeshStandardMaterial } from "three";
+
+export function withRim(
+  mat: MeshStandardMaterial, rim = new Color("#6cf"),
+  power = 2.5,
+): MeshStandardMaterial {
+  mat.onBeforeCompile = (s) => {
+    s.uniforms.uRim = { value: rim };
+    s.uniforms.uPow = { value: power };
+    s.fragmentShader = s.fragmentShader
+      .replace("#include <common>", `#include <common>
+        uniform vec3 uRim; uniform float uPow;`)
+      .replace("#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+        float f = pow(1.0 - saturate(dot(normal,
+          normalize(vViewPosition))), uPow);
+        totalEmissiveRadiance += uRim * f;`);
+  };
+  mat.customProgramCacheKey = () => `rim-${power}`;
+  return mat;
+}
+```
+
+`normal` and `vViewPosition` are view-space values the standard shader already defines; `saturate` comes
+from the `common` chunk.
+
+### Full-screen shader pass
+Use for a custom post effect (vignette, grading) in an `EffectComposer` chain; place it before `OutputPass`.
+
+```ts
+import { ShaderPass } from
+  "three/addons/postprocessing/ShaderPass.js";
+
+const Vignette = {
+  uniforms: {
+    tDiffuse: { value: null },  // filled by the composer
+    uStrength: { value: 0.5 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix
+        * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= 1.0 - smoothstep(0.3, 0.8, d) * uStrength;
+      gl_FragColor = c;
+    }`,
+};
+const vignette = new ShaderPass(Vignette);
+composer.insertPass(vignette, composer.passes.length - 1);
+```
+
+### WebGPU scene with TSL material
+Use as the starting point for a WebGPU project: async init, fallback aware, animated node material.
+
+```ts
+import * as THREE from "three/webgpu";
+import { color, mix, sin, time, uv } from "three/tsl";
+
+const renderer = new THREE.WebGPURenderer({
+  antialias: true,
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.AgXToneMapping;
+document.body.append(renderer.domElement);
+await renderer.init();
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(
+  50, innerWidth / innerHeight, 0.1, 50,
+);
+camera.position.set(0, 0, 3);
+scene.add(new THREE.HemisphereLight("#fff", "#446", 2));
+
+const mat = new THREE.MeshStandardNodeMaterial();
+const pulse = sin(time.mul(3)).mul(0.5).add(0.5);
+mat.colorNode = mix(color("#2244ff"), color("#ff4422"),
+  uv().y.mul(pulse));
+scene.add(new THREE.Mesh(
+  new THREE.TorusKnotGeometry(0.6, 0.2, 128, 16), mat,
+));
+
+renderer.setAnimationLoop(() => {
+  renderer.render(scene, camera);
+});
+```
+
+### GPU particles, compute to draw
+Use for 100k+ particles simulated entirely on the GPU; builds on `pos`, `init` and `step` from the compute section.
+
+```ts
+import * as THREE from "three/webgpu";
+import { color, uniform } from "three/tsl";
+
+const mat = new THREE.SpriteNodeMaterial();
+mat.positionNode = pos.toAttribute(); // per instance
+mat.colorNode = color("#9cf");
+mat.scaleNode = uniform(0.03);
+mat.depthWrite = false;
+
+const particles = new THREE.Sprite(mat);
+particles.count = COUNT;        // instanced sprites
+particles.frustumCulled = false; // bounds unknown
+scene.add(particles);
+
+await renderer.init();
+renderer.compute(init);          // once
+renderer.setAnimationLoop(() => {
+  renderer.compute(step);        // simulate
+  renderer.render(scene, camera);
+});
+```
+
+### Selective bloom in WebGPU
+Use to make only emissive surfaces glow: render an emissive MRT output and bloom just that.
+
+```ts
+import * as THREE from "three/webgpu";
+import { emissive, mrt, output, pass } from "three/tsl";
+import { bloom } from
+  "three/addons/tsl/display/BloomNode.js";
+
+const scenePass = pass(scene, camera);
+scenePass.setMRT(mrt({ output, emissive }));
+const base = scenePass.getTextureNode("output");
+const glowSrc = scenePass.getTextureNode("emissive");
+
+const pipeline = new THREE.RenderPipeline(renderer);
+pipeline.outputNode = base.add(bloom(glowSrc, 2, 0.5, 0));
+renderer.setAnimationLoop(() => pipeline.render());
+// give glowing meshes emissive + emissiveIntensity > 1
+```
+
+## References
+
+- [three.js docs](https://threejs.org/docs/): `ShaderMaterial`, `WebGLRenderTarget`, `EffectComposer`, `WebGPURenderer`, `RenderPipeline`; [TSL reference](https://threejs.org/docs/#TSL)
+- Manual: [Post processing](https://threejs.org/manual/#post-processing), [How to use post-processing](https://threejs.org/manual/#how-to-use-post-processing), [Render targets](https://threejs.org/manual/#rendertargets), [Uniform types](https://threejs.org/manual/#uniform-types), [WebGPURenderer](https://threejs.org/manual/#webgpurenderer), [WebGPU post-processing](https://threejs.org/manual/#webgpu-postprocessing)
+- [Three.js Shading Language wiki](https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language): TSL concepts and the node catalogue
+- Examples: [ShaderMaterial](https://threejs.org/examples/#webgl_shader), [modified material](https://threejs.org/examples/#webgl_materials_modified), [unreal bloom](https://threejs.org/examples/#webgl_postprocessing_unreal_bloom), [render to texture](https://threejs.org/examples/#webgl_rtt), [WebGPU bloom](https://threejs.org/examples/#webgpu_postprocessing_bloom), [compute particles](https://threejs.org/examples/#webgpu_compute_particles), [TSL editor](https://threejs.org/examples/#webgpu_tsl_editor)
+- [Migration guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide): r181 async deprecations, r183 `RenderPipeline`
+- [pmndrs/postprocessing](https://github.com/pmndrs/postprocessing): merged-effect alternative to `EffectComposer`
+- [The Book of Shaders](https://thebookofshaders.com/): GLSL fundamentals

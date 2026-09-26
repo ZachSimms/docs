@@ -1,0 +1,670 @@
+---
+title: Input & physics
+date: 2026-09-26
+order: 3
+---
+
+Reading input and moving things in Godot 4.x: the input map, the `Input` singleton, input callbacks and events,
+physics bodies, collision layers, ray casts, the physics tick and interpolation, Jolt in 3D, and navigation.
+Node basics are in [Nodes, scenes & signals](/game-dev/godot/nodes-scenes/); animating the results is in
+[UI, animation & audio](/game-dev/godot/ui-animation-audio/).
+
+## Input map & actions
+
+Project Settings > Input Map: create named actions (`jump`, `move_left`) and bind keys, mouse buttons, gamepad
+buttons and axes to them. Code asks about actions, never raw keys, so rebinding and gamepads come for free.
+
+| Built-in action | Default binding (used by Controls) |
+| :-------------- | :--------------------------------- |
+| `ui_accept` | Enter, Space, gamepad A / Cross |
+| `ui_cancel` | Escape, gamepad B / Circle |
+| `ui_left` `ui_right` `ui_up` `ui_down` | arrows, D-pad, left stick |
+| `ui_focus_next` / `ui_focus_prev` | Tab / Shift+Tab |
+| `ui_text_*`, `ui_graph_*` ... | text editing and editor controls |
+
+| Action setting | Notes |
+| :------------- | :---- |
+| Deadzone | per action; analogue values below it read as 0 |
+| Physical keys | bind "Physical Keycode" to keep WASD in place on AZERTY layouts |
+| Device | "All Devices" or a specific joypad index for local multiplayer |
+| Show built-in actions | toggle in the Input Map tab to edit or remap `ui_*` actions |
+
+```gdscript
+# Runtime rebinding
+func rebind(action: StringName, ev: InputEvent) -> void:
+    InputMap.action_erase_events(action)
+    InputMap.action_add_event(action, ev)
+
+# Define actions in code (tools, tests)
+if not InputMap.has_action("dash"):
+    InputMap.add_action("dash")
+    var k := InputEventKey.new()
+    k.physical_keycode = KEY_SHIFT
+    InputMap.action_add_event("dash", k)
+```
+
+## The Input singleton
+
+Poll state anywhere (usually in `_physics_process`).
+
+| Call | Returns |
+| :--- | :------ |
+| `Input.is_action_pressed(a)` | held this frame |
+| `Input.is_action_just_pressed(a)` | went down this frame (or physics tick, when called there) |
+| `Input.is_action_just_released(a)` | went up this frame |
+| `Input.get_action_strength(a)` | 0 to 1 (analogue triggers and sticks) |
+| `Input.get_axis(neg, pos)` | -1 to 1 from two actions |
+| `Input.get_vector(l, r, up, down)` | `Vector2` with circular deadzone, length at most 1 |
+| `Input.is_key_pressed(KEY_F)` | raw key (debug keys only) |
+| `Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)` | raw mouse button |
+| `Input.get_last_mouse_velocity()` | pixels per second |
+| `Input.mouse_mode` | visible, hidden, captured, confined |
+| `Input.get_connected_joypads()` | device ids; `joy_connection_changed` signal |
+| `Input.start_joy_vibration(dev, weak, strong, dur)` | rumble |
+| `Input.action_press(a)` / `action_release(a)` | fake input (touch buttons, tests) |
+| `Input.parse_input_event(ev)` | inject a full event into the pipeline |
+
+```gdscript
+func _physics_process(delta: float) -> void:
+    var move := Input.get_vector(
+        "move_left", "move_right", "move_up", "move_down")
+    var turn := Input.get_axis("turn_left", "turn_right")
+    if Input.is_action_just_pressed("jump"):
+        jump()
+```
+
+`get_vector` argument order is negative X, positive X, negative Y, positive Y. In 2D, "up" is negative Y, so
+`move_up` goes third.
+
+## Input callbacks & order
+
+```text
+ event arrives (key, mouse, touch, joypad, action)
+   │
+   ├─► _input(event)              every node that defines it
+   │     reverse depth-first: deepest / last child first
+   ├─► Control._gui_input(event)  the Control under the mouse
+   │     or with focus; mouse_filter decides propagation
+   ├─► _shortcut_input(event)     keys, shortcuts, joy buttons
+   ├─► _unhandled_key_input(event) key events only
+   ├─► _unhandled_input(event)    gameplay input goes here
+   └─► physics picking            CollisionObject input_event
+                                  (if the viewport enables it)
+ any step can stop it:
+   get_viewport().set_input_as_handled()
+   (or accept_event() inside _gui_input)
+```
+
+| Callback | Use for |
+| :------- | :------ |
+| `_input` | global hotkeys that must work over the UI, debug consoles |
+| `_gui_input` | custom Controls |
+| `_shortcut_input` | menu shortcuts (`Shortcut` resources) |
+| `_unhandled_input` | gameplay: the UI gets first refusal, so clicking a button does not also fire a gun |
+| `_physics_process` polling | continuous movement |
+
+```gdscript
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("interact"):
+        interact()
+        get_viewport().set_input_as_handled()
+    elif event.is_action_pressed("pause", false, true):
+        pass  # (allow_echo, exact_match: no extra modifiers)
+```
+
+Events versus polling: events never miss a press between frames and carry details (position, echo), polling
+reads the current state. Use events for discrete actions in menus, polling for movement.
+
+## InputEvent types
+
+| Class | Key members |
+| :---- | :---------- |
+| `InputEventKey` | `keycode`, `physical_keycode`, `key_label`, `unicode`, `pressed`, `echo`, `shift_pressed`, `ctrl_pressed` |
+| `InputEventMouseButton` | `button_index` (`MOUSE_BUTTON_LEFT`, `_WHEEL_UP` ...), `pressed`, `double_click`, `position`, `factor` |
+| `InputEventMouseMotion` | `position`, `relative`, `velocity`, `button_mask`, `pressure` |
+| `InputEventScreenTouch` | `index` (finger), `pressed`, `position`, `double_tap` |
+| `InputEventScreenDrag` | `index`, `position`, `relative`, `velocity` |
+| `InputEventJoypadButton` | `button_index` (`JOY_BUTTON_A` ...), `pressed`, `device` |
+| `InputEventJoypadMotion` | `axis` (`JOY_AXIS_LEFT_X` ...), `axis_value`, `device` |
+| `InputEventAction` | synthetic action events (`action`, `pressed`, `strength`) |
+| `InputEventMagnifyGesture`, `InputEventPanGesture` | trackpad pinch and scroll |
+| `InputEventMIDI` | MIDI devices |
+
+| Shared method | Notes |
+| :------------ | :---- |
+| `event.is_action_pressed(a, allow_echo, exact_match)` | action test on an event |
+| `event.is_action_released(a)`, `event.is_action(a)` | release and any match |
+| `event.is_pressed()`, `event.is_echo()` | state |
+| `event.as_text()` | "Ctrl+S", for rebinding UIs |
+| `event.device` | which controller or keyboard |
+
+Mouse positions in events are in the viewport's coordinates; in 2D worlds with a camera use
+`get_global_mouse_position()` (on any `CanvasItem`) instead.
+
+## Mouse, touch & gamepad
+
+| `Input.mouse_mode` | Effect |
+| :----------------- | :----- |
+| `MOUSE_MODE_VISIBLE` | normal cursor |
+| `MOUSE_MODE_HIDDEN` | hidden, still moves freely |
+| `MOUSE_MODE_CAPTURED` | hidden and locked; only `relative` motion is meaningful (FPS cameras) |
+| `MOUSE_MODE_CONFINED` / `_CONFINED_HIDDEN` | kept inside the window (RTS edge scrolling) |
+
+```gdscript
+func _unhandled_input(event: InputEvent) -> void:
+    if event is InputEventMouseButton and event.pressed:
+        Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    elif event.is_action_pressed("ui_cancel"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+```
+
+| Topic | Notes |
+| :---- | :---- |
+| Web capture | browsers only allow capture and fullscreen from inside an input event handler |
+| Touch as mouse | Project Settings > Input Devices > Pointing > Emulate Mouse From Touch (on by default) |
+| Mouse as touch | Emulate Touch From Mouse, for testing touch code on desktop |
+| Multi-touch | track fingers by `event.index` in a Dictionary |
+| On-screen controls | `TouchScreenButton` (2D node, can emit an action); `VirtualJoystick` node (4.7+) |
+| Gamepad mappings | SDL-based database built in; add custom mappings with `Input.add_joy_mapping()` |
+| Accumulated input | `Input.use_accumulated_input` (default true) merges mouse motion per frame; turn off for drawing apps |
+
+## Physics bodies
+
+| Node (2D / 3D) | Moved by | Use for |
+| :------------- | :------- | :------ |
+| `StaticBody2D` / `3D` | nothing (or `constant_linear_velocity` for conveyors) | walls, floors, level geometry |
+| `AnimatableBody2D` / `3D` | code or AnimationPlayer; pushes others | moving platforms, doors, elevators |
+| `CharacterBody2D` / `3D` | your code via `velocity` + `move_and_slide()` | players, NPCs: exact, non-physical control |
+| `RigidBody2D` / `3D` | the physics engine (forces, impulses) | crates, balls, ragdolls, debris |
+| `Area2D` / `3D` | not a body: detects overlaps, overrides gravity/damping | triggers, hit/hurtboxes, pickups, water |
+| `VehicleBody3D`, `SoftBody3D` | engine | cars, cloth |
+| `PhysicalBone3D` | engine | ragdoll bones |
+
+Every body needs at least one `CollisionShape2D`/`3D` or `CollisionPolygon2D`/`3D` child. Physics code belongs
+in `_physics_process`, where `delta` is constant (1/60 by default).
+
+## CharacterBody
+
+```gdscript title="player.gd (2D side view)"
+extends CharacterBody2D
+
+const SPEED := 300.0
+const JUMP_VELOCITY := -400.0     # up is negative Y
+
+func _physics_process(delta: float) -> void:
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    var jump := Input.is_action_just_pressed("jump")
+    if jump and is_on_floor():
+        velocity.y = JUMP_VELOCITY
+    var dir := Input.get_axis("move_left", "move_right")
+    if dir:
+        velocity.x = dir * SPEED
+    else:
+        velocity.x = move_toward(velocity.x, 0, SPEED)
+    move_and_slide()             # uses velocity and delta
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `velocity` | units per second; `move_and_slide()` applies delta itself (do not multiply) |
+| `move_and_slide()` | moves, slides along surfaces, updates floor/wall state; returns true on collision |
+| `is_on_floor()`, `is_on_wall()`, `is_on_ceiling()` | valid after `move_and_slide()` in the same tick |
+| `get_floor_normal()`, `get_wall_normal()`, `get_floor_angle()` | contact info |
+| `get_slide_collision_count()`, `get_slide_collision(i)` | `KinematicCollision2D`: `get_collider()`, `get_normal()`, `get_position()` |
+| `get_real_velocity()`, `get_platform_velocity()` | actual motion, moving platform speed |
+| `up_direction` | defines floor vs wall vs ceiling (`Vector2.UP` / `Vector3.UP`) |
+| `motion_mode` | `MOTION_MODE_GROUNDED` (platformers) or `MOTION_MODE_FLOATING` (top-down, space) |
+| `floor_max_angle` | steepest walkable slope (45 degrees) |
+| `floor_snap_length` | distance to stick to the floor on slopes and steps down; 0 disables |
+| `floor_stop_on_slope`, `floor_constant_speed` | no sliding when idle; same speed up and down slopes |
+| `apply_floor_snap()` | snap manually, for example after teleporting |
+| `move_and_collide(motion)` | lower-level: move once, stop at the first hit, return a `KinematicCollision2D` |
+| `get_gravity()` | project gravity plus any Area overrides (4.3+, on all physics bodies) |
+
+```gdscript
+# Push rigid bodies after moving
+for i in get_slide_collision_count():
+    var c := get_slide_collision(i)
+    var rb := c.get_collider() as RigidBody2D
+    if rb:
+        rb.apply_central_impulse(-c.get_normal() * 20.0)
+```
+
+`move_and_slide()` does not push RigidBodies; they act as walls unless you apply impulses like above.
+
+## RigidBody
+
+```gdscript
+extends RigidBody2D
+
+var _respawn := false
+var spawn_point := Vector2.ZERO
+
+func _ready() -> void:
+    contact_monitor = true          # needed for body_entered
+    max_contacts_reported = 4
+    body_entered.connect(_on_hit)
+
+func kick(dir: Vector2) -> void:
+    apply_central_impulse(dir * 300.0)  # instant
+    apply_torque_impulse(50.0)
+
+func _physics_process(_d: float) -> void:
+    apply_central_force(Vector2(0, -20)) # continuous
+
+# Safe place to teleport or edit the state directly
+func _integrate_forces(
+        state: PhysicsDirectBodyState2D) -> void:
+    if _respawn:
+        state.transform = Transform2D(0, spawn_point)
+        state.linear_velocity = Vector2.ZERO
+        _respawn = false
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `mass`, `gravity_scale`, `physics_material_override` | friction, bounce, `rough`, `absorbent` |
+| `linear_velocity`, `angular_velocity` | read freely; write sparingly |
+| `apply_impulse(i, offset)`, `apply_central_impulse(i)` | one-off kick |
+| `apply_force(f, offset)`, `apply_central_force(f)`, `apply_torque(t)` | per tick, continuous |
+| `constant_force`, `constant_torque` | persistent forces |
+| `lock_rotation` | keep upright (2D); `axis_lock_*` in 3D |
+| `freeze`, `freeze_mode` | `FREEZE_MODE_STATIC` or `FREEZE_MODE_KINEMATIC` (move it from code) |
+| `sleeping`, `can_sleep` | resting bodies sleep to save CPU |
+| `continuous_cd` | continuous collision detection for fast objects |
+| `linear_damp`, `angular_damp` | drag |
+| `custom_integrator` | skip built-in integration and do it in `_integrate_forces` |
+
+Setting `position` on a RigidBody every frame fights the solver. Use forces, or `_integrate_forces`.
+
+## Areas
+
+```gdscript title="coin.gd"
+extends Area2D
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        EventBus.coin_collected.emit(1)
+        queue_free()
+```
+
+| Member | Notes |
+| :----- | :---- |
+| `body_entered(body)`, `body_exited(body)` | physics bodies (and TileMapLayer collision) |
+| `area_entered(area)`, `area_exited(area)` | other areas: hitbox vs hurtbox |
+| `monitoring` | this area detects others |
+| `monitorable` | others can detect this area |
+| `get_overlapping_bodies()`, `get_overlapping_areas()`, `has_overlapping_bodies()` | updated once per physics tick, not right after moving |
+| `gravity_space_override`, `gravity`, `gravity_direction`, `gravity_point` | water, planets, wind zones |
+| `linear_damp_space_override` | drag zones |
+| `priority` | order when areas overlap |
+| `audio_bus_override`, `audio_bus_name` | reroute sound inside the area |
+
+Toggle `monitoring` or a shape's `disabled` from signal handlers with `set_deferred`.
+
+## Collision layers & masks
+
+| Aspect | Collision **layer** | Collision **mask** |
+| :----- | :------------------ | :----------------- |
+| Meaning | what this object **is** | what this object **looks for** |
+| Question it answers | "which layers am I on?" | "which layers do I collide with or detect?" |
+| Area | lets other things detect it | what it reports in `body_entered` / `area_entered` |
+| CharacterBody | what others bump into | what `move_and_slide` stops against |
+| RayCast / queries | n/a | what the ray can hit (`collision_mask`) |
+
+A detects or is blocked by B when B's layer is in A's mask. For two RigidBodies, contact happens if either scans
+the other.
+
+| Layer | Example name | Typical mask |
+| :---- | :----------- | :----------- |
+| 1 | world | (static; mask empty) |
+| 2 | player | world, enemies, pickups |
+| 3 | enemies | world, player |
+| 4 | pickups | (Area; mask: player) |
+| 5 | player_hurtbox | enemy_hitbox |
+| 6 | enemy_hitbox | player_hurtbox |
+
+```gdscript
+# Layers are 1-based in the editor and these helpers
+set_collision_layer_value(2, true)
+set_collision_mask_value(3, true)
+collision_mask = 0b101          # layers 1 and 3 (bit n-1)
+var hits_enemies := get_collision_mask_value(3)
+
+@export_flags_2d_physics var scan_layers := 1  # picker
+```
+
+Name layers in Project Settings > Layer Names > 2D Physics (and 3D Physics); the inspector then shows names.
+
+## Collision shapes
+
+| 2D shape | 3D shape | Notes |
+| :------- | :------- | :---- |
+| `CircleShape2D` | `SphereShape3D` | cheapest |
+| `RectangleShape2D` | `BoxShape3D` | |
+| `CapsuleShape2D` | `CapsuleShape3D` | best for characters (no snagging on seams) |
+| n/a | `CylinderShape3D` | |
+| `ConvexPolygonShape2D` | `ConvexPolygonShape3D` | any convex hull; fine on moving bodies |
+| `ConcavePolygonShape2D` | `ConcavePolygonShape3D` | triangle soup, static bodies only |
+| `SegmentShape2D` | n/a | thin line |
+| `WorldBoundaryShape2D` | `WorldBoundaryShape3D` | infinite plane (kill floors) |
+| `SeparationRayShape2D` | `SeparationRayShape3D` | ray that pushes the body up (stairs, simple suspension) |
+| n/a | `HeightMapShape3D` | terrain |
+| `CollisionPolygon2D` | `CollisionPolygon3D` | draw the polygon in the editor |
+
+| Tip | Detail |
+| :-- | :----- |
+| Scaling | never scale shapes non-uniformly; change the shape's size instead |
+| Meshes | select a MeshInstance3D > Mesh menu > Create Collision Shape (trimesh, convex, or primitive in 4.6+) |
+| One-way platforms | `CollisionShape2D.one_way_collision` (+ `one_way_collision_margin`); the direction is configurable in 4.7+ |
+| Debug | Debug menu > Visible Collision Shapes, or `--debug-collisions` |
+| Disable | `shape.disabled = true` via `set_deferred` during physics callbacks |
+
+## Ray casts & queries
+
+```gdscript
+# RayCast2D node: updated every physics tick
+@onready var ray: RayCast2D = $RayCast2D
+
+func _physics_process(_d: float) -> void:
+    ray.target_position = Vector2(0, 32)   # local space
+    if ray.is_colliding():
+        var hit := ray.get_collider()
+        var at := ray.get_collision_point()    # global
+        var n := ray.get_collision_normal()
+    # after moving the ray in the same tick:
+    ray.force_raycast_update()
+```
+
+```gdscript
+# One-off query through the physics space
+func _physics_process(_d: float) -> void:
+    var space := get_world_2d().direct_space_state
+    var q := PhysicsRayQueryParameters2D.create(
+        global_position, global_position + aim * 500.0)
+    q.exclude = [get_rid()]          # Array[RID]
+    q.collision_mask = 0b101
+    q.collide_with_areas = true
+    var hit := space.intersect_ray(q)
+    if hit:                          # {} when nothing hit
+        print(hit.collider, hit.position, hit.normal)
+```
+
+| Query | Returns |
+| :---- | :------ |
+| `intersect_ray(PhysicsRayQueryParameters*)` | `Dictionary`: `position`, `normal`, `collider`, `collider_id`, `rid`, `shape` (3D also `face_index`) |
+| `intersect_point(PhysicsPointQueryParameters2D, max)` | `Array` of hits under a point (2D) |
+| `intersect_shape(PhysicsShapeQueryParameters*, max)` | overlapping objects for a shape |
+| `cast_motion(params)` | safe and unsafe fractions of a sweep |
+| `get_rest_info(params)` | closest contact for a shape |
+| `RayCast*` / `ShapeCast*` nodes | persistent, visible in the editor, cheap to check every tick |
+
+`direct_space_state` is only safe to use inside `_physics_process` (or `_integrate_forces`). For clicks, store
+the click in `_unhandled_input` and query on the next physics tick (see Recipes).
+
+## Physics tick & interpolation
+
+| Setting / API | Default | Notes |
+| :------------ | :------ | :---- |
+| `physics/common/physics_ticks_per_second` | 60 | `Engine.physics_ticks_per_second` at runtime |
+| `physics/common/max_physics_steps_per_frame` | 8 | cap on catch-up ticks after a slow frame |
+| `physics/common/physics_jitter_fix` | 0.5 | legacy smoothing; automatically disabled when interpolation is on |
+| `physics/common/physics_interpolation` | off | 2D since 4.3, 3D since 4.4 |
+| `Engine.get_physics_interpolation_fraction()` | | 0 to 1 between ticks, for custom interpolation |
+| `Engine.time_scale` | 1.0 | slow motion; scales `delta` |
+
+```text
+ time ──►   frame      frame      frame      frame
+ render:    |    ·     |    ·     |   ·      |   (144 Hz)
+ physics:   T0         .          T1         .   (60 Hz)
+ without interpolation: renders show T0, T0, T1 ... (judder)
+ with interpolation:    renders blend T0→T1 by the fraction
+```
+
+With physics interpolation on: move bodies only in `_physics_process`, call `reset_physics_interpolation()`
+after teleporting a node (or it visibly slides from the old spot), and move cameras in `_process` or set their
+process callback to Physics. Per-node opt-out: `physics_interpolation_mode`.
+
+## Jolt physics (3D)
+
+| Fact | Detail |
+| :--- | :----- |
+| What | Jolt Physics, the engine used in AAA titles, integrated into Godot 3D |
+| Availability | built in since 4.4 (experimental there); default for new 3D projects since 4.6 |
+| Switch | Project Settings > Physics > 3D > Physics Engine: `Jolt Physics` or `GodotPhysics3D`, then restart |
+| Existing projects | keep their engine when upgraded; switching is a setting, not a code change |
+| 2D | unaffected: 2D always uses Godot Physics 2D |
+| Why | faster, more stable stacking and many bodies, better `ConcavePolygonShape3D` handling |
+| Differences | several joint properties unsupported, margins applied differently, ray `face_index` off by default |
+| Settings | under `physics/jolt_physics_3d/` (collision margin fraction, world boundary size, kinematic contacts) |
+
+Test physics-heavy 3D projects after switching: joints and edge cases (tiny shapes, huge worlds) behave
+differently.
+
+## Navigation
+
+```gdscript
+extends CharacterBody2D
+
+@export var speed := 120.0
+@onready var agent: NavigationAgent2D = $NavigationAgent2D
+
+func _ready() -> void:
+    agent.velocity_computed.connect(_on_safe_velocity)
+    # The navigation map syncs on the first physics frame
+    await get_tree().physics_frame
+    agent.target_position = Vector2(600, 300)
+
+func _physics_process(_d: float) -> void:
+    if agent.is_navigation_finished():
+        return
+    var next := agent.get_next_path_position()
+    var v := global_position.direction_to(next) * speed
+    if agent.avoidance_enabled:
+        agent.velocity = v      # result: velocity_computed
+    else:
+        _on_safe_velocity(v)
+
+func _on_safe_velocity(v: Vector2) -> void:
+    velocity = v
+    move_and_slide()
+```
+
+| Piece | Role |
+| :---- | :--- |
+| `NavigationRegion2D` / `3D` | holds a `NavigationPolygon` / `NavigationMesh`; bake from child geometry |
+| `TileMapLayer` navigation layers | per-tile navigation polygons in the TileSet |
+| `NavigationAgent2D` / `3D` | path following: `target_position`, `get_next_path_position()`, `is_navigation_finished()` |
+| Agent signals | `navigation_finished`, `target_reached`, `path_changed`, `velocity_computed` |
+| Avoidance | `avoidance_enabled`, `radius`, `max_speed`; `NavigationObstacle2D` / `3D` for dynamic blockers |
+| `NavigationLink2D` / `3D` | jumps, ladders, teleports between regions |
+| `NavigationServer2D.map_get_path(map, from, to, true)` | raw path query without an agent |
+| Debug | Debug menu > Visible Navigation |
+
+## Recipes
+
+### Platformer with coyote time
+Use for responsive side-scroller jumping: coyote time, jump buffering, variable jump height and acceleration.
+
+```gdscript title="platformer.gd"
+extends CharacterBody2D
+
+@export var speed := 220.0
+@export var accel := 1800.0
+@export var friction := 2200.0
+@export var jump_velocity := -420.0
+@export var coyote_time := 0.1
+@export var buffer_time := 0.12
+
+var _coyote := 0.0
+var _buffer := 0.0
+
+func _physics_process(delta: float) -> void:
+    if is_on_floor():
+        _coyote = coyote_time
+    else:
+        _coyote -= delta
+        velocity += get_gravity() * delta
+
+    if Input.is_action_just_pressed("jump"):
+        _buffer = buffer_time
+    else:
+        _buffer -= delta
+
+    if _buffer > 0.0 and _coyote > 0.0:
+        velocity.y = jump_velocity
+        _buffer = 0.0
+        _coyote = 0.0
+
+    # Short hop: cut upward speed when jump is released
+    if Input.is_action_just_released("jump") \
+            and velocity.y < 0.0:
+        velocity.y *= 0.5
+
+    var dir := Input.get_axis("move_left", "move_right")
+    var target := dir * speed
+    var rate := accel if dir != 0.0 else friction
+    velocity.x = move_toward(
+        velocity.x, target, rate * delta)
+    move_and_slide()
+```
+
+### Top-down 8-way movement
+Use for twin-stick, RPG and arena games; set `motion_mode` to Floating so there is no floor logic.
+
+```gdscript title="top_down.gd"
+extends CharacterBody2D
+
+@export var speed := 200.0
+@export var smoothing := 14.0    # higher = snappier
+
+func _ready() -> void:
+    motion_mode = MOTION_MODE_FLOATING
+
+func _physics_process(delta: float) -> void:
+    var input := Input.get_vector(
+        "move_left", "move_right", "move_up", "move_down")
+    var target := input * speed      # diagonals capped at 1
+    var w := 1.0 - exp(-smoothing * delta)
+    velocity = velocity.lerp(target, w)
+    move_and_slide()
+    if input != Vector2.ZERO:
+        $Sprite2D.flip_h = input.x < 0.0
+    look_at(get_global_mouse_position())  # aim at mouse
+```
+
+### FPS controller (3D)
+Use as a first-person base: captured mouse look on a yaw body and a pitch `Head` node holding the `Camera3D`.
+
+```gdscript title="fps_player.gd"
+extends CharacterBody3D
+
+@export var speed := 5.0
+@export var jump_velocity := 4.5
+@export var sensitivity := 0.0025
+@onready var head: Node3D = $Head    # Camera3D inside
+
+func _ready() -> void:
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event is InputEventMouseMotion \
+            and Input.mouse_mode \
+            == Input.MOUSE_MODE_CAPTURED:
+        rotate_y(-event.relative.x * sensitivity)
+        head.rotate_x(-event.relative.y * sensitivity)
+        head.rotation.x = clampf(
+            head.rotation.x, deg_to_rad(-89), deg_to_rad(89))
+    elif event.is_action_pressed("ui_cancel"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _physics_process(delta: float) -> void:
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    elif Input.is_action_just_pressed("jump"):
+        velocity.y = jump_velocity
+    var input := Input.get_vector(
+        "move_left", "move_right",
+        "move_forward", "move_back")
+    var dir := transform.basis * Vector3(input.x, 0, input.y)
+    velocity.x = dir.x * speed
+    velocity.z = dir.z * speed
+    move_and_slide()
+```
+
+### Click to select (3D)
+Use for RTS selection, point-and-click and editors: project the mouse into a ray and query on the next tick.
+
+```gdscript title="selector.gd"
+extends Node3D
+
+signal selected(target: Node3D)
+var _click: Variant = null       # Vector2 or null
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event is InputEventMouseButton and event.pressed \
+            and event.button_index == MOUSE_BUTTON_LEFT:
+        _click = event.position
+
+func _physics_process(_d: float) -> void:
+    if _click == null:
+        return
+    var cam := get_viewport().get_camera_3d()
+    var from := cam.project_ray_origin(_click)
+    var to := from + cam.project_ray_normal(_click) * 1000.0
+    var q := PhysicsRayQueryParameters3D.create(from, to)
+    var hit := get_world_3d().direct_space_state \
+        .intersect_ray(q)
+    _click = null
+    if hit:
+        selected.emit(hit.collider)
+```
+
+For 2D, query `intersect_point` at `get_global_mouse_position()`, or enable `input_pickable` on a
+`CollisionObject2D` and handle its `input_event` signal.
+
+### Hitbox and hurtbox
+Use for melee and projectiles: two Areas on dedicated layers so hits never collide with movement.
+
+```gdscript title="hurtbox.gd"
+class_name Hurtbox
+extends Area2D
+
+signal hurt(amount: int, from: Node)
+
+func _ready() -> void:
+    collision_layer = 0
+    set_collision_layer_value(5, true)  # player_hurtbox
+    collision_mask = 0
+    set_collision_mask_value(6, true)   # enemy_hitbox
+    area_entered.connect(_on_area_entered)
+
+func _on_area_entered(area: Area2D) -> void:
+    if area is Hitbox:
+        hurt.emit(area.damage, area.owner)
+```
+
+```gdscript title="hitbox.gd"
+class_name Hitbox
+extends Area2D
+
+@export var damage := 1
+```
+
+## References
+
+- [Godot docs: Using InputEvent](https://docs.godotengine.org/en/stable/tutorials/inputs/inputevent.html): propagation order, actions
+- [Godot docs: Input examples](https://docs.godotengine.org/en/stable/tutorials/inputs/input_examples.html) and [Controllers, gamepads and joysticks](https://docs.godotengine.org/en/stable/tutorials/inputs/controllers_gamepads_joysticks.html)
+- [Godot docs: Input singleton](https://docs.godotengine.org/en/stable/classes/class_input.html) and [InputMap](https://docs.godotengine.org/en/stable/classes/class_inputmap.html)
+- [Godot docs: Physics introduction](https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html): bodies, layers and masks
+- [Godot docs: Using CharacterBody2D/3D](https://docs.godotengine.org/en/stable/tutorials/physics/using_character_body_2d.html) and [CharacterBody2D class](https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html)
+- [Godot docs: Using Area2D](https://docs.godotengine.org/en/stable/tutorials/physics/using_area_2d.html) and [Rigid body](https://docs.godotengine.org/en/stable/tutorials/physics/rigid_body.html)
+- [Godot docs: Ray-casting](https://docs.godotengine.org/en/stable/tutorials/physics/ray-casting.html)
+- [Godot docs: Physics interpolation](https://docs.godotengine.org/en/stable/tutorials/physics/interpolation/index.html)
+- [Godot docs: Using Jolt Physics](https://docs.godotengine.org/en/stable/tutorials/physics/using_jolt_physics.html)
+- [Godot docs: 2D navigation overview](https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_introduction_2d.html)
+- [KidsCanCode: Godot 4 recipes](https://kidscancode.org/godot_recipes/4.x/): character controllers and physics recipes

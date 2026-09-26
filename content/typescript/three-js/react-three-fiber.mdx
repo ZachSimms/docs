@@ -1,0 +1,636 @@
+---
+title: React Three Fiber
+date: 2026-09-26
+order: 6
+---
+
+Three.js as React components with `@react-three/fiber` v9 (React 19) and the `@react-three/drei` v10 helper
+library: the `Canvas`, how JSX maps to three classes, typed refs, `useFrame` / `useThree` / `useLoader`
+with Suspense, pointer events, the drei toolbox, `gltfjsx`, performance and TypeScript. Assumes
+[React](/typescript/react/react/) and [React hooks](/typescript/react/react-hooks/); the three.js concepts
+underneath are in [Fundamentals](/typescript/three-js/fundamentals/) and [Models & animation](/typescript/three-js/models-animation/).
+
+## Setup & versions
+
+```bash
+npm i three @react-three/fiber @react-three/drei
+npm i -D @types/three
+```
+
+| Package | Current line | Pairs with |
+| :------ | :----------- | :--------- |
+| `@react-three/fiber` | **v9** (9.8.x) | React 19 (peer range `>=19 <19.4` in 9.8); three `>=0.156` |
+| `@react-three/drei` | **v10** | fiber 9, React 19 |
+| fiber v8 / drei v9 | legacy | React 18 |
+| fiber v10 | alpha (2026) | not for production yet |
+| `@react-three/postprocessing` | effects via pmndrs `postprocessing` | fiber 9 |
+| `@react-three/rapier` | physics | fiber 9 |
+| `leva` | debug GUI | any |
+
+R3F is a React **renderer** (like react-dom) that creates and mutates three objects; there is no
+wrapper per class. Anything three can do, R3F can do, and everything new in three is available at once.
+
+```text
+ react-dom tree                 R3F tree (inside <Canvas>)
+ ─────────────                  ──────────────────────────
+ <App>                          <mesh>          → new Mesh()
+   <Canvas> ── owns ──►           <boxGeometry> → attach "geometry"
+     (canvas, renderer,           <meshStandardMaterial>
+      scene, camera,                            → attach "material"
+      raycaster, loop)          useFrame(cb)    → runs every frame
+```
+
+## Canvas
+
+```tsx
+import { Canvas } from "@react-three/fiber";
+
+export function App() {
+  return (
+    <Canvas
+      camera={{ position: [3, 2, 5], fov: 50 }}
+      dpr={[1, 2]}            // clamp devicePixelRatio
+      shadows="percentage"    // see note below
+      gl={{ antialias: true }}
+      frameloop="always"      // | "demand" | "never"
+      onPointerMissed={() => select(null)}
+    >
+      <Scene />
+    </Canvas>
+  );
+}
+```
+
+| Prop | Default | Notes |
+| :--- | :------ | :---- |
+| `camera` | `PerspectiveCamera(75, aspect, 0.1, 1000)` at `z = 5` | props object or a camera instance; `manual: true` to own the projection |
+| `orthographic` | `false` | default camera becomes orthographic |
+| `dpr` | `[1, 2]` | number or `[min, max]` clamp |
+| `gl` | `WebGLRenderer` | params object, instance, or `(defaultProps) => renderer` (may be `async`) |
+| `shadows` | `false` | `true` = `PCFSoftShadowMap`; or `"basic" \| "percentage" \| "soft" \| "variance"` |
+| `frameloop` | `"always"` | `"demand"` renders only after changes / `invalidate()` |
+| `flat` | `false` | `NoToneMapping` instead of R3F's default `ACESFilmicToneMapping` |
+| `linear` | `false` | disable sRGB output (and texture auto-tagging) |
+| `scene`, `raycaster` | | props for the defaults, or an instance for `scene` |
+| `events`, `eventSource`, `eventPrefix` | pointer events on the canvas | share events with a DOM parent (overlays, `View`) |
+| `onCreated` | | `(state) => …` once the root exists |
+| `onPointerMissed` | | click that hit nothing |
+| `performance` | | `{ min, max, debounce }` for regression (see Performance) |
+| `style`, `className` | fills its parent | give the **parent** a size |
+
+- The canvas fills its parent; a parent with no height gives a 0-pixel canvas (the classic blank page).
+- R3F defaults differ from vanilla three: ACES tone mapping, sRGB output, antialiasing on, `dpr` clamp.
+- `shadows` or `"soft"` requests `PCFSoftShadowMap`, which three r182+ replaces with `PCFShadowMap` plus a
+  console warning; `shadows="percentage"` asks for PCF directly.
+
+## JSX → three mapping
+
+Every three export is available as a lower-camel-case element: `Mesh` → `<mesh>`,
+`MeshStandardMaterial` → `<meshStandardMaterial>`, `PointLight` → `<pointLight>`. `Line`, `Audio`,
+`Source` and `Path` clash with DOM/SVG names and are exposed as `<threeLine>`, `<threeAudio>`,
+`<threeSource>`, `<threePath>`.
+
+| JSX | Equivalent three code |
+| :-- | :-------------------- |
+| `<boxGeometry args={[1, 2, 1]} />` | `new BoxGeometry(1, 2, 1)`; **changing `args` rebuilds the object** |
+| `position={[1, 0, 0]}` | `obj.position.set(1, 0, 0)` (props on math types call `.set`) |
+| `scale={2}` | `obj.scale.setScalar(2)` |
+| `color="hotpink"` / `color={0xff69b4}` | `material.color.set(...)` |
+| `position-x={1}` | dash-case pierces: `obj.position.x = 1` |
+| `material-roughness={0.3}` | `mesh.material.roughness = 0.3` |
+| `attach="material"` | `parent.material = child` (auto for geometries and materials) |
+| `attach="material-0"` | `parent.material[0] = child` (arrays) |
+| `attach={(parent, self) => cleanup}` | custom attach function returning a detach |
+| `<primitive object={gltf.scene} />` | insert an existing object as-is (not disposed on unmount) |
+| `dispose={null}` | skip automatic `dispose()` of this subtree on unmount |
+| `onUpdate={(self) => …}` | called after props are applied |
+
+```tsx
+<mesh position={[0, 1, 0]} rotation-y={Math.PI / 4}
+  castShadow>
+  <sphereGeometry args={[0.5, 64, 32]} />
+  <meshPhysicalMaterial
+    color="#88ccff" roughness={0.1} transmission={1}
+    thickness={0.5}
+  />
+</mesh>
+<directionalLight position={[5, 8, 3]} intensity={2}
+  castShadow shadow-mapSize={[2048, 2048]}
+  shadow-camera-far={40} />
+```
+
+Colour maps passed as JSX props on built-in materials (`map`, `emissiveMap`, `sheenColorMap`,
+`specularColorMap`, `envMap`) are tagged `SRGBColorSpace` automatically. Textures assigned in code or used
+by custom shaders need `colorSpace` set by hand.
+
+R3F disposes geometries, materials and textures it created when they unmount. Objects you pass via
+`<primitive>` or build yourself are yours to dispose.
+
+## Refs & TypeScript types
+
+```tsx
+import { useRef } from "react";
+import type { Mesh, MeshStandardMaterial } from "three";
+import { type ThreeElements } from "@react-three/fiber";
+
+// component props = the <mesh> element props + yours
+type SpinnerProps = ThreeElements["mesh"] & {
+  speed?: number;
+};
+
+export function Spinner(
+  { speed = 1, ...props }: SpinnerProps,
+) {
+  const ref = useRef<Mesh>(null!); // non-null after mount
+  const mat = useRef<MeshStandardMaterial>(null!);
+  useFrame((_, dt) => {
+    ref.current.rotation.y += dt * speed;
+  });
+  return (
+    <mesh ref={ref} {...props}>
+      <boxGeometry />
+      <meshStandardMaterial ref={mat} color="orange" />
+    </mesh>
+  );
+}
+```
+
+| Type | Use |
+| :--- | :-- |
+| `ThreeElements["mesh"]` | props of `<mesh>` (v9 replaced `MeshProps` etc.) |
+| `ThreeElement<typeof Cls>` | props for a custom/extended class |
+| `ThreeEvent<PointerEvent>` | pointer handler argument |
+| `RootState` | what `useThree` returns |
+| `CanvasProps` | `<Canvas>` props (was `Props` in v8) |
+| `Vector3`, `Euler`, `Color` (from fiber) | the JSX shorthand types (`[x, y, z] \| Vector3 \| number`) |
+| `useRef<Mesh>(null!)` | ref that is non-null in `useFrame` and effects; React 19 requires the initial argument |
+
+## useFrame
+
+```tsx
+useFrame((state, delta, xrFrame) => {
+  ref.current.rotation.x += delta;          // seconds
+  ref.current.position.y =
+    Math.sin(state.clock.elapsedTime) * 0.3;
+});
+
+// positive priority: you take over rendering
+useFrame(({ gl, scene, camera }) => {
+  gl.render(scene, camera);
+}, 1);
+```
+
+| Rule | Why |
+| :--- | :-- |
+| Mutate refs, never `setState` per frame | React re-renders cost milliseconds; the loop runs 60–144×/s |
+| Scale by `delta` | frame-rate independence |
+| Only inside `<Canvas>` children | hooks read the canvas store from context |
+| Any `priority > 0` | disables R3F's automatic render; highest priority runs last |
+| Allocate outside the callback | `const v = useMemo(() => new Vector3(), [])`, reuse |
+| `state.clock` is a `THREE.Clock` | with three r183+ this logs a one-time `Clock` deprecation warning; `delta` is unaffected |
+
+## useThree
+
+```tsx
+const camera = useThree((s) => s.camera);  // selector:
+const size = useThree((s) => s.size);      // re-render only
+const invalidate = useThree((s) => s.invalidate); // when
+                                           // that changes
+```
+
+| `RootState` field | Contents |
+| :---------------- | :------- |
+| `gl` | the renderer |
+| `scene`, `camera`, `raycaster` | defaults (replaceable with `set`) |
+| `size` | canvas size in CSS px |
+| `viewport` | size in world units at the camera's target distance; `dpr`, `aspect` |
+| `pointer` | normalised device coordinates of the pointer (`Vector2`) |
+| `clock` | elapsed time |
+| `invalidate(frames?)` | request a frame (`frameloop="demand"`) |
+| `setDpr`, `setFrameloop`, `setSize` | runtime changes |
+| `performance` | `current`, `regress()` for adaptive quality |
+| `events` | the event manager (`connect`, `enabled`) |
+| `get`, `set` | read/write the store imperatively |
+
+Avoid `useThree()` without a selector: it re-renders the component on every store change (e.g. resize).
+
+## Loading & Suspense
+
+```tsx
+import { Suspense } from "react";
+import { useLoader } from "@react-three/fiber";
+import { TextureLoader } from "three";
+
+function Crate() {
+  const map = useLoader(TextureLoader, "/crate.jpg");
+  return (
+    <mesh>
+      <boxGeometry />
+      <meshStandardMaterial map={map} />
+    </mesh>
+  );
+}
+
+<Suspense fallback={<Spinner />}>
+  <Crate />
+</Suspense>
+```
+
+| API | Notes |
+| :-- | :---- |
+| `useLoader(Loader, url \| url[], ext?, onProgress?)` | suspends until loaded; cached by URL; v9 also accepts a loader **instance** |
+| `useLoader.preload(Loader, url)` | fetch early, before the component mounts |
+| `useLoader.clear(Loader, url)` | evict from the cache |
+| `useGLTF(url, draco?, meshopt?, extend?)` (drei) | `GLTFLoader` with Draco (gstatic CDN decoder by default) and Meshopt; `useGLTF.preload(url)` |
+| `useTexture(url \| url[] \| Record)` (drei) | textures; the record form returns the same keys (`{ map, normalMap }`) |
+| `useProgress()` (drei) | `{ active, progress, loaded, total, item }` for a loading UI |
+| `<Loader />` (drei) | ready-made HTML progress overlay |
+| `<Preload all />` (drei) | compile and upload everything in the scene up front |
+
+Cached results are shared: two components using the same `useGLTF` URL get the **same** scene graph, and
+an `Object3D` can have only one parent. Clone for multiple copies (`scene.clone()`, or drei's `<Clone>`,
+or `SkeletonUtils.clone` for skinned models).
+
+## Events
+
+```tsx
+import type { ThreeEvent } from "@react-three/fiber";
+
+<mesh
+  onClick={(e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();          // nearest hit only
+    console.log(e.object.name, e.point, e.distance);
+  }}
+  onPointerOver={(e) => {
+    e.stopPropagation();
+    setHover(true);
+  }}
+  onPointerOut={() => setHover(false)}
+/>
+```
+
+| Event field | Meaning |
+| :---------- | :------ |
+| `object` | the object actually hit |
+| `eventObject` | the object whose handler is running (events bubble up the three tree) |
+| `point`, `distance`, `face`, `uv`, `normal` | from the underlying `Raycaster` intersection |
+| `instanceId` | for `InstancedMesh` |
+| `intersections` | every hit, nearest first |
+| `pointer`, `ray`, `camera` | NDC, ray and camera used |
+| `delta` | px moved between pointerdown and up (tell a click from a drag) |
+| `nativeEvent` | the DOM event |
+| `stopPropagation()` | stop bubbling **and** stop the event reaching objects behind |
+
+| Behaviour | Detail |
+| :-------- | :----- |
+| Handlers | `onClick`, `onDoubleClick`, `onContextMenu`, `onWheel`, `onPointerDown/Up/Move/Over/Out/Enter/Leave/Cancel`, `onPointerMissed` |
+| Hit testing | only objects with at least one handler are raycast |
+| Occlusion | without `stopPropagation`, objects behind the first hit also receive the event |
+| Pointer capture | `(e.target as Element).setPointerCapture(e.pointerId)` for drags |
+| Raycast cost | many handlers on complex meshes: use drei `meshBounds` (`raycast={meshBounds}`) or `<Bvh>` |
+| Cursor | drei `useCursor(hovered)` |
+
+## drei essentials
+
+| Helper | Does |
+| :----- | :--- |
+| `<OrbitControls makeDefault />` | camera controls; `makeDefault` registers them in the store for other helpers |
+| `<Environment preset="city" />` | IBL + optional `background`; presets: apartment, city, dawn, forest, lobby, night, park, studio, sunset, warehouse (fetched from a CDN); or `files="/env.hdr"` |
+| `<Stage>` | centred model + lighting + shadows in one component |
+| `<ContactShadows>`, `<AccumulativeShadows>` | soft ground shadows without shadow maps |
+| `<Html>` | DOM inside the scene; `transform`, `occlude`, `center`, `distanceFactor` |
+| `<Text>` | SDF text (troika); `font` url, `fontSize`, `anchorX` |
+| `<Text3D>` | extruded text from a typeface JSON |
+| `<Instances>` + `<Instance>` | declarative `InstancedMesh` with per-instance props and events; `limit`, `range` |
+| `<Merged>` | instance several different meshes at once |
+| `<Bounds fit clip observe margin={1.2}>` | frame children; `useBounds().refresh(obj).fit()` to zoom to a click |
+| `<Center>`, `<Float>` | centre content; bobbing idle motion |
+| `useGLTF`, `useTexture`, `useAnimations` | loading and `AnimationMixer` wiring (`actions[name]?.play()`) |
+| `<Detailed distances={[0, 20, 50]}>` | LOD |
+| `<AdaptiveDpr pixelated />`, `<PerformanceMonitor>` | drop quality when FPS falls |
+| `<Bvh>` | BVH-accelerated raycasting for children |
+| `<Grid>`, `<GizmoHelper>`, `<Stats>`, `<StatsGl>` | editor-style helpers |
+| `<MeshTransmissionMaterial>`, `<MeshReflectorMaterial>` | fancier materials |
+| `<View>` | many viewports sharing one canvas |
+
+## gltfjsx
+
+`gltfjsx` turns a GLB into a typed React component with named nodes and materials, so you can edit parts
+declaratively.
+
+```bash
+npx gltfjsx public/robot.glb --types --transform
+# -t/--types      TypeScript definitions
+# -T/--transform  draco, prune, resize textures
+#                 → writes *-transformed.glb
+# -s/--shadows    castShadow + receiveShadow on meshes
+# -i/--instance   instance repeated geometry
+# -r/--root       path the .glb is served from
+```
+
+```tsx
+// generated (trimmed) — Robot.tsx
+type GLTFResult = GLTF & {
+  nodes: { Body: THREE.Mesh; Visor: THREE.Mesh };
+  materials: { Metal: THREE.MeshStandardMaterial };
+};
+
+export function Robot(props: ThreeElements["group"]) {
+  const { nodes, materials } = useGLTF(
+    "/robot-transformed.glb",
+  ) as unknown as GLTFResult;
+  return (
+    <group {...props} dispose={null}>
+      <mesh geometry={nodes.Body.geometry}
+        material={materials.Metal} />
+      <mesh geometry={nodes.Visor.geometry}>
+        <meshStandardMaterial color="cyan" />
+      </mesh>
+    </group>
+  );
+}
+useGLTF.preload("/robot-transformed.glb");
+```
+
+Generated components reuse the cached geometries and materials, so rendering `<Robot />` many times is
+cheap (unlike `<primitive>`, which can only be mounted once).
+
+## Performance
+
+| Technique | How |
+| :-------- | :-- |
+| No per-frame React | mutate refs in `useFrame`; keep React state for discrete changes |
+| Render on demand | `frameloop="demand"`; call `invalidate()` after imperative changes (controls call it for you) |
+| Instancing | `<instancedMesh args={[geo, mat, count]}>` or drei `<Instances>` |
+| Share resources | define geometry/material once (`useMemo`, or top-level constants) and pass via props |
+| Selectors | `useThree((s) => s.size)` instead of `useThree()` |
+| Transient subscriptions | read zustand stores with `getState()` / `subscribe` inside `useFrame`, not via hooks |
+| Adaptive quality | `performance={{ min: 0.5 }}` on Canvas, `regress()` during interaction, `<AdaptiveDpr>` |
+| Preload | `useGLTF.preload`, `<Preload all />` to avoid mid-interaction stalls |
+| Visibility over mount | toggle `visible` rather than mounting/unmounting heavy subtrees (recompiles, re-uploads) |
+| Avoid `key` churn | changing `key` or `args` rebuilds objects |
+| Measure | `gl.info.render.calls`, drei `<Stats>` / `<StatsGl>`, React profiler for re-renders |
+
+```tsx
+// demand mode: animate only while something moves
+function Door({ open }: { open: boolean }) {
+  const ref = useRef<Group>(null!);
+  const invalidate = useThree((s) => s.invalidate);
+  useFrame((_, dt) => {
+    const target = open ? -Math.PI / 2 : 0;
+    const r = ref.current.rotation;
+    r.y += (target - r.y) * Math.min(1, dt * 8);
+    if (Math.abs(target - r.y) > 1e-3) invalidate();
+  });
+  useEffect(() => invalidate(), [open, invalidate]);
+  return <group ref={ref}>{/* door mesh */}</group>;
+}
+```
+
+## Extending & WebGPU
+
+Classes that are not part of `three` (addons, your own) must be registered before use in JSX.
+
+```tsx
+import { extend, type ThreeElement }
+  from "@react-three/fiber";
+import { OrbitControls } from
+  "three/addons/controls/OrbitControls.js";
+
+// v9 option 1: component factory, no typing needed
+const Orbit = extend(OrbitControls);
+// <Orbit args={[camera, gl.domElement]} />
+
+// option 2: catalogue + module augmentation
+extend({ OrbitControls });
+declare module "@react-three/fiber" {
+  interface ThreeElements {
+    orbitControls: ThreeElement<typeof OrbitControls>;
+  }
+}
+// <orbitControls args={[camera, gl.domElement]} />
+```
+
+`WebGPURenderer` in fiber v9: the `gl` prop may return a promise, and the node classes are registered from
+`three/webgpu`.
+
+```tsx
+import * as THREE from "three/webgpu";
+import {
+  Canvas, extend, type ThreeToJSXElements,
+} from "@react-three/fiber";
+
+declare module "@react-three/fiber" {
+  interface ThreeElements
+    extends ThreeToJSXElements<typeof THREE> {}
+}
+extend(THREE as any);
+
+<Canvas gl={async (props) => {
+  const r = new THREE.WebGPURenderer(props as any);
+  await r.init();
+  return r;
+}}>
+  <mesh>
+    <boxGeometry />
+    <meshStandardNodeMaterial color="orange" />
+  </mesh>
+</Canvas>
+```
+
+Not every drei helper works under `WebGPURenderer` (anything built on GLSL `ShaderMaterial` does not).
+
+## Pitfalls
+
+| Symptom | Cause | Fix |
+| :------ | :---- | :-- |
+| Blank page | parent of `<Canvas>` has no height | `html, body, #root { height: 100% }` |
+| "Hooks can only be used within the Canvas" | `useFrame`/`useThree` in a DOM component | move it into a child of `<Canvas>` |
+| Model appears once only | same cached scene mounted twice via `<primitive>` | clone, or use a gltfjsx component |
+| Stutter every frame | `setState` in `useFrame`, or allocations per frame | refs, reuse vectors |
+| Object rebuilt on every render | `args={[...]}` array built from changing values | memoise or only change when needed |
+| Clicks go through objects | missing `stopPropagation` | call it in handlers |
+| Colours differ from vanilla | ACES tone mapping default | `flat` on `<Canvas>` or set `gl.toneMapping` |
+| Nothing updates in demand mode | imperative change without `invalidate()` | call it |
+| Shadows warning in console | `shadows` = PCFSoft, removed in three r182 | `shadows="percentage"` |
+
+## Recipes
+
+### Typed hover-and-click mesh
+Use as the template for interactive objects: typed ref, hover state, cursor, click toggles scale.
+
+```tsx
+import { useRef, useState } from "react";
+import { useFrame, type ThreeElements } from
+  "@react-three/fiber";
+import { useCursor } from "@react-three/drei";
+import type { Mesh } from "three";
+
+export function Box(props: ThreeElements["mesh"]) {
+  const ref = useRef<Mesh>(null!);
+  const [hovered, setHovered] = useState(false);
+  const [active, setActive] = useState(false);
+  useCursor(hovered);
+  useFrame((_, dt) => {
+    ref.current.rotation.x += dt * 0.5;
+  });
+  return (
+    <mesh {...props} ref={ref}
+      scale={active ? 1.5 : 1}
+      onClick={(e) => {
+        e.stopPropagation();
+        setActive((a) => !a);
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}>
+      <boxGeometry />
+      <meshStandardMaterial
+        color={hovered ? "hotpink" : "orange"} />
+    </mesh>
+  );
+}
+```
+
+### Product viewer on demand
+Use for a model viewer: IBL, contact shadow, orbit controls, no rendering while idle.
+
+```tsx
+import { Suspense } from "react";
+import { Canvas } from "@react-three/fiber";
+import {
+  Bounds, ContactShadows, Environment, OrbitControls,
+  useGLTF,
+} from "@react-three/drei";
+
+function Model({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  return <primitive object={scene} />;
+}
+
+export function Viewer({ url }: { url: string }) {
+  return (
+    <Canvas frameloop="demand" dpr={[1, 2]}
+      camera={{ position: [2, 1.5, 3], fov: 40 }}>
+      <Suspense fallback={null}>
+        <Bounds fit clip observe margin={1.2}>
+          <Model url={url} />
+        </Bounds>
+        <Environment preset="studio" />
+        <ContactShadows position-y={-0.5} opacity={0.5}
+          blur={2} far={2} />
+      </Suspense>
+      <OrbitControls makeDefault enableDamping />
+    </Canvas>
+  );
+}
+```
+
+### Instanced grid with hover
+Use for thousands of pickable items (data points, tiles) at one draw call.
+
+```tsx
+import { useLayoutEffect, useMemo, useRef } from "react";
+import type { ThreeEvent } from "@react-three/fiber";
+import { Color, InstancedMesh, Object3D } from "three";
+
+const N = 50;
+const base = new Color("#4f8cff");
+const hot = new Color("#ff5a5a");
+
+export function Grid() {
+  const ref = useRef<InstancedMesh>(null!);
+  const dummy = useMemo(() => new Object3D(), []);
+  useLayoutEffect(() => {
+    for (let i = 0; i < N * N; i++) {
+      dummy.position.set(i % N - N / 2, 0,
+        Math.floor(i / N) - N / 2);
+      dummy.updateMatrix();
+      ref.current.setMatrixAt(i, dummy.matrix);
+      ref.current.setColorAt(i, base);
+    }
+    ref.current.instanceMatrix.needsUpdate = true;
+    ref.current.computeBoundingSphere();
+  }, [dummy]);
+
+  const paint = (e: ThreeEvent<PointerEvent>, c: Color) => {
+    e.stopPropagation();
+    if (e.instanceId === undefined) return;
+    ref.current.setColorAt(e.instanceId, c);
+    ref.current.instanceColor!.needsUpdate = true;
+  };
+  return (
+    <instancedMesh ref={ref}
+      args={[undefined, undefined, N * N]}
+      onPointerMove={(e) => paint(e, hot)}
+      onPointerOut={(e) => paint(e, base)}>
+      <boxGeometry args={[0.9, 0.2, 0.9]} />
+      <meshStandardMaterial />
+    </instancedMesh>
+  );
+}
+```
+
+`onPointerOut` fires per object, not per instance: for exact "leave instance" behaviour, remember the
+last `instanceId` from `onPointerMove` and reset it there.
+
+### Animated character with drei
+Use to play and cross-fade glTF animation clips from React state.
+
+```tsx
+import { useEffect, useRef } from "react";
+import { useAnimations, useGLTF } from "@react-three/drei";
+import type { Group } from "three";
+
+type Clip = "Idle" | "Walk" | "Run";
+
+export function Hero({ clip }: { clip: Clip }) {
+  const group = useRef<Group>(null!);
+  const { scene, animations } = useGLTF("/hero.glb");
+  const { actions } = useAnimations(animations, group);
+
+  useEffect(() => {
+    const a = actions[clip];
+    a?.reset().fadeIn(0.25).play();
+    return () => { a?.fadeOut(0.25); };
+  }, [clip, actions]);
+
+  return <primitive ref={group} object={scene} />;
+}
+useGLTF.preload("/hero.glb");
+```
+
+### Leva-tuned material
+Use while developing: live sliders for material and light values without rebuilding.
+
+```tsx
+import { useControls } from "leva";
+
+export function Tuned() {
+  const { color, roughness, metalness, env } = useControls({
+    color: "#ff8844",
+    roughness: { value: 0.4, min: 0, max: 1 },
+    metalness: { value: 0, min: 0, max: 1 },
+    env: { value: 1, min: 0, max: 3 },
+  });
+  return (
+    <mesh>
+      <torusKnotGeometry args={[0.6, 0.2, 128, 16]} />
+      <meshStandardMaterial color={color}
+        roughness={roughness} metalness={metalness}
+        envMapIntensity={env} />
+    </mesh>
+  );
+}
+```
+
+## References
+
+- [React Three Fiber docs](https://r3f.docs.pmnd.rs/): Canvas, hooks, events, [v9 migration guide](https://r3f.docs.pmnd.rs/tutorials/v9-migration-guide), [scaling performance](https://r3f.docs.pmnd.rs/advanced/scaling-performance), [pitfalls](https://r3f.docs.pmnd.rs/advanced/pitfalls)
+- [drei docs](https://drei.docs.pmnd.rs/): every helper with live examples
+- [pmndrs/react-three-fiber](https://github.com/pmndrs/react-three-fiber) and [pmndrs/drei](https://github.com/pmndrs/drei) on GitHub
+- [gltfjsx](https://github.com/pmndrs/gltfjsx): GLB → typed JSX component; online at [gltf.pmnd.rs](https://gltf.pmnd.rs/)
+- [@react-three/rapier](https://github.com/pmndrs/react-three-rapier), [@react-three/postprocessing](https://github.com/pmndrs/react-postprocessing), [leva](https://github.com/pmndrs/leva)
+- [three.js docs](https://threejs.org/docs/) for the classes underneath every JSX element
