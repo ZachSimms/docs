@@ -10,10 +10,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Spinner } from "./Spinner";
 
 const Playground = dynamic(() => import("./Playground").then((m) => m.Playground), {
   ssr: false,
-  loading: () => <p className="pg-loading">Loading the playground…</p>,
+  loading: () => (
+    <p className="pg-loading" role="status">
+      <Spinner />
+      Loading the playground…
+    </p>
+  ),
 });
 
 /** The playground, client-side only; `route="node"` on the WebContainer page. */

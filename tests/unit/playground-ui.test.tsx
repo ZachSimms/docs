@@ -178,6 +178,16 @@ describe("ConsolePane", () => {
     expect(screen.getByRole("status")).toHaveTextContent("ran in 1.0 s · exit 0");
   });
 
+  it("shows a spinner beside the status only while a run is loading or running", () => {
+    const { rerender } = render(
+      <ConsolePane {...base} output={EMPTY_OUTPUT} phase="running" status="loading Python…" />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("loading Python…");
+    expect(screen.getByTestId("spinner")).toHaveAttribute("aria-hidden", "true");
+    rerender(<ConsolePane {...base} output={EMPTY_OUTPUT} phase="done" status="ran in 1.0 s" />);
+    expect(screen.queryByTestId("spinner")).toBeNull();
+  });
+
   it("shows stdin only for languages that read it, and the credit line", () => {
     const { unmount } = render(<ConsolePane {...base} output={EMPTY_OUTPUT} />);
     expect(screen.getByRole("textbox")).toHaveValue("world");

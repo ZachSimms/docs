@@ -21,6 +21,7 @@ import {
   splitFragment,
   type Docset,
 } from "@/lib/playground/docs";
+import { Spinner } from "./Spinner";
 
 /** A fragment as an element id (`%40` → `@`); malformed escapes are used as written. */
 function decodeFragment(fragment: string): string {
@@ -155,7 +156,8 @@ export function DocsView({ set, path, name, onNavigate }: DocsViewProps) {
           )}
         </p>
       ) : srcDoc === null ? (
-        <p className="pg-muted" role="status">
+        <p className="pg-muted pg-docs-problem" role="status">
+          <Spinner />
           loading…
         </p>
       ) : (

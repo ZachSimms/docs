@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LanguageSpec } from "@/lib/playground/languages";
 import { outputText, type Output } from "@/lib/playground/output";
 import type { RunPhase } from "./usePlaygroundRun";
+import { Spinner } from "./Spinner";
 
 /** Props for {@link ConsolePane}. */
 interface ConsolePaneProps {
@@ -81,6 +82,7 @@ export function ConsolePane(props: ConsolePaneProps) {
       <div className="pg-bar">
         <span>Output</span>
         <span className="pg-status" role="status" aria-live="polite">
+          {phase === "running" && status && <Spinner />}
           {status}
         </span>
         <span className="pg-bar-actions">

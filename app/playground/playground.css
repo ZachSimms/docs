@@ -30,6 +30,34 @@ body:has(.playground) .theme-toggle-rail {
   padding: 2em;
 }
 
+/* Spinner beside loading text: a ring with one open quarter. */
+.pg-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 0.75ch;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.75;
+  animation: pg-spin 0.8s linear infinite;
+}
+
+@keyframes pg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-spinner {
+    animation: none;
+    border-style: dotted;
+    border-right-color: currentColor;
+  }
+}
+
 .playground button {
   font: inherit;
   color: inherit;
