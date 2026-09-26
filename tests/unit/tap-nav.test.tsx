@@ -60,6 +60,28 @@ describe("TapNav", () => {
     document.body.removeAttribute("data-search-open");
   });
 
+  it("stays off inside the playground's reference panel and on pages that opt out", () => {
+    const clicks = page();
+    const text = document.getElementById("text")!;
+    document.documentElement.setAttribute("data-embed", "");
+    try {
+      tap(text, 20);
+      tap(text, 25);
+    } finally {
+      document.documentElement.removeAttribute("data-embed");
+    }
+    const optOut = document.createElement("div");
+    optOut.setAttribute("data-no-tap-nav", "");
+    document.body.append(optOut);
+    try {
+      tap(text, 380);
+      tap(text, 385);
+    } finally {
+      optOut.remove();
+    }
+    expect(clicks).toEqual([]);
+  });
+
   it("goes up a level on a double tap at the left edge, and shows a < at that edge", () => {
     const clicks = page();
     const text = document.getElementById("text")!;

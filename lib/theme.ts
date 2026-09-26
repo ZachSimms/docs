@@ -58,3 +58,15 @@ export function nextTheme(current: Theme): Theme {
  * the script is always valid regardless of their values.
  */
 export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});if(t==="dark"||t==="light"){document.documentElement.setAttribute(${JSON.stringify(THEME_ATTRIBUTE)},t)}}catch(e){}})();`;
+
+/** Attribute on `<html>` set when the page is shown inside the playground's reference panel. */
+export const EMBED_ATTRIBUTE = "data-embed";
+
+/**
+ * Plain JavaScript, inlined next to {@link THEME_INIT_SCRIPT}: marks
+ * `<html data-embed>` when the page is framed (the playground's reference
+ * panel), so the CSS hides the site chrome (top bar, `../`, footer) and edge
+ * gestures stay off. If reading `window.top` throws, the page is framed by
+ * another origin, which the `frame-ancestors 'self'` header already blocks.
+ */
+export const EMBED_INIT_SCRIPT = `(function(){var framed;try{framed=window.self!==window.top}catch(e){framed=true}if(framed){document.documentElement.setAttribute(${JSON.stringify(EMBED_ATTRIBUTE)},"")}})();`;

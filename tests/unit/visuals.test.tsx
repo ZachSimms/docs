@@ -10,7 +10,12 @@ import { readDiagram } from "@/lib/diagram";
 
 describe("Swatches", () => {
   it("renders one chip per colour with its name and value", () => {
-    render(<Swatches title="Brand" colors={["#1f6feb", { name: "accent", value: "oklch(0.7 0.15 55)" }]} />);
+    render(
+      <Swatches
+        title="Brand"
+        colors={["#1f6feb", { name: "accent", value: "oklch(0.7 0.15 55)" }]}
+      />,
+    );
     const list = screen.getByRole("list", { name: "Brand" });
     const items = list.querySelectorAll("li");
     expect(items).toHaveLength(2);
@@ -33,8 +38,12 @@ describe("Swatches", () => {
 
   it("rejects bad weights and unreadable colours at build time", () => {
     expect(() => render(<Swatches colors={["#eee"]} weights={[1, 2]} />)).toThrow(/weights/);
-    expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[0, 0]} />)).toThrow(/positive total/);
-    expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[2, -1]} />)).toThrow(/non-negative/);
+    expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[0, 0]} />)).toThrow(
+      /positive total/,
+    );
+    expect(() => render(<Swatches colors={["#eee", "#000"]} weights={[2, -1]} />)).toThrow(
+      /non-negative/,
+    );
     expect(() => render(<Swatches colors={["not-a-colour"]} />)).toThrow(/Unsupported colour/);
   });
 });
@@ -98,6 +107,20 @@ describe("Demo", () => {
     expect(buildSrcDoc("<p>x</p>", "dark")).toContain("color-scheme: dark;");
   });
 
+  it("adds extra CSS after the base styles and marks the theme on <html>", () => {
+    const doc = buildSrcDoc("<p>x</p>", "dark", ".grid{display:grid}");
+    expect(doc).toContain('<html data-theme="dark">');
+    expect(doc).toContain("<style>.grid{display:grid}</style>");
+    expect(doc.indexOf(".grid{display:grid}")).toBeGreaterThan(doc.indexOf("--graph-0"));
+    expect(doc.indexOf(".grid{display:grid}")).toBeLessThan(doc.indexOf("<body>"));
+    expect(buildSrcDoc("<p>x</p>")).toContain("<html>");
+  });
+
+  it("keeps a closing style tag inside extra CSS from ending the style block", () => {
+    const doc = buildSrcDoc("<p>x</p>", null, "a{} </style><script>x</script>");
+    expect(doc).not.toContain("</style><script>");
+  });
+
   it("points every link at a new window, which the sandbox blocks", () => {
     const doc = buildSrcDoc('<a href="#">x</a>');
     expect(doc).toContain('<base target="_blank">');
@@ -141,7 +164,9 @@ describe("readDiagram", () => {
       expect(() => readDiagram(`/images/diagrams/${name}.svg`, root)).toThrow(/unsafe/);
     }
     expect(() => readDiagram("/images/diagrams/plain.svg", root)).toThrow(/not an SVG/);
-    expect(() => readDiagram("/images/diagrams/stray-id.svg", root)).toThrow(/"stray-id-" prefix: g/);
+    expect(() => readDiagram("/images/diagrams/stray-id.svg", root)).toThrow(
+      /"stray-id-" prefix: g/,
+    );
   });
 
   it("allows prefixed ids and harmless text that mentions handlers or javascript:", () => {
@@ -151,7 +176,13 @@ describe("readDiagram", () => {
 
 describe("Diagram", () => {
   it("inlines a site diagram as a labelled image with a caption", () => {
-    render(<Diagram src="/images/diagrams/box-model.svg" label="The CSS box model" caption="Box model" />);
+    render(
+      <Diagram
+        src="/images/diagrams/box-model.svg"
+        label="The CSS box model"
+        caption="Box model"
+      />,
+    );
     const img = screen.getByRole("img", { name: "The CSS box model" });
     expect(img.querySelector("svg")).not.toBeNull();
     expect(screen.getByText("Box model").tagName).toBe("FIGCAPTION");

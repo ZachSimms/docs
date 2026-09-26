@@ -1,0 +1,699 @@
+/* The playground: a full-window IDE in the site's style (monospace, dotted rules, page colours).
+   Layouts: >= 1024px three columns; 768-1023px drawers; < 768px one pane + bottom tab bar. */
+
+/* The page is an app, not a 90ch column. */
+body:has(.playground) {
+  padding: 0;
+  grid: minmax(0, 1fr) / minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* The theme toggle stays top-right, of the window rather than the column; no fading band. */
+body:has(.playground) .theme-toggle-rail {
+  grid: auto / minmax(0, 1fr);
+  padding: 0.55em 1em 0;
+  background: none;
+}
+
+.playground {
+  --pg-code-size: 14px;
+  --pg-rule: 1px dotted var(--pre-border);
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.pg-loading {
+  padding: 2em;
+}
+
+.playground button {
+  font: inherit;
+  color: inherit;
+}
+
+.playground button.link:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.playground select,
+.playground input,
+.playground textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--pre-bg);
+  border: 1px dotted var(--dot-mobile);
+  border-radius: 2px;
+}
+
+.playground :is(input, textarea, select):focus-visible,
+.playground [tabindex]:focus-visible,
+.playground button:focus-visible {
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
+}
+
+.pg-kbd,
+.pg-status,
+.pg-muted,
+.pg-credit,
+.pg-tree-prefix {
+  opacity: 0.6;
+}
+
+/* ---- Toolbar ---- */
+
+.pg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em 1.5ch;
+  /* Right padding clears the fixed theme toggle. */
+  padding: 0.45em 3.5em 0.45em 1em;
+  border-bottom: var(--pg-rule);
+}
+
+.pg-title {
+  margin: 0;
+  font-size: inherit;
+  font-weight: bold;
+}
+
+.pg-language select {
+  padding: 0.15em 0.4em;
+}
+
+.pg-run i {
+  font-weight: bold;
+}
+
+.pg-toolbar-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1.5ch;
+}
+
+.pg-notice {
+  color: var(--graph-1);
+}
+
+/* ---- Main area ---- */
+
+.pg-main {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.pg-files {
+  width: 17rem;
+  min-height: 0;
+  overflow: auto;
+  border-right: var(--pg-rule);
+  margin: 0;
+}
+
+.playground[data-tree="closed"] .pg-files {
+  width: auto;
+  padding: 0.35em 0.5ch;
+}
+
+.pg-work {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(9rem, 36%);
+  min-width: 0;
+  min-height: 0;
+}
+
+.playground[data-runner="web"] .pg-work {
+  grid-template-rows: auto minmax(0, 1fr) minmax(12rem, 45%);
+}
+
+/* ---- Tabs and editor ---- */
+
+.pg-tabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  white-space: nowrap;
+  border-bottom: var(--pg-rule);
+  scrollbar-width: thin;
+}
+
+.pg-tab {
+  display: inline-flex;
+  align-items: center;
+  border-right: var(--pg-rule);
+}
+
+.pg-tab button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0.3em 0.75ch;
+}
+
+.pg-tab[data-active] {
+  background: var(--pre-bg);
+}
+
+.pg-tab[data-active] [aria-current] {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.pg-tab-close {
+  opacity: 0.5;
+}
+
+.pg-tabs-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding: 0 1ch;
+}
+
+.pg-tabs-end button[aria-pressed="true"] i {
+  border-bottom-style: solid;
+}
+
+.pg-code {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pg-editor,
+.pg-editor .cm-editor {
+  height: 100%;
+}
+
+/* ---- Output: console, preview ---- */
+
+.pg-out {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  border-top: var(--pg-rule);
+}
+
+.playground[data-runner="web"] .pg-out {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+
+.playground[data-runner="godot"] .pg-out {
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 22rem);
+}
+
+/* The Godot view is visible (not a hidden sandbox) so the engine's frames keep running. */
+.pg-godot {
+  order: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-left: var(--pg-rule);
+  background: #161616;
+}
+
+.pg-godot .pg-bar {
+  background: var(--bg);
+}
+
+.pg-godot iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 8rem;
+  border: 0;
+}
+
+.pg-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.5ch;
+  min-height: 2em;
+  padding: 0.15em 1ch;
+  border-bottom: var(--pg-rule);
+  white-space: nowrap;
+}
+
+.pg-bar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 1.5ch;
+}
+
+.pg-console {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pg-download {
+  padding: 0.5em 1ch;
+  border-bottom: var(--pg-rule);
+  background: var(--pre-bg);
+}
+
+.pg-download p {
+  margin: 0 0 0.3em;
+}
+
+.playground pre.pg-output {
+  flex: 1;
+  margin: 0;
+  padding: 0.5em 1ch;
+  overflow: auto;
+  min-height: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--pg-code-size);
+}
+
+.pg-stderr {
+  color: var(--graph-1);
+}
+
+.pg-info {
+  opacity: 0.6;
+}
+
+.pg-stdin {
+  display: flex;
+  align-items: flex-start;
+  gap: 1ch;
+  padding: 0.3em 1ch;
+  border-top: var(--pg-rule);
+}
+
+.pg-stdin textarea {
+  flex: 1;
+  min-height: 2.4em;
+  padding: 0.2em 0.5ch;
+  resize: vertical;
+}
+
+.pg-credit {
+  margin: 0;
+  padding: 0.15em 1ch 0.35em;
+  font-size: 0.85em;
+}
+
+.pg-preview {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-right: var(--pg-rule);
+}
+
+.pg-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* ---- File tree ---- */
+
+.pg-tree-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1ch;
+  padding: 0.3em 1ch;
+  border-bottom: var(--pg-rule);
+}
+
+.pg-tree-actions {
+  display: flex;
+  gap: 1.5ch;
+}
+
+.pg-tree-list {
+  padding: 0.3em 0;
+}
+
+/* Not a prose list: no "* " bullet and no hanging indent from the site's ul li rules. */
+.pg-tree-list li {
+  text-indent: 0;
+}
+
+.pg-tree-list li::before {
+  content: none;
+}
+
+.pg-tree-row {
+  display: flex;
+  align-items: center;
+  min-height: 1.75em;
+  padding: 0 0.5ch 0 1ch;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.pg-tree-row[aria-selected="true"] {
+  background: var(--pre-bg);
+}
+
+.pg-tree-row:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.pg-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-tree-entry {
+  color: var(--graph-2);
+}
+
+.pg-tree-more {
+  margin-left: auto;
+  padding: 0 0.75ch;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pg-tree-row:is(:hover, :focus-within, :focus) .pg-tree-more,
+.pg-tree-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.pg-tree-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 1.5ch;
+  padding: 0.2em 1ch 0.4em 4ch;
+  background: var(--pre-bg);
+}
+
+.pg-tree-input {
+  flex: 1;
+  min-width: 6ch;
+  padding: 0 0.5ch;
+}
+
+.pg-tree-error {
+  margin: 0;
+  padding: 0.3em 1ch;
+  color: var(--graph-1);
+  white-space: normal;
+}
+
+/* ---- Reference panel ---- */
+
+.pg-refs {
+  position: relative;
+  width: var(--pg-panel-w, 420px);
+  max-width: 70vw;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-left: var(--pg-rule);
+  background: var(--bg);
+}
+
+.pg-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pg-resizer:hover,
+.pg-resizer:focus-visible {
+  background: linear-gradient(
+    to right,
+    transparent 4px,
+    var(--dot-mobile) 4px 6px,
+    transparent 6px
+  );
+}
+
+.pg-refs-search {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  flex: 1;
+}
+
+.pg-refs-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.1em 0.5ch;
+}
+
+.pg-refs-list {
+  overflow: auto;
+  padding: 0.5em 1ch;
+}
+
+.pg-refs-list p {
+  margin: 0 0 0.5em;
+}
+
+.pg-ref-row {
+  display: block;
+}
+
+.pg-ref-row a[aria-selected="true"] i {
+  border-bottom-style: solid;
+}
+
+.pg-refs-sheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.pg-refs-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+/* ---- Hidden sandboxes, phone tab bar, symbol row ---- */
+
+.pg-frames .pg-sandbox {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pg-panes {
+  display: none;
+}
+
+.pg-unread {
+  color: var(--graph-0);
+}
+
+.pg-symbols {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  overflow-x: auto;
+  background: var(--pre-bg);
+  border-top: var(--pg-rule);
+  scrollbar-width: none;
+}
+
+.pg-symbols button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 16px;
+  background: var(--bg);
+  border: 1px dotted var(--pre-border);
+  border-radius: 3px;
+}
+
+/* ---- Touch screens: 16px text (no zoom on focus), 44px targets ---- */
+
+@media (pointer: coarse) {
+  .playground {
+    --pg-code-size: 16px;
+  }
+
+  .playground :is(input, textarea, select) {
+    font-size: 16px;
+  }
+
+  .playground :is(button.link, .pg-tab button, .pg-language select) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .pg-tree-row {
+    min-height: 44px;
+  }
+
+  .pg-tree-more {
+    opacity: 1;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .pg-kbd {
+    display: none;
+  }
+}
+
+/* ---- Tablets: the tree and the panel become drawers ---- */
+
+@media (max-width: 1023px) {
+  .pg-main {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  /* The open tree drawer leaves the grid (position: absolute); keep the editor in the wide column. */
+  .pg-work {
+    grid-column: 2;
+  }
+
+  .playground[data-tree="open"] .pg-files {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 8;
+    width: min(20rem, 80vw);
+    background: var(--bg);
+    box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--bg) 40%, transparent);
+  }
+
+  .pg-refs {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 9;
+    width: min(var(--pg-panel-w, 420px), 90vw);
+    max-width: 90vw;
+    box-shadow: -1px 0 0 var(--pre-border);
+  }
+
+  .pg-resizer {
+    display: none;
+  }
+}
+
+/* ---- Phones: one pane at a time ---- */
+
+@media (max-width: 767px) {
+  .pg-toolbar {
+    padding: 0.35em 3em 0.35em 0.75em;
+    gap: 0.25em 1.25ch;
+  }
+
+  /* .playground raises these above the site's `button.link { display: inline-block }`. */
+  .playground :is(.pg-title, .pg-refs-toggle, .pg-kbd) {
+    display: none;
+  }
+
+  .pg-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pg-main > * {
+    display: none;
+    grid-column: 1;
+  }
+
+  .playground[data-pane="code"] .pg-work,
+  .playground[data-pane="output"] .pg-work,
+  .playground[data-pane="files"] .pg-files,
+  .playground[data-pane="refs"] .pg-refs {
+    display: grid;
+  }
+
+  .playground .pg-files,
+  .playground[data-tree] .pg-files {
+    position: static;
+    width: auto;
+    box-shadow: none;
+    border: 0;
+  }
+
+  .playground[data-pane="files"] .pg-files {
+    display: block;
+  }
+
+  .pg-refs {
+    position: static;
+    width: auto;
+    max-width: none;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .playground[data-pane="code"] .pg-work {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .playground[data-pane="code"] .pg-out,
+  .playground[data-pane="output"] :is(.pg-tabs, .pg-code) {
+    display: none;
+  }
+
+  .playground[data-pane="output"] .pg-work {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .playground[data-pane="output"] .pg-out {
+    border-top: 0;
+  }
+
+  .playground:is([data-runner="web"], [data-runner="godot"]) .pg-out {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .playground[data-runner="godot"] .pg-out {
+    grid-template-rows: minmax(0, 1fr) 10rem;
+  }
+
+  .pg-godot {
+    border-left: 0;
+    border-top: var(--pg-rule);
+  }
+
+  .pg-panes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: var(--pg-rule);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pg-panes button {
+    min-height: 48px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .pg-panes button[aria-selected="true"] {
+    font-weight: bold;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+  }
+}

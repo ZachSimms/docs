@@ -17,6 +17,34 @@ import createMDX from "@next/mdx";
 const nextConfig: NextConfig = {
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
   trailingSlash: true,
+  async headers() {
+    return [
+      {
+        // Only this site may frame its pages (the playground's reference panel does):
+        // no clickjacking from other origins.
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+        ],
+      },
+      {
+        // The Godot runner loads its engine files from inside an opaque-origin sandbox,
+        // which makes those fetches cross-origin.
+        source: "/playground/godot/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          // The runner page is only meant for the playground's sandboxed frame; this keeps it at an
+          // opaque origin however it is opened. (Same key as above: the later rule wins, so the
+          // frame-ancestors directive is repeated.)
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self'; sandbox allow-scripts",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 /** Absolute path of the local remark plugin (Next runs with the project root as cwd). */

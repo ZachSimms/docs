@@ -1029,6 +1029,35 @@ test.describe("visuals", () => {
     await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(22, 22, 22)");
   });
 
+  test("tailwind demos apply real compiled utilities and follow the theme", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/design/css/tailwind/");
+    await hydrated(page);
+    const frameEl = page.getByTitle("Live demo: placement.html");
+    await frameEl.scrollIntoViewIfNeeded();
+    await expect(frameEl).toHaveAttribute("sandbox", "");
+    const frame = frameEl.contentFrame();
+    const grid = frame.locator(".grid-cols-4");
+    await expect(grid).toHaveCSS("display", "grid");
+    const tracks = await grid.evaluate(
+      (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
+    );
+    expect(tracks).toBe(4);
+    // col-span-full stretches across all four tracks.
+    const [gridWidth, fullWidth] = await Promise.all([
+      grid.evaluate((el) => el.getBoundingClientRect().width),
+      frame.locator(".col-span-full").evaluate((el) => el.getBoundingClientRect().width),
+    ]);
+    expect(fullWidth).toBeGreaterThan(gridWidth - 30);
+    await page.keyboard.press("d");
+    await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const flex = page.getByTitle("Live demo: justify.html");
+    await flex.scrollIntoViewIfNeeded();
+    const row = flex.contentFrame().locator(".justify-between");
+    await expect(row).toHaveCSS("justify-content", "space-between");
+  });
+
   test("clicking a link inside a demo leaves the demo in place", async ({ page }) => {
     await page.goto("/design/principles/color-theory/");
     const frameEl = page.locator("iframe[title*='light-dark']").first();
@@ -1157,7 +1186,9 @@ test.describe("fitness", () => {
     const main = await page.locator("main").boundingBox();
     expect(frame && main).toBeTruthy();
     expect(Math.abs((frame?.width ?? 0) / (frame?.height ?? 1) - 16 / 9)).toBeLessThan(0.05);
-    expect((frame?.x ?? 0) + (frame?.width ?? 0)).toBeLessThanOrEqual((main?.x ?? 0) + (main?.width ?? 0) + 1);
+    expect((frame?.x ?? 0) + (frame?.width ?? 0)).toBeLessThanOrEqual(
+      (main?.x ?? 0) + (main?.width ?? 0) + 1,
+    );
     await expect(video.locator("figcaption a")).toHaveAttribute(
       "href",
       /^https:\/\/www\.youtube\.com\/watch\?v=/,

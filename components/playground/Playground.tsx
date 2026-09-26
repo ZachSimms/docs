@@ -1,0 +1,442 @@
+/**
+ * @file `/playground/`: a browser IDE with a file tree, editor, console and reference panel.
+ *
+ * Client component (loaded without SSR by `PlaygroundLoader`, since everything
+ * it shows comes from `localStorage`). Layout by width, in CSS:
+ * - ≥ 1024px: tree | editor + console (or preview) | reference panel;
+ * - 768–1023px: the tree and the panel become drawers;
+ * - < 768px: one pane at a time, switched by the bottom tab bar
+ *   (Code, Files, Output, Refs); Run jumps to Output.
+ *
+ * Security: this component never evaluates user code. Running goes through
+ * `usePlaygroundRun` (sandboxed frames and remote services).
+ */
+
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { DottedLink } from "@/components/DottedLink";
+import { getLanguage, LANGUAGES, modeForPath, type LanguageId } from "@/lib/playground/languages";
+import {
+  addDir,
+  addFile,
+  closeTab,
+  remove,
+  rename,
+  setEntry,
+  setOpen,
+  updateFile,
+  basename,
+} from "@/lib/playground/project";
+import { loadPrefs, savePrefs, type Prefs } from "@/lib/playground/storage";
+import { isSheetUrl, OPEN_REFERENCE_EVENT } from "@/lib/reference-panel";
+import { CodeEditor, type EditorHandle } from "./CodeEditor";
+import { ConsolePane } from "./ConsolePane";
+import { FileTree, type TreeCommand } from "./FileTree";
+import { ReferencePanel } from "./ReferencePanel";
+import { SymbolRow } from "./SymbolRow";
+import { usePlaygroundRun } from "./usePlaygroundRun";
+import { useProjects } from "./useProjects";
+import { WebPreview } from "./WebPreview";
+
+/** The panes a phone shows one at a time. */
+export type Pane = "code" | "files" | "output" | "refs";
+const PANES: readonly { id: Pane; label: string }[] = [
+  { id: "code", label: "Code" },
+  { id: "files", label: "Files" },
+  { id: "output", label: "Output" },
+  { id: "refs", label: "Refs" },
+];
+
+/** Whether the primary pointer is coarse (a touch screen). */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia?.("(pointer: coarse)");
+    if (!query) return;
+    const update = () => setCoarse(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return coarse;
+}
+
+/** Render the playground. */
+export function Playground() {
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
+  const language = prefs.language;
+  const spec = getLanguage(language);
+  const { project, setProject, saveFailed } = useProjects(language);
+  const runState = usePlaygroundRun();
+  const [pane, setPane] = useState<Pane>("code");
+  const [refsOpen, setRefsOpen] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [askDownload, setAskDownload] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
+  const [editorFocused, setEditorFocused] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [requested, setRequested] = useState<{ url: string; n: number } | null>(null);
+  const editor = useRef<EditorHandle | null>(null);
+  const coarse = useCoarsePointer();
+
+  const updatePrefs = useCallback((change: Partial<Prefs>) => {
+    setPrefs((current) => ({ ...current, ...change }));
+  }, []);
+
+  // Persist preferences whenever they change (outside the state updater, which must stay pure).
+  useEffect(() => {
+    savePrefs(prefs);
+  }, [prefs]);
+
+  // New output while another pane is showing on a phone marks the Output tab;
+  // looking at the Output pane clears it.
+  const outputSize = runState.output.size;
+  const [seenOutput, setSeenOutput] = useState(0);
+  if (pane === "output" && seenOutput !== outputSize) setSeenOutput(outputSize);
+  const unread = pane !== "output" && outputSize > 0 && outputSize !== seenOutput;
+
+  // ⌘K results chosen on the playground open in the reference panel (see SearchPalette).
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      if (!isSheetUrl(url)) return;
+      setRequested((current) => ({ url, n: (current?.n ?? 0) + 1 }));
+      setRefsOpen(true);
+      setPane("refs");
+    };
+    window.addEventListener(OPEN_REFERENCE_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_REFERENCE_EVENT, onOpen);
+  }, []);
+
+  const stdin = prefs.stdin[language] ?? spec.stdinExample ?? "";
+
+  const startRun = useCallback(() => {
+    if (spec.runner === "web") {
+      setPreviewKey((k) => k + 1);
+    } else {
+      runState.run(language, project, stdin);
+    }
+    setPane("output");
+  }, [spec.runner, runState, language, project, stdin]);
+
+  const run = useCallback(() => {
+    if (spec.download && !prefs.approvedDownloads.includes(language)) {
+      setAskDownload(true);
+      setPane("output");
+      return;
+    }
+    startRun();
+  }, [spec.download, prefs.approvedDownloads, language, startRun]);
+
+  const approveDownload = () => {
+    updatePrefs({ approvedDownloads: [...prefs.approvedDownloads, language] });
+    setAskDownload(false);
+    startRun();
+  };
+
+  const chooseLanguage = (id: LanguageId) => {
+    runState.stop();
+    runState.clear();
+    setAskDownload(false);
+    setConfirmReset(false);
+    updatePrefs({ language: id });
+    setResetKey((k) => k + 1);
+  };
+
+  // The latest project, for checks made in event handlers.
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  });
+
+  const onEdit = useCallback(
+    (path: string, value: string) => {
+      // Over the size limit the edit stays in the editor but isn't kept: say so until an edit fits.
+      const check = updateFile(projectRef.current, path, value);
+      setNotice(check.ok ? null : `${check.error} This change isn't saved.`);
+      setProject((current) => {
+        const result = updateFile(current, path, value);
+        return result.ok ? result.project : current;
+      });
+    },
+    [setProject],
+  );
+
+  const openFile = (path: string) => {
+    const result = setOpen(project, path);
+    if (result.ok) setProject(result.project);
+    setPane("code");
+  };
+
+  const onTreeCommand = (command: TreeCommand): string | null => {
+    const result = (() => {
+      switch (command.type) {
+        case "add-file":
+          return addFile(project, command.path);
+        case "add-dir":
+          return addDir(project, command.path);
+        case "rename":
+          return rename(project, command.from, command.to);
+        case "remove":
+          return remove(project, command.path);
+        case "set-entry":
+          return setEntry(project, command.path);
+      }
+    })();
+    if (!result.ok) return result.error;
+    setProject(result.project);
+    if (command.type === "add-file") setPane("code");
+    return null;
+  };
+
+  const reset = () => {
+    runState.stop();
+    runState.clear();
+    setProject(spec.template);
+    setResetKey((k) => k + 1);
+    setConfirmReset(false);
+  };
+
+  const isRunning = runState.phase === "running";
+  const code = project.files[project.open] ?? "";
+  const indent = modeForPath(project.open) === "gdscript" ? "\t" : "  ";
+
+  return (
+    <div
+      className="playground"
+      data-no-tap-nav=""
+      data-pane={pane}
+      data-runner={spec.runner}
+      data-refs={refsOpen ? "open" : "closed"}
+      data-tree={prefs.treeOpen ? "open" : "closed"}
+      style={{ "--pg-panel-w": `${prefs.panelWidth}px` } as CSSProperties}
+    >
+      <header className="pg-toolbar">
+        <DottedLink href="/" ariaLabel="Back to home">
+          ../
+        </DottedLink>
+        <h1 className="pg-title">Playground</h1>
+        <label className="pg-language">
+          <span className="sr-only">Language</span>
+          <select
+            value={language}
+            onChange={(event) => chooseLanguage(event.target.value as LanguageId)}
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="link pg-run"
+          onClick={run}
+          disabled={isRunning}
+          aria-keyshortcuts="Meta+Enter Control+Enter"
+        >
+          <i>▶ Run</i>
+          <span className="pg-kbd" aria-hidden="true">
+            {" "}
+            ⌘↵
+          </span>
+        </button>
+        {spec.runner !== "web" && (
+          <button
+            type="button"
+            className="link"
+            onClick={runState.stop}
+            disabled={!isRunning && !runState.live}
+          >
+            <i>Stop</i>
+          </button>
+        )}
+        {confirmReset ? (
+          <span className="pg-confirm" role="group" aria-label="Reset project">
+            reset to the starter project?{" "}
+            <button type="button" className="link" onClick={reset}>
+              <i>yes</i>
+            </button>{" "}
+            <button type="button" className="link" onClick={() => setConfirmReset(false)}>
+              <i>no</i>
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="link pg-reset" onClick={() => setConfirmReset(true)}>
+            <i>Reset</i>
+          </button>
+        )}
+        <span className="pg-toolbar-end">
+          {(saveFailed || notice) && (
+            <span className="pg-notice" role="status">
+              {saveFailed ? "couldn't save (storage full or disabled)" : notice}
+            </span>
+          )}
+          <button
+            type="button"
+            className="link pg-refs-toggle"
+            aria-expanded={refsOpen}
+            aria-keyshortcuts="Meta+K Control+K"
+            onClick={() => setRefsOpen((open) => !open)}
+          >
+            <i>Refs</i>
+            <span className="pg-kbd" aria-hidden="true">
+              {" "}
+              ⌘K
+            </span>
+          </button>
+        </span>
+      </header>
+
+      <div className="pg-main">
+        <nav className="pg-files" aria-label="Files">
+          {prefs.treeOpen || pane === "files" ? (
+            <FileTree
+              key={language}
+              project={project}
+              onOpen={openFile}
+              onCommand={onTreeCommand}
+              onHide={() => (pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false }))}
+            />
+          ) : (
+            <button
+              type="button"
+              className="link pg-tree-show"
+              aria-label="Show files"
+              title="Show files"
+              onClick={() => updatePrefs({ treeOpen: true })}
+            >
+              <i>»</i>
+            </button>
+          )}
+        </nav>
+
+        <div className="pg-work">
+          <div className="pg-tabs" role="group" aria-label="Open files">
+            {project.tabs.map((tab) => (
+              <span
+                key={tab}
+                className="pg-tab"
+                data-active={tab === project.open ? "" : undefined}
+              >
+                <button
+                  type="button"
+                  aria-current={tab === project.open ? "true" : undefined}
+                  title={tab}
+                  onClick={() => openFile(tab)}
+                >
+                  {basename(tab)}
+                </button>
+                <button
+                  type="button"
+                  className="pg-tab-close"
+                  aria-label={`Close ${tab}`}
+                  onClick={() => setProject(closeTab(project, tab))}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <span className="pg-tabs-end">
+              <button
+                type="button"
+                className="link"
+                aria-pressed={prefs.wrap}
+                onClick={() => updatePrefs({ wrap: !prefs.wrap })}
+                title="Soft-wrap long lines"
+              >
+                <i>wrap</i>
+              </button>
+            </span>
+          </div>
+          <div className="pg-code" role="region" aria-label={`Editing ${project.open}`}>
+            <CodeEditor
+              path={project.open}
+              paths={Object.keys(project.files)}
+              value={code}
+              onChange={onEdit}
+              onRun={run}
+              key={`${language}:${resetKey}`}
+              wrap={prefs.wrap}
+              handleRef={editor}
+              onFocusChange={setEditorFocused}
+            />
+          </div>
+          <div className="pg-out">
+            {spec.runner === "web" && (
+              <WebPreview
+                project={project}
+                refreshKey={previewKey}
+                onReload={runState.clear}
+                onOutput={runState.appendExternal}
+              />
+            )}
+            {spec.runner === "godot" && (
+              <section className="pg-godot" aria-label="Godot view">
+                <div className="pg-bar">
+                  <span>Godot</span>
+                  <span className="pg-status">
+                    {runState.godotFrame ? "engine view" : "loads on the first run"}
+                  </span>
+                </div>
+                {runState.godotFrame}
+              </section>
+            )}
+            <ConsolePane
+              spec={spec}
+              output={runState.output}
+              phase={runState.phase}
+              status={runState.status}
+              stdin={stdin}
+              onStdin={(value) => updatePrefs({ stdin: { ...prefs.stdin, [language]: value } })}
+              onClear={runState.clear}
+              askDownload={askDownload}
+              onApproveDownload={approveDownload}
+              onCancelDownload={() => setAskDownload(false)}
+            />
+          </div>
+        </div>
+
+        {(refsOpen || pane === "refs") && (
+          <ReferencePanel
+            suggestions={spec.refs}
+            width={prefs.panelWidth}
+            onWidth={(panelWidth) => updatePrefs({ panelWidth })}
+            onClose={() => (setRefsOpen(false), pane === "refs" && setPane("code"))}
+            requested={requested}
+          />
+        )}
+      </div>
+
+      <div className="pg-panes" role="tablist" aria-label="Playground panes">
+        {PANES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={pane === p.id}
+            onClick={() => setPane(p.id)}
+          >
+            {p.label}
+            {p.id === "output" && unread && (
+              <span className="pg-unread" aria-label="(new output)">
+                {" "}
+                •
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <SymbolRow
+        handleRef={editor}
+        indent={indent}
+        visible={coarse && editorFocused && pane === "code"}
+      />
+      <div className="pg-frames">{runState.frames}</div>
+    </div>
+  );
+}

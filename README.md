@@ -80,6 +80,10 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
   with MathML alongside for screen readers. No client JavaScript.
 - **Table of contents**: on wide viewports every sheet with two or more `##`/`###` headings gets a
   contents list in the right margin; the section on screen is underlined solid.
+- **Playground** (`/playground/`, linked from the home footer): a browser IDE for C++, Rust, Python,
+  JavaScript, TypeScript, HTML/CSS/JS and GDScript. Each language is a project of files and folders (imports,
+  modules, headers), saved in `localStorage`. A reference panel (`Refs`, or `⌘K` on that page) searches the
+  sheets and shows one beside the code. See [Playground](#playground).
 - **Images**: put files under `public/images/<topic>/` and reference them as
   `![alt](/images/<topic>/name.png)`. Dimensions are read at build time and rendered through `next/image`;
   remote URLs fall back to a lazy plain `<img>`.
@@ -99,6 +103,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | ` ```tree title="…" ` fence with a 2-space outline                       | directory tree with guide lines (`dir/` bold, `# comment` dim)  |
 | `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | colour chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
 | ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
+| ` ```html demo tailwind ` fence                                         | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
 | `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
 | `<YouTube id="…" title="…" channel="…" start={30} />`                   | lazy 16:9 embed (youtube-nocookie) with a caption link; bad ids fail the build |
 | `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
@@ -115,6 +120,9 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `Enter` / `→` / `l` | list pages | open the highlighted row: into a directory or a sheet |
 | double-tap left edge | touch, any page but home | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables) |
 | double-tap right edge | touch, list pages | same as `→`: open the highlighted row; nothing if no row is highlighted |
+| `⌘↵` / `Ctrl+↵` | playground editor | run the project |
+| `⌘K` | playground | search sheets and open the result in the reference panel |
+| `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree | move, fold/unfold, open, rename, delete (asks first) |
 
 ## Site map
 
@@ -126,6 +134,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                 |
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                 |
 | `/info/`                 | about                                                        |
+| `/playground/`           | the in-browser IDE                                           |
 
 ## Layout
 
@@ -141,7 +150,33 @@ Available in every sheet without an import. All are rendered in the site's own i
 - `lib/search.ts` (index builder), `lib/search-rank.ts` (isomorphic ranking), `lib/theme.ts`, `lib/images.ts`,
   `lib/keys.ts` (keyboard shortcuts), `lib/toc.ts`
 - `mdx-components.tsx` maps MDX `a` and `img` to the house style; inline code is styled by CSS
-- `tests/unit`, `tests/e2e`, `tests/fixtures`
+- `lib/tailwind-demo.ts` + `components/TailwindDemo.tsx` (```` ```html demo tailwind ```` fences)
+- Playground: `app/playground/` (route + `playground.css`), `components/playground/` (UI, editor, sandbox frames),
+  `lib/playground/` (project model, languages, linker, runners, sandbox runtime), `playground/godot-runner/` (Godot
+  project behind the GDScript runner), `public/playground/godot/` (its web export)
+- `tests/unit`, `tests/e2e` (`*.mobile.spec.ts` also run on emulated Pixel 7 and iPhone 14), `tests/fixtures`
+
+## Playground
+
+| Language | Runs | Notes |
+| -------- | ---- | ----- |
+| JavaScript, TypeScript | a Web Worker inside a sandboxed frame | TS types are stripped by Sucrase, not checked; bare imports load from esm.sh |
+| HTML/CSS/JS | a sandboxed live preview | stylesheets and module scripts are linked from the project's files |
+| Python | Pyodide 314 (CPython 3.14) in a worker inside the sandbox | ≈ 6 MB from jsDelivr on the first run (asked first); numpy/pandas load on import; stdin box |
+| C++ | Compiler Explorer (CMake, g++ 16.2, C++23), falling back to Wandbox | code is sent to godbolt.org and logged there for 32 days; stdin box |
+| Rust | Compiler Explorer (rustc 1.98, edition 2024), falling back to the Rust Playground | `mod x;` files are inlined into one crate; errors point back at the file |
+| GDScript | a self-hosted Godot 4.7 web build in a sandboxed frame | ≈ 10 MB on the first run; `preload("res://…")` works across files, `class_name` globals don't |
+
+- **Security:** user code never runs on the site's origin. JS, TS and Python run in
+  `<iframe sandbox="allow-scripts">` (an opaque origin with no storage, cookies or DOM access) and, inside it, a
+  worker that Stop or the time limit (JS 10 s, Python 30 s) kills. The page only accepts messages from its own
+  frames carrying the run's token, validates them with Zod and renders output as text. Site pages send
+  `frame-ancestors 'self'`, so only the reference panel can frame them.
+- **Phones:** one pane at a time (`Code`, `Files`, `Output`, `Refs`), a symbol row above the keyboard, 16px text
+  and 44px targets; edge double-taps are off on the playground.
+- **Rebuilding the GDScript runner:** `brew install --cask godot`, install the single-threaded web export templates
+  (`web_nothreads_debug.zip`, `web_nothreads_release.zip`) for the same version, then
+  `./scripts/build-godot-runner.sh`. The export (`index.wasm` ≈ 38 MB) is committed.
 
 ## Runtime notes
 
@@ -168,6 +203,12 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
     by the U.S. Food and Drug Administration, public domain.
   - `public/images/fitness/stretching-recovery-calf-muscles.png`: [Lower leg muscles](https://commons.wikimedia.org/wiki/File:Lower_leg_muscles.svg)
     by InjuryMap, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+- **Godot Engine:** `public/playground/godot/` is a web export of [Godot](https://godotengine.org/) 4.7.2,
+  © Godot Engine contributors, MIT License (`GODOT_LICENSE.txt`; third-party notices in `GODOT_COPYRIGHT.txt`).
+- **Playground libraries:** [CodeMirror](https://codemirror.net/) (MIT), [Sucrase](https://github.com/alangpierce/sucrase)
+  (MIT), [es-module-lexer](https://github.com/guybedford/es-module-lexer) (MIT) and, loaded at run time,
+  [Pyodide](https://pyodide.org/) (MPL-2.0). C++ and Rust run on [Compiler Explorer](https://godbolt.org/),
+  [Wandbox](https://wandbox.org/) and the [Rust Playground](https://play.rust-lang.org/).
 - **Videos:** embedded YouTube videos belong to their channels, which are named in each caption.
 - **Reference material:** the sheets are original summaries. Sources are linked in each sheet's
   "References" section, with MDN as the primary source for web-platform topics.

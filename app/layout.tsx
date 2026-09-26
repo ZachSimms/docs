@@ -4,7 +4,8 @@
  * the touch edge gestures.
  *
  * `suppressHydrationWarning` on `<html>` is required because the inline script
- * may add `data-theme` before React hydrates.
+ * may add `data-theme` (and, inside the playground's reference panel,
+ * `data-embed`) before React hydrates.
  */
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -12,7 +13,7 @@ import { SearchPalette } from "@/components/SearchPalette";
 import { TapNav } from "@/components/TapNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
-import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { EMBED_INIT_SCRIPT, THEME_INIT_SCRIPT } from "@/lib/theme";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -27,7 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT + EMBED_INIT_SCRIPT }} />
         <ThemeToggle />
         {children}
         <SearchPalette />
