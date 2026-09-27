@@ -20,7 +20,7 @@ export const PROFILE = {
   /** Current role, printed under the name on the resume. */
   role: "Software Engineer",
   /** Home page introduction: two or three sentences. */
-  bio: "Software Engineer at SAIC. AI systems and open-source tooling for a U.S. defense program. I write things down here.",
+  bio: "Just another builder 👋",
   /** One line about the projects, beside Projects on the home page. */
   projectsNote: "agents, dev tools, game servers",
   github: "https://github.com/ZachSimms",
