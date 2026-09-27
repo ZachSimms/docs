@@ -213,8 +213,11 @@ export function ReferencePanel({
               <iframe
                 ref={frame}
                 src={url}
-                // Site sheets need their own origin (theme, search) and new-tab links, but may never
-                // navigate the playground itself; the flags stay if the frame goes elsewhere.
+                // Site sheets need their own origin (theme, search) and new-tab links. With
+                // allow-scripts + allow-same-origin on a same-origin page the sandbox is not a
+                // boundary (the sheet could reach `parent` or drop its own sandbox): this relies
+                // on `isSheetUrl` only ever loading the site's own static sheets. The flags do
+                // still apply if the frame navigates to another origin.
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 title={`Reference: ${url}`}
                 className="pg-refs-frame"

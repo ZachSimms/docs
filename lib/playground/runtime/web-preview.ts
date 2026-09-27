@@ -2,7 +2,8 @@
  * @file The HTML/CSS/JS live preview's document.
  *
  * The user's linked page (see `linkWebDocument`) goes in an
- * `<iframe sandbox="allow-scripts" srcdoc>`, an opaque origin. A small shim is
+ * `<iframe sandbox="allow-scripts allow-forms" srcdoc>` (`PREVIEW_SANDBOX_FLAGS`), an opaque
+ * origin. A small shim is
  * injected first so `console.*`, uncaught errors and unhandled rejections are
  * posted to the page with the current token; the page filters them with
  * `acceptFrameMessage` like any other sandbox message.
