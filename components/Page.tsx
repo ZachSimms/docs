@@ -1,21 +1,32 @@
 /**
- * @file Shared page shell: heading, dash separator, body and footer.
+ * @file Shared page shell: the split layout.
  *
- * Every route renders through this so the structure matches the original
- * site's `<main>…</main><footer>…</footer>` exactly.
+ * Every route but the playground renders through this: the site navigation on the
+ * left (`SiteNav`), and on the right an optional breadcrumb trail, the heading, the
+ * body and the footer. On narrow viewports the navigation folds into a line of links
+ * above the page (see the `.split` rules in globals.css).
  */
 
 import type { ReactNode } from "react";
+import type { SectionKey } from "@/lib/sections";
 import { DottedLink } from "./DottedLink";
 import { ParentLink } from "./ParentLink";
 import { SearchLink } from "./SearchLink";
+import { SiteNav, type DocsLocation } from "./SiteNav";
+import { ZenToggle } from "./ZenToggle";
 
-/** The primary footer link: `Info` on the home page, `../` everywhere else. */
+/** The primary footer link: usually `../`. */
 export interface FooterLink {
   readonly href: string;
   readonly label: string;
   /** Screen-reader description for terse labels such as `../`. */
   readonly ariaLabel?: string;
+}
+
+/** One step of the breadcrumb trail; the last one (the page itself) has no link. */
+export interface Crumb {
+  readonly label: string;
+  readonly href?: string;
 }
 
 /** Props for {@link Page}. */
@@ -24,7 +35,7 @@ interface PageProps {
   title: string;
   /** Primary footer link; the Search control is always appended after it. */
   footer: FooterLink;
-  /** An extra link between the primary link and Search (the home page's `Playground`). */
+  /** An extra link between the primary link and Search. */
   secondaryFooter?: FooterLink;
   /**
    * Also pin the footer link to the top-left of the content column, fixed
@@ -33,55 +44,117 @@ interface PageProps {
    * page, which has nothing to go back to.
    */
   pinFooterLink?: boolean;
-  /** Page body, placed after the `-` separator. */
+  /** The section to mark in the navigation. */
+  section?: SectionKey;
+  /** For docs pages: where to unfold the topic tree (see `SiteNav`). */
+  docs?: DocsLocation;
+  /** Breadcrumb trail shown above the heading. */
+  crumbs?: readonly Crumb[];
+  /**
+   * Shown on the heading's line, right-aligned (a date, a download link). In the solo
+   * layout: a figure floated to the right of the page's text (below it on phones).
+   */
+  titleAside?: ReactNode;
+  /** Offer zen mode (sheets and posts): a `zen` switch beside the pinned `../`. */
+  zen?: boolean;
+  /**
+   * `"split"` (default): the navigation beside the page. `"solo"`: the original single
+   * 90ch column with no navigation, a plain heading and the `-` separator (the home page).
+   */
+  layout?: "split" | "solo";
+  /** Page body, placed after the heading. */
   children: ReactNode;
 }
 
+/** `docs / python / fastapi`: links for every step but the last. */
+function Crumbs({ crumbs }: { crumbs: readonly Crumb[] }) {
+  return (
+    <nav className="crumbs" aria-label="Breadcrumb">
+      {crumbs.map((crumb, i) => (
+        <span key={`${i}-${crumb.label}`}>
+          {i > 0 && <span className="crumb-sep"> / </span>}
+          {crumb.href ? (
+            <DottedLink href={crumb.href} prefetch={false}>
+              {crumb.label}
+            </DottedLink>
+          ) : (
+            <span aria-current="page">{crumb.label}</span>
+          )}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 /**
- * Render `<main><h1/><p>-</p>…</main><footer><p><a><i>…</i></a>  Search</p></footer>`
- * (with an optional second link before Search).
+ * Render the navigation beside `<main>{crumbs}<h1/>…</main><footer>…</footer>`.
  *
- * The two footer controls are separated by two spaces to stay on the
- * monospace grid. With `pinFooterLink` the primary link is repeated in a fixed
- * rail at the top-left of the column (the theme toggle occupies the top-right
- * from the root layout).
+ * The footer controls are separated by two spaces to stay on the monospace grid.
+ * With `pinFooterLink` the primary link is repeated in a fixed rail at the top-left of
+ * the content column (the theme toggle occupies the top-right from the root layout).
  */
 export function Page({
   title,
   footer,
   secondaryFooter,
   pinFooterLink = false,
+  section,
+  docs,
+  crumbs,
+  titleAside,
+  zen = false,
+  layout = "split",
   children,
 }: PageProps) {
+  const solo = layout === "solo";
   return (
     <>
       {pinFooterLink && (
         <div className="back-rail">
-          <ParentLink href={footer.href} label={footer.label} ariaLabel={footer.ariaLabel} />
+          <span className="back-rail-links">
+            <ParentLink href={footer.href} label={footer.label} ariaLabel={footer.ariaLabel} />
+            {zen && <ZenToggle />}
+          </span>
         </div>
       )}
-      <main>
-        <h1>{title}</h1>
-        <p>-</p>
-        {children}
-      </main>
-      <footer>
-        <p>
-          <DottedLink href={footer.href} ariaLabel={footer.ariaLabel}>
-            {footer.label}
-          </DottedLink>
-          {"  "}
-          {secondaryFooter && (
-            <>
-              <DottedLink href={secondaryFooter.href} ariaLabel={secondaryFooter.ariaLabel}>
-                {secondaryFooter.label}
+      <div className={solo ? "solo" : "split"} data-zen-able={zen ? "" : undefined}>
+        {!solo && <SiteNav section={section} docs={docs} />}
+        <div className="split-main">
+          <main>
+            {crumbs && crumbs.length > 0 && <Crumbs crumbs={crumbs} />}
+            {solo ? (
+              <>
+                {titleAside && <div className="solo-aside">{titleAside}</div>}
+                <h1>{title}</h1>
+                <p>-</p>
+              </>
+            ) : (
+              <div className="page-head">
+                <h1>{title}</h1>
+                {titleAside}
+              </div>
+            )}
+            {children}
+          </main>
+          <footer>
+            <p>
+              <DottedLink href={footer.href} ariaLabel={footer.ariaLabel}>
+                {footer.label}
               </DottedLink>
               {"  "}
-            </>
-          )}
-          <SearchLink />
-        </p>
-      </footer>
+              {secondaryFooter && (
+                <>
+                  <DottedLink href={secondaryFooter.href} ariaLabel={secondaryFooter.ariaLabel}>
+                    {secondaryFooter.label}
+                  </DottedLink>
+                  {"  "}
+                </>
+              )}
+              <SearchLink />
+            </p>
+          </footer>
+        </div>
+      </div>
     </>
   );
 }

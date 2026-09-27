@@ -9,6 +9,17 @@
 
 /** Key that toggles the light/dark theme (`ThemeToggle`). */
 export const THEME_KEY = "d";
+
+/** Toggles zen mode on sheets and posts (see `ZenToggle`). */
+export const ZEN_KEY = "z";
+
+/** The home page's section shortcuts, key to destination (see `HomeKeys`). */
+export const HOME_KEYS = [
+  { key: "p", label: "Projects", href: "/projects/" },
+  { key: "r", label: "Resume", href: "/resume/" },
+  { key: "b", label: "Blog", href: "/blog/" },
+  { key: "g", label: "Docs", href: "/docs/" },
+] as const;
 /** Key that goes up one level (`ParentLink`). */
 export const UP_KEY = "Escape";
 /** Keys that also go up one level (`ParentLink`), when focus allows it: `←` and vim-style `h`. */
@@ -33,6 +44,8 @@ export function isAnyPlainKey(event: KeyLike, keys: readonly string[]): boolean 
 export const SHORTCUT_LIST: readonly (readonly [string, string])[] = [
   ["⌘K /", "search"],
   [THEME_KEY, "toggle theme"],
+  [ZEN_KEY, "zen mode, on sheets"],
+  ["p r b g", "sections, from home"],
   ["esc ← h", "up a level"],
   ["→ l", "into the highlighted row"],
   ["↑↓ jk", "move in a list"],

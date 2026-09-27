@@ -22,8 +22,11 @@ export default function SheetsPage() {
   return (
     <Page
       title="Cheatsheets"
-      footer={{ href: "/", label: "../", ariaLabel: "Back to home" }}
+      footer={{ href: "/docs/", label: "../", ariaLabel: "Back to docs" }}
       pinFooterLink
+      section="docs"
+      docs={{}}
+      crumbs={[{ label: "docs", href: "/docs/" }, { label: "sheets" }]}
     >
       <NumberedList items={items} />
     </Page>

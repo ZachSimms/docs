@@ -34,3 +34,20 @@ export const frontmatterSchema = z.object({
 
 /** The parsed, normalized frontmatter: `{ title: string; date: "YYYY-MM-DD"; order?: number }`. */
 export type Frontmatter = z.infer<typeof frontmatterSchema>;
+
+/**
+ * Frontmatter accepted by a blog post (`posts/<slug>.mdx`).
+ *
+ * - `title`, `date`: as for a sheet.
+ * - `summary` (optional): one or two sentences, shown as the excerpt on `/blog/`.
+ * - `tags` (optional): short lowercase labels, shown as chips.
+ */
+export const postSchema = z.object({
+  title: z.string().trim().min(1, "title is required"),
+  date: frontmatterSchema.shape.date,
+  summary: z.string().trim().min(1, "summary must not be empty").optional(),
+  tags: z.array(z.string().trim().min(1, "tags must not be empty")).optional(),
+});
+
+/** The parsed, normalized frontmatter of a post. */
+export type PostFrontmatter = z.infer<typeof postSchema>;

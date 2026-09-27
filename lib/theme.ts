@@ -70,3 +70,15 @@ export const EMBED_ATTRIBUTE = "data-embed";
  * another origin, which the `frame-ancestors 'self'` header already blocks.
  */
 export const EMBED_INIT_SCRIPT = `(function(){var framed;try{framed=window.self!==window.top}catch(e){framed=true}if(framed){document.documentElement.setAttribute(${JSON.stringify(EMBED_ATTRIBUTE)},"")}})();`;
+
+/** `localStorage` key remembering zen mode on sheets (`"1"` when on). */
+export const ZEN_STORAGE_KEY = "zen";
+
+/** Attribute on `<html>` while zen mode is on; the CSS reads it on pages that offer zen mode. */
+export const ZEN_ATTRIBUTE = "data-zen";
+
+/**
+ * Inline script run before first paint, like {@link THEME_INIT_SCRIPT}: restores zen
+ * mode so a sheet opens without its navigation instead of flashing it first.
+ */
+export const ZEN_INIT_SCRIPT = `(function(){try{if(localStorage.getItem(${JSON.stringify(ZEN_STORAGE_KEY)})==="1"){document.documentElement.setAttribute(${JSON.stringify(ZEN_ATTRIBUTE)},"")}}catch(e){}})();`;

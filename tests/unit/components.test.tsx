@@ -13,7 +13,7 @@ import { SheetView } from "@/components/SheetView";
 import { Graph, Graphs } from "@/components/Graph";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { STORAGE_KEY } from "@/lib/theme";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { OPEN_SEARCH_EVENT } from "@/components/SearchLink";
 
 describe("DottedLink", () => {
@@ -112,16 +112,18 @@ describe("NumberedList", () => {
 });
 
 describe("Page", () => {
-  it("renders the h1, the dash separator, children and the footer link", () => {
+  it("renders the navigation, the h1, children and the footer link", () => {
     const { container } = render(
-      <Page title="Zach" footer={{ href: "/info/", label: "Info" }}>
+      <Page title="Zach" footer={{ href: "/info/", label: "Info" }} section="home">
         <p>body</p>
       </Page>,
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Zach");
     const main = container.querySelector("main")!;
-    expect(main.children[1]).toHaveTextContent("-");
+    expect(main.querySelector(".page-head h1")).toHaveTextContent("Zach");
     expect(main).toHaveTextContent("body");
+    const aside = container.querySelector(".split > aside.site-nav")!;
+    expect(aside.querySelector('a[aria-current="page"]')).toHaveTextContent("Home");
     const footerLink = container.querySelector("footer p a");
     expect(footerLink).toHaveAttribute("href", "/info/");
     expect(footerLink?.querySelector("i")).toHaveTextContent("Info");
@@ -171,7 +173,9 @@ describe("Page", () => {
     );
     let fired = false;
     window.addEventListener(OPEN_SEARCH_EVENT, () => (fired = true), { once: true });
-    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    fireEvent.click(
+      within(document.querySelector("footer")!).getByRole("button", { name: /search/i }),
+    );
     expect(fired).toBe(true);
   });
 });

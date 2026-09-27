@@ -1,34 +1,26 @@
 /**
- * @file Home page (`/`): the topics as a numbered list, newest-first style
- * (first topic gets the highest number), a `v` link to every sheet, and
- * `Info` and `Playground` footer links.
+ * @file Home page (`/`): a single column without the side navigation. The name, the
+ * introduction and the sections with their shortcut keys, beside a dithered sky:
+ * tonight's moon, or the sun in the dark theme (`d` switches).
  */
-import { DottedLink } from "@/components/DottedLink";
-import { NumberedList } from "@/components/NumberedList";
+import { HomeKeys } from "@/components/HomeKeys";
 import { Page } from "@/components/Page";
-import { SITE_TITLE } from "@/lib/site";
-import { TOPICS, topicNumber } from "@/lib/topics";
+import { SkyFigure } from "@/components/SkyFigure";
+import { PROFILE } from "@/lib/profile";
 
 /** Home page. */
 export default function HomePage() {
-  const items = TOPICS.map((topic) => ({
-    number: topicNumber(topic.slug) ?? 0,
-    href: `/${topic.slug}/`,
-    label: topic.name,
-  }));
-
   return (
     <Page
-      title={SITE_TITLE}
+      title={PROFILE.fullName}
       footer={{ href: "/info/", label: "Info" }}
       secondaryFooter={{ href: "/playground/", label: "Playground" }}
+      section="home"
+      layout="solo"
+      titleAside={<SkyFigure />}
     >
-      <NumberedList items={items} />
-      <p className="v">
-        <DottedLink href="/sheets/" ariaLabel="All cheatsheets">
-          v
-        </DottedLink>
-      </p>
+      <p>{PROFILE.bio}</p>
+      <HomeKeys />
     </Page>
   );
 }

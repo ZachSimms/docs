@@ -482,3 +482,23 @@ export function getGroupSheetMeta(
   if (!isValidSegment(slug)) return undefined;
   return listGroupSheets(topic, group, root).find((sheet) => sheet.slug === slug);
 }
+
+/**
+ * The most recently dated sheets across all topics, newest first; sheets sharing a
+ * date keep their display order.
+ *
+ * @param count - How many to return.
+ * @param topics - Topic slugs to include; defaults to all known topics.
+ * @param root - Content root; overridable for tests.
+ */
+export function recentSheets(
+  count: number,
+  topics: readonly string[] = TOPIC_SLUGS,
+  root: string = CONTENT_ROOT,
+): Sheet[] {
+  return listAllSheets(topics, root)
+    .map((sheet, index) => ({ sheet, index }))
+    .sort((a, b) => b.sheet.date.localeCompare(a.sheet.date) || a.index - b.index)
+    .slice(0, count)
+    .map(({ sheet }) => sheet);
+}

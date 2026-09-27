@@ -16,7 +16,20 @@
   --graph-1: #cf222e;
   --graph-2: #1a7f37;
   --graph-3: #8250df;
+  /* Secondary text (dates, counts, breadcrumbs): 6.9:1 on --bg in both themes. */
+  --dim: #555;
+  /* Split layout: the width the page's column grid spans, and where the content column starts
+     inside it. One column (90ch) until the navigation fits beside the content (see .split). */
+  --shell: 90ch;
+  --offset: 0ch;
   color-scheme: light;
+}
+
+@media (min-width: 900px) {
+  :root {
+    --shell: 104ch;
+    --offset: 32ch;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,11 +48,13 @@
     --graph-1: #ff7b72;
     --graph-2: #3fb950;
     --graph-3: #d2a8ff;
+    --dim: #9a9a9a;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
+  --dim: #9a9a9a;
   --bg: #161616;
   --fg: #e6e6e6;
   --chip: #333;
@@ -86,7 +101,8 @@ html {
   height: 100%;
 }
 
-/* The column is at most 90ch and may shrink to the viewport (minimum 0, not `auto`): wide tables,
+/* The column grid is at most --shell wide (90ch, or 104ch with the navigation beside the content)
+   and may shrink to the viewport (minimum 0, not `auto`): wide tables,
    code and math scroll inside their own boxes instead of widening the page on phones. */
 body {
   font: 1em/var(--lh) monospace;
@@ -94,7 +110,7 @@ body {
   color: var(--fg);
   padding: max(16vh, 5em) 2em 0;
   display: grid;
-  grid: 1fr / minmax(0, 90ch);
+  grid: 1fr / minmax(0, var(--shell));
   overflow-wrap: break-word;
   justify-content: center;
   height: 100%;
@@ -872,6 +888,458 @@ footer p {
   margin: 0;
 }
 
+/* Split layout (<Page>): the site navigation on the left, the page on the right. Below 900px
+   there is no room beside the 72ch content column, so the navigation becomes a wrapped line of
+   section links above the page and the topic tree is left out (breadcrumbs and `../` remain). */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.split-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.split-main main {
+  flex: 1;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+.site-nav ul {
+  margin: 0;
+}
+
+.site-nav li {
+  position: relative;
+  text-indent: 0;
+}
+
+.site-nav li::before {
+  content: none;
+}
+
+.site-nav li[data-mark] > a {
+  font-weight: bold;
+}
+
+.site-nav li[data-mark="page"] > a i {
+  border-bottom-style: solid;
+}
+
+@media (max-width: 899px) {
+  /* Navigation line, then the page taking the rest of the height (footer at the bottom). */
+  .split {
+    grid-template-rows: auto 1fr;
+  }
+
+  .site-nav {
+    margin-bottom: var(--lh);
+  }
+
+  .site-nav :is(.site-name, .nav-rule, .nav-links, .nav-num, .nav-tree) {
+    display: none;
+  }
+
+  .nav-sections {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 2ch;
+  }
+
+  /* Whole words: a link wraps to the next line instead of shrinking mid-word (links are
+     otherwise capped at 100% of a line, which a shrinking flex item makes too narrow). */
+  .nav-sections > li {
+    flex: none;
+  }
+
+  .nav-sections a {
+    max-width: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .split {
+    grid-template-columns: 24ch minmax(0, 1fr);
+    column-gap: 8ch;
+  }
+
+  /* Stays in view while the page scrolls; its own scroll box when the tree is taller than the
+     window. The 2ch of padding keeps the `>` markers inside that box. */
+  .site-nav {
+    align-self: start;
+    position: sticky;
+    top: 4em;
+    max-height: calc(100vh - 5em);
+    overflow-y: auto;
+    scrollbar-width: none;
+    margin-left: -2ch;
+    padding-left: 2ch;
+    padding-bottom: var(--lh);
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-name {
+    font-weight: bold;
+  }
+
+  .nav-sections > li {
+    line-height: calc(var(--lh) + 0.33333em);
+  }
+
+  .nav-num {
+    display: inline-block;
+    width: 4ch;
+  }
+
+  .site-nav li[data-mark="page"]::before {
+    content: ">";
+    position: absolute;
+    left: -2ch;
+    top: 0.16666em;
+  }
+
+  .site-nav .nav-tree {
+    margin-left: 4ch;
+    line-height: var(--lh);
+  }
+
+  .site-nav .nav-tree ul {
+    margin-left: 2ch;
+  }
+}
+
+/* The home page's single column (<Page layout="solo">): the original 90ch column, no navigation.
+   Beats the :root media query by specificity. */
+:root:has(.solo) {
+  --shell: 90ch;
+  --offset: 0ch;
+}
+
+.solo {
+  display: flex;
+  flex-direction: column;
+}
+
+.solo > .split-main {
+  flex: 1;
+}
+
+/* Home: the sky figure (<SkyFigure>) floats right of the name, bio and sections; on phones
+   it follows them. Its caption is right-aligned under the drawing. */
+.solo main {
+  display: flex;
+  flex-direction: column;
+}
+
+.solo-aside {
+  order: 1;
+  align-self: center;
+  margin-bottom: var(--lh);
+}
+
+@media (min-width: 700px) {
+  .solo main {
+    display: flow-root;
+  }
+
+  .solo-aside {
+    float: right;
+    margin: 0 0 var(--lh) 4ch;
+  }
+}
+
+.sky {
+  text-align: right;
+}
+
+.sky canvas {
+  display: block;
+  margin-left: auto;
+  color: var(--fg);
+}
+
+.sky figcaption {
+  margin-top: 0.75em;
+}
+
+@media (max-width: 699px) {
+  .sky {
+    text-align: center;
+  }
+
+  .sky canvas {
+    margin: 0 auto;
+  }
+}
+
+/* Home: the sections, each with its key, link and a line about it. */
+.home-keys {
+  margin: calc(var(--lh) * 2) 0 var(--lh);
+}
+
+.home-keys p {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  align-items: baseline;
+  margin: 0;
+}
+
+.home-keys kbd {
+  justify-self: start;
+}
+
+.home-keys a {
+  justify-self: start;
+}
+
+/* Breadcrumbs above the heading: `docs / python / fastapi`. */
+.crumbs {
+  color: var(--dim);
+  margin-bottom: calc(var(--lh) / 3);
+}
+
+.crumbs a {
+  margin: 0;
+  padding: 0;
+}
+
+/* The heading, with a date or a download link on its line. */
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  column-gap: 2ch;
+  margin-bottom: var(--lh);
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 2em;
+  line-height: 1.15;
+  font-weight: bold;
+}
+
+.page-meta {
+  margin-top: calc(var(--lh) / -2);
+}
+
+/* A titled block of a page (home, docs index, resume): small bold heading, optional rule. */
+.block {
+  margin-bottom: var(--lh);
+}
+
+.block > h2 {
+  font-size: 1em;
+  margin: 0 0 calc(var(--lh) / 2);
+}
+
+.rule {
+  border-bottom: 1px dotted;
+  padding-bottom: 0.25em;
+}
+
+/* Boxed cards (projects, topics, the latest post), framed like the code boxes. */
+.card {
+  background: var(--pre-bg);
+  border: 1px solid var(--pre-border);
+  border-radius: 3px;
+  padding: calc(var(--lh) / 2) 1.5ch;
+}
+
+.card > p {
+  margin-bottom: calc(var(--lh) / 3);
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1ch;
+  font-size: 1em;
+  font-weight: bold;
+  margin: 0 0 0.25em;
+}
+
+.card-head .dim {
+  font-weight: normal;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 32ch), 1fr));
+  gap: 2ch;
+  margin-bottom: var(--lh);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1ch;
+}
+
+/* /docs/: the topics as a grid of cards; the highlighted one (keys or pointer) gets a solid frame. */
+.topic-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20ch), 1fr));
+  gap: 1.5ch;
+  margin-bottom: var(--lh);
+}
+
+.topic-cards .card {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  margin: 0;
+  line-height: var(--lh);
+  overflow-wrap: normal;
+}
+
+.topic-cards .card[data-active] {
+  border-color: currentColor;
+}
+
+.topic-cards .card-head i {
+  font-weight: bold;
+}
+
+/* A topic page: each directory a section in up to three columns, then the loose sheets. */
+.topic-folders {
+  columns: 3 20ch;
+  column-gap: 3ch;
+}
+
+.topic-folder {
+  break-inside: avoid;
+  margin-bottom: var(--lh);
+}
+
+/* Padding, not margin, in the columns: a margin at a column break is dropped, which left the
+   tallest column flush against the next run's heading. */
+.topic-folders .topic-folder {
+  margin-bottom: 0;
+  padding-bottom: var(--lh);
+}
+
+.topic-folder h2 {
+  display: flex;
+  align-items: baseline;
+  font-size: 1em;
+  margin: 0 0 0.25em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px dotted;
+}
+
+.topic-count {
+  margin-left: auto;
+  padding-left: 1ch;
+  font-weight: normal;
+}
+
+/* Date, link and an optional chip on one line (recent sheets, posts). */
+ul.dated {
+  margin: 0 0 calc(var(--lh) / 2);
+}
+
+ul.dated li {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr) auto;
+  column-gap: 1ch;
+  text-indent: 0;
+}
+
+ul.dated li::before {
+  content: none;
+}
+
+ul.dated li > a {
+  justify-self: start;
+}
+
+/* Resume entries: role and dates on one line, points under it. */
+.entry {
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+.entry-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  margin-bottom: 0;
+}
+
+.entry-head > :first-child {
+  flex: 1;
+}
+
+.entry-head > :last-child {
+  flex: none;
+}
+
+.entry ul {
+  margin-bottom: 0;
+}
+
+.entry > p:not(.entry-head) {
+  margin-bottom: 0;
+}
+
+/* Resume skills: a label column, then the chips. */
+.skills {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr);
+  gap: 0.5em 1ch;
+  align-items: baseline;
+}
+
+.skills .chips {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .skills {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* A long role or company takes the line; its dates move under it rather than squeezing it. */
+  .entry-head {
+    flex-wrap: wrap;
+  }
+
+  .entry-head > :first-child {
+    flex: 1 1 auto;
+  }
+}
+
+/* A link drawn as a boxed button (the resume's PDF). */
+a.button {
+  background: var(--pre-bg);
+  border: 1px solid var(--pre-border);
+  border-radius: 3px;
+  padding: 0.3em 1.5ch;
+  margin: 0;
+}
+
+.featured-post {
+  margin-bottom: var(--lh);
+}
+
+.featured-post h2 {
+  font-size: 1.25em;
+  margin: 0.25em 0 0.5em;
+}
+
 /* Theme toggle: a fixed rail with the same column grid as <body>, so the button
    sits on the right edge of the content column rather than the viewport. */
 /* Also the top bar: a full-width band in the page color behind `../` and the toggle
@@ -887,7 +1355,7 @@ footer p {
   padding: 1.5em 2em 1em;
   background: linear-gradient(var(--bg) calc(100% - 1em), transparent);
   display: grid;
-  grid: auto / minmax(0, 90ch);
+  grid: auto / minmax(0, var(--shell));
   justify-content: center;
   pointer-events: none;
 }
@@ -929,17 +1397,67 @@ footer p {
   margin-left: calc(100vw - 100%);
   padding: 1.5em 2em 0;
   display: grid;
-  grid: auto / minmax(0, 90ch);
+  grid: auto / minmax(0, var(--shell));
   justify-content: center;
   pointer-events: none;
 }
 
+/* `../` and, on sheets, the `zen` switch beside it. */
+.back-rail-links {
+  display: flex;
+  align-items: baseline;
+}
+
+.back-rail .zen-toggle {
+  pointer-events: auto;
+  line-height: 1;
+  padding: 0.25em 0.16666em;
+  margin-left: 2ch;
+  background: var(--bg);
+}
+
+.zen-toggle[aria-pressed="true"] i {
+  border-bottom-style: solid;
+}
+
+/* Zen mode (sheets and posts, <html data-zen>): only the sheet, and its contents on the left
+   where the navigation was. */
+html[data-zen] [data-zen-able] :is(.site-nav, .crumbs, footer) {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  /* Keep the sheet in its column when the navigation beside it is hidden. */
+  .split > .split-main {
+    grid-column: 2;
+  }
+
+  html[data-zen] body:has([data-zen-able]) .toc-rail {
+    display: grid;
+  }
+
+  html[data-zen] body:has([data-zen-able]) .toc-frame {
+    left: 0;
+    margin-left: -2ch;
+    width: 26ch;
+  }
+
+  html[data-zen] body:has([data-zen-able]) .toc-menu {
+    display: none;
+  }
+
+  html[data-zen] body:has([data-zen-able]) .theme-toggle {
+    margin-right: -0.25em;
+  }
+}
+
+/* Over the content column, which starts --offset into the grid (beside the navigation). */
 .back-rail a {
   justify-self: start;
   pointer-events: auto;
   line-height: 1;
   padding: 0.25em 0.16666em;
-  margin-left: -0.16666em;
+  margin-left: calc(var(--offset) - 0.16666em);
   background: var(--bg);
 }
 
@@ -960,7 +1478,7 @@ footer p {
   margin-left: calc(100vw - 100%);
   padding: 0 2em;
   display: grid;
-  grid: auto / minmax(0, 90ch);
+  grid: auto / minmax(0, var(--shell));
   justify-content: center;
   pointer-events: none;
 }
@@ -971,7 +1489,7 @@ footer p {
   left: 100%;
   /* 2ch of the 4ch gap is the list's padding, so `>` markers sit inside its scroll box. */
   margin-left: 2ch;
-  width: 30ch;
+  width: 22ch;
   margin-top: -0.16666em;
 }
 
@@ -1092,7 +1610,7 @@ nav[data-menu] a,
   margin-left: calc(100vw - 100%);
   padding: 1.5em 2em 0;
   display: grid;
-  grid: auto auto / minmax(0, 90ch);
+  grid: auto auto / minmax(0, var(--shell));
   justify-content: center;
   pointer-events: none;
 }
@@ -1141,7 +1659,7 @@ nav[data-menu] a,
   }
 }
 
-@media (min-width: 1240px) {
+@media (min-width: 1280px) {
   .toc-menu {
     display: none;
   }
@@ -1149,15 +1667,16 @@ nav[data-menu] a,
 
 /* Where the menu shows, the theme toggle steps left of it: the `≡` glyph (0.75em at the button's
    1.25em size, i.e. 0.75em here) plus a 2ch gap, minus the toggle's own -0.25em overhang. */
-@media (max-width: 1239px) {
+@media (max-width: 1279px) {
   body:has(.toc-menu) .theme-toggle {
     margin-right: calc(0.5em + 2ch);
   }
 }
 
-/* The rail sits ~32ch (≈250px) right of the 90ch column, so it needs a viewport of
-   about 90ch + 2 × 32ch ≈ 1205px; below that it would be clipped, so hide it. */
-@media (max-width: 1239px) {
+/* The rail sits 24ch right of the 104ch grid, so it needs a viewport of about
+   104ch + 2 × 24ch + the body padding ≈ 1235px (more with wider monospace fonts);
+   below 1280px it would be clipped, so hide it. */
+@media (max-width: 1279px) {
   .toc-rail {
     display: none;
   }
@@ -1277,8 +1796,22 @@ body[data-search-open] {
 
 /* Inside the playground's reference panel (`<html data-embed>`, set by EMBED_INIT_SCRIPT): the sheet
    alone, without the top bar, `../`, footer or contents menu, and less top padding. */
-html[data-embed] :is(.theme-toggle-rail, .back-rail, .toc-menu, .toc-rail, footer) {
+html[data-embed] :is(.theme-toggle-rail, .back-rail, .toc-menu, .toc-rail, footer, .site-nav, .crumbs) {
   display: none;
+}
+
+/* The sheet alone: one column, as on a phone. Beats the :root media query by specificity. */
+html[data-embed] {
+  --shell: 90ch;
+  --offset: 0ch;
+}
+
+html[data-embed] .split {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-embed] .split > .split-main {
+  grid-column: auto;
 }
 
 html[data-embed] body {
