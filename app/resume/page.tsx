@@ -1,6 +1,6 @@
 /**
  * @file `/resume/`: the resume from `lib/profile.ts`, in the PDF's order (education,
- * experience, projects, university activities, skills), with a link to the PDF itself.
+ * experience, projects, university activities, skills), with a link to the PDF when one is set.
  * Sections without entries are left out.
  */
 import type { Metadata } from "next";
@@ -28,9 +28,11 @@ export default function ResumePage() {
       pinFooterLink
       section="resume"
       titleAside={
-        <DottedLink href={RESUME.pdf} className="button">
-          Download PDF
-        </DottedLink>
+        RESUME.pdf && (
+          <DottedLink href={RESUME.pdf} className="button">
+            Download PDF
+          </DottedLink>
+        )
       }
     >
       <p>
@@ -39,6 +41,12 @@ export default function ResumePage() {
         <DottedLink href={PROFILE.github}>GitHub</DottedLink>
         <span className="dim"> · </span>
         <DottedLink href={PROFILE.linkedin}>LinkedIn</DottedLink>
+        {PROFILE.email && (
+          <>
+            <span className="dim"> · </span>
+            <DottedLink href={`mailto:${PROFILE.email}`}>{PROFILE.email}</DottedLink>
+          </>
+        )}
       </p>
 
       {RESUME.education.length > 0 && (

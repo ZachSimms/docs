@@ -67,10 +67,10 @@ describe("profile", () => {
     ]);
   });
 
-  it("points GitHub at the repository owner and the resume at its PDF in public/", () => {
+  it("points GitHub at the repository owner and any resume PDF at a file in public/", () => {
     expect(PROFILE.github).toBe("https://github.com/ZachSimms");
-    expect(RESUME.pdf).toBe("/docs/ZachSimms_Resume_Updated.pdf");
-    expect(existsSync(path.join(process.cwd(), "public", RESUME.pdf))).toBe(true);
+    expect(PROFILE.email).toBe("zachsimms97@gmail.com");
+    if (RESUME.pdf) expect(existsSync(path.join(process.cwd(), "public", RESUME.pdf))).toBe(true);
   });
 
   it("has no placeholders left in the resume", () => {

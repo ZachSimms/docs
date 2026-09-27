@@ -51,7 +51,7 @@ test.describe("home", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach Simms");
     await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-weight", "400");
     await expect(page.locator("main > p").nth(0)).toHaveText("-");
-    await expect(page.locator("main > p").nth(1)).toContainText("Lead engineer at SAIC.");
+    await expect(page.locator("main > p").nth(1)).toContainText("Software Engineer at SAIC.");
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
@@ -1934,11 +1934,17 @@ test.describe("split layout", () => {
       "Science Applications International Corporation",
     );
     await expect(page.locator("main")).not.toContainText("[");
-    const pdf = page.getByRole("link", { name: "Download PDF" });
-    await expect(pdf).toHaveAttribute("href", "/docs/ZachSimms_Resume_Updated.pdf");
+    await expect(page.locator("main")).toContainText("ensured monitoring with Splunk");
+    // No PDF is published for now, so there is no download link and the old file is gone.
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
     const response = await page.request.get("/docs/ZachSimms_Resume_Updated.pdf");
-    expect(response.status()).toBe(200);
-    expect(response.headers()["content-type"]).toBe("application/pdf");
+    expect(response.status()).toBe(404);
+    await expect(page.locator('main a[href="mailto:zachsimms97@gmail.com"]')).toHaveText(
+      "zachsimms97@gmail.com",
+    );
+    await expect(page.locator('.site-nav a[href="mailto:zachsimms97@gmail.com"]')).toHaveText(
+      "Email",
+    );
   });
 
   test("phones get the sections as one line above the page, without the tree", async ({ page }) => {

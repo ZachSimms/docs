@@ -1,9 +1,10 @@
 /**
  * @file Everything personal the Home, Projects and Resume pages show, in one place.
  *
- * The resume below is transcribed from `public/docs/ZachSimms_Resume_Updated.pdf`
- * (linked from `/resume/`); keep the two in step. A resume section with no entries
- * is not rendered, so a page never shows an empty heading.
+ * The resume below is transcribed from Zach's resume PDF. The PDF itself is not
+ * published yet: set `RESUME.pdf` once a copy for the web (without the phone number)
+ * is in `public/`. A resume section with no entries is not rendered, so a page never
+ * shows an empty heading.
  */
 
 import { listAllSheets } from "./content";
@@ -19,13 +20,13 @@ export const PROFILE = {
   /** Current role, printed under the name on the resume. */
   role: "Software Engineer",
   /** Home page introduction: two or three sentences. */
-  bio: "Lead engineer at SAIC. AI systems and open-source tooling for a U.S. defense program. I write things down here.",
+  bio: "Software Engineer at SAIC. AI systems and open-source tooling for a U.S. defense program. I write things down here.",
   /** One line about the projects, beside Projects on the home page. */
   projectsNote: "agents, dev tools, game servers",
   github: "https://github.com/ZachSimms",
   linkedin: "https://www.linkedin.com/in/zachsimms97",
-  /** Optional `mailto:` target; leave undefined to show no email link. */
-  email: undefined as string | undefined,
+  /** Shown as an Email link in the navigation and on the resume; undefined hides it. */
+  email: "zachsimms97@gmail.com" as string | undefined,
 } as const;
 
 /** One project card. */
@@ -112,8 +113,8 @@ export interface Involvement {
 
 /** The resume page's content, in the PDF's order. */
 export const RESUME = {
-  /** The PDF under `public/`, linked as "Download PDF". */
-  pdf: "/docs/ZachSimms_Resume_Updated.pdf",
+  /** A PDF under `public/` (e.g. `/docs/resume.pdf`), linked as "Download PDF"; undefined hides the link. */
+  pdf: undefined as string | undefined,
   education: [
     {
       school: "University of Nebraska Omaha",
@@ -134,7 +135,7 @@ export const RESUME = {
         "Replatformed 2 locally hosted Rancher Kubernetes Engine 2 (RKE2) applications into AWS GovCloud, re-architecting NFS file I/O onto S3 object storage and converting synchronous workflows to SQS/SNS event-driven processing with no loss of data integrity or functionality.",
         "Led UI modernization of a TypeScript/React application serving 20,000 personnel across the US Department of War (DoW).",
         "Transitioned legacy pages to be editable by user with role-based access control (RBAC) using Keycloak OpenID Connect (OIDC) authentication.",
-        "Containerized services with Kubernetes and Helm and ensuring monitoring with Splunk.",
+        "Containerized services with Kubernetes and Helm and ensured monitoring with Splunk.",
         "Hand picked from outside the agency to be 1 of 10 alpha testers for the DoW Catalyst Forge (AI development platform) run by the Army CDAIO based on contributions to the GenAI development collaboration forum.",
       ],
     },
