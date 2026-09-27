@@ -5,7 +5,7 @@ A Next.js 16 personal site styled after [williamjansson.com](https://williamjans
 under `/docs/`. Plain monospace, every page prerendered at build time; the only client-side code is
 search, the theme toggle, the keyboard navigation and the table-of-contents tracking.
 
-The home page is one 90ch column: name, introduction, a dither block, and the sections with their keys (`p` projects,
+The home page is one 90ch column: name, introduction and the sections with their keys (`p` projects,
 `r` resume, `b` blog, `g` docs). Every other page but the playground uses the split layout: the site's
 sections on the left (with the docs' topic tree unfolded down to the page being read), the page on
 the right. Below 900px the sections become one line of links above the page and the tree is left out;
@@ -115,9 +115,11 @@ not kebab-case fails the build.
 - **Zen mode**: on a sheet or a post, `zen` beside `../` (or `z`) hides the navigation, breadcrumbs
   and footer and puts the table of contents on the left, from 900px up. It is remembered in
   `localStorage` and restored before first paint.
-- **Dither block** (home): a noise field reduced to 3px cells with an 8×8 Bayer ordered dither
-  (`lib/dither.ts`), drawn on a canvas in the text color so it follows the theme. It drifts slowly
-  while on screen and stays still for readers who prefer reduced motion.
+- **Sky** (home, beside the text): tonight's moon in the light theme, the sun in the dark theme
+  (`d` switches), dithered in 3px cells with an 8×8 Bayer matrix and drawn on a canvas in the text
+  color (`lib/sky.ts`, `lib/dither.ts`). The moon shows its real phase, worked out in the reader's
+  browser (phase name and percent lit, from the mean lunar month); the sun's caption counts the days
+  to the next equinox or solstice (Meeus' mean formulas). On phones it follows the section list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.
@@ -176,7 +178,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 | Route                    | Content                                                                  |
 | ------------------------ | ------------------------------------------------------------------------ |
-| `/`                      | introduction, dither block, sections with their keys                     |
+| `/`                      | introduction, sections with their keys, tonight's moon (or the sun)      |
 | `/projects/`             | every project as a card                                                  |
 | `/blog/`                 | the latest post as an excerpt, then every post by year                   |
 | `/blog/<slug>/`          | one post                                                                 |

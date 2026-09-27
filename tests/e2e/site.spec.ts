@@ -44,7 +44,7 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("is one column: name, introduction, a dither block, sections with their keys", async ({
+  test("is one column: name, introduction and sections, beside tonight's moon", async ({
     page,
   }) => {
     await page.goto("/");
@@ -56,24 +56,40 @@ test.describe("home", () => {
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    // The dither block: a decorative canvas, drawn in the text color, denser at the bottom.
-    const dither = page.locator("canvas.dither");
-    await expect(dither).toBeVisible();
-    await expect(dither).toHaveAttribute("aria-hidden", "true");
-    const [top, bottom] = await dither.evaluate((canvas: HTMLCanvasElement) => {
-      const { data, width, height } = canvas
-        .getContext("2d")!
-        .getImageData(0, 0, canvas.width, canvas.height);
-      const lit = (from: number, to: number) => {
+    // Beside the text: tonight's moon, dithered on a canvas, with its phase; d brings the sun.
+    const sky = page.locator("figure.sky");
+    await expect(sky).toBeVisible();
+    const caption = sky.locator("figcaption");
+    await expect(caption).toHaveText(
+      /^(new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+%\s*tonight's moon; d for the sun$/,
+    );
+    const inked = () =>
+      sky.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
+        const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
         let count = 0;
-        for (let y = from; y < to; y++)
-          for (let x = 0; x < width; x++) if (data[(y * width + x) * 4 + 3]! > 0) count++;
+        for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) count++;
         return count;
-      };
-      return [lit(0, Math.floor(height / 3)), lit(Math.floor((2 * height) / 3), height)];
-    });
-    expect(bottom).toBeGreaterThan(top);
-    expect(bottom).toBeGreaterThan(0);
+      });
+    expect(await inked()).toBeGreaterThan(0);
+    // Floated to the right of the text, flush with the column's right edge, level with the name.
+    const [skyBox, mainBox, nameBox] = await Promise.all([
+      sky.boundingBox(),
+      page.locator("main").boundingBox(),
+      page.getByRole("heading", { level: 1 }).boundingBox(),
+    ]);
+    expect(skyBox!.x).toBeGreaterThan(mainBox!.x + mainBox!.width / 2);
+    expect(Math.abs(skyBox!.x + skyBox!.width - (mainBox!.x + mainBox!.width))).toBeLessThanOrEqual(
+      2,
+    );
+    expect(Math.abs(skyBox!.y - nameBox!.y)).toBeLessThan(20);
+
+    await hydrated(page);
+    await page.keyboard.press("d");
+    await expect(caption).toHaveText(
+      /(equinox|solstice) (today|tomorrow|in \d+ days)\s*today's sun; d for the moon$/,
+    );
+    expect(await inked()).toBeGreaterThan(0);
+    await page.keyboard.press("d");
 
     const rows = page.locator(".home-keys p");
     await expect(rows.locator("kbd")).toHaveText(["p", "r", "b", "g"]);
@@ -83,7 +99,6 @@ test.describe("home", () => {
 
     await expect(page.locator("footer a").first()).toHaveAttribute("href", "/info/");
     await expect(page.locator("footer a").first()).toHaveText("Info");
-    await expect(page.locator("footer .theme-hint")).toHaveText("press d for dark");
 
     const search = page.locator("footer").getByRole("button", { name: /search/i });
     await expect(search).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");

@@ -50,7 +50,10 @@ interface PageProps {
   docs?: DocsLocation;
   /** Breadcrumb trail shown above the heading. */
   crumbs?: readonly Crumb[];
-  /** Shown on the heading's line, right-aligned (a date, a download link). */
+  /**
+   * Shown on the heading's line, right-aligned (a date, a download link). In the solo
+   * layout: a figure floated to the right of the page's text (below it on phones).
+   */
   titleAside?: ReactNode;
   /** Offer zen mode (sheets and posts): a `zen` switch beside the pinned `../`. */
   zen?: boolean;
@@ -59,8 +62,6 @@ interface PageProps {
    * 90ch column with no navigation, a plain heading and the `-` separator (the home page).
    */
   layout?: "split" | "solo";
-  /** Right-aligned on the footer's line. */
-  footerAside?: ReactNode;
   /** Page body, placed after the heading. */
   children: ReactNode;
 }
@@ -103,7 +104,6 @@ export function Page({
   titleAside,
   zen = false,
   layout = "split",
-  footerAside,
   children,
 }: PageProps) {
   const solo = layout === "solo";
@@ -124,6 +124,7 @@ export function Page({
             {crumbs && crumbs.length > 0 && <Crumbs crumbs={crumbs} />}
             {solo ? (
               <>
+                {titleAside && <div className="solo-aside">{titleAside}</div>}
                 <h1>{title}</h1>
                 <p>-</p>
               </>
@@ -135,7 +136,7 @@ export function Page({
             )}
             {children}
           </main>
-          <footer className={footerAside ? "footer-split" : undefined}>
+          <footer>
             <p>
               <DottedLink href={footer.href} ariaLabel={footer.ariaLabel}>
                 {footer.label}
@@ -151,7 +152,6 @@ export function Page({
               )}
               <SearchLink />
             </p>
-            {footerAside}
           </footer>
         </div>
       </div>

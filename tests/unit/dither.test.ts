@@ -1,13 +1,6 @@
 /** Unit tests for the home page's dither pattern (`lib/dither.ts`). */
 import { describe, expect, it } from "bun:test";
-import {
-  BAYER_8,
-  bayerThreshold,
-  ditherField,
-  ditherMask,
-  fractalNoise,
-  valueNoise,
-} from "@/lib/dither";
+import { BAYER_8, bayerThreshold, ditherBits, fractalNoise, valueNoise } from "@/lib/dither";
 
 describe("Bayer matrix", () => {
   it("holds every threshold 0–63 exactly once", () => {
@@ -43,36 +36,14 @@ describe("noise", () => {
   });
 });
 
-describe("ditherField and ditherMask", () => {
-  it("keeps the field in [0, 1] and brighter toward the bottom on average", () => {
-    let top = 0;
-    let bottom = 0;
-    for (let i = 0; i < 100; i++) {
-      const u = i / 100;
-      const a = ditherField(u, 0.05, 0, 7);
-      const b = ditherField(u, 0.95, 0, 7);
-      for (const v of [a, b]) {
-        expect(v).toBeGreaterThanOrEqual(0);
-        expect(v).toBeLessThanOrEqual(1);
-      }
-      top += a;
-      bottom += b;
-    }
-    expect(bottom).toBeGreaterThan(top);
-  });
-
-  it("lights more cells in the bottom third than the top, and is deterministic", () => {
-    const columns = 120;
-    const rows = 60;
-    const mask = ditherMask(columns, rows, 0, 7);
-    expect(mask).toHaveLength(columns * rows);
-    expect([...mask].every((bit) => bit === 0 || bit === 1)).toBe(true);
-    const lit = (from: number, to: number) =>
-      mask.slice(from * columns, to * columns).reduce((sum, bit) => sum + bit, 0);
-    expect(lit(40, 60)).toBeGreaterThan(lit(0, 20) * 2);
-    // The top rows fade in from nearly empty.
-    expect(lit(0, 3)).toBeLessThan(columns * 3 * 0.1);
-    expect(ditherMask(columns, rows, 0, 7)).toEqual(mask);
-    expect(ditherMask(columns, rows, 0.5, 7)).not.toEqual(mask);
+describe("ditherBits", () => {
+  it("inks nothing at 0, everything at 1, and about half the cells at 0.5", () => {
+    const size = 16;
+    const count = (bits: Uint8Array) => bits.reduce((sum, bit) => sum + bit, 0);
+    expect(count(ditherBits(new Float32Array(size * size).fill(0), size, size))).toBe(0);
+    expect(count(ditherBits(new Float32Array(size * size).fill(1), size, size))).toBe(size * size);
+    expect(count(ditherBits(new Float32Array(size * size).fill(0.5), size, size))).toBe(
+      (size * size) / 2,
+    );
   });
 });

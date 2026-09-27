@@ -1,12 +1,11 @@
 /**
  * @file Home page (`/`): a single column without the side navigation. The name, the
- * introduction, a dither block, the sections with their shortcut keys, and a footer
- * with the theme hint.
+ * introduction and the sections with their shortcut keys, beside a dithered sky:
+ * tonight's moon, or the sun in the dark theme (`d` switches).
  */
-import { DitherBlock } from "@/components/DitherBlock";
 import { HomeKeys } from "@/components/HomeKeys";
 import { Page } from "@/components/Page";
-import { ThemeHint } from "@/components/ThemeHint";
+import { SkyFigure } from "@/components/SkyFigure";
 import { listPosts } from "@/lib/posts";
 import { PROFILE, RESUME } from "@/lib/profile";
 import { TOPICS } from "@/lib/topics";
@@ -23,10 +22,9 @@ export default function HomePage() {
       secondaryFooter={{ href: "/playground/", label: "Playground" }}
       section="home"
       layout="solo"
-      footerAside={<ThemeHint />}
+      titleAside={<SkyFigure />}
     >
       <p>{PROFILE.bio}</p>
-      <DitherBlock />
       <HomeKeys
         notes={{
           p: PROFILE.projectsNote,
