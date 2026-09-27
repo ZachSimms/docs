@@ -7,9 +7,14 @@
  * mean formulas (Astronomical Algorithms, ch. 27), good to within an hour for this
  * millennium. The drawings return one bit per cell, 1 where the cell is inked in the
  * text color: the moon's shadow is dense and its lit face sparse, the sun's light dense.
+ *
+ * The moon's face and the seasons' names depend on the reader's {@link Hemisphere}
+ * (see `lib/hemisphere.ts`): from the south the moon is seen upside down, and March
+ * brings the autumn equinox.
  */
 
 import { ditherBits, fractalNoise } from "./dither";
+import type { Hemisphere } from "./hemisphere";
 
 /** Mean length of a lunar month (new moon to new moon), in days. */
 export const SYNODIC_MONTH = 29.530588853;
@@ -50,26 +55,32 @@ export function moonPhase(date: Date): MoonPhase {
   return { age, illumination, name };
 }
 
+/** The four equinoxes and solstices of the year, in order from March, named for each hemisphere. */
+const SEASON_NAMES = {
+  north: ["spring equinox", "summer solstice", "autumn equinox", "winter solstice"],
+  south: ["autumn equinox", "winter solstice", "spring equinox", "summer solstice"],
+} as const;
+
 /** An equinox or solstice. */
 export interface SeasonEvent {
-  readonly name: "spring equinox" | "summer solstice" | "autumn equinox" | "winter solstice";
+  readonly name: (typeof SEASON_NAMES)[Hemisphere][number];
   readonly date: Date;
 }
 
 /** Meeus' mean JDE0 polynomials in Y = (year − 2000) / 1000, for March, June, September, December. */
 const SEASON_TERMS = [
-  ["spring equinox", [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057]],
-  ["summer solstice", [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.0003]],
-  ["autumn equinox", [2451810.21715, 365242.01767, -0.11575, 0.00337, 0.00078]],
-  ["winter solstice", [2451900.05952, 365242.74049, -0.06223, -0.00823, 0.00032]],
+  [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057],
+  [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.0003],
+  [2451810.21715, 365242.01767, -0.11575, 0.00337, 0.00078],
+  [2451900.05952, 365242.74049, -0.06223, -0.00823, 0.00032],
 ] as const;
 
-/** The four equinoxes and solstices of a year (northern-hemisphere names), in order. */
-export function seasonEvents(year: number): SeasonEvent[] {
+/** The four equinoxes and solstices of a year, in order, named for `hemisphere`. */
+export function seasonEvents(year: number, hemisphere: Hemisphere = "north"): SeasonEvent[] {
   const y = (year - 2000) / 1000;
-  return SEASON_TERMS.map(([name, [a, b, c, d, e]]) => {
+  return SEASON_TERMS.map(([a, b, c, d, e], i) => {
     const jde = a + b * y + c * y ** 2 + d * y ** 3 + e * y ** 4;
-    return { name, date: new Date((jde - 2440587.5) * DAY) };
+    return { name: SEASON_NAMES[hemisphere][i]!, date: new Date((jde - 2440587.5) * DAY) };
   });
 }
 
@@ -82,11 +93,14 @@ function localDay(date: Date): number {
  * The next equinox or solstice from `date`, and whole days until it on the reader's own
  * calendar (0 when it falls today).
  */
-export function nextSeasonEvent(date: Date): SeasonEvent & { readonly days: number } {
+export function nextSeasonEvent(
+  date: Date,
+  hemisphere: Hemisphere = "north",
+): SeasonEvent & { readonly days: number } {
   const year = date.getFullYear();
-  const next = [...seasonEvents(year - 1), ...seasonEvents(year), ...seasonEvents(year + 1)].find(
-    (event) => localDay(event.date) >= localDay(date),
-  )!;
+  const next = [year - 1, year, year + 1]
+    .flatMap((y) => seasonEvents(y, hemisphere))
+    .find((event) => localDay(event.date) >= localDay(date))!;
   return { ...next, days: localDay(next.date) - localDay(date) };
 }
 
@@ -115,8 +129,15 @@ function ramp(value: number, from: number, to: number): number {
  * its lit face sparse with darker seas and outlined craters.
  *
  * @param age - Fraction of the lunar month since new moon (see {@link moonPhase}).
+ * @param hemisphere - Where it is seen from: the south sees it turned half a circle, so
+ *   waxing lights the left-hand side and the seas and craters are upside down.
  */
-export function moonBits(size: number, age: number, seed = 11): Uint8Array {
+export function moonBits(
+  size: number,
+  age: number,
+  hemisphere: Hemisphere = "north",
+  seed = 11,
+): Uint8Array {
   const phase = age * 2 * Math.PI;
   // Direction of the sunlight, seen from Earth: behind the moon at new, in front at full;
   // waxing lights the right-hand side, waning the left (as seen from the north).
@@ -149,7 +170,9 @@ export function moonBits(size: number, age: number, seed = 11): Uint8Array {
       ink[i] = amount;
     }
   }
-  return ditherBits(ink, size, size);
+  const bits = ditherBits(ink, size, size);
+  // Drawn as seen from the north; reversing the cells turns it half a circle.
+  return hemisphere === "south" ? bits.reverse() : bits;
 }
 
 /**

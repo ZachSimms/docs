@@ -1,4 +1,4 @@
-/** Unit tests for the home page's moon and sun (`lib/sky.ts`). */
+/** Unit tests for the home page's moon and sun (`lib/sky.ts`) and the hemisphere they are drawn for. */
 import { describe, expect, it } from "bun:test";
 import {
   PHASE_NAMES,
@@ -8,6 +8,7 @@ import {
   seasonEvents,
   sunBits,
 } from "@/lib/sky";
+import { hemisphereOf, localTimeZone } from "@/lib/hemisphere";
 
 const HOUR = 3_600_000;
 
@@ -66,6 +67,62 @@ describe("seasons", () => {
     expect(nextSeasonEvent(new Date(2026, 11, 30, 12))).toMatchObject({ name: "spring equinox" });
     expect(nextSeasonEvent(new Date(2026, 11, 30, 12)).date.getFullYear()).toBe(2027);
   });
+
+  it("names them for the southern hemisphere on the same dates", () => {
+    const north = seasonEvents(2026);
+    const south = seasonEvents(2026, "south");
+    expect(south.map((e) => e.name)).toEqual([
+      "autumn equinox",
+      "winter solstice",
+      "spring equinox",
+      "summer solstice",
+    ]);
+    expect(south.map((e) => e.date.getTime())).toEqual(north.map((e) => e.date.getTime()));
+    expect(nextSeasonEvent(new Date(2026, 8, 27, 12), "south")).toMatchObject({
+      name: "summer solstice",
+      days: 85,
+    });
+  });
+});
+
+describe("hemisphereOf", () => {
+  it("reads southern time zones and their aliases as south", () => {
+    for (const zone of [
+      "Australia/Sydney",
+      "Australia/NSW",
+      "Pacific/Auckland",
+      "NZ",
+      "America/Sao_Paulo",
+      "America/Argentina/Buenos_Aires",
+      "America/Buenos_Aires",
+      "America/Santiago",
+      "Africa/Johannesburg",
+      "Asia/Jakarta",
+    ]) {
+      expect(hemisphereOf(zone)).toBe("south");
+    }
+  });
+
+  it("reads everything else, unknown or missing, as north", () => {
+    for (const zone of [
+      "America/Chicago",
+      "Europe/London",
+      "Asia/Tokyo",
+      "America/Boa_Vista",
+      "Africa/Kampala",
+      "UTC",
+      "Etc/GMT+10",
+      "Mars/Olympus_Mons",
+      "",
+      undefined,
+    ]) {
+      expect(hemisphereOf(zone)).toBe("north");
+    }
+  });
+
+  it("reports the runtime's time zone", () => {
+    expect(typeof localTimeZone()).toBe("string");
+  });
 });
 
 /** Share of inked cells in the given column range, over all rows. */
@@ -98,6 +155,14 @@ describe("moonBits", () => {
     expect(density(waning, size, 35, 55)).toBeGreaterThan(density(waning, size, 5, 25));
     const waxing = moonBits(size, 0.2);
     expect(density(waxing, size, 5, 25)).toBeGreaterThan(density(waxing, size, 35, 55));
+  });
+
+  it("turns the moon half a circle for the southern hemisphere", () => {
+    const waxing = moonBits(size, 0.2, "south");
+    expect(density(waxing, size, 35, 55)).toBeGreaterThan(density(waxing, size, 5, 25));
+    // Every cell of the northern moon is found at the opposite cell of the southern one.
+    const north = moonBits(size, 0.2, "north");
+    expect([...waxing].reverse()).toEqual([...north]);
   });
 });
 

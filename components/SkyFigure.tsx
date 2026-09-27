@@ -4,7 +4,8 @@
  * shown and how to switch (`d`, the theme key).
  *
  * Client component: the moon's phase and the days to the next equinox or solstice are
- * worked out when the page is opened, not when it was built. Until the theme is known
+ * worked out when the page is opened, not when it was built, for the reader's hemisphere
+ * as told by their time zone (see `lib/hemisphere.ts`). Until the theme is known
  * after hydration the canvas is blank and the caption holds its space. Cells are
  * {@link CELL} CSS pixels, drawn at the device's resolution in the text color, and redrawn
  * when the theme changes.
@@ -14,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/components/useTheme";
+import { hemisphereOf, localTimeZone, type Hemisphere } from "@/lib/hemisphere";
 import { THEME_KEY } from "@/lib/keys";
 import { moonBits, moonPhase, nextSeasonEvent, sunBits } from "@/lib/sky";
 
@@ -54,8 +56,12 @@ function paint(canvas: HTMLCanvasElement, bits: Uint8Array | null): void {
   context.drawImage(cells, 0, 0, side * ratio, side * ratio);
 }
 
-/** The caption's two lines for a theme, at `now`. */
-export function skyCaption(theme: "light" | "dark", now: Date): [string, string] {
+/** The caption's two lines for a theme, at `now`, seen from `hemisphere`. */
+export function skyCaption(
+  theme: "light" | "dark",
+  now: Date,
+  hemisphere: Hemisphere = "north",
+): [string, string] {
   if (theme === "light") {
     const { name, illumination } = moonPhase(now);
     return [
@@ -63,7 +69,7 @@ export function skyCaption(theme: "light" | "dark", now: Date): [string, string]
       `tonight's moon; ${THEME_KEY} for the sun`,
     ];
   }
-  const { name, days } = nextSeasonEvent(now);
+  const { name, days } = nextSeasonEvent(now, hemisphere);
   const when = days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
   return [`${name} ${when}`, `today's sun; ${THEME_KEY} for the moon`];
 }
@@ -74,6 +80,9 @@ export function SkyFigure() {
   const ref = useRef<HTMLCanvasElement>(null);
   // The moment the page was opened; kept so a re-render doesn't redraw a different sky.
   const [now] = useState(() => new Date());
+  // Read on the client when hydrating (state is not carried over from the server), so it
+  // is the reader's time zone, not the build machine's.
+  const [hemisphere] = useState(() => hemisphereOf(localTimeZone()));
 
   useEffect(() => {
     const canvas = ref.current;
@@ -82,12 +91,12 @@ export function SkyFigure() {
       theme === null
         ? null
         : theme === "light"
-          ? moonBits(CELLS, moonPhase(now).age)
+          ? moonBits(CELLS, moonPhase(now).age, hemisphere)
           : sunBits(CELLS);
     paint(canvas, bits);
-  }, [theme, now]);
+  }, [theme, now, hemisphere]);
 
-  const [first, second] = theme ? skyCaption(theme, now) : ["\u00a0", "\u00a0"];
+  const [first, second] = theme ? skyCaption(theme, now, hemisphere) : ["\u00a0", "\u00a0"];
   return (
     <figure className="sky">
       <canvas ref={ref} aria-hidden="true" style={{ width: CELL * CELLS, height: CELL * CELLS }} />

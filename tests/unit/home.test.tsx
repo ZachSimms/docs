@@ -75,6 +75,13 @@ describe("SkyFigure", () => {
     expect(skyCaption("dark", new Date(2026, 11, 21, 12))[0]).toBe("winter solstice today");
     expect(skyCaption("dark", new Date(2026, 11, 20, 12))[0]).toBe("winter solstice tomorrow");
   });
+
+  it("names the season for the southern hemisphere", () => {
+    expect(skyCaption("dark", new Date(2026, 8, 27, 12), "south")[0]).toBe(
+      "summer solstice in 85 days",
+    );
+    expect(skyCaption("light", new Date("2024-01-25T17:54Z"), "south")[0]).toBe("full moon, 100%");
+  });
 });
 
 describe("zen mode", () => {

@@ -119,7 +119,10 @@ not kebab-case fails the build.
   (`d` switches), dithered in 3px cells with an 8×8 Bayer matrix and drawn on a canvas in the text
   color (`lib/sky.ts`, `lib/dither.ts`). The moon shows its real phase, worked out in the reader's
   browser (phase name and percent lit, from the mean lunar month); the sun's caption counts the days
-  to the next equinox or solstice (Meeus' mean formulas). On phones it follows the section list.
+  to the next equinox or solstice (Meeus' mean formulas). Both follow the reader's hemisphere, told
+  from the browser's time zone with no location prompt (`lib/hemisphere.ts`): from the south the
+  moon is drawn upside down and March brings the autumn equinox. On phones it follows the section
+  list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.
