@@ -6,7 +6,7 @@ order: 1
 
 How to read, derive and state time and space complexity: the notation, growth rates, rules for
 simplifying, loops, recursion trees, the master theorem, amortized cost, what built-ins cost in
-TypeScript and Python, and which complexity an input size demands. The structures themselves are in
+TypeScript, JavaScript and Python, and which complexity an input size demands. The structures themselves are in
 [Arrays, hashing & lists](/dsa/linear-structures/) and [Trees & graphs](/dsa/trees-graphs/); logs are
 refreshed in [Math fundamentals](/math/math-fundamentals/#19-logarithms).
 
@@ -96,7 +96,7 @@ Count how many times the innermost statement runs, as a function of the input.
 | two pointers moving toward each other | at most $n$ moves in total | $O(n)$ |
 | sliding window: right moves $n$ times, left at most $n$ | $2n$ | $O(n)$, though it looks nested |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -133,6 +133,50 @@ Count how many times the innermost statement runs, as a function of the input.
 
     // O(a · b): two inputs, two variables
     function common(xs: string[], ys: string[]): number {
+      let hits = 0;
+      for (const x of xs)
+        for (const y of ys) if (x === y) hits++;
+      return hits;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // O(n): one pass
+    function total(xs) {
+      let s = 0;
+      for (const x of xs) s += x;
+      return s;
+    }
+
+    // O(n²): every pair, n(n−1)/2 iterations
+    function pairsSumTo(xs, t) {
+      let count = 0;
+      for (let i = 0; i < xs.length; i++)
+        for (let j = i + 1; j < xs.length; j++)
+          if (xs[i] + xs[j] === t) count++;
+      return count;
+    }
+
+    // O(log n): n halves every step
+    function halvings(n) {
+      let steps = 0;
+      for (; n > 1; n = Math.floor(n / 2)) steps++;
+      return steps;
+    }
+
+    // O(n log n): n outer steps × log n inner steps
+    function nLogN(n) {
+      let ops = 0;
+      for (let i = 0; i < n; i++)
+        for (let j = 1; j < n; j *= 2) ops++;
+      return ops;
+    }
+
+    // O(a · b): two inputs, two variables
+    function common(xs, ys) {
       let hits = 0;
       for (const x of xs)
         for (const y of ys) if (x === y) hits++;
@@ -207,7 +251,7 @@ total is the node count, about $b^d$.
  branching 2, depth n  →  at most 2ⁿ calls (really ≈ 1.618ⁿ)
 ```
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -229,6 +273,34 @@ total is the node count, about $b^d$.
 
     // O(log n): T(n) = T(n/2) + O(1)
     function power(x: number, n: number): number {
+      if (n === 0) return 1;
+      const half = power(x, Math.floor(n / 2));
+      return n % 2 === 0 ? half * half : half * half * x;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // O(2ⁿ) time, O(n) stack: two calls, depth n
+    function fib(n) {
+      return n < 2 ? n : fib(n - 1) + fib(n - 2);
+    }
+
+    // O(n) time and space: each n computed once
+    const memo = new Map();
+    function fibMemo(n) {
+      if (n < 2) return n;
+      const hit = memo.get(n);
+      if (hit !== undefined) return hit;
+      const v = fibMemo(n - 1) + fibMemo(n - 2);
+      memo.set(n, v);
+      return v;
+    }
+
+    // O(log n): T(n) = T(n/2) + O(1)
+    function power(x, n) {
       if (n === 0) return 1;
       const half = power(x, Math.floor(n / 2));
       return n % 2 === 0 ? half * half : half * half * x;
@@ -302,7 +374,7 @@ randomness involved (unlike average case). A dynamic array that doubles when ful
 $1 + 2 + 4 + \dots + n/2 < n$ elements over $n$ pushes, so each push is $O(1)$ amortized even though one
 push costs $O(n)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -323,6 +395,33 @@ push costs $O(n)$.
 
       get length(): number {
         return this.n;
+      }
+    }
+    // n pushes: copies = 1 + 2 + 4 + … < 2n → O(1) each
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class DynArray {
+      #buf = new Float64Array(1);
+      #n = 0;
+      copies = 0; // total element moves, for analysis
+
+      push(x) {
+        if (this.#n === this.#buf.length) {
+          const next = new Float64Array(this.#n * 2);
+          for (let i = 0; i < this.#n; i++)
+            next[i] = this.#buf[i];
+          this.copies += this.#n;
+          this.#buf = next;
+        }
+        this.#buf[this.#n++] = x;
+      }
+
+      get length() {
+        return this.#n;
       }
     }
     // n pushes: copies = 1 + 2 + 4 + … < 2n → O(1) each
@@ -387,7 +486,7 @@ one you mean.
 | 2-D DP table | $O(r \cdot c)$, often reducible to one row $O(c)$ |
 | Generator / iterator instead of a list | $O(1)$ instead of $O(n)$ |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -398,6 +497,23 @@ one you mean.
 
     // O(n) time, O(1) extra space
     function sumIter(xs: number[]): number {
+      let s = 0;
+      for (const x of xs) s += x;
+      return s;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // O(n) time, O(n) stack: one frame per element
+    function sumRec(xs, i = 0) {
+      return i === xs.length ? 0 : xs[i] + sumRec(xs, i + 1);
+    }
+
+    // O(n) time, O(1) extra space
+    function sumIter(xs) {
       let s = 0;
       for (const x of xs) s += x;
       return s;
@@ -525,7 +641,7 @@ aim one class better.
 | `str.split` / `list(s)` to "just look" | $O(n)$ copy | index directly |
 | forgetting the output | printing all subsets is $O(2^n \cdot n)$ | include output size |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -558,6 +674,44 @@ aim one class better.
     // Fast: push into one array: O(n)
     const squaresFast = (xs: number[]): number[] => {
       const out: number[] = [];
+      for (const x of xs) out.push(x * x);
+      return out;
+    };
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Slow: includes() scans bad for every x: O(n·m)
+    function keepSlow(xs, bad) {
+      return xs.filter((x) => !bad.includes(x));
+    }
+    // Fast: one Set, O(1) average lookups: O(n + m)
+    function keepFast(xs, bad) {
+      const ban = new Set(bad);
+      return xs.filter((x) => !ban.has(x));
+    }
+
+    // Slow: shift() moves every element: O(n²) total
+    function drainSlow(q) {
+      let s = 0;
+      while (q.length > 0) s += q.shift();
+      return s;
+    }
+    // Fast: advance a head index: O(n)
+    function drainFast(q) {
+      let s = 0;
+      for (let h = 0; h < q.length; h++) s += q[h];
+      return s;
+    }
+
+    // Slow: the spread copies the accumulator: O(n²)
+    const squaresSlow = (xs) =>
+      xs.reduce((acc, x) => [...acc, x * x], []);
+    // Fast: push into one array: O(n)
+    const squaresFast = (xs) => {
+      const out = [];
       for (const x of xs) out.push(x * x);
       return out;
     };
@@ -635,7 +789,7 @@ Use before coding, from the constraints.
 Use when you can't tell from the code: time $f(n)$ and $f(2n)$. A ratio near 2 is linear, near 2.1–2.2
 is $n \log n$, near 4 is quadratic, near 8 cubic.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -649,6 +803,24 @@ is $n \log n$, near 4 is quadratic, near 8 cubic.
 
     function growth(f: Fn, n = 1 << 10): number[] {
       const ratios: number[] = [];
+      for (let k = 0; k < 4; k++, n *= 2)
+        ratios.push(timeIt(f, 2 * n) / timeIt(f, n));
+      return ratios; // ≈2 linear, ≈4 quadratic
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function timeIt(f, n) {
+      const t0 = performance.now();
+      f(n);
+      return performance.now() - t0;
+    }
+
+    function growth(f, n = 1 << 10) {
+      const ratios = [];
       for (let k = 0; k < 4; k++, n *= 2)
         ratios.push(timeIt(f, 2 * n) / timeIt(f, n));
       return ratios; // ≈2 linear, ≈4 quadratic

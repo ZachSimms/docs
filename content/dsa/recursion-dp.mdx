@@ -26,7 +26,7 @@ problem families and a checklist for designing the state. Graph searches built o
   `xs.slice(1)` / `xs[1:]` in every call turns $O(n)$ into $O(n^2)$.
 - Every recursion can become a loop with an explicit stack of "what's left to do".
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -43,6 +43,28 @@ problem families and a checklist for designing the state. Graph searches built o
       const stack: Nested[] = [x];
       while (stack.length > 0) {
         const top = stack.pop()!;
+        if (typeof top === "number") out.push(top);
+        else stack.push(...top.toReversed()); // keep order
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function flatten(x) {
+      if (typeof x === "number") return [x]; // base case
+      return x.flatMap(flatten); // smaller pieces
+    }
+
+    // Same result with an explicit stack: no depth limit
+    function flattenIter(x) {
+      const out = [];
+      const stack = [x];
+      while (stack.length > 0) {
+        const top = stack.pop();
         if (typeof top === "number") out.push(top);
         else stack.push(...top.toReversed()); // keep order
       }
@@ -118,7 +140,7 @@ backtrack(state):
 
 "Subsets": every node of the tree is an answer; `start` stops the same set from appearing in two orders.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -126,6 +148,26 @@ backtrack(state):
       const out: number[][] = [];
       const path: number[] = [];
       const go = (start: number): void => {
+        out.push([...path]); // copy: path keeps changing
+        for (let i = start; i < nums.length; i++) {
+          path.push(nums[i]); // choose
+          go(i + 1); // explore
+          path.pop(); // unchoose
+        }
+      };
+      go(0);
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function subsets(nums) {
+      const out = [];
+      const path = [];
+      const go = (start) => {
         out.push([...path]); // copy: path keeps changing
         for (let i = start; i < nums.length; i++) {
           path.push(nums[i]); // choose
@@ -183,7 +225,7 @@ Space is $O(n)$ for the path and recursion, plus the output. Python's `itertools
 | Permutations with duplicates | sort; skip `xs[i] === xs[i - 1] && !used[i - 1]` |
 | Fixed size $k$ | stop at `path.length === k`; prune when too few items remain |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -192,6 +234,33 @@ Space is $O(n)$ for the path and recursion, plus the output. Python's `itertools
       const path: number[] = [];
       const used = new Array<boolean>(nums.length).fill(false);
       const go = (): void => {
+        if (path.length === nums.length) {
+          out.push([...path]);
+          return;
+        }
+        for (let i = 0; i < nums.length; i++) {
+          if (used[i]) continue;
+          used[i] = true;
+          path.push(nums[i]);
+          go();
+          path.pop();
+          used[i] = false;
+        }
+      };
+      go();
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function permutations(nums) {
+      const out = [];
+      const path = [];
+      const used = new Array(nums.length).fill(false);
+      const go = () => {
         if (path.length === nums.length) {
           out.push([...path]);
           return;
@@ -242,7 +311,7 @@ Space is $O(n)$ for the path and recursion, plus the output. Python's `itertools
 "Combination Sum": distinct positive candidates, each usable any number of times, every combination that adds
 up to `target`.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -254,6 +323,31 @@ up to `target`.
       const out: number[][] = [];
       const path: number[] = [];
       const go = (start: number, left: number): void => {
+        if (left === 0) {
+          out.push([...path]);
+          return;
+        }
+        for (let i = start; i < xs.length; i++) {
+          if (xs[i] > left) break; // sorted: the rest are bigger
+          path.push(xs[i]);
+          go(i, left - xs[i]); // i, not i + 1: reuse allowed
+          path.pop();
+        }
+      };
+      go(0, target);
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function combinationSum(cands, target) {
+      const xs = cands.toSorted((a, b) => a - b);
+      const out = [];
+      const path = [];
+      const go = (start, left) => {
         if (left === 0) {
           out.push([...path]);
           return;
@@ -310,7 +404,7 @@ Place $n$ queens on an $n \times n$ board so none attack each other.
 4. Row `n` reached means a full board: count it, or render each row as `".".repeat(c) + "Q" + …`.
 5. Faster: store the three sets as bitmasks; the free columns are `~(cols | diag | anti) & full`.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -319,6 +413,34 @@ Place $n$ queens on an $n \times n$ board so none attack each other.
       const diag = new Set<number>(); // r - c
       const anti = new Set<number>(); // r + c
       const place = (r: number): number => {
+        if (r === n) return 1;
+        let count = 0;
+        for (let c = 0; c < n; c++) {
+          if (cols.has(c) || diag.has(r - c)) continue;
+          if (anti.has(r + c)) continue;
+          cols.add(c);
+          diag.add(r - c);
+          anti.add(r + c);
+          count += place(r + 1);
+          cols.delete(c);
+          diag.delete(r - c);
+          anti.delete(r + c);
+        }
+        return count;
+      };
+      return place(0);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function totalNQueens(n) {
+      const cols = new Set();
+      const diag = new Set(); // r - c
+      const anti = new Set(); // r + c
+      const place = (r) => {
         if (r === n) return 1;
         let count = 0;
         for (let c = 0; c < n; c++) {
@@ -397,13 +519,34 @@ you can take from houses `i..n-1`: skip house `i`, or take it and jump to `i + 2
 
 ### 1. Top-down: recursion plus a memo
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function robMemo(houses: number[]): number {
       const memo = new Map<number, number>();
       const best = (i: number): number => {
+        if (i >= houses.length) return 0;
+        const hit = memo.get(i);
+        if (hit !== undefined) return hit;
+        const v = Math.max(
+          best(i + 1), // skip house i
+          houses[i] + best(i + 2), // take it
+        );
+        memo.set(i, v);
+        return v;
+      };
+      return best(0);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function robMemo(houses) {
+      const memo = new Map();
+      const best = (i) => {
         if (i >= houses.length) return 0;
         const hit = memo.get(i);
         if (hit !== undefined) return hit;
@@ -446,7 +589,7 @@ Python. A fresh `@cache` inside the function avoids stale results across calls.
 
 ### 2. Bottom-up: fill a table
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -454,6 +597,21 @@ Python. A fresh `@cache` inside the function avoids stale results across calls.
       const n = houses.length;
       // dp[i] = best(i); dp[n] = dp[n + 1] = 0
       const dp = new Array<number>(n + 2).fill(0);
+      for (let i = n - 1; i >= 0; i--) {
+        dp[i] = Math.max(dp[i + 1], houses[i] + dp[i + 2]);
+      }
+      return dp[0];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function robTable(houses) {
+      const n = houses.length;
+      // dp[i] = best(i); dp[n] = dp[n + 1] = 0
+      const dp = new Array(n + 2).fill(0);
       for (let i = n - 1; i >= 0; i--) {
         dp[i] = Math.max(dp[i + 1], houses[i] + dp[i + 2]);
       }
@@ -482,11 +640,27 @@ $O(n)$ time and space, no recursion. The loop runs from `n - 1` down because `dp
 
 ### 3. Keep only what the transition reads
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function rob(houses: number[]): number {
+      let next1 = 0; // dp[i + 1]
+      let next2 = 0; // dp[i + 2]
+      for (let i = houses.length - 1; i >= 0; i--) {
+        const cur = Math.max(next1, houses[i] + next2);
+        next2 = next1;
+        next1 = cur;
+      }
+      return next1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function rob(houses) {
       let next1 = 0; // dp[i + 1]
       let next2 = 0; // dp[i + 2]
       for (let i = houses.length - 1; i >= 0; i--) {
@@ -538,7 +712,7 @@ $O(n)$ time, $O(1)$ space. The same two-variable roll works for Climbing Stairs 
 
 ### 0/1 knapsack
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -549,6 +723,23 @@ $O(n)$ time, $O(1)$ space. The same two-variable roll works for Climbing Stairs 
       cap: number,
     ): number {
       const dp = new Array<number>(cap + 1).fill(0);
+      for (let i = 0; i < ws.length; i++) {
+        // downward: dp[c - w] still means "without item i"
+        for (let c = cap; c >= ws[i]; c--) {
+          dp[c] = Math.max(dp[c], dp[c - ws[i]] + vs[i]);
+        }
+      }
+      return dp[cap];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Max value with total weight <= cap; each item once
+    function knapsack(ws, vs, cap) {
+      const dp = new Array(cap + 1).fill(0);
       for (let i = 0; i < ws.length; i++) {
         // downward: dp[c - w] still means "without item i"
         for (let c = cap; c >= ws[i]; c--) {
@@ -582,7 +773,7 @@ capacities up to about $10^5$–$10^6$, not for $10^9$.
 
 ### Longest increasing subsequence
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -601,6 +792,32 @@ capacities up to about $10^5$–$10^6$, not for $10^9$.
     // increasing run of length k + 1 (tails stays sorted)
     function lis(xs: number[]): number {
       const tails: number[] = [];
+      for (const x of xs) {
+        tails[lowerBound(tails, x)] = x; // extend or improve
+      }
+      return tails.length;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // O(n²): dp[i] = longest increasing run ending at i
+    function lisQuadratic(xs) {
+      const dp = xs.map(() => 1);
+      for (let i = 0; i < xs.length; i++) {
+        for (let j = 0; j < i; j++) {
+          if (xs[j] < xs[i]) dp[i] = Math.max(dp[i], dp[j] + 1);
+        }
+      }
+      return dp.reduce((a, b) => Math.max(a, b), 0);
+    }
+
+    // O(n log n): tails[k] = smallest tail of any
+    // increasing run of length k + 1 (tails stays sorted)
+    function lis(xs) {
+      const tails = [];
       for (const x of xs) {
         tails[lowerBound(tails, x)] = x; // extend or improve
       }
@@ -670,7 +887,7 @@ non-decreasing runs use the upper bound (`bisect_right`).
 Unbounded knapsack with a min. `Infinity` marks amounts that can't be made. $O(n \cdot amount)$ time,
 $O(amount)$ space. Greedy "largest coin first" fails for coins like `[1, 3, 4]` and amount 6.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -679,6 +896,22 @@ $O(amount)$ space. Greedy "largest coin first" fails for coins like `[1, 3, 4]` 
       amount: number,
     ): number {
       const dp = new Array<number>(amount + 1).fill(Infinity);
+      dp[0] = 0; // zero coins make zero
+      for (let a = 1; a <= amount; a++) {
+        for (const c of coins) {
+          if (c <= a) dp[a] = Math.min(dp[a], dp[a - c] + 1);
+        }
+      }
+      return dp[amount] === Infinity ? -1 : dp[amount];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function coinChange(coins, amount) {
+      const dp = new Array(amount + 1).fill(Infinity);
       dp[0] = 0; // zero coins make zero
       for (let a = 1; a <= amount; a++) {
         for (const c of coins) {
@@ -712,12 +945,26 @@ $O(amount)$ space. Greedy "largest coin first" fails for coins like `[1, 3, 4]` 
 Coins in the **outer** loop count combinations (1+2 and 2+1 are the same). Swap the loops (amount outer)
 and you count ordered sequences instead, which is "Combination Sum IV". $O(n \cdot amount)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function change(amount: number, coins: number[]): number {
       const dp = new Array<number>(amount + 1).fill(0);
+      dp[0] = 1; // one way to make 0: no coins
+      for (const c of coins) {
+        for (let a = c; a <= amount; a++) dp[a] += dp[a - c];
+      }
+      return dp[amount];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function change(amount, coins) {
+      const dp = new Array(amount + 1).fill(0);
       dp[0] = 1; // one way to make 0: no coins
       for (const c of coins) {
         for (let a = c; a <= amount; a++) dp[a] += dp[a - c];
@@ -746,7 +993,7 @@ and you count ordered sequences instead, which is "Combination Sum IV". $O(n \cd
 Fewest inserts, deletes and replacements to turn `a` into `b`. Row 0 and column 0 are the cost of building
 from or deleting to an empty string. $O(mn)$ time and space ($O(n)$ with two rows).
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -768,6 +1015,36 @@ from or deleting to an empty string. $O(mn)$ time and space ($O(n)$ with two row
                 dp[i][j - 1], // insert b[j-1]
                 dp[i - 1][j - 1], // replace
               );
+        }
+      }
+      return dp[m][n];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function minDistance(a, b) {
+      const m = a.length;
+      const n = b.length;
+      // dp[i][j]: edits to turn a[:i] into b[:j]
+      const dp = Array.from({ length: m + 1 }, () =>
+        new Array(n + 1).fill(0),
+      );
+      for (let i = 0; i <= m; i++) dp[i][0] = i; // deletes
+      for (let j = 0; j <= n; j++) dp[0][j] = j; // inserts
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          dp[i][j] =
+            a[i - 1] === b[j - 1]
+              ? dp[i - 1][j - 1] // free: characters match
+              : 1 +
+                Math.min(
+                  dp[i - 1][j], // delete a[i-1]
+                  dp[i][j - 1], // insert b[j-1]
+                  dp[i - 1][j - 1], // replace
+                );
         }
       }
       return dp[m][n];
@@ -807,7 +1084,7 @@ from or deleting to an empty string. $O(mn)$ time and space ($O(n)$ with two row
 Same grid as edit distance, but each row only reads the row above: keep `prev` and `cur`. $O(mn)$ time,
 $O(n)$ space. Recover the actual subsequence only if you keep the full table.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -819,6 +1096,26 @@ $O(n)$ space. Recover the actual subsequence only if you keep the full table.
           cur[j] = a[i - 1] === b[j - 1]
             ? prev[j - 1] + 1
             : Math.max(prev[j], cur[j - 1]);
+        }
+        prev = cur; // row i becomes "the row above"
+      }
+      return prev[b.length];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function lcs(a, b) {
+      let prev = new Array(b.length + 1).fill(0);
+      for (let i = 1; i <= a.length; i++) {
+        const cur = new Array(b.length + 1).fill(0);
+        for (let j = 1; j <= b.length; j++) {
+          cur[j] =
+            a[i - 1] === b[j - 1]
+              ? prev[j - 1] + 1
+              : Math.max(prev[j], cur[j - 1]);
         }
         prev = cur; // row i becomes "the row above"
       }
@@ -851,13 +1148,30 @@ $O(n)$ space. Recover the actual subsequence only if you keep the full table.
 `ok[i]`: the first `i` characters split into dictionary words. $O(n^2)$ substring checks (each $O(n)$ to
 hash); cap `j` at the longest word length to speed it up.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function wordBreak(s: string, words: string[]): boolean {
       const dict = new Set(words);
       const ok = new Array<boolean>(s.length + 1).fill(false);
+      ok[0] = true; // the empty prefix
+      for (let i = 1; i <= s.length; i++) {
+        for (let j = 0; j < i && !ok[i]; j++) {
+          ok[i] = ok[j] && dict.has(s.slice(j, i));
+        }
+      }
+      return ok[s.length];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function wordBreak(s, words) {
+      const dict = new Set(words);
+      const ok = new Array(s.length + 1).fill(false);
       ok[0] = true; // the empty prefix
       for (let i = 1; i <= s.length; i++) {
         for (let j = 0; j < i && !ok[i]; j++) {

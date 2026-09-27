@@ -253,7 +253,7 @@ it. Adding a server takes over only the arcs just before its points, about `1/N`
 every key would move. **Virtual nodes** (each server at 100–200 points) even out the arcs, spread a dead server's
 load across all survivors, and let a bigger machine take more points.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -299,6 +299,57 @@ load across all survivors, and let a bigger machine take more points.
           else hi = mid;
         }
         return this.ring[lo % this.ring.length].node; // wrap
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // FNV-1a over UTF-8 bytes, then a murmur3 finalizer
+    // so near-identical strings land far apart
+    function hash32(s, seed = 0x811c9dc5) {
+      let h = seed;
+      for (const b of new TextEncoder().encode(s)) {
+        h = Math.imul(h ^ b, 0x01000193);
+      }
+      h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+      h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+      return (h ^ (h >>> 16)) >>> 0;
+    }
+
+    class HashRing {
+      #ring = [];
+      #vnodes;
+
+      constructor(vnodes = 100) {
+        this.#vnodes = vnodes;
+      }
+
+      add(node) {
+        for (let i = 0; i < this.#vnodes; i++) {
+          const pos = hash32(`${node}#${i}`);
+          this.#ring.push({ pos, node });
+        }
+        this.#ring.sort((a, b) => a.pos - b.pos);
+      }
+
+      remove(node) {
+        this.#ring = this.#ring.filter((v) => v.node !== node);
+      }
+
+      nodeFor(key) {
+        if (this.#ring.length === 0) throw new Error("empty");
+        const h = hash32(key);
+        let lo = 0;
+        let hi = this.#ring.length; // first pos ≥ h
+        while (lo < hi) {
+          const mid = (lo + hi) >>> 1;
+          if (this.#ring[mid].pos < h) lo = mid + 1;
+          else hi = mid;
+        }
+        return this.#ring[lo % this.#ring.length].node; // wrap
       }
     }
     ```
@@ -552,7 +603,7 @@ $p \approx (1 - e^{-kn/m})^k$. Sizing for $n$ items at a target $p$: $m = -\frac
 $k = \frac{m}{n} \ln 2$ hash functions. The $k$ positions come from two hashes as $h_1 + i \cdot h_2$ (double hashing). Uses `hash32` from
 the ring above.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -590,6 +641,53 @@ the ring above.
       mightContain(item: string): boolean {
         return this.indexes(item).every(
           (i) => (this.bits[i >> 3] & (1 << (i & 7))) !== 0,
+        );
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class BloomFilter {
+      #bits;
+      #m;
+      #k;
+
+      constructor(
+        m, // bits
+        k, // hash functions
+      ) {
+        this.#m = m;
+        this.#k = k;
+        this.#bits = new Uint8Array(Math.ceil(m / 8));
+      }
+
+      static forCapacity(n, p) {
+        const m = Math.ceil((-n * Math.log(p)) / Math.LN2 ** 2);
+        const k = Math.max(1, Math.round((m / n) * Math.LN2));
+        return new BloomFilter(m, k);
+      }
+
+      #indexes(item) {
+        const h1 = hash32(item);
+        const h2 = hash32(item, 0x9747b28c);
+        return Array.from(
+          { length: this.#k },
+          (_, i) => (h1 + i * h2) % this.#m, // double hashing
+        );
+      }
+
+      add(item) {
+        for (const i of this.#indexes(item)) {
+          this.#bits[i >> 3] |= 1 << (i & 7);
+        }
+      }
+
+      mightContain(item) {
+        return this.#indexes(item).every(
+          (i) => (this.#bits[i >> 3] & (1 << (i & 7))) !== 0,
         );
       }
     }
@@ -686,7 +784,7 @@ Distributed versions, headers and a comparison: [System design: Rate limiting](/
 
 ### Token bucket
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -712,6 +810,41 @@ Distributed versions, headers and a comparison: [System design: Rate limiting](/
         this.last = now;
         if (this.tokens < cost) return false;
         this.tokens -= cost;
+        return true;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class TokenBucket {
+      #tokens;
+      #last;
+      #capacity;
+      #perSec;
+
+      constructor(
+        capacity, // burst size
+        perSec, // refill rate
+        now = performance.now(),
+      ) {
+        this.#capacity = capacity;
+        this.#perSec = perSec;
+        this.#tokens = capacity;
+        this.#last = now;
+      }
+
+      tryTake(cost = 1, now = performance.now()) {
+        const elapsed = (now - this.#last) / 1000; // ms → s
+        this.#tokens = Math.min(
+          this.#capacity,
+          this.#tokens + elapsed * this.#perSec,
+        );
+        this.#last = now;
+        if (this.#tokens < cost) return false;
+        this.#tokens -= cost;
         return true;
       }
     }
