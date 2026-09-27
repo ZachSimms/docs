@@ -261,6 +261,18 @@ describe("DottedLink external branch", () => {
     expect(screen.getByRole("link", { name: /^rel/ })).toHaveAttribute("href", "//example.com/");
   });
 
+  it("keeps noopener noreferrer when the caller passes its own rel", () => {
+    render(
+      <DottedLink href="https://example.com/" rel="nofollow noopener">
+        own rel
+      </DottedLink>,
+    );
+    expect(screen.getByRole("link", { name: /^own rel/ })).toHaveAttribute(
+      "rel",
+      "nofollow noopener noreferrer",
+    );
+  });
+
   it("applies aria-label when provided", () => {
     render(
       <DottedLink href="/sheets/" ariaLabel="All cheatsheets">
@@ -346,6 +358,17 @@ describe("Toc", () => {
     expect(links[0]).toHaveAttribute("aria-current", "location");
     expect(links[2]).not.toHaveAttribute("aria-current");
     expect(links[0]?.querySelector("i")).toHaveTextContent("One");
+  });
+
+  it("survives a malformed percent-encoded hash in the URL", () => {
+    const before = location.href;
+    history.replaceState(null, "", "#%E0%A4%A");
+    try {
+      render(<Toc entries={entries} />);
+      expect(screen.getByRole("navigation", { name: "Contents" })).toBeInTheDocument();
+    } finally {
+      history.replaceState(null, "", before);
+    }
   });
 
   it("tracks the scroll position and marks the parent of a current ### entry", async () => {

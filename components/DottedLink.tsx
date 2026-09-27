@@ -52,8 +52,10 @@ export function DottedLink({
   const classes = [inline ? "inline" : undefined, className].filter(Boolean).join(" ") || undefined;
   const shared = { className: classes, "aria-label": ariaLabel, ...rest };
   if (EXTERNAL.test(href)) {
+    // A caller's `rel` (e.g. "nofollow") is kept, but never replaces noopener/noreferrer.
+    const rel = [...new Set(`${rest.rel ?? ""} noopener noreferrer`.split(/\s+/).filter(Boolean))];
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...shared}>
+      <a href={href} target="_blank" {...shared} rel={rel.join(" ")}>
         <i>{children}</i>
         <span className="sr-only"> {NEW_TAB_HINT}</span>
       </a>
