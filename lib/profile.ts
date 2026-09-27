@@ -105,7 +105,7 @@ export const RESUME = {
   pdf: undefined as string | undefined,
   jobs: [
     {
-      role: "Lead engineer",
+      role: "Software Engineer",
       company: "SAIC",
       start: "Oct 2024",
       end: "now",
