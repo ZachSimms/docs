@@ -21,6 +21,8 @@ interface DottedLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 
   ariaLabel?: string;
   /** The rendered anchor (React 19 passes `ref` as a prop). */
   ref?: Ref<HTMLAnchorElement>;
+  /** `next/link`'s `prefetch` for internal links (ignored for external and `mailto:`). */
+  prefetch?: boolean | null;
 }
 
 /** Screen-reader note on links that open in a new tab. */
@@ -47,6 +49,7 @@ export function DottedLink({
   inline = false,
   ariaLabel,
   className,
+  prefetch,
   ...rest
 }: DottedLinkProps) {
   const classes = [inline ? "inline" : undefined, className].filter(Boolean).join(" ") || undefined;
@@ -69,7 +72,7 @@ export function DottedLink({
     );
   }
   return (
-    <Link href={href} {...shared}>
+    <Link href={href} prefetch={prefetch} {...shared}>
       <i>{children}</i>
     </Link>
   );
