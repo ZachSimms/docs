@@ -1,0 +1,282 @@
+---
+title: Animation & rigging concepts
+date: 2026-09-27
+order: 3
+---
+
+How things move in 3D, in any tool: keyframes and interpolation, the kinds of animation, skeletons and
+skinning, IK and constraints, retargeting and mocap, root motion, clips and state machines, and what
+survives export to glTF. Builds on [Core 3D concepts](/3d/fundamentals/core-concepts/) (transforms,
+quaternions). Doing it in Blender is [Blender animation](/3d/blender/animation/); playing it back is
+[three.js models & animation](/typescript/three-js/models-animation/#animation-system) and
+[Godot UI, animation & audio](/game-dev/godot/ui-animation-audio/).
+
+## Keyframes & frame rate
+
+A **keyframe** stores one property's value at one moment ("X location = 2 m at frame 24"). The software
+fills in every frame between keys (**interpolation**, or "tweening"). A property's keys over time form an
+**F-curve** (function curve), one per channel (X, Y, Z…).
+
+| Term | Meaning |
+| :--- | :------ |
+| Frame rate (fps) | frames per second of the timeline: 24 film and Blender's default, 30 common for game clips, 60 for smooth UI |
+| Timeline / Dope Sheet | keys as dots over time: edit **timing** |
+| Graph Editor | the F-curves themselves: edit **spacing** (speed, easing) |
+| Key pose / breakdown / in-between | main poses, the pose that shapes the transition, the frames the computer fills |
+| Channel | one animatable number: `location.x`, a bone's rotation W, a shape key's value |
+| Action / clip | a named set of F-curves ("Walk", "Idle") that can be reused and swapped |
+
+Engines don't play frames: glTF stores key **times in seconds**, and the engine samples the curve at
+whatever frame rate the game runs. A 24 fps clip still plays smoothly at 144 fps.
+
+## Interpolation, easing & F-curves
+
+<Diagram src="/images/diagrams/3d-interpolation.svg" label="Three small graphs with the same three keyframes. Constant: flat steps that jump at each key. Linear: straight lines between keys with sharp corners. Bézier: a smooth curve that eases in and out of each key, with handles shown on the middle key." caption="Same keys, three interpolation modes; glTF names in the last line." />
+
+| Mode | Motion | Blender | glTF | three.js |
+| :--- | :----- | :------ | :--- | :------- |
+| Constant | holds, then snaps | Constant | `STEP` | `InterpolateDiscrete` |
+| Linear | constant speed, abrupt starts and stops | Linear | `LINEAR` | `InterpolateLinear` |
+| Bézier / cubic | eases in and out; shaped by handles | Bézier (default, Auto Clamped handles) | `CUBICSPLINE` (Hermite tangents) | `InterpolateSmooth`; `GLTFLoader` uses its own cubic-spline interpolant |
+
+- **Easing**: ease-in starts slow, ease-out ends slow. Blender also has preset curves (Sine, Back,
+  Bounce, Elastic) under Easing.
+- **Handles** set the slope at a key: flat handles make a hold, aligned handles a smooth pass-through,
+  vector handles a sharp corner.
+- **Rotation**: quaternion keys interpolate on the shortest path (slerp); Euler keys can spin the long way
+  or flip at ±180°.
+- **F-curve modifiers** (Blender): Cycles (loop a curve), Noise (camera shake), Stepped (animate "on twos").
+  They don't export; bake them to keys.
+- Exporters usually **sample** Bézier curves into dense linear keys, so the game plays the same motion
+  without reading handles.
+
+## Kinds of animation
+
+| Kind | What moves | Good for | Exports to glTF? |
+| :--- | :--------- | :------- | :--------------- |
+| Transform (object) | whole objects' position, rotation, scale | doors, platforms, props, cameras | yes |
+| Skeletal | bones; the mesh follows through skinning weights | characters, creatures, anything that bends | yes |
+| Morph targets (shape keys, blend shapes) | stored alternate vertex positions, blended by weight | faces, lip sync, corrective shapes, squash | yes |
+| Vertex animation texture (VAT) | per-frame vertex positions baked into a texture, played in a shader | crowds, baked cloth, destruction, fluids | as textures + a custom shader |
+| Physics simulation | cloth, rigid bodies, fluids, hair, solved frame by frame | realistic secondary motion | only after baking to keys, shape keys or VAT |
+| Procedural / runtime | code: IK, look-at, springs, ragdolls | foot placement, aiming, reactions | no: done in the engine |
+| Property animation | material values, light color, camera FOV | blinking lights, fades | only via `KHR_animation_pointer` (loader support varies) |
+
+Morph targets cost memory per shape (every vertex × every target), so keep them to faces and a few
+correctives. Blender shape keys become glTF morph targets; their animated values become weight tracks.
+
+## Armatures, bones & poses
+
+A **rig** is everything that makes a model poseable: the skeleton, its controls, and the skin weights.
+
+| Term | Meaning |
+| :--- | :------ |
+| Armature (Blender) / skeleton / skin (glTF) | an object holding a hierarchy of bones |
+| Bone / joint | a transform in the hierarchy; Blender draws it with a head, tail and roll, engines see a joint (a node) |
+| Root bone | top of the hierarchy, usually at the floor between the feet; carries root motion |
+| Hierarchy | root → hips → spine → chest → neck → head; chest → shoulder → upper arm → forearm → hand… |
+| Rest pose | the bones' layout as built (Blender Edit Mode) |
+| Bind pose | the pose the mesh was attached in; glTF stores it as inverse bind matrices |
+| T-pose / A-pose | arms straight out / angled down ~45°; A-pose deforms shoulders better, T-pose retargets easily |
+| Deform bones | bones that move vertices; the only ones the game needs |
+| Control bones | handles the animator grabs (IK targets, pole targets, foot roll); don't deform |
+| Mechanism bones | helpers that drive other bones through constraints |
+| Naming | mirror-friendly names (`hand.L` / `hand.R`) let Blender mirror poses and weights |
+
+Auto-riggers: Blender's **Rigify** (bundled) generates control rigs from a metarig; Mixamo and several
+AI tools (see [AI generation](/3d/ai-workflows/ai-generation/)) rig humanoids automatically, deform bones
+only.
+
+## Skinning & weight painting
+
+**Skinning** attaches a mesh to a skeleton: each vertex stores which bones affect it and by how much
+(**weights**). When a bone moves, each vertex moves by the weighted mix of its bones' motion. This is
+**linear blend skinning**, the method glTF, three.js and Godot use.
+
+<Diagram src="/images/diagrams/3d-skinning.svg" label="Three panels. One: an arm armature with an upper-arm bone and a forearm bone meeting at the elbow. Two: a straight arm mesh shaded by weight, fully upper-arm on the left, fully forearm on the right, blending 50/50 at the elbow. Three: the forearm bone rotated up and the mesh bending smoothly at the elbow." caption="Bones, weights, pose: the elbow bends smoothly because its vertices follow both bones." />
+
+| Concept | Rule |
+| :------ | :--- |
+| Weights per vertex | normalized: they sum to 1.0 |
+| Max influences | **4 bones per vertex** is the safe number: glTF stores weights in sets of 4 and many engines read one set; Blender's exporter defaults to 4 |
+| Weight painting | painting weights on the mesh; in Blender each bone has a vertex group of the same name |
+| Automatic weights | the tool guesses weights from bone distance (Blender "With Automatic Weights"); a good start, never the finish |
+| Unweighted vertex | stays behind in the rest pose while everything else moves |
+| Bone count | engines and phones prefer fewer: roughly 30–70 deform bones for a game humanoid, fingers included |
+
+| Artifact | Cause | Fix |
+| :------- | :---- | :-- |
+| Elbow or knee collapses, loses volume | linear blending averages rotations | extra edge loops, corrective shape keys, helper bones |
+| "Candy wrapper" twist at the wrist | all twist on one bone | forearm twist bones sharing the rotation |
+| Spiky or torn vertex | a stray weight on a far bone | weight-paint that area; limit total influences to 4 and normalize |
+| Mesh shifts when rigged, before posing | mesh or armature transforms not applied | apply scale / rotation on both, re-parent |
+
+Blender's **Preserve Volume** (dual-quaternion skinning) fixes volume loss in Blender only; it doesn't
+export, so fix deformation with topology and bones.
+
+## IK, FK & constraints
+
+| | Forward kinematics (FK) | Inverse kinematics (IK) |
+| :- | :---------------------- | :---------------------- |
+| You set | each bone's rotation, parent to child | where the end of the chain goes (hand, foot) |
+| Solver | none | computes the chain's rotations to reach the target |
+| Good for | arcs, swings, overlapping motion (arms swinging, tails) | contact: planted feet, hands on a rail, reaching |
+| Extra control | none | a **pole target** sets which way the knee or elbow points |
+
+Rigs usually offer an **IK/FK switch** per limb. **Constraints** tie a bone or object to something else:
+Copy Rotation, Track To / Damped Track (look at), Limit Rotation, Child Of (pick up and drop objects),
+Stretch To. **Drivers** set a property from other properties or an expression (a jaw bone driving a mouth
+shape key).
+
+None of these travel through glTF or FBX: the exporter bakes their result into keys on the deform bones.
+Engines have their own runtime IK and look-at (three.js `CCDIKSolver` addon, Godot's `SkeletonModifier3D`
+family) for things that react to the game, like feet on uneven ground.
+
+## Retargeting & motion capture
+
+**Retargeting** moves an animation from one skeleton to another with different bone names or
+proportions. It needs a **bone map** (which bone is which) and matching rest poses (T vs A-pose
+mismatches rotate arms).
+
+| Tool | Retargeting |
+| :--- | :---------- |
+| Blender | add-ons and extensions (e.g. Rokoko's free plugin, Auto-Rig Pro's Remap, the Mixamo Rig extension) |
+| Godot 4 | on import: a `BoneMap` to `SkeletonProfileHumanoid` renames bones and fixes rest poses, so clips share across characters |
+| three.js | `SkeletonUtils.retargetClip` |
+| Unity / Unreal | Humanoid avatars / IK Retargeter |
+
+**Mixamo** (Adobe): upload a humanoid mesh, get it auto-rigged, and download from a large free library of
+mocap clips as FBX. Still free with an Adobe ID as of September 2026, but not actively supported.
+
+| Mixamo quirk | Handling |
+| :----------- | :------- |
+| FBX (or Collada `.dae`), often in centimeters | fix scale on import (see [units](/3d/fundamentals/core-concepts/#units--scale)) |
+| Bones prefixed `mixamorig:` | rename or map in the retargeting tool |
+| "In Place" checkbox on locomotion | tick it for engine-driven movement (see below) |
+| Download "Without Skin" | for extra clips once you have the rigged character |
+
+Other mocap: video-based AI services turn phone footage into animation (quality varies; check current
+pricing and license), and suit or optical capture for studios. Mocap is dense (a key every frame): clean
+it in the Graph Editor, then reduce keys.
+
+## Root motion vs in-place
+
+| | Root motion | In place |
+| :- | :---------- | :------- |
+| The clip | moves the root bone through space (a walk travels 1.4 m) | stays on the spot; feet cycle under the hips |
+| Who moves the character | the animation drives the game object | game code moves the character controller |
+| Pros | feet never slide; exact distances for attacks, vaults, climbs | simple, responsive, easy with physics |
+| Cons | gameplay depends on the animation; harder to tune speed | feet slide if speed and clip don't match |
+| Engine support | Godot `AnimationTree` root motion track; Unity / Unreal built in; three.js: read or strip the root track yourself | everywhere |
+
+Common split: in-place locomotion (idle, walk, run) and root motion for one-off actions (dodge, climb).
+
+## Clips, blending & state machines
+
+A character ships with a set of **clips**: idle, walk, run, jump (start / loop / land), attack, hit, die.
+The engine mixes them at runtime.
+
+| Idea | What | three.js | Godot |
+| :--- | :--- | :------- | :---- |
+| Clip | one named animation | `AnimationClip` | `Animation` in an `AnimationLibrary` |
+| Player | plays clips on a model | `AnimationMixer` + `AnimationAction` | `AnimationPlayer` |
+| Cross-fade | blend from one clip to another over ~0.1–0.3 s | `crossFadeTo` | `AnimationTree` transitions |
+| Blend space | mix by a parameter (speed → idle / walk / run) | manual weights | `BlendSpace1D` / `BlendSpace2D` |
+| State machine | states and transitions (Idle → Run → Jump) | your code | `AnimationNodeStateMachine` |
+| Additive layer | add a clip on top (breathing, recoil) | `AdditiveAnimationBlendMode` | Add nodes in a blend tree |
+| Mask | apply a clip to part of the body (upper-body attack while running) | filter tracks | blend tree filters |
+| Sync | keep foot phase when blending walk ↔ run | `syncWith` | sync on blend nodes |
+
+In Blender each clip is an **Action**. Since 4.4 an Action has **slots**, so one action can animate
+several objects. The NLA (nonlinear animation) editor stacks and sequences actions, and the glTF exporter can export one glTF
+animation per action or per NLA track.
+
+## What survives export
+
+| Blender feature | glTF | What to do |
+| :-------------- | :--- | :--------- |
+| Object location / rotation / scale keys | yes: TRS tracks | nothing |
+| Bone keys on deform bones | yes (skins) | export deform bones only |
+| Skin weights | yes: up to 4 per set | limit to 4 and normalize before export |
+| Shape keys and their animated values | yes: morph targets + weight tracks | nothing; watch memory |
+| Bézier curves and handles | sampled into linear keys | nothing; set the sampling rate |
+| Constraints, IK, drivers, control bones | no | bake (the exporter samples the pose each frame; "Bake All Objects Animations" for constrained objects) |
+| F-curve modifiers, NLA strip effects | no | bake to keys |
+| Physics (cloth, rigid body), geometry nodes animation | no | bake to keys, shape keys or VAT |
+| Material, light and camera property animation | only via `KHR_animation_pointer` | check loader support, or animate in code |
+| Dual-quaternion skinning (Preserve Volume) | no | fix with topology and bones |
+| Multiple actions | yes: one glTF animation each (Actions mode) or per NLA track | name clips as the engine expects |
+
+For FBX (Unity, Unreal, Mixamo) the story is similar: keys, skins and blend shapes travel; constraints and
+drivers must be baked. GTA V uses its own formats via Sollumz; see [GTA V](/3d/export/gta-v/).
+
+## Recipes
+
+### Before exporting an animated character
+Run before every export of a rigged model.
+
+- [ ] Mesh and armature: scale 1.0, rotation applied, origin at the feet, facing −Y
+- [ ] Every vertex weighted; max 4 influences; weights normalized
+- [ ] Deform bones only in the export; control and mechanism bones excluded
+- [ ] IK, constraints and drivers baked (or the exporter set to sample them)
+- [ ] Each clip is its own Action with a clear name (`Idle`, `Walk`, `Run`)
+- [ ] Loops start and end on the same pose; in-place or root motion chosen per clip
+- [ ] Shape keys limited to the ones you use
+- [ ] Test in the target engine: play every clip, cross-fade two of them
+
+### Why does my mesh tear or collapse when posed?
+Use when a pose looks wrong but the rig seems fine.
+
+| Symptom | Cause | Fix |
+| :------ | :---- | :-- |
+| Part of the mesh stays behind | vertices with no weights | weight-paint them; check vertex groups exist for each bone |
+| Spikes to a distant bone | stray small weights | clean weights (Blender: Clean, Limit Total 4, Normalize All) |
+| Joint collapses or twists like a candy wrapper | linear blend skinning | more loops, twist bones, corrective shape keys |
+| Fine in Blender, broken in engine | more than 4 influences, or Preserve Volume relied on | limit to 4; drop dual-quaternion reliance |
+| Whole mesh offset or rotated once rigged | unapplied transforms | apply scale / rotation on mesh and armature, re-parent |
+
+### Put a Mixamo animation on your own character
+Use for fast placeholder or indie animation on a humanoid.
+
+1. Export the character (T or A-pose, facing forward, arms clear of the body) as FBX or OBJ; upload it.
+2. Place the auto-rig markers (chin, wrists, elbows, knees, groin); pick a skeleton LOD (fewer fingers =
+   fewer bones).
+3. Download the rigged character once (FBX, With Skin), then each clip Without Skin; tick In Place for
+   locomotion.
+4. Import into Blender; fix scale; rename or map `mixamorig:` bones if your engine or other clips need
+   different names.
+5. Push each clip to its own action, check loops, and export glTF with the actions.
+
+### Loop a walk cycle cleanly
+Use for any cycle: walk, run, idle, a spinning prop.
+
+1. Make the first and last key identical (copy the first key to the end).
+2. Set the loop range so the last frame isn't played twice (end at the frame before the duplicate, or
+   trim in the engine).
+3. Use a Cycles F-curve modifier to preview the loop, then bake it before export.
+4. In place: keep the root still; root motion: the root moves a constant distance per cycle.
+5. In Godot, name the clip with a `-loop` suffix (Godot strips it and sets looping) or set Loop Mode on
+   import; in three.js,
+   `LoopRepeat` is the default.
+
+### Plan a game character's clip list
+Use when starting a character, so animation and code agree.
+
+| Group | Clips |
+| :---- | :---- |
+| Locomotion (in place) | idle, walk, run, strafe left / right, turn in place |
+| Air | jump start, jump loop (falling), land |
+| Actions (root motion if they travel) | attack 1–3, dodge, interact, climb |
+| Reactions | hit front / back, die |
+| Additive | breathing, aim offset, flinch |
+
+Same skeleton for every clip, same frame rate, consistent names; decide cross-fade times per transition.
+
+## References
+
+- Blender Manual: [keyframes](https://docs.blender.org/manual/en/latest/animation/keyframes/introduction.html), [F-curves](https://docs.blender.org/manual/en/latest/editors/graph_editor/fcurves/introduction.html) and [interpolation](https://docs.blender.org/manual/en/latest/editors/graph_editor/fcurves/properties.html), [armatures](https://docs.blender.org/manual/en/latest/animation/armatures/index.html), [skinning](https://docs.blender.org/manual/en/latest/animation/armatures/skinning/index.html), [weight painting](https://docs.blender.org/manual/en/latest/sculpt_paint/weight_paint/index.html), [IK](https://docs.blender.org/manual/en/latest/animation/armatures/posing/bone_constraints/inverse_kinematics/introduction.html), [constraints](https://docs.blender.org/manual/en/latest/animation/constraints/index.html), [drivers](https://docs.blender.org/manual/en/latest/animation/drivers/index.html), [shape keys](https://docs.blender.org/manual/en/latest/animation/shape_keys/index.html), [actions](https://docs.blender.org/manual/en/latest/animation/actions.html), [NLA](https://docs.blender.org/manual/en/latest/editors/nla/index.html), [Rigify](https://docs.blender.org/manual/en/5.2/addons/rigging/rigify/index.html)
+- [Blender Manual: glTF 2.0 add-on](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): animation modes, sampling, bone influences, deform-only export
+- [Khronos glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html): animations (TRS and weights, STEP / LINEAR / CUBICSPLINE), skins, morph targets; [KHR_animation_pointer](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_animation_pointer/README.md)
+- [three.js manual: animation system](https://threejs.org/manual/#en/animation-system): clips, mixer, actions
+- Godot docs: [animation introduction](https://docs.godotengine.org/en/stable/tutorials/animation/introduction.html), [AnimationTree](https://docs.godotengine.org/en/stable/tutorials/animation/animation_tree.html) (state machines, blend spaces, root motion), [retargeting 3D skeletons](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/retargeting_3d_skeletons.html), [import name suffixes](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/node_type_customization.html) (`-loop`)
+- [Mixamo](https://www.mixamo.com/) and the [Mixamo FAQ](https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html): auto-rigging and the clip library

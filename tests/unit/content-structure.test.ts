@@ -201,6 +201,38 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       ],
     },
   },
+  dsa: {
+    entries: [
+      "big-o",
+      "linear-structures",
+      "trees-graphs",
+      "sorting-searching",
+      "graph-algorithms",
+      "recursion-dp",
+      "problem-patterns",
+      "interviews",
+      "system-design-concepts",
+      "system-design-interviews",
+    ],
+    directories: {},
+  },
+  "3d": {
+    entries: ["fundamentals/", "blender/", "ai-workflows/", "export/"],
+    directories: {
+      fundamentals: ["core-concepts", "materials-lighting", "animation-rigging"],
+      blender: [
+        "interface-navigation",
+        "modeling",
+        "materials-uv",
+        "lighting-rendering",
+        "animation",
+        "buildings-scenes",
+        "python-scripting",
+      ],
+      "ai-workflows": ["ai-generation", "llm-blender"],
+      export: ["web-threejs", "godot", "gta-v"],
+    },
+  },
   "game-dev": {
     entries: ["godot/", "design/"],
     directories: {
@@ -319,6 +351,31 @@ const WITH_RECIPES: ReadonlySet<string> = new Set([
   "interactive-elements",
   "design/html/accessibility",
   "startups/idea-to-mvp/building-mvp",
+  "dsa/big-o",
+  "dsa/linear-structures",
+  "dsa/trees-graphs",
+  "dsa/sorting-searching",
+  "dsa/graph-algorithms",
+  "dsa/recursion-dp",
+  "dsa/problem-patterns",
+  "dsa/interviews",
+  "dsa/system-design-concepts",
+  "dsa/system-design-interviews",
+  "3d/fundamentals/core-concepts",
+  "3d/fundamentals/materials-lighting",
+  "3d/fundamentals/animation-rigging",
+  "3d/blender/interface-navigation",
+  "3d/blender/modeling",
+  "3d/blender/materials-uv",
+  "3d/blender/lighting-rendering",
+  "3d/blender/animation",
+  "3d/blender/buildings-scenes",
+  "3d/blender/python-scripting",
+  "3d/ai-workflows/ai-generation",
+  "3d/ai-workflows/llm-blender",
+  "3d/export/web-threejs",
+  "3d/export/godot",
+  "3d/export/gta-v",
 ]);
 
 /** Visual components or live demos each design sheet must use at least this many times. */
@@ -490,6 +547,72 @@ describe("every reference sheet", () => {
       const body = readSheetBody(sheet);
       expect(longCodeLines(body)).toEqual([]);
       expect(wideTreeLines(body)).toEqual([]);
+    });
+  }
+});
+
+/** Every DS&A code block pairs TypeScript with Python in one synced, remembered tab group. */
+const DSA_TABS = '<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">';
+
+/** DS&A sheets that are mostly code, and the fewest TypeScript/Python tab groups each must have. */
+const DSA_MIN_TABS: Readonly<Record<string, number>> = {
+  "big-o": 3,
+  "linear-structures": 5,
+  "trees-graphs": 5,
+  "sorting-searching": 5,
+  "graph-algorithms": 5,
+  "recursion-dp": 5,
+  "problem-patterns": 6,
+  interviews: 1,
+  "system-design-concepts": 2,
+  "system-design-interviews": 0,
+};
+
+describe("content/dsa code tabs", () => {
+  for (const [slug, min] of Object.entries(DSA_MIN_TABS)) {
+    /** The sheet's `<Tabs …>` opening lines, trimmed. */
+    const tabGroups = (body: string) =>
+      [...body.matchAll(/^\s*<Tabs\b[^\n]*$/gm)].map((m) => m[0].trim());
+
+    it(`dsa/${slug} uses only TypeScript/Python tabs synced by "dsa-lang"`, () => {
+      const groups = tabGroups(readSheetBody({ topic: "dsa", slug }));
+      expect(groups.filter((g) => g !== DSA_TABS)).toEqual([]);
+    });
+
+    it(`dsa/${slug} has at least ${min} TypeScript/Python tab groups, two tabs each`, () => {
+      const body = readSheetBody({ topic: "dsa", slug });
+      expect(tabGroups(body).length).toBeGreaterThanOrEqual(min);
+      const blocks = [...body.matchAll(/<Tabs\b[\s\S]*?<\/Tabs>/g)].map((m) => m[0]);
+      for (const block of blocks) {
+        expect(block.match(/<Tab>/g)?.length).toBe(2);
+        expect(block).toMatch(/```ts\b[\s\S]*```py(?:thon)?\b/);
+      }
+    });
+  }
+
+  it("dsa/big-o compares growth rates on a graph", () => {
+    const body = readSheetBody({ topic: "dsa", slug: "big-o" });
+    for (const fn of ["log2", "nlogn", "pow2"]) {
+      expect(body).toContain(`fn: "${fn}"`);
+    }
+  });
+});
+
+/** 3D sheets that explain spatial ideas must draw them: fewest `<Diagram>`s per sheet. */
+const THREE_D_DIAGRAMS: Readonly<Record<string, number>> = {
+  "fundamentals/core-concepts": 2,
+  "fundamentals/materials-lighting": 1,
+  "fundamentals/animation-rigging": 1,
+  "blender/materials-uv": 1,
+  "export/web-threejs": 1,
+};
+
+describe("content/3d diagrams", () => {
+  for (const [path, min] of Object.entries(THREE_D_DIAGRAMS)) {
+    const [group, slug] = path.split("/") as [string, string];
+    it(`3d/${path} has at least ${min} diagram(s)`, () => {
+      const body = readSheetBody({ topic: "3d", group, slug });
+      expect(body.match(/^<Diagram\b/gm)?.length ?? 0).toBeGreaterThanOrEqual(min);
     });
   }
 });

@@ -30,14 +30,14 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("lists the nineteen topics, the v link and the Info footer", async ({ page }) => {
+  test("lists the twenty-one topics, the v link and the Info footer", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
     const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(19);
-    await expect(nav.locator("span").first()).toHaveText("19.");
+    await expect(nav.locator("a")).toHaveCount(21);
+    await expect(nav.locator("span").first()).toHaveText("21.");
     await expect(nav.locator("span").last()).toHaveText("01.");
     await expect(nav.locator("a").first()).toHaveText("Math");
     await expect(nav.locator("a").last()).toHaveText("Design");
@@ -117,7 +117,7 @@ test.describe("navigation", () => {
     const links = page.locator("main nav a");
     const count = await links.count();
     expect(count).toBeGreaterThanOrEqual(9);
-    await expect(links.first()).toHaveText(/^[a-z-]+(\/[a-z-]+){1,2}$/);
+    await expect(links.first()).toHaveText(/^[a-z0-9-]+(\/[a-z0-9-]+){1,2}$/);
     await expect(page.getByRole("link", { name: "typescript/backend/websockets" })).toHaveAttribute(
       "href",
       "/typescript/backend/websockets/",
@@ -678,9 +678,10 @@ test.describe("new topics", () => {
     const links = page.locator("main nav a");
     await expect(links.nth(3)).toHaveText("Fitness");
     await expect(links.nth(4)).toHaveText("Economics");
-    await expect(links.nth(10)).toHaveText("TypeScript");
-    await expect(links.nth(11)).toHaveText("Databases");
-    await expect(links.nth(12)).toHaveText("Infrastructure");
+    await expect(links.nth(10)).toHaveText("DS&A");
+    await expect(links.nth(11)).toHaveText("TypeScript");
+    await expect(links.nth(12)).toHaveText("Databases");
+    await expect(links.nth(13)).toHaveText("Infrastructure");
     await page.goto("/infrastructure/");
     await expect(page.locator("main nav a")).toHaveText([
       "Linux/",
@@ -693,12 +694,15 @@ test.describe("new topics", () => {
     ]);
   });
 
-  test("game dev sits after C++ and holds the Godot and game design directories", async ({ page }) => {
+  test("game dev sits after C++ and holds the Godot and game design directories", async ({
+    page,
+  }) => {
     await page.goto("/");
     const links = page.locator("main nav a");
-    await expect(links.nth(14)).toHaveText("C++");
-    await expect(links.nth(15)).toHaveText("Game dev");
-    await links.nth(15).click();
+    await expect(links.nth(15)).toHaveText("C++");
+    await expect(links.nth(16)).toHaveText("3D graphics");
+    await expect(links.nth(17)).toHaveText("Game dev");
+    await links.nth(17).click();
     await expect(page).toHaveURL(/\/game-dev\/$/);
     await expect(page.locator("main nav a")).toHaveText(["Godot/", "Game design/"]);
     await page.goto("/game-dev/design/");
@@ -1242,6 +1246,63 @@ test.describe("economics and C++", () => {
   });
 });
 
+test.describe("DS&A and 3D graphics", () => {
+  test("DS&A lists its ten sheets, Big-O first and system design last", async ({ page }) => {
+    await page.goto("/dsa/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toHaveLength(10);
+    expect(hrefs[0]).toBe("/dsa/big-o/");
+    expect(hrefs.at(-1)).toBe("/dsa/system-design-interviews/");
+  });
+
+  test("picking Python switches every DS&A code block and is remembered on the next sheet", async ({
+    page,
+  }) => {
+    await page.goto("/dsa/big-o/");
+    await hydrated(page);
+    await expect(page.locator("main figure svg").first()).toBeVisible();
+    const lists = page.getByRole("tablist");
+    expect(await lists.count()).toBeGreaterThanOrEqual(2);
+    await expect(lists.nth(0).getByRole("tab", { name: "TypeScript" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await lists.nth(0).getByRole("tab", { name: "Python" }).click();
+    for (const list of await lists.all()) {
+      await expect(list.getByRole("tab", { name: "Python" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    }
+
+    await page.goto("/dsa/trees-graphs/");
+    await hydrated(page);
+    await expect(
+      page.getByRole("tablist").first().getByRole("tab", { name: "Python" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("3D graphics has its four directories in order and draws its concepts", async ({ page }) => {
+    await page.goto("/3d/");
+    const hrefs = await page
+      .locator("main nav a")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(hrefs).toEqual([
+      "/3d/fundamentals/",
+      "/3d/blender/",
+      "/3d/ai-workflows/",
+      "/3d/export/",
+    ]);
+
+    await page.goto("/3d/fundamentals/core-concepts/");
+    expect(await page.locator("main figure.diagram svg").count()).toBeGreaterThanOrEqual(2);
+    await expect(page.locator("main h2").last()).toHaveText("References");
+  });
+});
+
 test.describe("finance, thinking, leadership, startups and writing", () => {
   test("the four new topics sit between Economics and ML/AI", async ({ page }) => {
     await page.goto("/");
@@ -1252,12 +1313,15 @@ test.describe("finance, thinking, leadership, startups and writing", () => {
     await expect(links.nth(7)).toHaveText("Leadership");
     await expect(links.nth(8)).toHaveText("Startups");
     await expect(links.nth(9)).toHaveText("ML/AI");
-    await expect(links.nth(17)).toHaveText("Writing");
+    await expect(links.nth(19)).toHaveText("Writing");
   });
 
   test("each new topic lists its directories and sheets in order", async ({ page }) => {
     for (const [url, entries] of [
-      ["/thinking/", ["First principles thinking", "Systems thinking", "Game theory", "Mental models/"]],
+      [
+        "/thinking/",
+        ["First principles thinking", "Systems thinking", "Game theory", "Mental models/"],
+      ],
       ["/startups/", ["Idea to MVP/", "Advice/"]],
       ["/writing/", ["Nonfiction/", "Fiction/", "Worldbuilding/"]],
       ["/design/", ["Principles/", "HTML/", "CSS/", "Demo"]],

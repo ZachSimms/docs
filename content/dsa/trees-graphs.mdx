@@ -1,0 +1,1188 @@
+---
+title: Trees, heaps, tries & graphs
+date: 2026-09-27
+order: 3
+---
+
+The non-linear structures: tree vocabulary, binary trees and their traversals, binary search trees,
+heaps (with the `MinHeap<T>` that JavaScript lacks), tries, graph representations and union-find.
+Algorithms that walk graphs (BFS, DFS, topological sort, Dijkstra, MST) are in
+[Graph algorithms](/dsa/graph-algorithms/); costs are explained in [Big-O](/dsa/big-o/); arrays, maps and
+deques in [Arrays, hashing & lists](/dsa/linear-structures/).
+
+## Tree vocabulary
+
+A **tree** is a connected graph with no cycles: $n$ nodes, exactly $n - 1$ edges, one path between any
+two nodes. A **rooted** tree picks one node as the root, giving every other node a parent.
+
+| Term | Meaning |
+| :--- | :------ |
+| Root / leaf / internal | top node / node with no children / node with at least one child |
+| Parent, child, sibling | one edge up / one edge down / same parent |
+| Ancestor, descendant | anywhere above / below on the path to the root |
+| Subtree | a node plus all its descendants |
+| Depth of a node | edges from the root (root depth 0) |
+| Height of a tree | edges on the longest root-to-leaf path (some books count nodes) |
+| Level | all nodes of the same depth |
+| Degree | number of children |
+| Binary tree | at most 2 children, called left and right |
+| Full | every node has 0 or 2 children |
+| Complete | every level full except possibly the last, filled left to right (heaps) |
+| Perfect | all levels full: height $h$ holds $2^{h+1} - 1$ nodes |
+| Balanced | height $O(\log n)$; for AVL, subtree heights differ by at most 1 everywhere |
+| Degenerate (skewed) | every node has one child: really a linked list, height $n - 1$ |
+| BST | binary tree where, at every node, keys on the left are smaller and keys on the right larger |
+| N-ary tree | any number of children (file systems, DOM, org charts) |
+| Forest | a set of disjoint trees |
+
+Most tree answers cost $O(n)$ time (visit each node once) and $O(h)$ space (the recursion stack), where
+$h$ is $\log n$ when balanced and $n$ when skewed.
+
+## Binary trees & traversals
+
+| Traversal | Order | Typical use |
+| :-------- | :---- | :---------- |
+| Preorder | node, left, right | copy or serialize a tree, print a hierarchy |
+| Inorder | left, node, right | a BST in **sorted** order, k-th smallest |
+| Postorder | left, right, node | delete or free, compute heights and sizes (children first) |
+| Level order (BFS) | level by level, left to right | shortest depth, right-side view, per-level work |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Tree = TreeNode | null;
+
+    class TreeNode {
+      val: number;
+      left: Tree;
+      right: Tree;
+      constructor(val: number, left: Tree = null,
+        right: Tree = null) {
+        this.val = val;
+        this.left = left;
+        this.right = right;
+      }
+    }
+
+    type Order = "pre" | "in" | "post";
+
+    // Recursive DFS: O(n) time, O(h) stack
+    function dfs(root: Tree, order: Order): number[] {
+      const out: number[] = [];
+      const walk = (n: Tree): void => {
+        if (!n) return;
+        if (order === "pre") out.push(n.val);
+        walk(n.left);
+        if (order === "in") out.push(n.val);
+        walk(n.right);
+        if (order === "post") out.push(n.val);
+      };
+      walk(root);
+      return out;
+    }
+
+    // Height in nodes (0 for an empty tree)
+    function maxDepth(n: Tree): number {
+      return n ? 1 + Math.max(maxDepth(n.left),
+        maxDepth(n.right)) : 0;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from __future__ import annotations
+    from dataclasses import dataclass
+    from typing import Literal
+
+    @dataclass
+    class TreeNode:
+        val: int
+        left: TreeNode | None = None
+        right: TreeNode | None = None
+
+    type Tree = TreeNode | None
+    type Order = Literal["pre", "in", "post"]
+
+    # Recursive DFS: O(n) time, O(h) stack
+    def dfs(root: Tree, order: Order) -> list[int]:
+        out: list[int] = []
+
+        def walk(n: Tree) -> None:
+            if not n:
+                return
+            if order == "pre":
+                out.append(n.val)
+            walk(n.left)
+            if order == "in":
+                out.append(n.val)
+            walk(n.right)
+            if order == "post":
+                out.append(n.val)
+
+        walk(root)
+        return out
+
+    # Height in nodes (0 for an empty tree)
+    def max_depth(n: Tree) -> int:
+        if not n:
+            return 0
+        return 1 + max(max_depth(n.left), max_depth(n.right))
+    ```
+
+  </Tab>
+</Tabs>
+
+### Iterative traversals
+
+Use an explicit stack when the tree may be deep enough to overflow the call stack (a skewed tree of
+10⁵ nodes will), and a queue (or a list per level) for level order. All are $O(n)$ time, $O(h)$ or
+$O(\text{width})$ space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function preorderIter(root: Tree): number[] {
+      const out: number[] = [];
+      const stack: TreeNode[] = root ? [root] : [];
+      while (stack.length > 0) {
+        const n = stack.pop()!;
+        out.push(n.val);
+        if (n.right) stack.push(n.right); // right first,
+        if (n.left) stack.push(n.left);   // so left pops first
+      }
+      return out;
+    }
+
+    function inorderIter(root: Tree): number[] {
+      const out: number[] = [];
+      const stack: TreeNode[] = [];
+      let n = root;
+      while (n || stack.length > 0) {
+        while (n) {          // go as far left as possible
+          stack.push(n);
+          n = n.left;
+        }
+        const top = stack.pop()!;
+        out.push(top.val);
+        n = top.right;
+      }
+      return out;
+    }
+
+    // Postorder = reverse of (node, right, left)
+    function postorderIter(root: Tree): number[] {
+      const out: number[] = [];
+      const stack: TreeNode[] = root ? [root] : [];
+      while (stack.length > 0) {
+        const n = stack.pop()!;
+        out.push(n.val);
+        if (n.left) stack.push(n.left);
+        if (n.right) stack.push(n.right);
+      }
+      return out.reverse();
+    }
+
+    // Level order: one array per level, no shift()
+    function levelOrder(root: Tree): number[][] {
+      const levels: number[][] = [];
+      let level: TreeNode[] = root ? [root] : [];
+      while (level.length > 0) {
+        levels.push(level.map((n) => n.val));
+        const next: TreeNode[] = [];
+        for (const n of level) {
+          if (n.left) next.push(n.left);
+          if (n.right) next.push(n.right);
+        }
+        level = next;
+      }
+      return levels;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import deque
+
+    def preorder_iter(root: Tree) -> list[int]:
+        out: list[int] = []
+        stack = [root] if root else []
+        while stack:
+            n = stack.pop()
+            out.append(n.val)
+            if n.right:
+                stack.append(n.right)  # right first,
+            if n.left:
+                stack.append(n.left)  # so left pops first
+        return out
+
+    def inorder_iter(root: Tree) -> list[int]:
+        out: list[int] = []
+        stack: list[TreeNode] = []
+        n = root
+        while n or stack:
+            while n:  # go as far left as possible
+                stack.append(n)
+                n = n.left
+            top = stack.pop()
+            out.append(top.val)
+            n = top.right
+        return out
+
+    # Postorder = reverse of (node, right, left)
+    def postorder_iter(root: Tree) -> list[int]:
+        out: list[int] = []
+        stack = [root] if root else []
+        while stack:
+            n = stack.pop()
+            out.append(n.val)
+            if n.left:
+                stack.append(n.left)
+            if n.right:
+                stack.append(n.right)
+        return out[::-1]
+
+    # Level order: deque, one batch per level
+    def level_order(root: Tree) -> list[list[int]]:
+        levels: list[list[int]] = []
+        q = deque([root] if root else [])
+        while q:
+            level: list[int] = []
+            for _ in range(len(q)):
+                n = q.popleft()
+                level.append(n.val)
+                if n.left:
+                    q.append(n.left)
+                if n.right:
+                    q.append(n.right)
+            levels.append(level)
+        return levels
+    ```
+
+  </Tab>
+</Tabs>
+
+## Binary search trees
+
+Invariant: for **every** node, all keys in the left subtree are smaller and all in the right subtree
+are larger. An inorder walk yields the keys sorted.
+
+| Operation | Balanced | Skewed | How |
+| :-------- | :------- | :----- | :-- |
+| Search | $O(\log n)$ | $O(n)$ | go left if smaller, right if larger |
+| Insert | $O(\log n)$ | $O(n)$ | search, attach at the empty spot |
+| Delete, 0 or 1 child | $O(\log n)$ | $O(n)$ | replace the node with its child |
+| Delete, 2 children | $O(\log n)$ | $O(n)$ | copy the inorder successor (leftmost of the right subtree) in, delete it there |
+| Min / max | $O(\log n)$ | $O(n)$ | leftmost / rightmost node |
+| Successor / predecessor | $O(\log n)$ | $O(n)$ | leftmost of the right subtree, or the nearest ancestor you went left from |
+| All in order | $O(n)$ | $O(n)$ | inorder traversal |
+| k-th smallest | $O(h + k)$ | $O(n)$ | inorder, stop at the k-th |
+
+Why balance matters: inserting sorted keys into a plain BST builds a linked list, so every operation
+degrades to $O(n)$. **Self-balancing** trees rotate on insert and delete to keep the height $O(\log n)$:
+
+| Tree | Guarantee | Where you meet it |
+| :--- | :-------- | :---------------- |
+| AVL | subtree heights differ by ≤ 1; faster lookups | in-memory indexes |
+| Red-black | longest path ≤ 2 × shortest; cheaper updates | Java `TreeMap`, C++ `std::map`, Linux scheduler |
+| B-tree / B+ tree | wide nodes, few levels; built for disk pages | database indexes ([Postgres](/databases/postgres/)), file systems |
+| Skip list | probabilistic $O(\log n)$ | Redis sorted sets |
+
+Neither JS nor Python ships a sorted map. In interviews use a sorted array + binary search ($O(\log n)$
+lookup, $O(n)$ insert), a heap if you only need the min or max, or say you would use a library
+(`sortedcontainers` in Python). Implementing AVL or red-black rotations is rarely asked.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function bstSearch(n: Tree, x: number): Tree {
+      while (n && n.val !== x) n = x < n.val ? n.left : n.right;
+      return n;
+    }
+
+    // Returns the (possibly new) root; duplicates ignored
+    function bstInsert(root: Tree, x: number): TreeNode {
+      if (!root) return new TreeNode(x);
+      if (x < root.val) root.left = bstInsert(root.left, x);
+      else if (x > root.val)
+        root.right = bstInsert(root.right, x);
+      return root;
+    }
+
+    // Check against bounds from all ancestors, not just
+    // the parent: O(n) time, O(h) space
+    function isValidBST(
+      n: Tree,
+      lo = -Infinity,
+      hi = Infinity,
+    ): boolean {
+      if (!n) return true;
+      if (n.val <= lo || n.val >= hi) return false;
+      return isValidBST(n.left, lo, n.val) &&
+        isValidBST(n.right, n.val, hi);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import math
+
+    def bst_search(n: Tree, x: int) -> Tree:
+        while n and n.val != x:
+            n = n.left if x < n.val else n.right
+        return n
+
+    # Returns the (possibly new) root; duplicates ignored
+    def bst_insert(root: Tree, x: int) -> TreeNode:
+        if not root:
+            return TreeNode(x)
+        if x < root.val:
+            root.left = bst_insert(root.left, x)
+        elif x > root.val:
+            root.right = bst_insert(root.right, x)
+        return root
+
+    # Check against bounds from all ancestors, not just
+    # the parent: O(n) time, O(h) space
+    def is_valid_bst(
+        n: Tree, lo: float = -math.inf, hi: float = math.inf
+    ) -> bool:
+        if not n:
+            return True
+        if not lo < n.val < hi:
+            return False
+        return is_valid_bst(n.left, lo, n.val) and is_valid_bst(
+            n.right, n.val, hi
+        )
+    ```
+
+  </Tab>
+</Tabs>
+
+## Heaps
+
+A binary **heap** is a complete binary tree where every parent is ≤ its children (min-heap) or ≥ them
+(max-heap). The root is always the min (or max); nothing else is sorted. Because the tree is complete it
+lives in a plain array with no pointers.
+
+<Diagram src="/images/diagrams/dsa-heap-array.svg" label="A min-heap of seven nodes drawn as a tree with index labels 0 to 6, and the same values stored in an array; node 1 (value 3) and its children at indexes 3 and 4 are highlighted in both, with arrows from index 1 to 2i+1 and 2i+2" caption="Level order in the tree is index order in the array" />
+
+| Index math (0-based) | Formula |
+| :------------------- | :------ |
+| Children of `i` | `2 * i + 1`, `2 * i + 2` |
+| Parent of `i` | `(i - 1) >> 1` in TS, `(i - 1) // 2` in Python |
+| Leaves | indexes `n // 2` to `n - 1` |
+| Height | $\lfloor \log_2 n \rfloor$ |
+
+| Operation | Cost | How |
+| :-------- | :--- | :-- |
+| Peek min | $O(1)$ | `a[0]` |
+| Push | $O(\log n)$ | append, then **sift up** (swap with parent while smaller) |
+| Pop min | $O(\log n)$ | move the last item to the root, then **sift down** (swap with the smaller child) |
+| Heapify an array | $O(n)$ | sift down from `n // 2 - 1` to 0; most nodes are near the bottom |
+| Search / delete arbitrary | $O(n)$ | not what heaps are for |
+| Top $k$ of $n$ | $O(n \log k)$ | keep a size-$k$ heap of the opposite kind |
+
+JavaScript has **no built-in heap or priority queue**. This one takes a comparator like
+`Array.prototype.sort` (negative means `x` comes out first), so the same class is a min-heap, a max-heap
+or a priority queue of objects. Other sheets link here for it.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    export class MinHeap<T> {
+      private readonly a: T[] = [];
+      private readonly cmp: (x: T, y: T) => number;
+
+      // cmp(x, y) < 0: x comes out first (like sort)
+      constructor(cmp: (x: T, y: T) => number) {
+        this.cmp = cmp;
+      }
+
+      get size(): number {
+        return this.a.length;
+      }
+
+      peek(): T | undefined {
+        return this.a[0];
+      }
+
+      push(x: T): void {
+        const a = this.a;
+        a.push(x);
+        let i = a.length - 1;
+        while (i > 0) {
+          const p = (i - 1) >> 1;
+          if (this.cmp(a[i], a[p]) >= 0) break;
+          [a[i], a[p]] = [a[p], a[i]];
+          i = p;
+        }
+      }
+
+      pop(): T | undefined {
+        const a = this.a;
+        if (a.length === 0) return undefined;
+        const top = a[0];
+        const last = a.pop()!;
+        if (a.length > 0) {
+          a[0] = last;
+          this.siftDown(0);
+        }
+        return top;
+      }
+
+      private siftDown(i: number): void {
+        const a = this.a;
+        for (;;) {
+          const l = 2 * i + 1;
+          const r = l + 1;
+          let m = i;
+          if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+          if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+          if (m === i) return;
+          [a[i], a[m]] = [a[m], a[i]];
+          i = m;
+        }
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+
+    # heapq: functions on a plain list, always a min-heap
+    h: list[int] = []
+    heapq.heappush(h, 5)       # push, O(log n)
+    heapq.heappush(h, 1)
+    heapq.heappush(h, 4)
+    smallest = h[0]            # peek, O(1) → 1
+    popped = heapq.heappop(h)  # pop min, O(log n) → 1
+
+    xs = [9, 3, 7, 1]
+    heapq.heapify(xs)          # in place, O(n)
+    # push then pop in one step (faster than both)
+    kept = heapq.heappushpop(xs, 2)   # → 1
+    two = heapq.nsmallest(2, [9, 3, 7, 1])  # [1, 3]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Max-heaps & priorities
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    const minH = new MinHeap<number>((x, y) => x - y);
+    const maxH = new MinHeap<number>((x, y) => y - x);
+    for (const x of [5, 1, 4]) {
+      minH.push(x);
+      maxH.push(x);
+    }
+    const low = minH.pop();  // 1
+    const high = maxH.pop(); // 5
+
+    // [priority, label]: lowest priority first, ties by label
+    type Task = [number, string];
+    const tasks = new MinHeap<Task>(
+      (x, y) => x[0] - y[0] || x[1].localeCompare(y[1]),
+    );
+    tasks.push([2, "write"]);
+    tasks.push([1, "plan"]);
+    const first = tasks.pop(); // [1, "plan"]
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+    from itertools import count
+
+    xs = [5, 1, 4]
+    min_h = list(xs)
+    heapq.heapify(min_h)
+    low = heapq.heappop(min_h)  # 1
+
+    max_h = [-x for x in xs]  # max-heap trick: negate
+    heapq.heapify(max_h)
+    high = -heapq.heappop(max_h)  # 5
+    # Python 3.14+: heapify_max, heappush_max, heappop_max
+
+    # (priority, tie-breaker, payload): the counter keeps
+    # equal priorities from comparing the payloads
+    tasks: list[tuple[int, int, str]] = []
+    tie = count()
+    heapq.heappush(tasks, (2, next(tie), "write"))
+    heapq.heappush(tasks, (1, next(tie), "plan"))
+    first = heapq.heappop(tasks)[2]  # "plan"
+    ```
+
+  </Tab>
+</Tabs>
+
+Negation only works for numbers; for strings or objects in a max-heap, wrap them in a class whose
+`__lt__` is reversed, or use the 3.14 `_max` functions. Heaps can't decrease a key in place: push the
+new entry and skip stale ones when popped ("lazy deletion", used by Dijkstra in
+[Graph algorithms](/dsa/graph-algorithms/)).
+
+## Tries
+
+A **trie** (prefix tree) stores strings character by character; each path from the root spells a
+prefix, and a flag marks where a whole word ends. Lookups cost the length of the word, not the number of
+words.
+
+| Operation | Cost | Notes |
+| :-------- | :--- | :---- |
+| Insert word of length $L$ | $O(L)$ | creates at most $L$ nodes |
+| Search word | $O(L)$ | must end on a node flagged `isWord` |
+| Starts with prefix | $O(L)$ | any node reached is enough |
+| All words with a prefix | $O(L + \text{output})$ | walk to the prefix node, then DFS |
+| Space | $O(\text{total characters})$ | times the alphabet if children are fixed arrays |
+
+Children as a `Map` / `dict` keep memory proportional to the edges used; a 26-slot array is faster for
+lowercase-only input. Tries power autocomplete, spell check, IP routing (longest prefix match) and
+"Word Search II".
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    class TrieNode {
+      children = new Map<string, TrieNode>();
+      isWord = false;
+    }
+
+    export class Trie {
+      private readonly root = new TrieNode();
+
+      insert(word: string): void {
+        let node = this.root;
+        for (const ch of word) {
+          let next = node.children.get(ch);
+          if (!next) {
+            next = new TrieNode();
+            node.children.set(ch, next);
+          }
+          node = next;
+        }
+        node.isWord = true;
+      }
+
+      search(word: string): boolean {
+        return this.find(word)?.isWord ?? false;
+      }
+
+      startsWith(prefix: string): boolean {
+        return this.find(prefix) !== undefined;
+      }
+
+      private find(prefix: string): TrieNode | undefined {
+        let node: TrieNode | undefined = this.root;
+        for (const ch of prefix) {
+          node = node.children.get(ch);
+          if (!node) return undefined;
+        }
+        return node;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    class TrieNode:
+        def __init__(self) -> None:
+            self.children: dict[str, TrieNode] = {}
+            self.is_word = False
+
+    class Trie:
+        def __init__(self) -> None:
+            self.root = TrieNode()
+
+        def insert(self, word: str) -> None:
+            node = self.root
+            for ch in word:
+                node = node.children.setdefault(ch, TrieNode())
+            node.is_word = True
+
+        def search(self, word: str) -> bool:
+            node = self._find(word)
+            return node is not None and node.is_word
+
+        def starts_with(self, prefix: str) -> bool:
+            return self._find(prefix) is not None
+
+        def _find(self, prefix: str) -> TrieNode | None:
+            node = self.root
+            for ch in prefix:
+                if ch not in node.children:
+                    return None
+                node = node.children[ch]
+            return node
+    ```
+
+  </Tab>
+</Tabs>
+
+## Graph representations
+
+A **graph** is vertices $V$ joined by edges $E$. **Directed** edges go one way ($u \to v$); **undirected**
+edges both ways. **Weighted** edges carry a cost. A graph is **sparse** when $E$ is close to $V$ and
+**dense** when $E$ approaches $V^2$.
+
+<Diagram src="/images/diagrams/dsa-graph-representations.svg" label="An undirected graph with vertices 0 to 3 and edges 0-1, 0-2, 1-2 and 2-3, shown as an adjacency list (0: 1, 2; 1: 0, 2; 2: 0, 1, 3; 3: 2) and as a 4 by 4 adjacency matrix of zeros and ones, with vertex 2's row highlighted in both" caption="One graph, two layouts: lists store only the edges; the matrix stores every pair" />
+
+| | Edge list | Adjacency list | Adjacency matrix |
+| :- | :-------- | :------------- | :--------------- |
+| Shape | `[u, v][]` | `number[][]` / `Map<K, K[]>` | `V × V` booleans or weights |
+| Space | $O(E)$ | $O(V + E)$ | $O(V^2)$ |
+| Is `u–v` an edge? | $O(E)$ | $O(\deg u)$ (or $O(1)$ with sets) | $O(1)$ |
+| Neighbors of `u` | $O(E)$ | $O(\deg u)$ | $O(V)$ |
+| Visit every edge | $O(E)$ | $O(V + E)$ | $O(V^2)$ |
+| Best for | input format, Kruskal's MST | almost everything: BFS, DFS, Dijkstra | dense graphs, Floyd–Warshall |
+
+| Variant | Adjacency list entry |
+| :------ | :------------------- |
+| Undirected | add `v` to `u` **and** `u` to `v` |
+| Directed | add `v` to `u` only; keep reverse edges too if you need in-degrees or predecessors |
+| Weighted | store `[v, w]` pairs |
+| Labeled nodes (strings) | `Map<string, string[]>` / `defaultdict(list)` |
+| Grid | implicit: neighbors are the 4 (or 8) adjacent cells, no list needed |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Edge = [number, number];
+    type WEdge = [number, number, number]; // u, v, weight
+
+    // Nodes 0..n-1: O(V + E) time and space
+    function adjList(
+      n: number,
+      edges: Edge[],
+      directed = false,
+    ): number[][] {
+      const g: number[][] = Array.from({ length: n }, () => []);
+      for (const [u, v] of edges) {
+        g[u].push(v);
+        if (!directed) g[v].push(u);
+      }
+      return g;
+    }
+
+    // Weighted, directed: g[u] holds [v, w] pairs
+    function weightedAdj(n: number, edges: WEdge[]) {
+      const g: [number, number][][] =
+        Array.from({ length: n }, () => []);
+      for (const [u, v, w] of edges) g[u].push([v, w]);
+      return g;
+    }
+
+    // Grid as an implicit graph: in-bounds 4-neighbors
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+    function neighbors(
+      r: number, c: number, rows: number, cols: number,
+    ): [number, number][] {
+      const out: [number, number][] = [];
+      for (const [dr, dc] of DIRS) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols)
+          out.push([nr, nc]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    type Edge = tuple[int, int]
+    type WEdge = tuple[int, int, int]  # u, v, weight
+
+    # Nodes 0..n-1: O(V + E) time and space
+    def adj_list(
+        n: int,
+        edges: list[Edge],
+        directed: bool = False,
+    ) -> list[list[int]]:
+        g: list[list[int]] = [[] for _ in range(n)]
+        for u, v in edges:
+            g[u].append(v)
+            if not directed:
+                g[v].append(u)
+        return g
+
+    # Weighted, directed: g[u] holds (v, w) pairs
+    def weighted_adj(
+        n: int, edges: list[WEdge]
+    ) -> list[list[tuple[int, int]]]:
+        g: list[list[tuple[int, int]]] = [
+            [] for _ in range(n)
+        ]
+        for u, v, w in edges:
+            g[u].append((v, w))
+        return g
+
+    # Grid as an implicit graph: in-bounds 4-neighbors
+    DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+    def neighbors(
+        r: int, c: int, rows: int, cols: int
+    ) -> list[tuple[int, int]]:
+        return [
+            (r + dr, c + dc)
+            for dr, dc in DIRS
+            if 0 <= r + dr < rows and 0 <= c + dc < cols
+        ]
+    ```
+
+  </Tab>
+</Tabs>
+
+Traversing these (BFS, DFS, cycle detection, topological sort, shortest paths) is covered in
+[Graph algorithms](/dsa/graph-algorithms/).
+
+## Union-find
+
+**Union-find** (disjoint set union, DSU) tracks which items are in the same group while groups merge.
+Each group is a tree stored in a `parent` array; the root names the group.
+
+| Operation | Naive | With both optimizations |
+| :-------- | :---- | :---------------------- |
+| `find(x)`: root of x's group | $O(n)$ | $O(\alpha(n))$ amortized |
+| `union(a, b)`: merge two groups | $O(n)$ | $O(\alpha(n))$ amortized |
+| Same group? `find(a) === find(b)` | $O(n)$ | $O(\alpha(n))$ amortized |
+| Space | $O(n)$ | $O(n)$ |
+
+- **Path compression**: after `find`, point every node on the path straight at the root.
+- **Union by size** (or rank): hang the smaller tree under the larger, keeping trees shallow.
+- $\alpha(n)$ is the inverse Ackermann function: at most 4 for any realistic $n$, so effectively $O(1)$.
+
+Uses: connected components as edges arrive, cycle detection in undirected graphs (an edge whose ends are
+already joined), Kruskal's MST, grouping equal accounts or equations.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    export class UnionFind {
+      private readonly parent: number[];
+      private readonly size: number[];
+      count: number; // number of groups
+
+      constructor(n: number) {
+        this.parent = Array.from({ length: n }, (_, i) => i);
+        this.size = new Array<number>(n).fill(1);
+        this.count = n;
+      }
+
+      find(x: number): number {
+        let root = x;
+        while (this.parent[root] !== root)
+          root = this.parent[root];
+        while (this.parent[x] !== root) { // path compression
+          const next = this.parent[x];
+          this.parent[x] = root;
+          x = next;
+        }
+        return root;
+      }
+
+      // false if a and b were already in one group
+      union(a: number, b: number): boolean {
+        let ra = this.find(a);
+        let rb = this.find(b);
+        if (ra === rb) return false;
+        if (this.size[ra] < this.size[rb]) [ra, rb] = [rb, ra];
+        this.parent[rb] = ra; // smaller under larger
+        this.size[ra] += this.size[rb];
+        this.count--;
+        return true;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    class UnionFind:
+        def __init__(self, n: int) -> None:
+            self.parent = list(range(n))
+            self.size = [1] * n
+            self.count = n  # number of groups
+
+        def find(self, x: int) -> int:
+            root = x
+            while self.parent[root] != root:
+                root = self.parent[root]
+            while self.parent[x] != root:  # path compression
+                self.parent[x], x = root, self.parent[x]
+            return root
+
+        # False if a and b were already in one group
+        def union(self, a: int, b: int) -> bool:
+            ra, rb = self.find(a), self.find(b)
+            if ra == rb:
+                return False
+            if self.size[ra] < self.size[rb]:
+                ra, rb = rb, ra
+            self.parent[rb] = ra  # smaller under larger
+            self.size[ra] += self.size[rb]
+            self.count -= 1
+            return True
+    ```
+
+  </Tab>
+</Tabs>
+
+## Choosing a structure
+
+| Problem says | Reach for | Cost |
+| :----------- | :-------- | :--- |
+| Hierarchy, nesting, "each node has children" | tree + DFS | $O(n)$ |
+| Sorted order with inserts and deletes | balanced BST (or sorted list + `bisect`) | $O(\log n)$ |
+| Repeatedly take the smallest / largest | heap | $O(\log n)$ per op |
+| k largest, k closest, median of a stream | heap(s) of size $k$ or two heaps | $O(n \log k)$ |
+| Merge k sorted inputs | heap of the k heads | $O(n \log k)$ |
+| Prefixes, autocomplete, many words on a board | trie | $O(L)$ per word |
+| Relationships, dependencies, networks, grids | graph (adjacency list) | $O(V + E)$ to traverse |
+| "Are these connected?" as edges arrive | union-find | $O(\alpha(n))$ |
+| Shortest path, ordering, cycles | [Graph algorithms](/dsa/graph-algorithms/) | |
+
+## Recipes
+
+### K-th smallest with a heap
+Use for "Kth Largest Element in an Array" and its mirror: keep the $k$ best seen so far in a heap whose
+top is the worst of them. $O(n \log k)$ time, $O(k)$ space (quickselect averages $O(n)$, see
+[Sorting & searching](/dsa/sorting-searching/)).
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Max-heap of the k smallest; its top is the answer
+    function kthSmallest(xs: number[], k: number): number {
+      const heap = new MinHeap<number>((x, y) => y - x);
+      for (const x of xs) {
+        heap.push(x);
+        if (heap.size > k) heap.pop(); // drop the largest
+      }
+      return heap.peek()!;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+
+    # Max-heap (negated) of the k smallest; top = answer
+    def kth_smallest(xs: list[int], k: int) -> int:
+        heap: list[int] = []
+        for x in xs:
+            heapq.heappush(heap, -x)
+            if len(heap) > k:
+                heapq.heappop(heap)  # drop the largest
+        return -heap[0]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Serialize a binary tree
+Use for "Serialize and Deserialize Binary Tree": preorder with a marker for empty children is enough to
+rebuild the exact shape. $O(n)$ time and space both ways.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function serialize(root: Tree): string {
+      const out: string[] = [];
+      const walk = (n: Tree): void => {
+        if (!n) {
+          out.push("#");
+          return;
+        }
+        out.push(String(n.val));
+        walk(n.left);
+        walk(n.right);
+      };
+      walk(root);
+      return out.join(",");
+    }
+
+    function deserialize(s: string): Tree {
+      const tokens = s.split(",");
+      let i = 0;
+      const build = (): Tree => {
+        const t = tokens[i++];
+        if (t === "#") return null;
+        const node = new TreeNode(Number(t));
+        node.left = build();
+        node.right = build();
+        return node;
+      };
+      return build();
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def serialize(root: Tree) -> str:
+        out: list[str] = []
+
+        def walk(n: Tree) -> None:
+            if not n:
+                out.append("#")
+                return
+            out.append(str(n.val))
+            walk(n.left)
+            walk(n.right)
+
+        walk(root)
+        return ",".join(out)
+
+    def deserialize(s: str) -> Tree:
+        tokens = iter(s.split(","))
+
+        def build() -> Tree:
+            t = next(tokens)
+            if t == "#":
+                return None
+            node = TreeNode(int(t))
+            node.left = build()
+            node.right = build()
+            return node
+
+        return build()
+    ```
+
+  </Tab>
+</Tabs>
+
+### Word search with a trie
+Use for "Word Search II": put all words in a trie, then DFS from every cell, following trie edges and
+abandoning a path as soon as no word has that prefix. Time $O(R \cdot C \cdot 3^{L})$ worst case for
+longest word $L$; space $O(\text{total characters})$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Node = { kids: Map<string, Node>; word?: string };
+
+    function findWords(
+      board: string[][],
+      words: string[],
+    ): string[] {
+      const root: Node = { kids: new Map() };
+      for (const w of words) {
+        let n = root;
+        for (const ch of w) {
+          let next = n.kids.get(ch);
+          if (!next) {
+            next = { kids: new Map() };
+            n.kids.set(ch, next);
+          }
+          n = next;
+        }
+        n.word = w;
+      }
+      const R = board.length;
+      const C = board[0].length;
+      const found: string[] = [];
+      const dfs = (r: number, c: number, parent: Node) => {
+        if (r < 0 || r >= R || c < 0 || c >= C) return;
+        const ch = board[r][c];
+        const node = parent.kids.get(ch);
+        if (!node) return; // no word has this prefix
+        if (node.word !== undefined) {
+          found.push(node.word);
+          node.word = undefined; // report once
+        }
+        board[r][c] = "#"; // mark visited
+        dfs(r + 1, c, node);
+        dfs(r - 1, c, node);
+        dfs(r, c + 1, node);
+        dfs(r, c - 1, node);
+        board[r][c] = ch; // restore
+      };
+      for (let r = 0; r < R; r++)
+        for (let c = 0; c < C; c++) dfs(r, c, root);
+      return found;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    class Node:
+        def __init__(self) -> None:
+            self.kids: dict[str, Node] = {}
+            self.word: str | None = None
+
+    def find_words(
+        board: list[list[str]], words: list[str]
+    ) -> list[str]:
+        root = Node()
+        for w in words:
+            n = root
+            for ch in w:
+                n = n.kids.setdefault(ch, Node())
+            n.word = w
+        R, C = len(board), len(board[0])
+        found: list[str] = []
+
+        def dfs(r: int, c: int, parent: Node) -> None:
+            if not (0 <= r < R and 0 <= c < C):
+                return
+            ch = board[r][c]
+            node = parent.kids.get(ch)
+            if not node:
+                return  # no word has this prefix
+            if node.word is not None:
+                found.append(node.word)
+                node.word = None  # report once
+            board[r][c] = "#"  # mark visited
+            dfs(r + 1, c, node)
+            dfs(r - 1, c, node)
+            dfs(r, c + 1, node)
+            dfs(r, c - 1, node)
+            board[r][c] = ch  # restore
+
+        for r in range(R):
+            for c in range(C):
+                dfs(r, c, root)
+        return found
+    ```
+
+  </Tab>
+</Tabs>
+
+Pruning helps a lot in practice: delete a trie child once its subtree has no words left.
+
+### Count connected components
+Use for "Number of Connected Components in an Undirected Graph", "Number of Provinces" and
+"Redundant Connection": union every edge; the group count is the answer, and a failed `union` means
+the edge closes a cycle. $O(V + E \cdot \alpha(V))$ time, $O(V)$ space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function components(
+      n: number,
+      edges: [number, number][],
+    ): { count: number; cycleEdge: [number, number] | null } {
+      const uf = new UnionFind(n);
+      let cycleEdge: [number, number] | null = null;
+      for (const [a, b] of edges) {
+        if (!uf.union(a, b)) cycleEdge ??= [a, b];
+      }
+      return { count: uf.count, cycleEdge };
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def components(
+        n: int, edges: list[tuple[int, int]]
+    ) -> tuple[int, tuple[int, int] | None]:
+        uf = UnionFind(n)
+        cycle_edge: tuple[int, int] | None = None
+        for a, b in edges:
+            if not uf.union(a, b) and cycle_edge is None:
+                cycle_edge = (a, b)
+        return uf.count, cycle_edge
+    ```
+
+  </Tab>
+</Tabs>
+
+### Merge k sorted lists
+Use for "Merge k Sorted Lists" (and k-way merges of files or streams): a heap holds the current head of
+each list. $O(n \log k)$ time for $n$ items in total, $O(k)$ extra space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Heap entries: [value, which list, index in that list]
+    type Head = [number, number, number];
+
+    function mergeK(lists: number[][]): number[] {
+      const heap = new MinHeap<Head>((x, y) => x[0] - y[0]);
+      lists.forEach((xs, li) => {
+        if (xs.length > 0) heap.push([xs[0], li, 0]);
+      });
+      const out: number[] = [];
+      while (heap.size > 0) {
+        const [v, li, i] = heap.pop()!;
+        out.push(v);
+        const xs = lists[li];
+        if (i + 1 < xs.length)
+          heap.push([xs[i + 1], li, i + 1]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+
+    # Heap entries: (value, which list, index in that list)
+    def merge_k(lists: list[list[int]]) -> list[int]:
+        heap = [(xs[0], li, 0)
+                for li, xs in enumerate(lists) if xs]
+        heapq.heapify(heap)
+        out: list[int] = []
+        while heap:
+            v, li, i = heapq.heappop(heap)
+            out.append(v)
+            xs = lists[li]
+            if i + 1 < len(xs):
+                heapq.heappush(heap, (xs[i + 1], li, i + 1))
+        return out
+        # built in: list(heapq.merge(*lists))
+    ```
+
+  </Tab>
+</Tabs>
+
+## References
+
+- [Python docs: heapq](https://docs.python.org/3/library/heapq.html): the heap functions, the 3.14 `_max` variants, priority-queue notes
+- [Python docs: collections](https://docs.python.org/3/library/collections.html): `deque` for level order, `defaultdict` for adjacency lists
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map): children and adjacency maps, key equality
+- *Introduction to Algorithms* (CLRS): heaps (heapsort chapter), binary search trees, red-black trees, disjoint sets, graph representations
+- [Tech Interview Handbook: tree](https://www.techinterviewhandbook.org/algorithms/tree/), [heap](https://www.techinterviewhandbook.org/algorithms/heap/), [trie](https://www.techinterviewhandbook.org/algorithms/trie/) and [graph](https://www.techinterviewhandbook.org/algorithms/graph/): corner cases and must-do problems
+- [NeetCode roadmap](https://neetcode.io/roadmap): trees, tries, heap / priority queue and graphs problem sets
+- [VisuAlgo](https://visualgo.net/en): animations of BSTs, AVL trees, heaps and union-find

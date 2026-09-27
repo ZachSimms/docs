@@ -1,0 +1,333 @@
+---
+title: Modeling in Blender
+date: 2026-09-27
+order: 2
+---
+
+Building meshes in **Blender 5.x** (5.2 LTS): Edit Mode selection, the core tools, the modifier stack,
+smooth shading after the 4.1 auto-smooth change, hard-surface vs organic workflows, sculpting basics,
+retopology, low-poly rules for games and the web, cleaning AI-generated meshes and precision modeling.
+Vocabulary (vertex, edge, face, normal, n-gon, topology, manifold) is in
+[Core concepts](/3d/fundamentals/core-concepts/); navigation and transforms are in
+[Interface & navigation](/3d/blender/interface-navigation/). Keys are Windows-style; on macOS read Ctrl as ⌘
+(or ⌃) and Alt as ⌥.
+
+## Primitives & Edit Mode selection
+
+Shift+A > Mesh adds a primitive at the 3D cursor: Plane, Cube, Circle, UV Sphere, Ico Sphere, Cylinder,
+Cone, Torus, Grid, Monkey. Set its size and segment count **immediately** in the Adjust Last Operation panel
+(bottom left, or F9); once you edit, that panel is gone. The default cube is 2 m on a side.
+
+**Tab** enters Edit Mode. Select modes: **1** vertex, **2** edge, **3** face (Shift+1/2/3 combines modes).
+
+| Select | Keys | Notes |
+| :----- | :--- | :---- |
+| Edge loop | Alt+click an edge | a ring of edges around the model; Shift+Alt+click adds |
+| Edge ring | Ctrl+Alt+click | the parallel edges across a loop (where a loop cut would go) |
+| Shortest path | Ctrl+click | from the active element to the clicked one; Shift+Ctrl fills a region |
+| Linked (island) | L under the pointer / Ctrl+L from selection | everything connected; Delimit in F9 stops at seams, sharp edges or materials |
+| Grow / shrink | Ctrl + numpad + / − | one ring outward / inward |
+| Similar | Shift+G | same normal, area, length, material… |
+| Checker deselect | Select > Checker Deselect | every other face, for panel patterns |
+| Non-manifold (holes, loose edges) | Select > Select All by Trait > Non Manifold | find problems |
+| Mirror selection | Shift+Ctrl+M | select the other side of a symmetric mesh |
+
+With **Emulate 3 Button Mouse** (Alt modifier) loop select is a double-click and ring select is Ctrl +
+double-click. Hidden faces: H hides, Alt+H reveals, just as in Object Mode.
+
+## Core tools
+
+| Tool | Keys / menu | What it does | Tips |
+| :--- | :---------- | :----------- | :--- |
+| Extrude | E | pulls new geometry out of the selection | E then Z locks the axis; canceling with RMB still leaves the new geometry on top of the old (fine before S, otherwise Ctrl+Z) |
+| Extrude menu | Alt+E | along normals, individual faces, manifold | individual faces for panels on curved surfaces |
+| Inset | I | a smaller face inside each selected face | press I again for individual insets; exact thickness in F9 |
+| Bevel | Ctrl+B (edges), Shift+Ctrl+B (vertices) | chamfers or rounds edges | wheel = segments; P = profile; set exact width in F9 |
+| Loop cut | Ctrl+R | adds edge loops across a ring | wheel = count, click, then slide (RMB centers it); E = even |
+| Knife | K (Shift+K: selected only) | draw cuts across faces | Enter or Space confirms; C cuts through; X/Y/Z lock the angle |
+| Knife Project | Mesh > Knife Project | cuts the outline of another object, as seen from the view | logos, windows in a wall |
+| Make edge / face | F | connects 2 vertices or fills a selected border | repeat F to keep filling (better with the F2 extension) |
+| Fill / Grid Fill | Alt+F / Face > Grid Fill | triangulated fill / quad grid fill of a hole | Grid Fill needs an even number of border edges |
+| Bridge Edge Loops | Edge > Bridge Edge Loops | joins two open loops with faces | arm to torso, pipe segments; Number of Cuts in F9 |
+| Connect vertex path | J | cuts an edge between selected vertices | clean alternative to the knife |
+| Merge | M | At Center, At Cursor, Collapse, At First / Last, **By Distance** | By Distance welds duplicate vertices |
+| Delete / dissolve | X / Ctrl+X | delete removes and leaves holes; dissolve removes and keeps the surface | Limited Dissolve cleans flat areas |
+| Separate / join | P / Ctrl+J (Object Mode) | P > Selection, By Material, By Loose Parts | loose parts: split a mesh of merged parts into objects |
+| Split / rip | Y / V | detach selection / tear vertices apart | |
+| Spin | toolbar Spin tool | extrudes around the 3D cursor | lathe profiles: vases, wheels; Screw modifier is non-destructive |
+| Subdivide | Edge > Subdivide (or right-click) | splits edges and faces | Number of Cuts in F9 |
+| Mirror / symmetrize | Ctrl+M / Mesh > Symmetrize | flip selection / copy one half onto the other | Mirror modifier for live symmetry |
+| Slide | G G (edge or vertex slide), Shift+V | moves along existing edges | keeps the shape while re-spacing loops |
+| Shrink / fatten | Alt+S | moves along normals | thicken shells without a modifier |
+| Crease | Shift+E | sharpens an edge under Subdivision Surface | 1 = sharp corner |
+| Menus | Ctrl+V / Ctrl+E / Ctrl+F | vertex / edge / face menus | seams, sharp marks, triangulate, grid fill |
+
+## Modifier stack
+
+Modifiers are non-destructive operations evaluated top to bottom (Properties > **Modifiers** tab, Add
+Modifier; Ctrl+A over a modifier applies it). Order matters: Mirror before Subdivision, Bevel before Weighted
+Normal, Triangulate near the end.
+
+| Modifier | For | Key settings | Apply before export? |
+| :------- | :-- | :----------- | :------------------- |
+| Mirror | symmetric models, one half edited | Clipping (keeps center vertices on the seam), Bisect, Mirror Object | exporter can apply it; apply by hand before UV-ing mirrored halves differently |
+| Subdivision Surface | smooth high-res shape from a low cage (Ctrl+1…5 adds one) | Levels Viewport vs Render, crease support | apply at the level you want, or keep the low cage for games |
+| Bevel | rounded edges without touching the mesh | Amount, Segments, Limit Method Angle (30°), Harden Normals | yes (exporter can); check the tri count |
+| Solidify | thickness for planes (walls, cloth, leaves) | Thickness, Offset, Even Thickness | yes |
+| Array | repeats: fences, stairs, chains | Count or Fit Length, Relative Offset, Merge, Object Offset (rotation) | yes, or export one piece and instance it in the engine |
+| Boolean | cut holes or combine shapes with a cutter object | Difference / Union / Intersect; solver Exact (robust), Float (fast), Manifold (fastest, closed meshes only) | yes, then clean the n-gons it leaves |
+| Decimate | fewer triangles (LODs, scans, AI meshes) | Collapse ratio, Un-Subdivide, Planar (angle) | yes; check UVs and silhouette |
+| Weighted Normal | makes big flat faces shade flat on chamfered hard-surface models | Weighting Face Area, Keep Sharp | yes; custom normals export in glTF |
+| Remesh | rebuild a uniform mesh | Voxel (size, adaptivity), Blocks, Smooth, Sharp | yes; usually followed by retopology or Decimate |
+| Shrinkwrap | project one mesh onto another | Nearest Surface Point / Project / Target Normal Project, Offset | yes (retopology, decals) |
+| Triangulate | control how quads split into triangles | Quad Method Beauty / Fixed, Keep Normals, Minimum Vertices | optional: glTF triangulates anyway; use it when the split matters (normal-map baking, GTA) |
+| Weld | merge by distance, live | Distance, Mode All / Connected | yes |
+| Smooth by Angle | auto smooth (added by Shade Auto Smooth) | Angle 30°, Ignore Sharpness | only with the exporter's Apply Modifiers on (off by default); without it the export is smooth everywhere. Pinned last in the stack |
+
+Buttons on each modifier: show in Edit Mode, **On Cage** (edit the result directly), show in viewport and
+render. glTF's **Data > Mesh > Apply Modifiers** (off by default) exports the evaluated result without
+destroying the stack.
+
+## Shading: smooth, flat & auto smooth
+
+Shading decides how normals are interpolated, not the geometry. Since **4.1** there is no Auto Smooth checkbox
+in Object Data; the choices are:
+
+| Command (Object menu or right-click) | Result |
+| :----------------------------------- | :----- |
+| Shade Flat | every face faceted |
+| Shade Smooth | everything smooth; removes Smooth by Angle modifiers |
+| **Shade Auto Smooth** | adds a **Smooth by Angle** modifier (a geometry-nodes asset, 30° default): edges sharper than the angle stay hard; live and adjustable |
+| Shade Smooth by Angle (F3) | one-shot: tags sharp edges by angle, no modifier |
+| Edge > Mark Sharp | force a hard edge; respected by Smooth by Angle unless Ignore Sharpness |
+
+Low-poly faceted look: Shade Flat. Hard-surface: Shade Auto Smooth + bevels + Weighted Normal. Organic:
+Shade Smooth. Every hard edge splits vertices on export (the GPU needs one normal per vertex), so hard edges
+raise the vertex count; that is expected.
+
+## Hard-surface workflow
+
+Hard-surface = manufactured objects: crates, weapons, vehicles, buildings.
+
+```text
+ blockout (primitives, real sizes)
+   → cut and add: Boolean cutters, inset + extrude, loop cuts
+   → edges: Bevel modifier (Angle) or bevel by hand for games
+   → normals: Shade Auto Smooth + Weighted Normal
+   → cleanup: apply Booleans, dissolve n-gons on curved parts, check tris
+```
+
+- Keep Boolean **cutters** in a "cutters" collection, Viewport Display > Display As **Wire** or **Bounds**,
+  disabled in renders; the Bool Tool extension adds one-key cutters.
+- Real bevels catch light; even a 1–2 mm bevel reads better than a sharp edge. For games, one segment +
+  Harden Normals is cheap.
+- Big flat panels can be n-gons (they don't deform); keep edge flow tidy around holes that will be
+  subdivided.
+- Apply scale before Bevel and Solidify, or widths come out wrong.
+
+## Organic: subdivision & sculpting
+
+**Subdivision modeling:** model a low **cage** in quads, add Subdivision Surface (Ctrl+2), shape with
+proportional editing (O) and slides. Hold edges tight with **support loops** (Ctrl+R near an edge) or crease
+(Shift+E). Avoid triangles and n-gons on curved, subdivided or deforming areas; they pinch. **Poles** (vertices
+with 3 or 5+ edges) are fine on flat areas, bad at bends.
+
+**Sculpt Mode** (Sculpting workspace, or Ctrl+Tab pie) pushes a dense mesh with brushes. Brushes are assets
+in the asset shelf; defaults have keys:
+
+| Key | Brush | Use |
+| :-- | :---- | :-- |
+| V | Draw | build up / carve (hold Ctrl to invert) |
+| C / Shift+C | Clay Strips / Crease Polish | block forms / sharp creases |
+| G | Grab | move big masses |
+| K | Snake Hook | pull out horns, tentacles |
+| I / P | Inflate / Pinch | puff up / tighten |
+| S | Smooth (or hold Shift with any brush) | relax |
+| Shift+T | Scrape / Fill | flatten |
+| M | Mask (A: mask pie) | protect areas |
+
+| Key | Control |
+| :-- | :------ |
+| F / Shift+F | brush radius / strength (drag, click) |
+| Ctrl (hold) | invert the brush (carve instead of add) |
+| X / Y / Z buttons in the header | mesh symmetry (off by default; turn X on for characters) |
+
+| Topology method | How | Use |
+| :-------------- | :-- | :-- |
+| Voxel remesh | R sets voxel size, **Ctrl+R** remeshes | uniform density between sculpt passes; merges intersecting parts |
+| Dyntopo (Dynamic Topology) | Sidebar > Tool > Dyntopo checkbox; R sets detail | adds detail only where you sculpt; slower on big meshes |
+| Multiresolution modifier | Subdivide in the modifier, sculpt at any level | detail on top of a clean base mesh; bake to a normal map |
+
+Watch how a simple object goes from primitive to modifiers to proportional editing.
+
+<YouTube id="-tbSCMbJA6o" title="Blender Donut Tutorial Part 1 (2026)" channel="Blender Guru" />
+
+## Retopology
+
+Retopology = building a clean, light mesh over a dense one (sculpt, scan, AI output) so it deforms,
+unwraps and runs fast. Details go back on as a baked normal map ([Materials, UVs & texturing](/3d/blender/materials-uv/)).
+
+| Option | How | Good for |
+| :----- | :-- | :------- |
+| Quad remesh (QuadriFlow) | Object Data > Remesh > Quad > **Quadriflow Remesh** (target faces, Preserve Sharp, Use Mesh Symmetry) | automatic quads for props and static meshes |
+| Voxel remesh | Object Data > Remesh > Voxel | cleaning before sculpting or printing; not final topology |
+| Decimate | modifier or Mesh > Clean Up > Decimate Geometry | fast triangle reduction; triangles, uneven |
+| Manual retopo | new mesh over the high-poly, snapped to its surface | characters and anything that bends |
+| Paid add-ons | e.g. Quad Remesher (Exoside) | better automatic quads |
+
+Manual setup:
+
+1. Add a Plane, Tab, delete to a single vertex or start from one face; name it `retopo`.
+2. Snapping on (Shift+Tab) with Snap Target **Face Project** (or Face Nearest); in the snap popover enable
+   the options that let it snap to other objects.
+3. Or add a **Shrinkwrap** modifier (Target: the sculpt, Offset 1–2 mm) with **On Cage** and Edit Mode on.
+4. Viewport Overlays (Edit Mode) > **Retopology** shows your mesh over the sculpt without X-ray clutter.
+5. Build with the **Poly Build** tool (Ctrl-click adds, Shift-click deletes, drag an edge to extrude a quad),
+   E and F (F2 extension), Mirror modifier with Clipping for symmetric models.
+6. Follow the forms: loops around eyes and mouth, rings along limbs, extra loops at joints.
+
+## Low-poly for games & web
+
+Budgets depend on platform and camera distance; see [Core concepts](/3d/fundamentals/core-concepts/) and the
+target pages ([web](/3d/export/web-threejs/), [Godot](/3d/export/godot/), [GTA V](/3d/export/gta-v/)).
+Engines count **triangles**, and GPUs pay for **vertices** (after splits) and **draw calls** (objects ×
+materials).
+
+| Rule | Why |
+| :--- | :-- |
+| Turn on Overlays > **Statistics** | shows Objects, Vertices, Edges, Faces, **Triangles** for the selection |
+| Spend triangles on the silhouette | interior detail goes in the normal map |
+| Delete faces nobody sees | bottoms of props on the floor, backs against walls |
+| Few materials per object (1–2) | each material is a separate draw call |
+| Quads while modeling; n-gons only on flat, non-deforming faces | predictable triangulation and subdivision |
+| Triangulate (modifier, Keep Normals) when the split matters | normal-map bakes must use the same triangulation as the engine |
+| Hard edges and UV seams on the same edges | both split vertices; aligning them avoids paying twice |
+| Consistent normals (Face Orientation overlay: red = back face) | flipped faces render black or invisible |
+| Separate LOD meshes: `crate_LOD0`, `crate_LOD1` via Decimate | distant copies cost less |
+| Apply scale, origin at the base | engines place and collide by origin |
+
+## Cleaning AI-generated & scanned meshes
+
+AI generators ([AI generation](/3d/ai-workflows/ai-generation/)) and scans give dense, triangulated,
+sometimes broken meshes with baked-in textures.
+
+| Step | Command | Fixes |
+| :--- | :------ | :---- |
+| 1 | Ctrl+A > All Transforms, check real size | wrong scale and rotation |
+| 2 | Edit Mode, A, **Mesh > Clean Up > Merge by Distance** (or M > By Distance) | duplicate vertices, seams that split the surface |
+| 3 | Mesh > Clean Up > Delete Loose, Degenerate Dissolve | floating vertices, zero-area faces |
+| 4 | **Shift+N** (Mesh > Normals > Recalculate Outside) | flipped normals (check the Face Orientation overlay) |
+| 5 | Select > Select All by Trait > Non Manifold | holes, internal faces; fill with F / Grid Fill or delete |
+| 6 | Mesh > Clean Up > Limited Dissolve | millions of coplanar triangles on flat areas |
+| 7 | Decimate modifier (Collapse, ratio 0.1–0.5) | triangle count; watch the texture (UVs survive Collapse, mostly) |
+| 8 | Remesh (Voxel) then Quadriflow, or manual retopo | unusable topology; then rebake the texture onto new UVs |
+| 9 | 3D Print Toolbox (N sidebar > 3D-Print) > Check All | non-manifold edges, intersections, thin walls, distorted faces |
+
+Shading looks lumpy after decimating: Shade Auto Smooth, or Shade Flat for a faceted style.
+
+## Precision & measurement
+
+| Need | How |
+| :--- | :-- |
+| Exact size | N sidebar > Item > **Dimensions** (Object Mode), then Ctrl+A > Scale |
+| Exact move / extrude | type while transforming: `E Z 0.25 Enter`, `G X -0.1 Enter`; `=` enables units (`25cm`) |
+| Exact vertex position | N sidebar > Item > Vertex / Median (Local or Global) |
+| Edge lengths, angles, areas | Viewport Overlays (Edit Mode) > **Measurement**: Edge Length, Edge Angle, Face Area, Face Angle (set Global to include object scale) |
+| Arbitrary distance | toolbar **Measure** tool (ruler); Ctrl snaps its ends |
+| Snap corner to corner | Snap Target Vertex, Snap Base Closest |
+| Grid-aligned blockouts | Snap Target Increment + Absolute Increment Snap, or Grid |
+| Equal spacing | Array modifier with Relative Offset 1 (+ gap), or LoopTools > Space |
+| Reference images | Shift+A > Image > Reference (or Mesh Plane for a textured plane) in front/side views |
+
+## Does this survive export?
+
+| Blender feature | glTF / engines | Action |
+| :-------------- | :------------- | :----- |
+| Quads and n-gons | triangulated on export | fine; triangulate yourself only when the split matters |
+| Modifiers | evaluated if **Apply Modifiers** is on (off by default; Godot's `.blend` import uses the same exporter) | keep the stack; apply by hand for GTA (Sollumz) or special cases |
+| Marked sharp edges, flat / smooth faces | exported as split normals (Normals option) | keep **Normals** on in the exporter |
+| Smooth by Angle, Weighted Normal | modifiers: their normals export only with Apply Modifiers on | turn it on, or apply them first |
+| Subdivision creases, Multires | not in the file; only the evaluated mesh | apply levels, or bake detail to a normal map |
+| Boolean cutters | exported as meshes if visible | disable in render / hide, use Include > Visible or Renderable Objects |
+| Loose edges / points | skipped unless Loose Edges / Loose Points are on | delete them |
+| Curves, text, metaballs | not preserved | Object > Convert > Mesh first |
+| Shape keys | morph targets | see [Animation](/3d/blender/animation/) |
+| Color attributes | exported when used by the material | see [Materials, UVs & texturing](/3d/blender/materials-uv/) |
+| Geometry Nodes instances | experimental exporter option | realize instances (Realize Instances node) if in doubt |
+
+Target specifics: [Web / Three.js](/3d/export/web-threejs/) (Draco / Meshopt, triangle budgets),
+[Godot](/3d/export/godot/) (`-col`, `-colonly` name suffixes for collision), [GTA V](/3d/export/gta-v/)
+(Sollumz, LODs, collision meshes).
+
+## Recipes
+
+### Model a low-poly crate ready for a game
+Use for any boxy prop: about 100–300 triangles, one material.
+
+1. Shift+A > Cube; N > Dimensions 1, 1, 1 m; Ctrl+A > Scale.
+2. Tab, 3 (face select), A, **I** then I again (individual) 0.08 m; E, `-0.03 Enter` sinks the panels.
+3. Select the outer edges (Alt+click loops), Ctrl+B, 0.015 m, 1 segment.
+4. Tab out, Shade Auto Smooth; add Weighted Normal (Keep Sharp) for clean flat faces.
+5. Delete the bottom face if it always sits on the floor.
+6. Overlays > Statistics: check triangles; origin at the bottom center
+   ([recipe](/3d/blender/interface-navigation/)); name it `crate`.
+7. UVs and texture: [Materials, UVs & texturing](/3d/blender/materials-uv/).
+
+### Cut a round hole with a Boolean
+Use for hard-surface panels, windows, vents.
+
+1. Add a Cylinder (Vertices 24–32 in F9) through the panel; name it `cut_hole`.
+2. Panel: Add Modifier > Generate > Boolean, Difference, Object `cut_hole`, solver Exact.
+3. Cutter: Object > Viewport Display > Display As Wire; disable in renders.
+4. Optional Bevel modifier (Limit Method Angle) below the Boolean for rounded rims.
+5. Before export: apply the modifiers, then Limited Dissolve and J to connect the n-gons around the hole if
+   the part will be subdivided.
+
+### Mirror-model a symmetric object
+Use for characters, vehicles, furniture.
+
+1. Model around X = 0; delete the −X half in Edit Mode.
+2. Add Mirror (Axis X, **Clipping** on) so center vertices can't cross the seam.
+3. Model one side; the other updates live.
+4. Apply the Mirror before UV-unwrapping if the two halves need different texture areas; otherwise keep it
+   (mirrored UVs save texture space).
+
+### Clean up an AI-generated GLB
+Use after File > Import > glTF 2.0 on a model from an AI generator.
+
+1. Ctrl+A > All Transforms; scale to real size against a reference cube.
+2. Edit Mode, A, Merge by Distance (0.0001 m), Shift+N.
+3. Mesh > Clean Up > Delete Loose, Degenerate Dissolve.
+4. Decimate modifier Collapse to the budget (e.g. ratio 0.2), then apply.
+5. Shade Auto Smooth; 3D Print Toolbox > Check All for leftovers.
+6. If the texture is baked and UVs are chaotic, keep the UVs; if you retopologized, rebake onto new UVs
+   ([baking](/3d/blender/materials-uv/)).
+
+### Retopologize a sculpt with QuadriFlow
+Use for static props from sculpts or scans.
+
+1. Duplicate the sculpt (Shift+D, RMB); hide the original.
+2. Object Data > Remesh > Voxel with a size that keeps the silhouette.
+3. Remesh > Quad > Quadriflow Remesh: Mode Faces, target 2,000–5,000, Preserve Sharp.
+4. Unwrap, then bake normals from the original (selected to active).
+
+### Make LODs with Decimate
+Use when an engine shows the asset at several distances.
+
+1. Finish `LOD0`; Shift+D a copy named `name_LOD1`.
+2. Decimate Collapse ratio 0.5 on LOD1, 0.25 on `LOD2`; Planar mode for flat hard-surface parts.
+3. Check the silhouette from the distance it will be seen; apply.
+4. Keep UVs shared so LODs reuse one texture set.
+
+## References
+
+- [Blender Manual: Mesh selecting](https://docs.blender.org/manual/en/latest/modeling/meshes/selecting/index.html): loops, linked, by trait
+- [Blender Manual: Mesh editing tools](https://docs.blender.org/manual/en/latest/modeling/meshes/editing/index.html): extrude, inset, bevel, loop cut, knife, bridge, merge, clean up
+- [Blender Manual: Modifiers](https://docs.blender.org/manual/en/latest/modeling/modifiers/index.html): every modifier and its options, including [Boolean](https://docs.blender.org/manual/en/latest/modeling/modifiers/generate/booleans.html) and [Smooth by Angle](https://docs.blender.org/manual/en/latest/modeling/modifiers/normals/smooth_by_angle.html)
+- [Blender Manual: Object shading](https://docs.blender.org/manual/en/latest/scene_layout/object/editing/shading.html): Shade Smooth, Auto Smooth, Flat
+- [Blender Manual: Remeshing and retopology](https://docs.blender.org/manual/en/latest/modeling/meshes/retopology.html): Voxel, Quad (QuadriFlow), manual retopology
+- [Blender Manual: Sculpting](https://docs.blender.org/manual/en/latest/sculpt_paint/sculpting/index.html): brushes, [Dyntopo](https://docs.blender.org/manual/en/latest/sculpt_paint/sculpting/tool_settings/dyntopo.html), [Remesh](https://docs.blender.org/manual/en/latest/sculpt_paint/sculpting/tool_settings/remesh.html)
+- [Blender Manual: Viewport overlays](https://docs.blender.org/manual/en/latest/editors/3dview/display/overlays.html): statistics, face orientation, measurement, retopology
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): what the exporter does to meshes
+- [3D Print Toolbox](https://extensions.blender.org/add-ons/print3d-toolbox/), [LoopTools](https://extensions.blender.org/add-ons/looptools/), [F2](https://extensions.blender.org/add-ons/f2/), [Bool Tool](https://extensions.blender.org/add-ons/bool-tool/): free extensions used above
+- [Blender Guru: Donut tutorial (2026)](https://www.youtube.com/watch?v=-tbSCMbJA6o): the classic first project

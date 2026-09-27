@@ -1,0 +1,339 @@
+---
+title: Materials, UVs & texturing
+date: 2026-09-27
+order: 3
+---
+
+Surfacing in **Blender 5.x** (5.2 LTS): the Shader Editor and Principled BSDF, image textures and color
+spaces, UV unwrapping and the UV Editor, texel density and packing, texture painting, free PBR libraries,
+baking with Cycles, and exactly which material setups the glTF exporter understands. The theory (PBR,
+metal/roughness, what each map means) is in [Materials & lighting](/3d/fundamentals/materials-lighting/);
+UV basics are in [Core concepts](/3d/fundamentals/core-concepts/). Keys are Windows-style; on macOS read Ctrl
+as ⌘ (or ⌃) and Alt as ⌥.
+
+## Shader Editor basics
+
+Open the **Shading** workspace: Shader Editor at the bottom, a viewport in Material Preview (EEVEE with a
+studio HDRI) at the top. Properties > **Material** tab: slots (one object can hold several materials; assign
+faces in Edit Mode with Assign), New, the browse menu to reuse a material, and the user count (a shared
+material edits everywhere).
+
+A material is a node graph ending in **Material Output**. New materials start with a **Principled BSDF**,
+the all-purpose PBR shader (based on OpenPBR); keep it for anything that must export.
+
+| Action | Keys |
+| :----- | :--- |
+| Add a node | Shift+A (or drag from a socket into empty space and search) |
+| Connect / disconnect | drag socket to socket / Ctrl + RMB drag across wires cuts |
+| Add a reroute point | Shift + RMB drag across a wire |
+| Delete, keeping the wires through | Ctrl+X |
+| Mute a node | M |
+| Collapse / hide unused sockets | H / Ctrl+H |
+| Group / edit group | Ctrl+G / Tab |
+| Frame selected nodes | Ctrl+J |
+| Swap a node for another type | Shift+S |
+| Preview a node's output | Shift + Ctrl + click (connects it to the output) |
+| Frame all / selected | Home / numpad . |
+
+**Node Wrangler** (Preferences > Add-ons, bundled but off by default) adds:
+
+| Key | Does |
+| :-- | :--- |
+| Ctrl+T on a texture node | adds Texture Coordinate + Mapping in front of it |
+| **Ctrl+Shift+T** on the Principled BSDF | Principled Texture Setup: pick a folder's PBR maps; it wires them and sets color spaces |
+| Alt + RMB drag between nodes | lazy connect |
+| Alt+X | delete unused nodes |
+
+Watch the node basics: Principled inputs, adding an image texture and procedural noise.
+
+<YouTube id="5Xlu2zwbJd0" title="Blender Basic Materials Tutorial (Donut Part 4)" channel="Blender Guru" />
+
+### Principled BSDF to glTF
+
+| Principled input (panel) | Feed with | glTF 2.0 field |
+| :----------------------- | :-------- | :------------- |
+| Base Color | value or Image Texture (sRGB); vertex color via Color Attribute × color | `baseColorFactor` / `baseColorTexture` |
+| Metallic | value or image (Non-Color) | `metallicFactor`, **B** channel of `metallicRoughnessTexture` |
+| Roughness | value or image (Non-Color) | `roughnessFactor`, **G** channel of the same texture |
+| Normal | Image (Non-Color) → **Normal Map** node (Tangent Space) → Normal | `normalTexture` (Strength → `scale`) |
+| Alpha | value or image alpha | `alphaMode` OPAQUE / MASK / BLEND, chosen from the nodes |
+| Emission > Color, Strength | value or image (sRGB) | `emissiveFactor` / `emissiveTexture`; strength over 1 adds `KHR_materials_emissive_strength` |
+| (none) | image into **glTF Material Output > Occlusion** | `occlusionTexture` (R channel) |
+| Coat > Weight, Roughness, Normal | values or images | `KHR_materials_clearcoat` |
+| Transmission > Weight | value or image | `KHR_materials_transmission` (glass) |
+| IOR | value | `KHR_materials_ior` |
+| Specular > IOR Level, Tint | values or images | `KHR_materials_specular` |
+| Sheen, Anisotropic, Thin Film… | values | `KHR_materials_sheen`, `KHR_materials_anisotropy`; others Blender-only |
+| Subsurface, Diffuse Roughness | values | not exported |
+
+Engines read the core fields everywhere; `KHR_` extensions depend on the viewer (three.js supports most;
+check [Godot](/3d/export/godot/) and [GTA V](/3d/export/gta-v/) per feature).
+
+## Image textures & color spaces
+
+Add > Texture > **Image Texture**, Open an image (or drag an image file onto the Shader Editor). Set
+**Color Space** on the node's image settings: color maps are **sRGB**; every data map is **Non-Color** (the
+numbers must reach the shader untouched). Blender guesses from the file but often guesses wrong for PNG data
+maps.
+
+| Map (common file suffix) | Color Space | Connect to |
+| :----------------------- | :---------- | :--------- |
+| Base color / albedo / diffuse (`_diff`, `_Color`) | sRGB | Base Color |
+| Roughness (`_rough`) | Non-Color | Roughness |
+| Metallic (`_metal`) | Non-Color | Metallic |
+| Normal, OpenGL style (`_nor_gl`, `_NormalGL`) | Non-Color | Normal Map node → Normal |
+| Normal, DirectX style (`_nor_dx`, `_NormalDX`) | Non-Color | invert the green channel first, or download the GL version (Blender and glTF are +Y / OpenGL) |
+| Ambient occlusion (`_ao`) | Non-Color | glTF Material Output > Occlusion (not the BSDF) |
+| Packed ORM (occlusion, roughness, metallic) | Non-Color | Separate Color: R → Occlusion, G → Roughness, B → Metallic |
+| Height / displacement (`_disp`) | Non-Color | Bump node → Normal (renders only; not exported) |
+| Emission (`_emission`) | sRGB | Emission Color |
+| Opacity / alpha | Non-Color | Alpha |
+
+Other node settings: **Interpolation** Linear (default), Closest for pixel art; **Extension** Repeat (tiles),
+Extend, Clip; **Projection** Flat for UVs, Box for quick UV-less mapping on boxy renders (not exported).
+Tiling: Mapping node Scale (exports as `KHR_texture_transform`; not every engine honors it, so baking
+the tiling into the UVs is safer).
+
+Since 5.0 the file's **working space** (Render > Color Management > Working Space) defaults to Linear
+Rec.709; leave it for anything bound for glTF and the web.
+
+## UV unwrapping
+
+A **UV map** assigns every face corner a 2D coordinate in the 0–1 square, so a 2D image can be wrapped on the
+3D surface (U is horizontal, V vertical). **Seams** are edges where the map is cut open; each connected cut-out
+piece is an **island**.
+
+<Diagram src="/images/diagrams/blender-uv-unwrap.svg" label="Left: a cube with thick lines on the four edges around its top face, the four edges around its bottom face (two of them hidden and dashed) and one vertical front edge, labeled seam = a cut. An arrow labeled flatten points right to a UV square with U along the bottom and V up the side, corners (0,0) and (1,1). Inside it: two small square islands labeled top and bottom, and below them a long strip of four squares labeled 4 sides: one strip island. A note says the vertical seam opens the strip, the loops around the top and bottom cut off the caps, and seams become island borders." caption="Seams cut the mesh; Unwrap lays each piece flat as an island in 0–1 UV space" />
+
+1. Edit Mode, 2 (edge select), select the cut edges (Alt+click for loops), **Ctrl+E > Mark Seam** (or UV > Mark
+   Seam). Seams show red.
+2. A to select all, **U > Unwrap** (choose a method below).
+3. Check in the **UV Editing** workspace; fix, re-seam, repeat.
+
+| U menu item | Needs seams | Result | Use |
+| :---------- | :---------- | :----- | :-- |
+| Unwrap Angle Based | yes | low distortion (ABF) | organic and most models |
+| Unwrap Conformal | yes | LSCM; fine on simple shapes | quick, simple parts |
+| Unwrap Minimum Stretch | yes | SLIM: minimizes area and angle distortion; iterations in F9 | hero assets, characters |
+| Smart UV Project | no | cuts by angle (Angle Limit, 66° default) and packs | hard-surface props, AI meshes, bake targets |
+| Lightmap Pack | no | every face its own island, no overlaps | lightmaps, quick bake targets |
+| Follow Active Quads | no | copies the active quad's layout along a quad strip | roads, rails, pipes, straight trim strips |
+| Cube / Cylinder / Sphere Projection | no | projects from a primitive shape | boxes, bottles, planets |
+| Project from View (Bounds) | no | exactly what the viewport shows, fitted to 0–1 | decals, flat walls, tracing a photo |
+
+Seam placement: hide seams where they are not seen (under, behind, along hard edges and material borders);
+put seams on the same edges as hard (sharp) edges, since both split vertices anyway; enough seams to kill
+stretching, few enough to keep painting easy.
+
+## UV Editor tools
+
+The UV Editor shows the selected faces' UVs; **Sync Selection** (on by default in 5.x) makes selection
+shared with the 3D Viewport. Keys work like the 3D Viewport: G / R / S, X / Y axis locks, L selects an island
+under the pointer, Ctrl+L linked, 1 / 2 / 3 select modes, 4 toggles island selection.
+
+| Tool | Where / key | Use |
+| :--- | :---------- | :-- |
+| Pin / unpin | P / Alt+P | keep chosen UVs fixed while re-unwrapping the rest |
+| Stitch | Alt+V | join islands along a shared edge |
+| Split / Rip | Alt+M / V | detach UVs |
+| Merge | M | weld UVs |
+| Align / Straighten | Shift+W | line up UVs along an axis |
+| Mirror | Ctrl+M | flip an island |
+| Minimize Stretch | UV > Minimize Stretch | relax distortion |
+| Average Islands Scale | UV > Average Islands Scale | make every island the same texel density |
+| Pack Islands | UV > Pack Islands | fill the 0–1 square: Shape Method, Rotate, **Margin** |
+| Copy / paste UVs | Ctrl+C / Ctrl+V | same layout onto identical islands |
+| Snap | Shift+S | UVs to pixels, cursor, each other |
+| Export UV Layout | UV > Export UV Layout | PNG/SVG of the wireframe to paint over |
+
+Checking: Image > New, Generated Type **UV Grid** or **Color Grid**, 1024 px; put it in the material's Image
+Texture and look in Material Preview: squares should be square and the same size everywhere. Overlays > UV
+Editing > **Display Stretch** colors distorted faces.
+
+## Texel density, packing & UDIMs
+
+**Texel density** = texture pixels per meter of surface. Keep it consistent across a scene so no object
+looks blurrier than its neighbor.
+
+- Pick a project value (for example 512 px/m for third-person props, 1024 px/m for first-person) and check
+  it with the **Texel Density Checker** extension (Set TD, Get TD).
+- Without an extension: UV > Average Islands Scale, then Pack Islands, on everything that shares a texture.
+- Margin: 2–4 px of padding at the texture size you will ship (Pack Islands > Margin), plus bake **Margin**
+  (16 px default) so mipmaps don't bleed neighbors in.
+- Mirrored or overlapping islands save space (both halves of a symmetrical crate); don't overlap anything
+  you'll **bake** lighting or AO into.
+- Texture sizes: powers of two (512, 1024, 2048); 2048² is plenty for most web assets.
+
+**UDIMs** spread UVs across several 0–1 tiles (1001, 1002…), each its own image; good for film-resolution
+characters. glTF has no UDIMs: the exporter splits each tile into a separate image and material, which
+multiplies draw calls. For games and the web, stay in one 0–1 tile (plus a trim sheet if needed).
+
+## Texture painting
+
+**Texture Paint** workspace: 3D Viewport in Texture Paint mode beside an Image Editor.
+
+1. The object needs UVs (Texture Slots panel > **Add Simple UVs** does a quick cube unwrap + pack).
+2. **Texture Slots** panel (header or Properties > Tool), Mode **Material**: + adds a paint slot (Base Color,
+   Roughness…), which creates an image and wires it into the material.
+3. Paint with LMB; **F** radius, **Shift+F** strength; Ctrl inverts some brushes; stencil and image brushes
+   project a texture.
+4. Painted images are **not saved with the .blend file automatically**: Image > Save (or Save All Images in
+   the Texture Slots panel), or pack them (File > External Data > Pack Resources).
+
+For layered painting inside Blender, the free **Ucupaint** extension adds layers and masks. Dedicated painters
+(Substance Painter, Adobe; ArmorPaint) export PBR maps that plug into the Principled BSDF directly.
+
+## PBR texture libraries
+
+| Source | License | Has |
+| :----- | :------ | :-- |
+| [Poly Haven](https://polyhaven.com/) | CC0 (public domain) | textures (1K–8K) with GL and DX normals, HDRIs, models |
+| [ambientCG](https://ambientcg.com/) | CC0 | textures, HDRIs, decals; `_NormalGL` and `_NormalDX` files |
+
+Workflow: download the 1K or 2K set (JPEG or PNG), select the Principled BSDF, **Ctrl+Shift+T** (Node
+Wrangler), select all map files: it wires Base Color, Roughness, Normal (through a Normal Map node),
+Displacement and sets color spaces. Delete the Displacement link for export, and use the GL normal map.
+
+## Baking with Cycles
+
+**Baking** renders shading into an image through the object's UVs: capture high-poly detail on a low-poly mesh,
+turn procedural materials into textures for export, or store AO and lighting. Only **Cycles** bakes (Render
+Properties > Render Engine > Cycles > **Bake** panel).
+
+Setup that every bake needs:
+
+1. The target object has a UV map with no overlapping islands.
+2. In its material, add an **Image Texture** node with a new image (Image > New: 1024–2048 px; Non-Color and
+   32-bit Float for normals; no alpha for color maps). Leave it **unconnected** and **select it**: the active
+   Image Texture node is the bake target (in every material on the object).
+3. Pick Bake Type, click **Bake**, then **Image > Save As** in the Image Editor (bakes live only in memory).
+
+| Bake Type | Output | Notes |
+| :-------- | :----- | :---- |
+| Normal | tangent-space normal map | Space Tangent, swizzle +X +Y +Z = OpenGL / glTF |
+| Ambient Occlusion | AO map | uses the World's AO settings; lights ignored |
+| Diffuse | albedo | in Influence untick Direct and Indirect, keep **Color**: pure base color |
+| Roughness | roughness | from the material |
+| Emit | emission | also a trick to bake any color: plug it into an Emission shader |
+| Combined | full lighting | lightmaps for static scenes ([Lighting & rendering](/3d/blender/lighting-rendering/)) |
+| Position, UV, Shadow, Glossy, Transmission, Environment | special-purpose | |
+
+**High to low** (details from a sculpt or AI mesh onto a clean retopo):
+
+1. The low-poly (UV-unwrapped, with the target image node) and the high-poly overlap in place.
+2. Select the **high** first, then Shift-click the **low** so it is **active**.
+3. Bake panel > **Selected to Active** on; raise **Extrusion** (or Max Ray Distance) until rays from the low
+   surface reach the whole high surface, e.g. 0.02–0.05 m; or enable **Cage** with a hand-inflated copy of
+   the low mesh as Cage Object for tricky areas.
+4. Bake Normal, then AO and Diffuse with the same settings.
+5. Artifacts: wavy seams → more Extrusion or a cage; stair-steps → smooth-shade the low mesh; black spots →
+   rays missing the high mesh; mismatched shading in-engine → triangulate the low mesh before baking.
+
+**Multires:** Bake panel > **Bake from Multires** bakes Normals or Displacement from a Multiresolution
+modifier's levels without a second object.
+
+## What the glTF exporter understands
+
+The exporter reads nodes it recognizes around a **Principled BSDF** and ignores the rest.
+
+| Exports | Doesn't export (bake it first) |
+| :------ | :----------------------------- |
+| Principled BSDF values and Image Texture nodes on its inputs | procedural textures: Noise, Voronoi, Wave, Gradient, Brick, Magic |
+| Normal Map node (Tangent Space) | Bump node, Displacement output |
+| Separate Color on a packed metal/rough image (G → Roughness, B → Metallic) | Math and Mix chains that compute values (except simple factor multiplies) |
+| Mix (Multiply, factor 1) of a color with a texture → a factor | Color Ramp, Hue/Saturation, Brightness/Contrast |
+| UV Map node + Mapping node → `KHR_texture_transform` | Box / Sphere projection, Object or Generated coordinates |
+| glTF Material Output node group (Occlusion) | AO node |
+| Emission shader + Add Shader (legacy), unlit (Background / camera-ray mix → `KHR_materials_unlit`) | Mix Shader between two BSDFs, Glass / Toon / Subsurface shaders |
+| Color Attribute (vertex color) multiplied into Base Color | multiple UV maps in engines that support only one |
+
+To get the **glTF Material Output** node: Preferences > Add-ons > glTF 2.0 > **Shader Editor Add-ons** on;
+then Shader Editor Add > Output > glTF Material Output, and plug the AO image into **Occlusion**.
+
+Images: glTF allows PNG and JPEG (WebP via extension); the exporter converts others. Export option
+**Data > Material > Images**: Automatic (keeps PNG/JPEG), JPEG, WebP, or None, plus Image Quality.
+
+Tip: File > Import > glTF 2.0 on a sample model (the Khronos sample assets) shows node setups the exporter
+round-trips.
+
+## Does this survive export?
+
+| Blender setup | Web / Three.js | Godot | GTA V (Sollumz) |
+| :------------ | :------------- | :---- | :-------------- |
+| Principled + image textures | yes → `MeshStandardMaterial` / `MeshPhysicalMaterial` | yes → `StandardMaterial3D` | rebuilt as Sollumz shader materials; textures go into a `.ytd` |
+| Procedural nodes | no: bake | no: bake | no: bake |
+| AO via glTF Material Output | yes (`aoMap`) | yes | bake into diffuse or use the shader's slots |
+| KHR extensions (clearcoat, transmission…) | mostly | partial | no |
+| UDIMs | split into several materials | same | no |
+| Several UV maps | UV0 and UV1 used | UV and UV2 (lightmaps) | per shader |
+| Alpha: Mask vs Blend | `alphaTest` vs transparent | alpha scissor vs alpha blend | per shader |
+
+Details and settings: [Web / Three.js](/3d/export/web-threejs/), [Godot](/3d/export/godot/),
+[GTA V](/3d/export/gta-v/).
+
+## Recipes
+
+### Unwrap and texture a crate
+Use on the low-poly crate from [Modeling](/3d/blender/modeling/) or any box prop.
+
+1. Edit Mode, edge select; Alt+click the loop around the top, Shift+Alt+click the loop around the bottom,
+   Shift+click one vertical edge; Ctrl+E > Mark Seam.
+2. A, U > Unwrap Angle Based; UV > Pack Islands, Margin 0.01.
+3. Shading workspace: select the Principled BSDF, Ctrl+Shift+T, pick a 2K wood set from Poly Haven or
+   ambientCG (GL normal).
+4. Check with a UV Grid image; rotate islands (R 90) so the wood grain runs the right way.
+5. Remove the Displacement link; export ([web](/3d/export/web-threejs/), [Godot](/3d/export/godot/)).
+
+### Bake a sculpt's detail onto a low-poly model
+Use after retopology, for game characters and AI meshes.
+
+1. Low-poly: Smart UV Project or seams + Unwrap; material with an unconnected Image Texture node, new 2048
+   image, Non-Color, 32-bit Float; select that node.
+2. Render Engine Cycles; Bake Type Normal, Selected to Active, Extrusion 0.03.
+3. Select high, then low (active); Bake. Image > Save As `name_normal.png`.
+4. Wire it: Image Texture → Normal Map → Principled Normal. Check in Material Preview for seams.
+
+### Bake a procedural material to textures
+Use when a material made of Noise / Voronoi / Color Ramp nodes must export.
+
+1. UV-unwrap the object (Smart UV Project is fine); add an unconnected, selected Image Texture node with a new
+   image (sRGB for color).
+2. Cycles, Bake Type **Diffuse**, Influence: Color only; Bake; save as `name_basecolor.png`.
+3. New Non-Color image selected; Bake Type **Roughness**; save. Repeat **Normal** if the procedural drives
+   bumps.
+4. Make a clean material: Principled + the baked images, and export that.
+
+### Add a baked AO map for glTF
+Use for web assets, which get no real-time ambient occlusion on their own.
+
+1. Image Texture (new 1024, Non-Color), selected; Cycles Bake Type Ambient Occlusion; Bake; save.
+2. Preferences > Add-ons > glTF 2.0 > Shader Editor Add-ons.
+3. Add > Output > glTF Material Output; image Color → **Occlusion**. Nothing changes in Blender's render;
+   the file gets `occlusionTexture`.
+
+### Check and fix texel density
+Use before exporting a set of props that share a scene.
+
+1. Select all objects that share a texture, Tab (multi-object edit).
+2. UV Editor: A, UV > Average Islands Scale, then Pack Islands.
+3. With Texel Density Checker: Get TD on the hero asset, Set TD on the others.
+
+### Export a UV layout to paint in 2D
+Use for decals, labels or pixel-art textures made in an image editor.
+
+1. UV Editor: UV > Export UV Layout, size 1024 or 2048, PNG.
+2. Paint on top in any editor; save as PNG next to the .blend.
+3. Image Texture node > Open; Closest interpolation for pixel art.
+
+## References
+
+- [Blender Manual: Principled BSDF](https://docs.blender.org/manual/en/latest/render/shader_nodes/shader/principled.html): every input and its meaning
+- [Blender Manual: Image Texture node](https://docs.blender.org/manual/en/latest/render/shader_nodes/textures/image.html) and [Color Spaces](https://docs.blender.org/manual/en/latest/render/color_management/color_spaces.html): sRGB vs Non-Color, working space
+- [Blender Manual: UV unwrapping operators](https://docs.blender.org/manual/en/latest/modeling/meshes/editing/uv.html), [Seams](https://docs.blender.org/manual/en/latest/modeling/meshes/uv/unwrapping/seams.html), [UV editing tools](https://docs.blender.org/manual/en/latest/modeling/meshes/uv/editing.html), [UDIMs](https://docs.blender.org/manual/en/latest/modeling/meshes/uv/workflows/udims.html)
+- [Blender Manual: Texture Paint](https://docs.blender.org/manual/en/latest/sculpt_paint/texture_paint/index.html): slots, brushes, saving
+- [Blender Manual: Render Baking](https://docs.blender.org/manual/en/latest/render/cycles/baking.html): bake types, selected to active, cage
+- [Blender Manual: glTF 2.0 add-on](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): which material nodes export, alpha modes, extensions, image options
+- [Blender Manual: Node Wrangler](https://docs.blender.org/manual/en/latest/addons/node_wrangler.html): texture setup shortcuts
+- [Khronos glTF 2.0 specification: materials](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#materials): the target the exporter writes to
+- [Poly Haven](https://polyhaven.com/) and [ambientCG](https://ambientcg.com/): CC0 textures and HDRIs
+- [Texel Density Checker](https://extensions.blender.org/add-ons/texel-density-checker/) and [Ucupaint](https://extensions.blender.org/add-ons/ucupaint/): free extensions used above

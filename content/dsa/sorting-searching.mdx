@@ -1,0 +1,1013 @@
+---
+title: Sorting & searching
+date: 2026-09-27
+order: 4
+---
+
+Built-in sorts in TypeScript and Python and their traps, a comparison of the classic algorithms, short
+implementations, quickselect, and binary search templates you can adapt without off-by-one bugs. Heaps
+(`MinHeap<T>`, `heapq`) live on [Trees & graphs](/dsa/trees-graphs/#heaps); growth rates on
+[Big-O](/dsa/big-o/); problems that start with "sort first" on [Problem patterns](/dsa/problem-patterns/).
+
+## Built-in sort
+
+| | JavaScript / TypeScript | Python |
+| :-- | :---------------------- | :----- |
+| In place | `xs.sort(cmp?)`: mutates **and** returns `xs` | `xs.sort(key=…, reverse=…)`: returns `None` |
+| Copy | `xs.toSorted(cmp?)` (ES2023) | `sorted(iterable, key=…, reverse=…)` |
+| Default order | **string** order of UTF-16 code units | `<` on the elements (mixed types raise `TypeError`) |
+| Custom order | comparator `(a, b) => number` | `key=` function, called once per element |
+| Stable | yes, required since ES2019 | yes, guaranteed |
+| Algorithm | TimSort in V8 (Node, Chrome); a stable merge sort elsewhere | Timsort (adaptive merge sort) |
+| Cost | $O(n \log n)$ time, $O(n)$ extra space; $O(n)$ on sorted input | same |
+
+### The default-sort trap
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    const nums = [10, 9, 1];
+    nums.sort();                 // [1, 10, 9]: as strings!
+    nums.sort((a, b) => a - b);  // [1, 9, 10]
+    nums.sort((a, b) => b - a);  // [10, 9, 1]
+
+    // toSorted copies; the original is untouched
+    const asc = [3, 1, 2].toSorted((a, b) => a - b);
+
+    const words = ["b", "a", "C"];
+    words.toSorted();            // ["C", "a", "b"]
+    words.toSorted((a, b) => a.localeCompare(b));
+    // ["a", "b", "C"]
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    nums = [10, 9, 1]
+    nums.sort()                  # [1, 9, 10]: numeric
+    nums.sort(reverse=True)      # [10, 9, 1]
+
+    # sorted copies; the original is untouched
+    asc = sorted([3, 1, 2])
+
+    words = ["b", "a", "C"]
+    sorted(words)                # ['C', 'a', 'b']
+    sorted(words, key=str.casefold)
+    # ['a', 'b', 'C']
+    ```
+
+  </Tab>
+</Tabs>
+
+- The comparator returns a negative number (a first), positive (b first) or 0 (keep order). It must be
+  consistent: same answer for the same pair, and transitive. Otherwise the order is implementation-defined.
+- `(a, b) => a > b` returns a boolean: JavaScript quietly misorders, TypeScript rejects it. `a - b` is fine for
+  finite numbers; for strings use `localeCompare` or `a < b ? -1 : a > b ? 1 : 0`.
+- `undefined` elements always go to the end without reaching the comparator; holes go after them.
+- Python's `reverse=True` keeps equal elements in their original order (it is not `reversed(sorted(…))`).
+
+### Multi-key sorts
+
+| Want | TypeScript | Python |
+| :--- | :--------- | :----- |
+| Key A, then B | `cmpA(a, b) \|\| cmpB(a, b)` | `key=lambda x: (x.a, x.b)` |
+| A descending, numeric | `b.a - a.a \|\| …` | negate: `(-x.a, x.b)` |
+| A descending, string | swap the operands in `localeCompare` | two stable passes: sort by B, then by A with `reverse=True` |
+| By field | `(a, b) => a.age - b.age` | `key=attrgetter("age")` or `itemgetter(1)` |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Player = { name: string; score: number };
+
+    const players: Player[] = [
+      { name: "Bo", score: 90 },
+      { name: "Al", score: 90 },
+      { name: "Cy", score: 75 },
+    ];
+    // score descending, then name ascending
+    const ranked = players.toSorted(
+      (a, b) =>
+        b.score - a.score || a.name.localeCompare(b.name),
+    );
+    // Al 90, Bo 90, Cy 75
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from dataclasses import dataclass
+
+    @dataclass
+    class Player:
+        name: str
+        score: int
+
+    players = [
+        Player("Bo", 90),
+        Player("Al", 90),
+        Player("Cy", 75),
+    ]
+    # score descending, then name ascending
+    ranked = sorted(players, key=lambda p: (-p.score, p.name))
+    # Al 90, Bo 90, Cy 75
+    ```
+
+  </Tab>
+</Tabs>
+
+### Comparator functions in Python
+
+When the order is a relation between two items rather than a key per item, wrap a comparator with
+`functools.cmp_to_key`. "Largest Number" (arrange numbers to form the biggest concatenation) is the classic
+case: `a` goes first when `a + b > b + a`.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function largestNumber(nums: number[]): string {
+      const cmp = (a: string, b: string): number =>
+        a + b > b + a ? -1 : a + b < b + a ? 1 : 0;
+      const s = nums.map(String).sort(cmp).join("");
+      return s.startsWith("0") ? "0" : s;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from functools import cmp_to_key
+
+    def largest_number(nums: list[int]) -> str:
+        def cmp(a: str, b: str) -> int:
+            return (a + b < b + a) - (a + b > b + a)
+
+        parts = sorted(map(str, nums), key=cmp_to_key(cmp))
+        s = "".join(parts)
+        return "0" if s[0] == "0" else s
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n \log n)$ comparisons, each $O(L)$ for strings of length $L$.
+
+## Algorithm comparison
+
+| Algorithm | Best | Average | Worst | Extra space | Stable | In place | Use when |
+| :-------- | :--- | :------ | :---- | :---------- | :----- | :------- | :------- |
+| Bubble | $n$ | $n^2$ | $n^2$ | $1$ | yes | yes | never; teaching only |
+| Insertion | $n$ | $n^2$ | $n^2$ | $1$ | yes | yes | tiny (≤ 16–32) or nearly sorted input; Timsort uses it for short runs |
+| Selection | $n^2$ | $n^2$ | $n^2$ | $1$ | no | yes | writes are expensive: at most $n$ swaps |
+| Merge | $n \log n$ | $n \log n$ | $n \log n$ | $n$ | yes | no | stability, linked lists, external (on-disk) sorting |
+| Quick | $n \log n$ | $n \log n$ | $n^2$ | $\log n$ stack (expected) | no | yes | fastest in-memory in practice; random pivot makes $n^2$ unlikely |
+| Heap | $n \log n$ | $n \log n$ | $n \log n$ | $1$ | no | yes | guaranteed $n \log n$ with $O(1)$ space; introsort's fallback |
+| Timsort | $n$ | $n \log n$ | $n \log n$ | $n$ | yes | no | what the built-ins use: exploits existing runs |
+| Counting | $n + k$ | $n + k$ | $n + k$ | $n + k$ | yes | no | integer keys in a small range $k$ |
+| Radix (LSD) | $d(n + b)$ | $d(n + b)$ | $d(n + b)$ | $n + b$ | yes | no | fixed-width integers or strings: $d$ digits in base $b$ |
+| Bucket | $n + k$ | $n + k$ | $n^2$ | $n + k$ | yes\* | no | floats spread uniformly over a known range |
+
+\* if the per-bucket sort is stable. Any **comparison** sort needs $\Omega(n \log n)$ comparisons in the worst
+case; counting, radix and bucket sort beat that by looking at the key's value, not by comparing.
+
+| Term | Meaning |
+| :--- | :------ |
+| Stable | equal keys keep their input order, so sorting by B then by A gives "A, ties broken by B" |
+| In place | $O(1)$ (or $O(\log n)$ stack) extra memory |
+| Adaptive | faster when the input is already partly sorted (insertion, Timsort) |
+
+## Implementations
+
+In real code call the built-in. Write these in interviews or when you need a variant (partial sort, custom
+partition, counting on a small range).
+
+### Insertion sort
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function insertionSort(xs: number[]): number[] {
+      for (let i = 1; i < xs.length; i++) {
+        const x = xs[i];
+        let j = i - 1;
+        while (j >= 0 && xs[j] > x) {
+          xs[j + 1] = xs[j]; // shift bigger items right
+          j--;
+        }
+        xs[j + 1] = x;
+      }
+      return xs;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def insertion_sort(xs: list[int]) -> list[int]:
+        for i in range(1, len(xs)):
+            x, j = xs[i], i - 1
+            while j >= 0 and xs[j] > x:
+                xs[j + 1] = xs[j]  # shift bigger items right
+                j -= 1
+            xs[j + 1] = x
+        return xs
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n^2)$ time, $O(n)$ when nearly sorted; $O(1)$ space; stable (strict `>` never jumps over an equal item).
+
+### Merge sort
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function mergeSort(xs: number[]): number[] {
+      if (xs.length <= 1) return xs.slice();
+      const mid = xs.length >> 1;
+      return merge(
+        mergeSort(xs.slice(0, mid)),
+        mergeSort(xs.slice(mid)),
+      );
+    }
+
+    function merge(a: number[], b: number[]): number[] {
+      const out: number[] = [];
+      let i = 0;
+      let j = 0;
+      while (i < a.length && j < b.length) {
+        // <= takes from the left on ties: stable
+        out.push(a[i] <= b[j] ? a[i++] : b[j++]);
+      }
+      return out.concat(a.slice(i), b.slice(j));
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def merge_sort(xs: list[int]) -> list[int]:
+        if len(xs) <= 1:
+            return xs[:]
+        mid = len(xs) // 2
+        return merge(merge_sort(xs[:mid]), merge_sort(xs[mid:]))
+
+    def merge(a: list[int], b: list[int]) -> list[int]:
+        out: list[int] = []
+        i = j = 0
+        while i < len(a) and j < len(b):
+            # <= takes from the left on ties: stable
+            if a[i] <= b[j]:
+                out.append(a[i])
+                i += 1
+            else:
+                out.append(b[j])
+                j += 1
+        return out + a[i:] + b[j:]
+    ```
+
+  </Tab>
+</Tabs>
+
+$T(n) = 2T(n/2) + O(n) = O(n \log n)$ time, $O(n)$ space. `merge` alone is "Merge Sorted Array"; the same
+split-and-merge counts inversions.
+
+### Quicksort (Lomuto, random pivot)
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function quickSort(
+      xs: number[],
+      lo = 0,
+      hi = xs.length - 1,
+    ): number[] {
+      if (lo < hi) {
+        const p = partition(xs, lo, hi);
+        quickSort(xs, lo, p - 1);
+        quickSort(xs, p + 1, hi);
+      }
+      return xs;
+    }
+
+    // Pivot ends at its final index p:
+    // xs[lo..p-1] < pivot <= xs[p+1..hi]
+    function partition(
+      xs: number[],
+      lo: number,
+      hi: number,
+    ): number {
+      const r = lo + Math.floor(Math.random() * (hi - lo + 1));
+      [xs[r], xs[hi]] = [xs[hi], xs[r]];
+      const pivot = xs[hi];
+      let i = lo; // next slot for an item < pivot
+      for (let j = lo; j < hi; j++) {
+        if (xs[j] < pivot) {
+          [xs[i], xs[j]] = [xs[j], xs[i]];
+          i++;
+        }
+      }
+      [xs[i], xs[hi]] = [xs[hi], xs[i]];
+      return i;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import random
+
+    def quick_sort(
+        xs: list[int], lo: int = 0, hi: int | None = None
+    ) -> list[int]:
+        if hi is None:
+            hi = len(xs) - 1
+        if lo < hi:
+            p = partition(xs, lo, hi)
+            quick_sort(xs, lo, p - 1)
+            quick_sort(xs, p + 1, hi)
+        return xs
+
+    # Pivot ends at its final index p:
+    # xs[lo..p-1] < pivot <= xs[p+1..hi]
+    def partition(xs: list[int], lo: int, hi: int) -> int:
+        r = random.randint(lo, hi)
+        xs[r], xs[hi] = xs[hi], xs[r]
+        pivot, i = xs[hi], lo  # i: next slot for < pivot
+        for j in range(lo, hi):
+            if xs[j] < pivot:
+                xs[i], xs[j] = xs[j], xs[i]
+                i += 1
+        xs[i], xs[hi] = xs[hi], xs[i]
+        return i
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n \log n)$ expected, $O(n^2)$ worst; $O(\log n)$ expected stack. Many equal keys still degrade Lomuto to
+$n^2$: use a three-way partition (less / equal / greater, the "Sort Colors" Dutch-flag loop). Hoare's
+partition does fewer swaps but returns a split point, not the pivot's final index.
+
+### Counting sort
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Stable; every key is an integer in [0, k)
+    function countingSort(xs: number[], k: number): number[] {
+      const start = new Uint32Array(k + 1);
+      for (const x of xs) start[x + 1]++;
+      // prefix sums: start[v] = first output slot for v
+      for (let v = 0; v < k; v++) start[v + 1] += start[v];
+      const out = new Array<number>(xs.length);
+      for (const x of xs) out[start[x]++] = x;
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Stable; every key is an integer in [0, k)
+    def counting_sort(xs: list[int], k: int) -> list[int]:
+        start = [0] * (k + 1)
+        for x in xs:
+            start[x + 1] += 1
+        # prefix sums: start[v] = first output slot for v
+        for v in range(k):
+            start[v + 1] += start[v]
+        out = [0] * len(xs)
+        for x in xs:
+            out[start[x]] = x
+            start[x] += 1
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n + k)$ time and space. To sort records, place the record and index by its key. Radix sort runs this
+stable pass once per digit, least significant first.
+
+### Heap sort
+
+Push everything into a min-heap and pop $n$ times: $O(n \log n)$. With the
+[`MinHeap<T>`](/dsa/trees-graphs/) class that is a loop of `push` then `pop`; in Python,
+`heapq.heapify(xs)` then `heappop` $n$ times. The in-place version builds a max-heap inside the array and
+swaps the root to the end: $O(1)$ extra space, but **not stable**. Rarely worth writing: heaps earn their keep in "top k" and "merge k sorted
+lists", both recipes on [Trees & graphs](/dsa/trees-graphs/#recipes).
+
+## Quickselect
+
+The $k$-th smallest element in $O(n)$ expected time: partition like quicksort, then continue into the one
+side that holds index $k$. Reuses `partition` from the quicksort above.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // k is 0-based: k = 0 is the minimum. Reorders xs.
+    function quickSelect(xs: number[], k: number): number {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo < hi) {
+        const p = partition(xs, lo, hi);
+        if (p === k) return xs[p];
+        if (p < k) lo = p + 1;
+        else hi = p - 1;
+      }
+      return xs[lo];
+    }
+    // kth largest (1-based k): quickSelect(xs, n - k)
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # k is 0-based: k = 0 is the minimum. Reorders xs.
+    def quick_select(xs: list[int], k: int) -> int:
+        lo, hi = 0, len(xs) - 1
+        while lo < hi:
+            p = partition(xs, lo, hi)
+            if p == k:
+                return xs[p]
+            if p < k:
+                lo = p + 1
+            else:
+                hi = p - 1
+        return xs[lo]
+    # kth largest (1-based k): quick_select(xs, n - k)
+    ```
+
+  </Tab>
+</Tabs>
+
+| Approach for the $k$-th / top $k$ | Time | Space | Notes |
+| :-------------------------------- | :--- | :---- | :---- |
+| Sort, then index | $O(n \log n)$ | $O(n)$ or $O(1)$ | simplest; fine unless told otherwise |
+| Quickselect | $O(n)$ expected, $O(n^2)$ worst | $O(1)$ | mutates; random pivot |
+| Heap of size $k$ | $O(n \log k)$ | $O(k)$ | streams; [recipe on Trees & graphs](/dsa/trees-graphs/#k-th-smallest-with-a-heap); `heapq.nlargest(k, xs)` |
+| Median of medians | $O(n)$ worst | $O(\log n)$ | theory; large constant |
+
+## Binary search
+
+Works on anything **monotone**: a sorted array, or a yes/no predicate that is false…false then true…true.
+Each step halves the range: $O(\log n)$ time, $O(1)$ space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Index of t in sorted xs, or -1
+    function binarySearch(xs: number[], t: number): number {
+      let lo = 0;
+      let hi = xs.length - 1; // closed range [lo, hi]
+      while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] === t) return mid;
+        if (xs[mid] < t) lo = mid + 1;
+        else hi = mid - 1;
+      }
+      return -1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Index of t in sorted xs, or -1
+    def binary_search(xs: list[int], t: int) -> int:
+        lo, hi = 0, len(xs) - 1  # closed range [lo, hi]
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if xs[mid] == t:
+                return mid
+            if xs[mid] < t:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        return -1
+    ```
+
+  </Tab>
+</Tabs>
+
+- `(lo + hi) >>> 1` halves without floats and is safe while `lo + hi` stays below 2³², which covers every
+  real JS array. The `lo + (hi - lo) / 2`
+  idiom matters in Java or C++, where `lo + hi` can overflow.
+- With duplicates this returns *some* matching index. For the first or last one, use the bounds below.
+
+## Lower and upper bound
+
+Half-open templates: the answer is an insertion point in `[0, n]`, so there is no "not found" case to special-case.
+JavaScript has no built-in; Python has `bisect`.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // First i with xs[i] >= t (xs.length if none)
+    function lowerBound(xs: number[], t: number): number {
+      let lo = 0;
+      let hi = xs.length; // half-open [lo, hi)
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] < t) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    }
+
+    // First i with xs[i] > t (xs.length if none)
+    function upperBound(xs: number[], t: number): number {
+      let lo = 0;
+      let hi = xs.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] <= t) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    }
+
+    const xs = [1, 2, 2, 2, 5];
+    lowerBound(xs, 2);                    // 1
+    upperBound(xs, 2);                    // 4
+    upperBound(xs, 2) - lowerBound(xs, 2); // 3 copies
+    xs.splice(lowerBound(xs, 3), 0, 3);   // keep sorted
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from bisect import bisect_left, bisect_right, insort
+
+    # bisect_left = lower bound, bisect_right = upper bound
+    xs = [1, 2, 2, 2, 5]
+    bisect_left(xs, 2)                      # 1
+    bisect_right(xs, 2)                     # 4
+    bisect_right(xs, 2) - bisect_left(xs, 2)  # 3 copies
+    insort(xs, 3)                           # keep sorted
+
+    # key= (3.10+): records sorted by a field
+    people = [("Al", 25), ("Bo", 31), ("Cy", 40)]
+    bisect_left(people, 30, key=lambda p: p[1])  # 1
+    ```
+
+  </Tab>
+</Tabs>
+
+| Question on sorted `xs` | Answer |
+| :---------------------- | :----- |
+| First index with value ≥ t | `lowerBound` / `bisect_left` |
+| First index with value greater than t | `upperBound` / `bisect_right` |
+| Is t present? | `i = lowerBound(xs, t)`, then `i < n && xs[i] === t` |
+| How many equal t | `upperBound - lowerBound` |
+| Last index with value ≤ t | `upperBound - 1` (−1 means none) |
+| Last index with value less than t | `lowerBound - 1` |
+| Count in `[a, b]` | `upperBound(b) - lowerBound(a)` |
+| Insert and stay sorted | `splice` at `lowerBound` / `insort`: $O(\log n)$ search, $O(n)$ shift |
+
+For many inserts plus ordered queries, reach for a balanced tree or `sortedcontainers.SortedList` (third
+party) instead.
+
+## Rotated sorted arrays
+
+A sorted array rotated at an unknown pivot (`[4, 5, 6, 7, 0, 1, 2]`). At every `mid`, **one half is sorted**;
+check whether the target lies in that half's range.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Distinct values. Index of t, or -1.
+    function searchRotated(xs: number[], t: number): number {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] === t) return mid;
+        if (xs[lo] <= xs[mid]) {
+          // left half [lo, mid] is sorted
+          if (xs[lo] <= t && t < xs[mid]) hi = mid - 1;
+          else lo = mid + 1;
+        } else {
+          // right half [mid, hi] is sorted
+          if (xs[mid] < t && t <= xs[hi]) lo = mid + 1;
+          else hi = mid - 1;
+        }
+      }
+      return -1;
+    }
+
+    // Minimum = the rotation point
+    function findMin(xs: number[]): number {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] > xs[hi]) lo = mid + 1; // min is right
+        else hi = mid; // mid could be the min
+      }
+      return xs[lo];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Distinct values. Index of t, or -1.
+    def search_rotated(xs: list[int], t: int) -> int:
+        lo, hi = 0, len(xs) - 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if xs[mid] == t:
+                return mid
+            if xs[lo] <= xs[mid]:
+                # left half [lo, mid] is sorted
+                if xs[lo] <= t < xs[mid]:
+                    hi = mid - 1
+                else:
+                    lo = mid + 1
+            else:
+                # right half [mid, hi] is sorted
+                if xs[mid] < t <= xs[hi]:
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+        return -1
+
+    # Minimum = the rotation point
+    def find_min(xs: list[int]) -> int:
+        lo, hi = 0, len(xs) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if xs[mid] > xs[hi]:
+                lo = mid + 1  # min is right of mid
+            else:
+                hi = mid      # mid could be the min
+        return xs[lo]
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(\log n)$ time, $O(1)$ space. With duplicates, `xs[mid] === xs[hi]` tells you nothing: shrink with `hi--`,
+which makes the worst case $O(n)$.
+
+## Binary search on the answer
+
+When the question is "the smallest X such that `feasible(X)`" and feasibility is monotone (if capacity 10
+works, 11 works), binary search over X instead of over an array. Cost: $\log_2$ of the range, times one `feasible` call.
+Example, "Capacity To Ship Packages Within D Days": the least ship capacity that
+moves the weights, in order, within `days`.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function shipWithinDays(ws: number[], days: number): number {
+      const fits = (cap: number): boolean => {
+        let used = 1;
+        let load = 0;
+        for (const w of ws) {
+          if (load + w > cap) {
+            used++; // start a new day
+            load = 0;
+          }
+          load += w;
+        }
+        return used <= days;
+      };
+      // Invariant: the answer is in [lo, hi]
+      let lo = ws.reduce((a, b) => Math.max(a, b)); // biggest
+      let hi = ws.reduce((a, b) => a + b); // one day: fits
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1; // round down: hi = mid
+        if (fits(mid)) hi = mid; // mid works: maybe smaller
+        else lo = mid + 1; // mid fails: answer is above
+      }
+      return lo;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def ship_within_days(ws: list[int], days: int) -> int:
+        def fits(cap: int) -> bool:
+            used, load = 1, 0
+            for w in ws:
+                if load + w > cap:
+                    used += 1  # start a new day
+                    load = 0
+                load += w
+            return used <= days
+
+        # Invariant: the answer is in [lo, hi]
+        lo, hi = max(ws), sum(ws)  # biggest item; one day
+        while lo < hi:
+            mid = (lo + hi) // 2   # round down: hi = mid
+            if fits(mid):
+                hi = mid           # mid works: maybe smaller
+            else:
+                lo = mid + 1       # mid fails: answer is above
+        return lo
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n \log S)$ time where $S$ = `sum(ws)`, $O(1)$ space. Same shape: "Koko Eating Bananas", "Split Array
+Largest Sum", "Minimum Number of Days to Make m Bouquets", integer square root.
+
+### Invariant checklist
+
+| Decide | Closed `[lo, hi]` (find exact) | Converging `[lo, hi]` (find boundary) |
+| :----- | :----------------------------- | :------------------------------------ |
+| What `lo`, `hi` mean | target, if present, is inside; everything outside is ruled out | the answer is always inside (use `hi = n` for "none") |
+| Loop condition | `lo <= hi` | `lo < hi` |
+| Updates | `lo = mid + 1`, `hi = mid - 1` | `lo = mid + 1`, `hi = mid` |
+| `mid` rounding | either | **down** when the branch is `hi = mid`; **up** (`(lo + hi + 1) >>> 1`) when it is `lo = mid` |
+| After the loop | not found | `lo === hi` is the answer |
+
+- Write down the predicate and check it really is false…false true…true (or the reverse).
+- Initialize `lo` and `hi` so the answer is inside, including the edges (smallest and largest possible).
+- Every branch must shrink the range; `lo = mid` with round-down `mid` loops forever on two elements.
+- Trace a 1-element and a 2-element range by hand before you trust it.
+- Floats: loop a fixed number of times (e.g. 100) or until `hi - lo` is below a tolerance.
+
+## Recipes
+
+### Sort Colors: three-way partition
+
+Sort an array of 0s, 1s and 2s in one pass and $O(1)$ space (the Dutch national flag). The same loop with
+"less than / equal to / greater than the pivot" is the partition that keeps quicksort fast on repeated keys.
+$O(n)$ time. More two-pointer patterns are on [Problem patterns](/dsa/problem-patterns/).
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function sortColors(xs: number[]): number[] {
+      let lo = 0; // xs[0..lo) are 0
+      let mid = 0; // xs[lo..mid) are 1
+      let hi = xs.length - 1; // xs(hi..] are 2
+      while (mid <= hi) {
+        if (xs[mid] === 0) {
+          [xs[lo], xs[mid]] = [xs[mid], xs[lo]];
+          lo++;
+          mid++;
+        } else if (xs[mid] === 1) {
+          mid++;
+        } else {
+          [xs[mid], xs[hi]] = [xs[hi], xs[mid]];
+          hi--; // keep mid: the swapped-in value is unseen
+        }
+      }
+      return xs;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def sort_colors(xs: list[int]) -> list[int]:
+        lo = mid = 0          # xs[:lo] are 0, xs[lo:mid] are 1
+        hi = len(xs) - 1      # xs[hi + 1:] are 2
+        while mid <= hi:
+            if xs[mid] == 0:
+                xs[lo], xs[mid] = xs[mid], xs[lo]
+                lo += 1
+                mid += 1
+            elif xs[mid] == 1:
+                mid += 1
+            else:
+                xs[mid], xs[hi] = xs[hi], xs[mid]
+                hi -= 1  # keep mid: swapped-in value is unseen
+        return xs
+    ```
+
+  </Tab>
+</Tabs>
+
+### Find Peak Element
+
+Binary search works without a sorted array when you can always tell which side holds an answer: walk uphill.
+Neighbors are distinct and both ends count as $-\infty$, so a peak always exists. $O(\log n)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // An index whose value beats both neighbors
+    function findPeak(xs: number[]): number {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (xs[mid] < xs[mid + 1]) lo = mid + 1; // uphill
+        else hi = mid; // downhill: a peak at mid or left
+      }
+      return lo;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # An index whose value beats both neighbors
+    def find_peak(xs: list[int]) -> int:
+        lo, hi = 0, len(xs) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if xs[mid] < xs[mid + 1]:
+                lo = mid + 1  # uphill to the right
+            else:
+                hi = mid      # downhill: a peak at mid or left
+        return lo
+    ```
+
+  </Tab>
+</Tabs>
+
+### Custom order and argsort
+
+Sort by a rank table instead of the natural order, and get the indices that would sort an array (argsort).
+$O(n \log n)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    const rank = new Map([["high", 0], ["mid", 1], ["low", 2]]);
+    const byRank = (p: string): number => rank.get(p) ?? 99;
+
+    const pri = ["low", "high", "mid", "high"];
+    pri.sort((a, b) => byRank(a) - byRank(b));
+    // ["high", "high", "mid", "low"]
+
+    const xs = [30, 10, 20];
+    const idx = xs.map((_, i) => i)
+      .sort((a, b) => xs[a] - xs[b]); // [1, 2, 0]
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    rank = {"high": 0, "mid": 1, "low": 2}
+
+    pri = ["low", "high", "mid", "high"]
+    pri.sort(key=lambda p: rank.get(p, 99))
+    # ['high', 'high', 'mid', 'low']
+
+    xs = [30, 10, 20]
+    idx = sorted(range(len(xs)), key=xs.__getitem__)
+    # [1, 2, 0]
+    ```
+
+  </Tab>
+</Tabs>
+
+### First true: a reusable predicate search
+
+One function covers "First Bad Version", integer square root and most answer searches. $O(\log n)$
+predicate calls.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Smallest x in [lo, hi) with ok(x); hi if none.
+    // ok must be false…false then true…true.
+    function firstTrue(
+      lo: number,
+      hi: number,
+      ok: (x: number) => boolean,
+    ): number {
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (ok(mid)) hi = mid;
+        else lo = mid + 1;
+      }
+      return lo;
+    }
+
+    // floor(sqrt(n)): one below the first x with x² > n
+    const isqrt = (n: number): number =>
+      firstTrue(0, n + 1, (x) => x * x > n) - 1;
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections.abc import Callable
+
+    # Smallest x in [lo, hi) with ok(x); hi if none.
+    # ok must be false…false then true…true.
+    def first_true(
+        lo: int, hi: int, ok: Callable[[int], bool]
+    ) -> int:
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if ok(mid):
+                hi = mid
+            else:
+                lo = mid + 1
+        return lo
+
+    # floor(sqrt(n)): one below the first x with x² > n
+    def isqrt(n: int) -> int:
+        return first_true(0, n + 1, lambda x: x * x > n) - 1
+    # built in: math.isqrt(n)
+    ```
+
+  </Tab>
+</Tabs>
+
+In Python, `bisect` works on any sequence, including a `range`: `bisect_left(range(lo, hi), True, key=ok)`
+returns the same offset from `lo` (3.10+ for `key=`).
+
+### Search a sorted matrix
+
+Rows sorted and each row starts after the previous one ends ("Search a 2D Matrix"): treat it as one sorted
+array of `rows × cols` and map a flat index to a cell. $O(\log(rc))$. If only rows and columns are sorted
+separately ("Search a 2D Matrix II"), start at the top-right corner and step left or down: $O(r + c)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function searchMatrix(m: number[][], t: number): boolean {
+      const cols = m[0]?.length ?? 0;
+      let lo = 0;
+      let hi = m.length * cols - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        const v = m[Math.floor(mid / cols)][mid % cols];
+        if (v === t) return true;
+        if (v < t) lo = mid + 1;
+        else hi = mid - 1;
+      }
+      return false;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def search_matrix(m: list[list[int]], t: int) -> bool:
+        cols = len(m[0]) if m else 0
+        lo, hi = 0, len(m) * cols - 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            r, c = divmod(mid, cols)
+            if m[r][c] == t:
+                return True
+            if m[r][c] < t:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        return False
+    ```
+
+  </Tab>
+</Tabs>
+
+## References
+
+- [MDN: `Array.prototype.sort()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort): default string order, comparator contract, stability
+- [MDN: `Array.prototype.toSorted()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/toSorted): the copying variant
+- [Python Sorting Techniques](https://docs.python.org/3/howto/sorting.html): `key`, stability, multi-pass sorts, `cmp_to_key`
+- [Python `bisect`](https://docs.python.org/3/library/bisect.html) and [`heapq`](https://docs.python.org/3/library/heapq.html): the stdlib binary search and heap
+- [Python wiki: TimeComplexity](https://wiki.python.org/moin/TimeComplexity): cost of `list.sort`, `insert`, slicing
+- [V8 blog: Getting things sorted in V8](https://v8.dev/blog/array-sort): why V8 moved to TimSort
+- CLRS, *Introduction to Algorithms*, chapters 2 and 6–9: insertion, merge, heap, quick, linear-time sorts, selection
+- [Tech Interview Handbook: sorting and searching](https://www.techinterviewhandbook.org/algorithms/sorting-searching/): interview checklist and practice list
+- [NeetCode roadmap](https://neetcode.io/roadmap): practice lists for binary search and heaps

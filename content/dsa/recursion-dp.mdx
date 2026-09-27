@@ -1,0 +1,909 @@
+---
+title: Recursion, backtracking & DP
+date: 2026-09-27
+order: 6
+---
+
+How recursion works and where it breaks, the backtracking template (subsets, permutations, combination sum,
+N-Queens), and dynamic programming from memoized recursion to a table to constant space, with the classic
+problem families and a checklist for designing the state. Graph searches built on recursion are on
+[Graph algorithms](/dsa/graph-algorithms/); `lowerBound` and `bisect` are on
+[Sorting & searching](/dsa/sorting-searching/); pattern recognition across problems is on
+[Problem patterns](/dsa/problem-patterns/).
+
+## Recursion anatomy
+
+| Part | Rule | Missing it gives |
+| :--- | :--- | :--------------- |
+| Base case | the smallest inputs are answered directly | infinite recursion, then a stack overflow |
+| Progress | every call moves toward a base case (smaller `n`, `i + 1`, shorter range) | the same |
+| Combine | build this call's answer from the sub-answers | a wrong result |
+| Trust | assume the call works for smaller inputs (induction); don't trace every level | confusion |
+
+- **Time** ≈ number of calls × work per call. A call tree with branching $b$ and depth $d$ has up to $b^d$
+  calls: naive Fibonacci is $O(2^n)$.
+- **Space** = maximum depth × frame size, plus whatever each call allocates. Pass indices, not slices:
+  `xs.slice(1)` / `xs[1:]` in every call turns $O(n)$ into $O(n^2)$.
+- Every recursion can become a loop with an explicit stack of "what's left to do".
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Nested = number | Nested[];
+
+    function flatten(x: Nested): number[] {
+      if (typeof x === "number") return [x]; // base case
+      return x.flatMap(flatten); // smaller pieces
+    }
+
+    // Same result with an explicit stack: no depth limit
+    function flattenIter(x: Nested): number[] {
+      const out: number[] = [];
+      const stack: Nested[] = [x];
+      while (stack.length > 0) {
+        const top = stack.pop()!;
+        if (typeof top === "number") out.push(top);
+        else stack.push(...top.toReversed()); // keep order
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    type Nested = int | list[Nested]
+
+    def flatten(x: Nested) -> list[int]:
+        if isinstance(x, int):  # base case
+            return [x]
+        return [y for part in x for y in flatten(part)]
+
+    # Same result with an explicit stack: no depth limit
+    def flatten_iter(x: Nested) -> list[int]:
+        out: list[int] = []
+        stack: list[Nested] = [x]
+        while stack:
+            top = stack.pop()
+            if isinstance(top, int):
+                out.append(top)
+            else:
+                stack.extend(reversed(top))  # keep order
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(N)$ time for $N$ numbers and lists; $O(\text{depth})$ call stack for the recursive version, $O(N)$ explicit
+stack for the loop.
+
+## Call stack and depth limits
+
+Each call pushes a frame (arguments, locals, return address) and pops it on return. Too many frames at once
+is a stack overflow: `RangeError: Maximum call stack size exceeded` in JS, `RecursionError` in Python.
+
+| Runtime | Depth before overflow | Raising it | Tail calls |
+| :------ | :-------------------- | :--------- | :--------- |
+| V8 (Node, Chrome, Deno) | about 10,000 frames for a tiny function; fewer with more locals | `node --stack-size=…` risks a hard crash | not optimized |
+| JavaScriptCore (Bun, Safari) | larger (about 65,000 for a tiny function in Bun) | no flag | proper tail calls in strict code (ES modules are strict) |
+| CPython | **1,000** (`sys.getrecursionlimit()`) | `sys.setrecursionlimit(10**6)` | never optimized |
+
+- Portable JS can't count on tail calls: V8 never shipped them. Convert deep recursion to a loop instead.
+- Python 3.11+ runs plain Python-to-Python calls without using the C stack, so a raised limit works for them
+  (a million frames run fine on 3.14). Calls through C code do not: a `@functools.cache` wrapper, `sorted(key=…)`
+  callbacks, `map`. Deep memoized recursion still overflows (`RecursionError: Stack overflow … while calling a
+  Python object` at 50,000 levels on 3.14). Convert it to a table.
+- Rule of thumb: recursion depth up to ~1,000 is safe everywhere; beyond ~5,000, use an explicit stack or
+  bottom-up DP.
+
+## Backtracking template
+
+Backtracking is DFS over a tree of partial answers: extend the current partial answer, recurse, then undo the
+extension so the next choice starts from the same state.
+
+```text
+backtrack(state):
+    if state is a complete answer:
+        record a COPY of it          (the state keeps changing)
+        return
+    for choice in choices(state):
+        if not valid(state, choice):  continue    ← prune early
+        choose(choice)                ← mutate state
+        backtrack(state)              ← explore
+        unchoose(choice)              ← undo what choose did
+```
+
+"Subsets": every node of the tree is an answer; `start` stops the same set from appearing in two orders.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function subsets(nums: number[]): number[][] {
+      const out: number[][] = [];
+      const path: number[] = [];
+      const go = (start: number): void => {
+        out.push([...path]); // copy: path keeps changing
+        for (let i = start; i < nums.length; i++) {
+          path.push(nums[i]); // choose
+          go(i + 1); // explore
+          path.pop(); // unchoose
+        }
+      };
+      go(0);
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def subsets(nums: list[int]) -> list[list[int]]:
+        out: list[list[int]] = []
+        path: list[int] = []
+
+        def go(start: int) -> None:
+            out.append(path[:])  # copy: path keeps changing
+            for i in range(start, len(nums)):
+                path.append(nums[i])  # choose
+                go(i + 1)             # explore
+                path.pop()            # unchoose
+
+        go(0)
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+| Problem | Answers | Time | Notes |
+| :------ | :------ | :--- | :---- |
+| Subsets | $2^n$ | $O(n \cdot 2^n)$ | copying each answer costs $O(n)$ |
+| Permutations | $n!$ | $O(n \cdot n!)$ | `used[]` marks taken items |
+| Combinations of size $k$ | $\binom{n}{k}$ | $O(k \binom{n}{k})$ | stop at length $k$ |
+| Combination sum | depends on target | exponential | sort, then `break` once a candidate exceeds what's left |
+| N-Queens | 92 for $n = 8$ | below $O(n!)$ | one queen per row; prune by column and diagonals |
+| Word Search, Sudoku | | exponential | mark cells in place, restore on the way out |
+
+Space is $O(n)$ for the path and recursion, plus the output. Python's `itertools.combinations`,
+`permutations` and `product` generate these directly when you don't need pruning.
+
+## Permutations and combinations
+
+| Variant | Change to the template |
+| :------ | :--------------------- |
+| Each item at most once, order doesn't matter | recurse with `i + 1` (subsets, combinations) |
+| Item reuse allowed | recurse with `i` (Combination Sum) |
+| Order matters | loop from 0 every time and skip `used[i]` (permutations) |
+| Input has duplicates, answers must be unique | sort first; skip `i > start && xs[i] === xs[i - 1]` |
+| Permutations with duplicates | sort; skip `xs[i] === xs[i - 1] && !used[i - 1]` |
+| Fixed size $k$ | stop at `path.length === k`; prune when too few items remain |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function permutations(nums: number[]): number[][] {
+      const out: number[][] = [];
+      const path: number[] = [];
+      const used = new Array<boolean>(nums.length).fill(false);
+      const go = (): void => {
+        if (path.length === nums.length) {
+          out.push([...path]);
+          return;
+        }
+        for (let i = 0; i < nums.length; i++) {
+          if (used[i]) continue;
+          used[i] = true;
+          path.push(nums[i]);
+          go();
+          path.pop();
+          used[i] = false;
+        }
+      };
+      go();
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def permutations(nums: list[int]) -> list[list[int]]:
+        out: list[list[int]] = []
+        path: list[int] = []
+        used = [False] * len(nums)
+
+        def go() -> None:
+            if len(path) == len(nums):
+                out.append(path[:])
+                return
+            for i, x in enumerate(nums):
+                if used[i]:
+                    continue
+                used[i] = True
+                path.append(x)
+                go()
+                path.pop()
+                used[i] = False
+
+        go()
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+"Combination Sum": distinct positive candidates, each usable any number of times, every combination that adds
+up to `target`.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function combinationSum(
+      cands: number[],
+      target: number,
+    ): number[][] {
+      const xs = cands.toSorted((a, b) => a - b);
+      const out: number[][] = [];
+      const path: number[] = [];
+      const go = (start: number, left: number): void => {
+        if (left === 0) {
+          out.push([...path]);
+          return;
+        }
+        for (let i = start; i < xs.length; i++) {
+          if (xs[i] > left) break; // sorted: the rest are bigger
+          path.push(xs[i]);
+          go(i, left - xs[i]); // i, not i + 1: reuse allowed
+          path.pop();
+        }
+      };
+      go(0, target);
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def combination_sum(
+        cands: list[int], target: int
+    ) -> list[list[int]]:
+        xs = sorted(cands)
+        out: list[list[int]] = []
+        path: list[int] = []
+
+        def go(start: int, left: int) -> None:
+            if left == 0:
+                out.append(path[:])
+                return
+            for i in range(start, len(xs)):
+                if xs[i] > left:  # sorted: the rest are bigger
+                    break
+                path.append(xs[i])
+                go(i, left - xs[i])  # i, not i + 1: reuse
+                path.pop()
+
+        go(0, target)
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+## N-Queens
+
+Place $n$ queens on an $n \times n$ board so none attack each other.
+
+1. One queen per row, so the recursion goes row by row and chooses a **column**.
+2. A square `(r, c)` is attacked if its column, its diagonal (`r - c` is constant along it) or its
+   anti-diagonal (`r + c` is constant) is taken: keep three sets for $O(1)$ checks.
+3. Choose: add to all three sets. Explore: the next row. Unchoose: remove from all three.
+4. Row `n` reached means a full board: count it, or render each row as `".".repeat(c) + "Q" + …`.
+5. Faster: store the three sets as bitmasks; the free columns are `~(cols | diag | anti) & full`.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function totalNQueens(n: number): number {
+      const cols = new Set<number>();
+      const diag = new Set<number>(); // r - c
+      const anti = new Set<number>(); // r + c
+      const place = (r: number): number => {
+        if (r === n) return 1;
+        let count = 0;
+        for (let c = 0; c < n; c++) {
+          if (cols.has(c) || diag.has(r - c)) continue;
+          if (anti.has(r + c)) continue;
+          cols.add(c);
+          diag.add(r - c);
+          anti.add(r + c);
+          count += place(r + 1);
+          cols.delete(c);
+          diag.delete(r - c);
+          anti.delete(r + c);
+        }
+        return count;
+      };
+      return place(0);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def total_n_queens(n: int) -> int:
+        cols: set[int] = set()
+        diag: set[int] = set()  # r - c
+        anti: set[int] = set()  # r + c
+
+        def place(r: int) -> int:
+            if r == n:
+                return 1
+            count = 0
+            for c in range(n):
+                if c in cols or r - c in diag or r + c in anti:
+                    continue
+                cols.add(c)
+                diag.add(r - c)
+                anti.add(r + c)
+                count += place(r + 1)
+                cols.remove(c)
+                diag.remove(r - c)
+                anti.remove(r + c)
+            return count
+
+        return place(0)
+    ```
+
+  </Tab>
+</Tabs>
+
+Below $O(n!)$ time thanks to pruning, $O(n)$ space. $n = 8$ has 92 solutions.
+
+## Is it DP?
+
+Dynamic programming = recursion + reuse. It applies when both hold:
+
+| Property | Meaning | Test |
+| :------- | :------ | :--- |
+| Optimal substructure | the best answer is built from best answers to smaller subproblems | can you write `best(state)` in terms of `best(smaller states)`? |
+| Overlapping subproblems | the same subproblem comes up again and again | does the naive recursion call the same arguments twice? |
+
+| Clue in the problem | Likely approach |
+| :------------------ | :-------------- |
+| "number of ways", "minimum cost", "maximum value", "is it possible" | DP |
+| "list all", "generate every" | backtracking (the output itself is exponential) |
+| a local choice provably never hurts (earliest deadline, largest coin in canonical systems) | greedy; prove it or find a counterexample first |
+| $n \le 20$ | bitmask DP or backtracking, $O(2^n \cdot n)$ |
+| $n \le 500$ | $O(n^3)$, e.g. interval DP |
+| $n \le 5{,}000$ | $O(n^2)$, e.g. two-string DP, LIS |
+| $n \le 10^5$ or more | $O(n)$ or $O(n \log n)$: 1D DP, greedy, binary search |
+
+## Memo → table → constant space
+
+"House Robber": take houses in a row to maximize loot without taking two neighbors. Let `best(i)` be the most
+you can take from houses `i..n-1`: skip house `i`, or take it and jump to `i + 2`.
+
+### 1. Top-down: recursion plus a memo
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function robMemo(houses: number[]): number {
+      const memo = new Map<number, number>();
+      const best = (i: number): number => {
+        if (i >= houses.length) return 0;
+        const hit = memo.get(i);
+        if (hit !== undefined) return hit;
+        const v = Math.max(
+          best(i + 1), // skip house i
+          houses[i] + best(i + 2), // take it
+        );
+        memo.set(i, v);
+        return v;
+      };
+      return best(0);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from functools import cache
+
+    def rob_memo(houses: list[int]) -> int:
+        @cache
+        def best(i: int) -> int:
+            if i >= len(houses):
+                return 0
+            return max(
+                best(i + 1),              # skip house i
+                houses[i] + best(i + 2),  # take it
+            )
+
+        return best(0)
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n)$ time, $O(n)$ memo plus $O(n)$ stack. Key the memo by **every** argument that changes; for several
+arguments use a string key (`` `${i},${j}` ``) or a nested array in TS, and let `@cache` hash the tuple in
+Python. A fresh `@cache` inside the function avoids stale results across calls.
+
+### 2. Bottom-up: fill a table
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function robTable(houses: number[]): number {
+      const n = houses.length;
+      // dp[i] = best(i); dp[n] = dp[n + 1] = 0
+      const dp = new Array<number>(n + 2).fill(0);
+      for (let i = n - 1; i >= 0; i--) {
+        dp[i] = Math.max(dp[i + 1], houses[i] + dp[i + 2]);
+      }
+      return dp[0];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def rob_table(houses: list[int]) -> int:
+        n = len(houses)
+        # dp[i] = best(i); dp[n] = dp[n + 1] = 0
+        dp = [0] * (n + 2)
+        for i in range(n - 1, -1, -1):
+            dp[i] = max(dp[i + 1], houses[i] + dp[i + 2])
+        return dp[0]
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n)$ time and space, no recursion. The loop runs from `n - 1` down because `dp[i]` needs `dp[i + 1]` and
+`dp[i + 2]` first.
+
+### 3. Keep only what the transition reads
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function rob(houses: number[]): number {
+      let next1 = 0; // dp[i + 1]
+      let next2 = 0; // dp[i + 2]
+      for (let i = houses.length - 1; i >= 0; i--) {
+        const cur = Math.max(next1, houses[i] + next2);
+        next2 = next1;
+        next1 = cur;
+      }
+      return next1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def rob(houses: list[int]) -> int:
+        next1 = next2 = 0  # dp[i + 1], dp[i + 2]
+        for h in reversed(houses):
+            next1, next2 = max(next1, h + next2), next1
+        return next1
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n)$ time, $O(1)$ space. The same two-variable roll works for Climbing Stairs and Fibonacci.
+
+| | Top-down (memo) | Bottom-up (table) |
+| :-- | :-------------- | :---------------- |
+| Write it | straight from the recurrence | needs an evaluation order |
+| Computes | only reachable states | every state |
+| Stack | recursion depth (a risk past ~1,000 in Python, ~10,000 in V8) | none |
+| Space tricks | hard | rolling rows, one array |
+| Speed | hashing and call overhead | tight loops; usually faster |
+
+## Classic families
+
+| Family | Problems | State | Transition | Time / space |
+| :----- | :------- | :---- | :--------- | :----------- |
+| 1D linear | Climbing Stairs, House Robber, Decode Ways | `dp[i]`: answer for the first `i` items (or from `i` on) | `dp[i] = max(dp[i-1], dp[i-2] + x[i])` | $O(n)$ / $O(1)$ rolled |
+| 2D grid paths | Unique Paths, Minimum Path Sum | `dp[r][c]`: ways or cost to reach the cell | `dp[r][c] = dp[r-1][c] + dp[r][c-1]` | $O(RC)$ / $O(C)$ |
+| 0/1 knapsack | Partition Equal Subset Sum, Target Sum, Last Stone Weight II | `dp[c]`: best using capacity `c` | `dp[c] = max(dp[c], dp[c-w] + v)`, `c` **downward** | $O(nW)$ / $O(W)$ |
+| Unbounded knapsack | Coin Change, Coin Change II, Perfect Squares | `dp[a]`: best or ways for amount `a` | `dp[a] = min(dp[a], dp[a-coin] + 1)`, `a` **upward** | $O(nA)$ / $O(A)$ |
+| LIS | Longest Increasing Subsequence, Russian Doll Envelopes | `dp[i]`: longest run ending at `i`; or `tails[k]` | `dp[i] = 1 + max(dp[j])` over `j < i` with `x[j] < x[i]` | $O(n^2)$; $O(n \log n)$ with `tails` |
+| Two sequences | Longest Common Subsequence, Edit Distance, Distinct Subsequences | `dp[i][j]`: prefixes `a[:i]`, `b[:j]` | LCS: equal: `dp[i-1][j-1] + 1`; else `max(dp[i-1][j], dp[i][j-1])` (edit distance: [recipe](#edit-distance)) | $O(mn)$ / $O(n)$ |
+| Interval | Longest Palindromic Subsequence, Burst Balloons, Matrix Chain Multiplication | `dp[i][j]`: best for `a[i..j]` | try each split `k` in `i..j`; fill by increasing length | $O(n^3)$, $O(n^2)$ without a split / $O(n^2)$ |
+| Bitmask | Traveling Salesman, Partition to K Equal Sum Subsets | `dp[mask][i]`: visited set `mask`, now at `i` | `dp[mask \| 1 << j][j]` from `dp[mask][i] + cost[i][j]` | $O(2^n n^2)$ / $O(2^n n)$; $n \le 20$ |
+| State machine | Best Time to Buy and Sell Stock with Cooldown | `dp[i][holding]` | move between states each day | $O(n)$ / $O(1)$ |
+
+### 0/1 knapsack
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Max value with total weight <= cap; each item once
+    function knapsack(
+      ws: number[],
+      vs: number[],
+      cap: number,
+    ): number {
+      const dp = new Array<number>(cap + 1).fill(0);
+      for (let i = 0; i < ws.length; i++) {
+        // downward: dp[c - w] still means "without item i"
+        for (let c = cap; c >= ws[i]; c--) {
+          dp[c] = Math.max(dp[c], dp[c - ws[i]] + vs[i]);
+        }
+      }
+      return dp[cap];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Max value with total weight <= cap; each item once
+    def knapsack(ws: list[int], vs: list[int], cap: int) -> int:
+        dp = [0] * (cap + 1)
+        for w, v in zip(ws, vs):
+            # downward: dp[c - w] still means "without item i"
+            for c in range(cap, w - 1, -1):
+                dp[c] = max(dp[c], dp[c - w] + v)
+        return dp[cap]
+    ```
+
+  </Tab>
+</Tabs>
+
+$O(n \cdot cap)$ time, $O(cap)$ space. Loop `c` **upward** and the same line becomes the unbounded knapsack:
+item `i` can be taken again because `dp[c - w]` already includes it. This is "pseudo-polynomial": fine for
+capacities up to about $10^5$–$10^6$, not for $10^9$.
+
+### Longest increasing subsequence
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // O(n²): dp[i] = longest increasing run ending at i
+    function lisQuadratic(xs: number[]): number {
+      const dp = xs.map(() => 1);
+      for (let i = 0; i < xs.length; i++) {
+        for (let j = 0; j < i; j++) {
+          if (xs[j] < xs[i]) dp[i] = Math.max(dp[i], dp[j] + 1);
+        }
+      }
+      return dp.reduce((a, b) => Math.max(a, b), 0);
+    }
+
+    // O(n log n): tails[k] = smallest tail of any
+    // increasing run of length k + 1 (tails stays sorted)
+    function lis(xs: number[]): number {
+      const tails: number[] = [];
+      for (const x of xs) {
+        tails[lowerBound(tails, x)] = x; // extend or improve
+      }
+      return tails.length;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from bisect import bisect_left
+
+    # O(n²): dp[i] = longest increasing run ending at i
+    def lis_quadratic(xs: list[int]) -> int:
+        dp = [1] * len(xs)
+        for i in range(len(xs)):
+            for j in range(i):
+                if xs[j] < xs[i]:
+                    dp[i] = max(dp[i], dp[j] + 1)
+        return max(dp, default=0)
+
+    # O(n log n): tails[k] = smallest tail of any
+    # increasing run of length k + 1 (tails stays sorted)
+    def lis(xs: list[int]) -> int:
+        tails: list[int] = []
+        for x in xs:
+            k = bisect_left(tails, x)
+            if k == len(tails):
+                tails.append(x)  # extend the longest run
+            else:
+                tails[k] = x     # a smaller tail for length k+1
+        return len(tails)
+    ```
+
+  </Tab>
+</Tabs>
+
+`lowerBound` is the one from [Sorting & searching](/dsa/sorting-searching/#lower-and-upper-bound); writing to
+`tails[tails.length]` appends. `tails` is not itself a valid subsequence, only its length is right. For
+non-decreasing runs use the upper bound (`bisect_right`).
+
+## Designing the state
+
+1. **Say what one entry means**, in one sentence with units: "`dp[i][j]` = fewest edits to turn `a[:i]` into
+   `b[:j]`". If you can't, the state is wrong.
+2. **Include everything the future depends on** and nothing else: position(s), remaining budget (capacity,
+   moves, $k$), the last choice if it constrains the next (holding a stock, last color), the set of used
+   items (bitmask) when order matters.
+3. **Prefix vs "ending at"**: use "first `i` items" when any prefix answer extends; use "ending exactly at `i`"
+   when the transition needs the last element (LIS, Maximum Subarray), then take the max over all `i`.
+4. **Transition = the last decision**: take or skip, which coin, which split point `k`, which previous `j`.
+   Enumerate them all.
+5. **Base cases**: empty prefix, zero capacity, out of bounds. Pick values that make the recurrence work
+   (`0` ways vs `1` way for the empty sum; `Infinity` for "impossible" in a min).
+6. **Where the answer lives**: `dp[n]`, `dp[0][n-1]`, `max(dp)`, or `dp[full mask][…]`.
+7. **Cost** = number of states × work per transition. Check it against the input limits before coding.
+8. **Order**: every state's dependencies must be filled first (by index, by length for intervals, by
+   popcount for masks).
+9. **Space**: if row `i` reads only row `i - 1`, keep two rows; if it reads only earlier cells of its own row,
+   keep one array and pick the loop direction deliberately.
+
+## Recipes
+
+### Coin Change: fewest coins
+
+Unbounded knapsack with a min. `Infinity` marks amounts that can't be made. $O(n \cdot amount)$ time,
+$O(amount)$ space. Greedy "largest coin first" fails for coins like `[1, 3, 4]` and amount 6.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function coinChange(
+      coins: number[],
+      amount: number,
+    ): number {
+      const dp = new Array<number>(amount + 1).fill(Infinity);
+      dp[0] = 0; // zero coins make zero
+      for (let a = 1; a <= amount; a++) {
+        for (const c of coins) {
+          if (c <= a) dp[a] = Math.min(dp[a], dp[a - c] + 1);
+        }
+      }
+      return dp[amount] === Infinity ? -1 : dp[amount];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from math import inf
+
+    def coin_change(coins: list[int], amount: int) -> int:
+        dp = [0] + [inf] * amount  # zero coins make zero
+        for a in range(1, amount + 1):
+            for c in coins:
+                if c <= a:
+                    dp[a] = min(dp[a], dp[a - c] + 1)
+        return -1 if dp[amount] == inf else int(dp[amount])
+    ```
+
+  </Tab>
+</Tabs>
+
+### Coin Change II: count the ways
+
+Coins in the **outer** loop count combinations (1+2 and 2+1 are the same). Swap the loops (amount outer)
+and you count ordered sequences instead, which is "Combination Sum IV". $O(n \cdot amount)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function change(amount: number, coins: number[]): number {
+      const dp = new Array<number>(amount + 1).fill(0);
+      dp[0] = 1; // one way to make 0: no coins
+      for (const c of coins) {
+        for (let a = c; a <= amount; a++) dp[a] += dp[a - c];
+      }
+      return dp[amount];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def change(amount: int, coins: list[int]) -> int:
+        dp = [1] + [0] * amount  # one way to make 0
+        for c in coins:
+            for a in range(c, amount + 1):
+                dp[a] += dp[a - c]
+        return dp[amount]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Edit Distance
+
+Fewest inserts, deletes and replacements to turn `a` into `b`. Row 0 and column 0 are the cost of building
+from or deleting to an empty string. $O(mn)$ time and space ($O(n)$ with two rows).
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function minDistance(a: string, b: string): number {
+      const m = a.length;
+      const n = b.length;
+      // dp[i][j]: edits to turn a[:i] into b[:j]
+      const dp = Array.from({ length: m + 1 }, () =>
+        new Array<number>(n + 1).fill(0),
+      );
+      for (let i = 0; i <= m; i++) dp[i][0] = i; // deletes
+      for (let j = 0; j <= n; j++) dp[0][j] = j; // inserts
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          dp[i][j] = a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1] // free: characters match
+            : 1 + Math.min(
+                dp[i - 1][j], // delete a[i-1]
+                dp[i][j - 1], // insert b[j-1]
+                dp[i - 1][j - 1], // replace
+              );
+        }
+      }
+      return dp[m][n];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def min_distance(a: str, b: str) -> int:
+        m, n = len(a), len(b)
+        # dp[i][j]: edits to turn a[:i] into b[:j]
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        for i in range(m + 1):
+            dp[i][0] = i  # deletes
+        for j in range(n + 1):
+            dp[0][j] = j  # inserts
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if a[i - 1] == b[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1]  # free
+                else:
+                    dp[i][j] = 1 + min(
+                        dp[i - 1][j],      # delete a[i-1]
+                        dp[i][j - 1],      # insert b[j-1]
+                        dp[i - 1][j - 1],  # replace
+                    )
+        return dp[m][n]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Longest Common Subsequence with one row
+
+Same grid as edit distance, but each row only reads the row above: keep `prev` and `cur`. $O(mn)$ time,
+$O(n)$ space. Recover the actual subsequence only if you keep the full table.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function lcs(a: string, b: string): number {
+      let prev = new Array<number>(b.length + 1).fill(0);
+      for (let i = 1; i <= a.length; i++) {
+        const cur = new Array<number>(b.length + 1).fill(0);
+        for (let j = 1; j <= b.length; j++) {
+          cur[j] = a[i - 1] === b[j - 1]
+            ? prev[j - 1] + 1
+            : Math.max(prev[j], cur[j - 1]);
+        }
+        prev = cur; // row i becomes "the row above"
+      }
+      return prev[b.length];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def lcs(a: str, b: str) -> int:
+        prev = [0] * (len(b) + 1)
+        for i in range(1, len(a) + 1):
+            cur = [0] * (len(b) + 1)
+            for j in range(1, len(b) + 1):
+                if a[i - 1] == b[j - 1]:
+                    cur[j] = prev[j - 1] + 1
+                else:
+                    cur[j] = max(prev[j], cur[j - 1])
+            prev = cur  # row i becomes "the row above"
+        return prev[len(b)]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Word Break
+
+`ok[i]`: the first `i` characters split into dictionary words. $O(n^2)$ substring checks (each $O(n)$ to
+hash); cap `j` at the longest word length to speed it up.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function wordBreak(s: string, words: string[]): boolean {
+      const dict = new Set(words);
+      const ok = new Array<boolean>(s.length + 1).fill(false);
+      ok[0] = true; // the empty prefix
+      for (let i = 1; i <= s.length; i++) {
+        for (let j = 0; j < i && !ok[i]; j++) {
+          ok[i] = ok[j] && dict.has(s.slice(j, i));
+        }
+      }
+      return ok[s.length];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def word_break(s: str, words: list[str]) -> bool:
+        vocab = set(words)
+        ok = [True] + [False] * len(s)  # the empty prefix
+        for i in range(1, len(s) + 1):
+            ok[i] = any(
+                ok[j] and s[j:i] in vocab for j in range(i)
+            )
+        return ok[len(s)]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Memo → table, step by step
+
+A mechanical conversion once the memoized version works:
+
+1. List the recursive function's arguments: they are the table's dimensions (`best(i, cap)` → `dp[i][cap]`).
+2. Size each dimension by the argument's range, plus one for the "past the end" base case.
+3. Fill the base cases: whatever the recursion returns without recursing.
+4. Find the direction: if `f(i)` calls `f(i + 1)`, loop `i` from high to low; if it calls `f(i - 1)`, low to
+   high. With several arguments, every dependency must be filled before its reader.
+5. Replace each recursive call `f(x)` with a table read `dp[x]`, and `return` with an assignment.
+6. The answer is the entry for the top-level call's arguments (`dp[0]`, `dp[0][cap]`).
+7. Shrink: if a loop only reads the previous layer, keep two layers or one array.
+
+## References
+
+- CLRS, *Introduction to Algorithms*, chapter 14 (15 in older editions): rod cutting, matrix chain, LCS, optimal substructure
+- [Python `functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache) and [`sys.setrecursionlimit`](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit): memoization and the recursion limit
+- [Python `itertools`](https://docs.python.org/3/library/itertools.html): `combinations`, `permutations`, `product`
+- [MDN: Recursion](https://developer.mozilla.org/en-US/docs/Glossary/Recursion) and [RangeError: too much recursion](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Too_much_recursion): JS call-stack limits
+- [Tech Interview Handbook: recursion](https://www.techinterviewhandbook.org/algorithms/recursion/) and [dynamic programming](https://www.techinterviewhandbook.org/algorithms/dynamic-programming/): interview checklists
+- [NeetCode roadmap](https://neetcode.io/roadmap): backtracking, 1-D and 2-D DP practice lists
+- [cp-algorithms: dynamic programming](https://cp-algorithms.com/dynamic_programming/intro-to-dp.html): knapsack, LIS in $O(n \log n)$, bitmask and interval DP

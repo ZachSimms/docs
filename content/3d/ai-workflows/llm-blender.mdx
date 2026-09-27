@@ -1,0 +1,500 @@
+---
+title: Claude & GPT with Blender
+date: 2026-09-27
+order: 2
+---
+
+Using a chat model (Claude, GPT) to build in Blender 5.x as of September 2026: pasting generated `bpy` scripts,
+letting the model drive a live Blender through MCP (MCP for Blender, the Blender Lab server, Higgsfield), prompt
+patterns, a verification loop, where LLMs help and where they fail, and security. `bpy` itself is covered in
+[Python scripting](/3d/blender/python-scripting/); generating meshes from images is
+[AI 3D generation](/3d/ai-workflows/ai-generation/).
+
+## Three ways to connect
+
+**MCP** (Model Context Protocol) is an open standard that lets a chat app call tools on a server: here, tools
+that run Python inside Blender and send back scene data and screenshots.
+
+| | (a) Chat + paste scripts | (b) Local MCP | (c) Higgsfield scene builder |
+| :- | :----------------------- | :------------ | :--------------------------- |
+| How | ask for a script, paste into the Text Editor, run | the model calls tools on your running Blender through an add-on | the model runs Python on Higgsfield's hosted Blender 5.2 |
+| Works with | any model, any plan | Claude Desktop, Claude Code, Codex / ChatGPT desktop, Cursor… | Claude (and other clients) with the Higgsfield connector |
+| Setup | none | `uv`, an MCP server, a Blender add-on | add the connector, sign in |
+| What the model sees | only what you paste back (errors, a JSON report, screenshots) | scene info, object info, viewport screenshots, errors | scene queries, rendered previews |
+| Speed | slow: you copy both ways | fast: many small steps per minute | medium: each edit is a committed job |
+| Who runs the code | you, after reading it | the model, on your machine | the vendor's worker |
+| Safety | best: you review every script | worst: arbitrary Python as your user | code can't touch your machine; you download results |
+| Cost | chat plan | chat plan (+ optional generator APIs) | Higgsfield credits |
+| Best for | learning, one-off tools, locked-down PCs | iterative scene building, fixing a real .blend | quick scenes from anywhere, GLB for the web |
+
+<Diagram src="/images/diagrams/ai3d-mcp.svg" label="Local MCP: Claude or Codex talks stdio to an MCP server on your PC, which talks to a Blender add-on over a local socket, which runs Python in your .blend; results and screenshots flow back. Hosted: Claude talks HTTPS to Higgsfield MCP, which runs Python in a cloud Blender and returns .blend, .glb and .png downloads." caption="Local MCP runs model-written Python on your machine; the hosted builder runs it on someone else's." />
+
+## Paste-and-run scripts
+
+| Step | Where |
+| :--- | :---- |
+| Open the editor | Scripting workspace tab, or Shift F11 in any area |
+| New text | Text › New (Alt N) |
+| Run | Text › Run Script (Alt P) or the play icon |
+| Errors | Info editor (a one-line report), full traceback in the system console: Window › Toggle System Console on Windows; start Blender from a terminal on macOS and Linux |
+| Undo a run | Ctrl Z, usually; save first anyway |
+
+A scaffold worth asking for every time: an idempotent script (running it twice gives the same scene, not
+duplicates) that rebuilds one named collection, reuses materials by name and sizes in meters.
+
+```py
+import bpy
+import bmesh
+
+def fresh_collection(name: str) -> bpy.types.Collection:
+    """Get or create a collection, then empty it."""
+    col = bpy.data.collections.get(name)
+    if col is None:
+        col = bpy.data.collections.new(name)
+        bpy.context.scene.collection.children.link(col)
+    for ob in list(col.objects):
+        data = ob.data
+        bpy.data.objects.remove(ob, do_unlink=True)
+        mesh = isinstance(data, bpy.types.Mesh)
+        if mesh and not data.users:
+            bpy.data.meshes.remove(data)
+    return col
+
+def pbr(name: str, rgb: tuple, rough: float = 0.8):
+    """Principled BSDF material, reused by name."""
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*rgb, 1)
+    bsdf.inputs["Roughness"].default_value = rough
+    return mat
+
+def box(col, name, size, loc, mat=None):
+    """Box of size (x, y, z) meters; loc is its center."""
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=size, verts=bm.verts)
+    bm.to_mesh(me)
+    bm.free()
+    if mat:
+        me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    ob.location = loc
+    col.objects.link(ob)
+    return ob
+
+col = fresh_collection("House")
+wall = pbr("M_Wall", (0.8, 0.75, 0.65))
+roof = pbr("M_Roof", (0.5, 0.15, 0.1), rough=0.6)
+box(col, "House_Walls", (6, 4, 3), (0, 0, 1.5), wall)
+box(col, "House_Roof", (6.4, 4.4, 0.2), (0, 0, 3.1), roof)
+```
+
+To show the model the scene without MCP, run this and paste the clipboard into the chat:
+
+```py
+import json
+
+def scene_report() -> str:
+    """Names, sizes and triangle counts as JSON."""
+    rows = []
+    for ob in bpy.context.scene.objects:
+        row = {"name": ob.name, "type": ob.type,
+               "size_m": [round(d, 3)
+                          for d in ob.dimensions],
+               "loc": [round(v, 3) for v in ob.location]}
+        if ob.type == "MESH":
+            me = ob.data
+            row["tris"] = sum(len(p.vertices) - 2
+                              for p in me.polygons)
+            row["mats"] = [m.name for m in me.materials if m]
+        rows.append(row)
+    return json.dumps(rows, indent=1)
+
+text = scene_report()
+bpy.context.window_manager.clipboard = text  # paste in chat
+```
+
+## MCP for Blender (ahujasid)
+
+The most used community server (MIT, "not made by Blender"). As of September 2026 its PyPI package is
+`mcp-for-blender`; the old name `blender-mcp` (and `uvx blender-mcp`) still works. Needs Blender 3.0+, Python
+3.10+ and [uv](https://docs.astral.sh/uv/) from its official installer (not `pip install uv`).
+
+```bash
+brew install uv                      # macOS; see uv docs
+uvx mcp-for-blender install-addon    # copies the add-on
+
+# Claude Code (the -- separates the server command)
+claude mcp add --transport stdio blender \
+  -- uvx mcp-for-blender
+claude mcp list                      # check; /mcp inside
+
+# Codex CLI, desktop app, IDE extension, ChatGPT desktop
+codex mcp add blender -- uvx mcp-for-blender
+codex mcp list
+```
+
+Claude Desktop: Settings › Developer › Edit Config (`claude_desktop_config.json`), then restart it.
+
+```json
+{
+  "mcpServers": {
+    "blender": {
+      "command": "uvx",
+      "args": ["mcp-for-blender"],
+      "env": {
+        "BLENDER_MCP_SAFE_MODE": "1",
+        "DISABLE_TELEMETRY": "true"
+      }
+    }
+  }
+}
+```
+
+In Blender: Edit › Preferences › Add-ons › enable **Interface: MCP for Blender**; in the 3D Viewport press
+N › **MCP for Blender** tab › **Start MCP Server** (older versions label it "Connect to Claude"). Tick only the
+asset sources you want (Poly Haven, Sketchfab, Poly Pizza, Hyper3D Rodin, Hunyuan3D, Tripo).
+
+| Setting | Default | Notes |
+| :------ | :------ | :---- |
+| `BLENDER_HOST`, `BLENDER_PORT` | `localhost`, `9876` | socket between server and add-on; one port per Blender instance |
+| `BLENDER_MCP_SAFE_MODE=1` | off | checks each script first and blocks file, process, network and install calls (per the README) |
+| `DISABLE_TELEMETRY=true` | minimal anonymous usage record | prompts, code, screenshots only with opt-in |
+| API keys (Sketchfab, Poly Pizza, Hyper3D, Hunyuan3D) | none | add-on preferences or `BLENDERMCP_*` variables, never in a prompt |
+| `spawn uvx ENOENT` | | GUI apps don't see your shell `PATH`: use the full path from `which uvx` |
+| Timeouts | | ask for smaller steps; Poly Haven downloads freeze the UI until done |
+
+Run only one MCP client against the add-on at a time.
+
+Watch for: the setup and a full build in this tutorial (it predates the package rename).
+
+<YouTube id="lCyQ717DuzQ" title="Create 3D with Claude AI with Blender MCP - Full 26-min Tutorial" channel="DesignCode" />
+
+## Official and hosted servers
+
+| Server | Who | Requirements | Notes |
+| :----- | :-- | :----------- | :---- |
+| [Blender MCP Server](https://www.blender.org/lab/mcp-server/) | Blender Lab (projects.blender.org/lab/blender_mcp) | Blender 5.1+, its add-on (`mcp-1.0.3.zip` at the time of writing), an MCP client | server ships as an `.mcpb` bundle or source; listed as the **Blender** connector in Claude's directory; focus: a natural-language interface to the Python API and docs |
+| [Higgsfield scene builder](https://higgsfield.ai/mcp/scene-builder) | Higgsfield | Higgsfield connector (`https://mcp.higgsfield.ai/mcp`) | hosted Blender 5.2 projects; returns .blend, .glb, previews |
+| Higgsfield Bridge | Higgsfield | its Blender add-on (5.1+), custom connector `https://bridge.higgsfield.ai/mcp` | acts on the scene open in your Blender |
+
+Higgsfield scene builder tools, as named by the connector in September 2026:
+
+| Tool | Does |
+| :--- | :--- |
+| `scene_builder_3d_create_project`, `_list_projects`, `_get_project` | projects ("3D Jutsu" scenes) |
+| `scene_builder_3d_query_python` | read-only Python: names, sizes, materials; can render preview images |
+| `scene_builder_3d_run_python` | one committed edit, guarded by the revision it inspected |
+| `scene_builder_3d_search_assets`, `_import_asset` | a curated GLB catalog only; no downloads from Python |
+| `scene_builder_3d_get_blend`, `_get_glb`, `_show_scene` | download the .blend or .glb, interactive preview |
+
+Its own guidance: meters, descriptive names, Principled materials and Point, Sun or Spot lights, because
+procedural shaders and world lighting don't carry into GLB.
+
+ChatGPT on the web connects only to remote MCP servers in developer mode (Plus, Pro, Business, Enterprise and
+Education, per OpenAI's docs), so it can use the Higgsfield connector but not a local Blender; the ChatGPT desktop
+app and Codex share Codex's MCP config (`~/.codex/config.toml`) and do run local servers.
+
+## Anthropic and the Blender Foundation
+
+Dated, because this was contested:
+
+| Date (2026) | What happened |
+| :---------- | :------------ |
+| April 28 | Anthropic's "Claude for Creative Work" post: the Blender developers created an MCP connector, officially available for Claude, usable by other LLMs too; Anthropic joins the Blender Development Fund as Corporate Patron (reported as EUR 240,000 a year), aimed at core work such as the Python API |
+| May 1 | after community pushback, the Blender Foundation turns the membership into a one-time donation, says "No generative AI functionality is currently available or planned to be integrated in Blender", and starts writing an AI policy |
+
+So: Blender itself ships no AI; the MCP server and connector are optional add-ons you install. Sources:
+[BlenderNation](https://www.blendernation.com/2026/05/01/update-anthropic-joins-the-blender-development-fund/),
+[blender.org news](https://www.blender.org/news/upcoming-blender-development-fund-and-ai-policies/).
+
+## Prompt patterns
+
+Paste a preamble once per chat, then one request per step:
+
+```text
+You write Python for Blender 5.2 (bpy). Rules:
+- Units are meters. Z is up, -Y is the front, the ground is Z = 0.
+- Everything goes in a collection named "<Job>". At the start, get or create it and delete its
+  objects, so running the script twice gives the same scene.
+- Name every object and material (SM_Wall_2m, M_Brick). Never leave "Cube.001".
+- Prefer modifiers (Array, Mirror, Bevel, Solidify, Boolean) over destructive edits.
+- Materials: Principled BSDF, image textures only, so they survive glTF export.
+- Do only the step I ask for, then stop.
+- End by printing JSON: name, size in meters, triangle count per object.
+- If you're not sure an API exists in 5.x, say so instead of guessing.
+```
+
+| Pattern | Say | Why |
+| :------ | :-- | :-- |
+| Exact dimensions | "3.0 m tall walls, 0.2 m thick, doors 0.9 × 2.1 m" | LLMs guess scale badly |
+| Axis convention | "Z up, front faces -Y" | glTF and engines convert from this |
+| Idempotent | "rebuild the collection each run" | safe to re-run after fixes |
+| One step at a time | "only the walls; roof next" | smaller scripts, easier fixes |
+| Names | "prefix meshes SM_, materials M_" | engines and humans find things |
+| Check visually | "take a viewport screenshot and compare with the brief" (MCP) | catches floating or overlapping parts |
+| Errors | paste the traceback verbatim, with the line | it fixes the actual error, not a guess |
+| Version | "Blender 5.2; 5.0 removed some APIs" | older answers use removed calls |
+| Non-destructive | "use modifiers, don't apply them" | you can still tweak by hand |
+| Export-friendly | "Principled BSDF + image textures, no procedural nodes" | glTF keeps only that |
+
+## Example prompts
+
+```text
+LOW-POLY HOUSE
+Step 1: a low-poly cottage on a 1 m grid in collection "Cottage": 6 × 4 m footprint,
+3 m walls 0.2 m thick, a 0.9 × 2.1 m door centered on the front (-Y), two 1.2 × 1.0 m
+windows at sill height 0.9 m (Boolean modifiers, not applied), gable roof with 0.3 m
+overhang, materials M_Plaster, M_RoofTile, M_Wood. Print the JSON summary.
+```
+
+```text
+MODULAR WALL KIT
+Make a modular wall kit in collection "Kit_Wall", each piece its own object with the
+origin at the bottom-left corner on the grid: SM_Wall_2m (2 × 0.2 × 3 m), SM_Wall_Door_2m,
+SM_Wall_Window_2m, SM_Corner_Out, SM_Corner_In, SM_Floor_2m. Pieces must tile with no
+gaps when snapped at 2 m. Lay them out in a row 3 m apart for review.
+```
+
+```text
+STREET SCENE BLOCKOUT (MCP with Poly Haven on)
+Block out a 40 m street: 8 m road along Y, 2 m sidewalks, simple box buildings 6-12 m
+tall on both sides (separate objects, 0.5 m gaps). Then search Poly Haven for an overcast
+HDRI, asphalt and concrete textures, and 3-4 street props (bench, bin, lamp); import them,
+scale to real size, and place props on the sidewalks. Screenshot from a street-level camera.
+```
+
+```text
+TURNTABLE
+Add a turntable: an empty at the origin with a camera parented 6 m away and 2 m up,
+Track To the empty, 120 frames, linear rotation 0-360° (no ease at the loop), and render
+settings for a 1080 × 1080 MP4 preview with EEVEE.
+```
+
+```text
+BATCH EXPORT
+Export every object in collection "Kit_Wall" to its own GLB in //export/, each moved to
+the world origin for export and moved back after, modifiers applied, +Y up. Print the file
+names and sizes.
+```
+
+The turntable, as the verified script to compare against:
+
+```py
+import bpy
+import math
+from bpy_extras import anim_utils
+
+def turntable(frames: int = 120, dist: float = 6.0,
+              height: float = 2.0) -> bpy.types.Object:
+    """Camera orbiting 0,0,0 once, at constant speed."""
+    sc = bpy.context.scene
+    pivot = bpy.data.objects.new("Turntable", None)
+    cam_data = bpy.data.cameras.new("TurntableCam")
+    cam = bpy.data.objects.new("TurntableCam", cam_data)
+    for ob in (pivot, cam):
+        sc.collection.objects.link(ob)
+    cam.parent = pivot
+    cam.location = (0, -dist, height)
+    track = cam.constraints.new("TRACK_TO")
+    track.target = pivot  # always look at the center
+    sc.camera = cam
+    sc.frame_start, sc.frame_end = 1, frames
+    pivot.rotation_euler.z = 0
+    pivot.keyframe_insert("rotation_euler", index=2,
+                          frame=1)
+    pivot.rotation_euler.z = 2 * math.pi
+    pivot.keyframe_insert("rotation_euler", index=2,
+                          frame=frames + 1)  # seamless loop
+    ad = pivot.animation_data
+    bag = anim_utils.action_get_channelbag_for_slot(
+        ad.action, ad.action_slot)  # 4.4+ slotted actions
+    for fc in bag.fcurves:
+        for kp in fc.keyframe_points:
+            kp.interpolation = "LINEAR"
+    return cam
+```
+
+## Verification loop
+
+```text
+ prompt one step ──► script / tool call ──► run in Blender (save first)
+      ▲                                           │
+      │                                           ▼
+ fix: paste the traceback,            inspect: JSON report (sizes, tris, names),
+ or say what's wrong in meters  ◄──── viewport screenshot or preview render,
+                                      your own eyes in the viewport
+      │
+      └─► when right: commit (save a numbered .blend copy), next step
+```
+
+A fast still for the model (or you) to judge, rendered from the active camera:
+
+```py
+def preview(path: str = "//preview.png", px: int = 768):
+    """Fast solid-shaded render from the active camera."""
+    sc = bpy.context.scene
+    sc.render.engine = "BLENDER_WORKBENCH"
+    sc.render.resolution_x = sc.render.resolution_y = px
+    sc.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+```
+
+- Check numbers, not vibes: ask for dimensions and triangle counts; a screenshot can hide a 10× scale error.
+- Look from several angles: front, top (for grid alignment), and a low angle (for floating objects).
+- Every few steps, save a copy (`scene_v03.blend`) so a bad script costs one step, not the scene.
+
+## What LLMs do well and badly
+
+| Great at | Weak at |
+| :------- | :------ |
+| Writing `bpy` scripts, add-ons and operators | clean topology and edge flow for animation |
+| Procedural layouts: grids, streets, kits, scattering | organic sculpting (faces, creatures, cloth) |
+| Batch jobs: rename, rescale, re-material, export 200 files | exact art direction ("make it moodier") |
+| Geometry Nodes built from Python | UV unwrapping with good seams |
+| Fixing names, scale, origins, apply transforms | weight painting and rig deformation |
+| Lighting and camera setups by the numbers | anything judged only by eye |
+| Explaining Blender UI, errors and concepts | APIs changed in the last release (it may guess) |
+| Turning a spec into a blockout in minutes | knowing when it's done |
+
+## Security
+
+<Note kind="warning">
+MCP-driven or pasted `bpy` scripts are arbitrary Python running as your user: they can read, change and delete
+your files, open network connections and install software. The MCP for Blender README says to save before every
+use, and the Blender Lab page says its server runs model code "without any guards" and recommends a virtual
+machine or a system without sensitive data.
+</Note>
+
+| Do | Why |
+| :- | :-- |
+| Read scripts before running them (pasted, or in the MCP tool call) | look for `os`, `subprocess`, `shutil`, `requests`, `urllib`, `socket`, file writes outside the project |
+| Work in a copy of the .blend, in a project folder | a bad `bpy.data...remove` loop can wipe a scene |
+| Keep Preferences › Save & Load › **Auto Run Python Scripts** off (the default) | downloaded .blend files can carry registered scripts and driver expressions |
+| Turn on `BLENDER_MCP_SAFE_MODE=1` | blocks the most dangerous calls, not all |
+| Be wary of assets the agent downloads | stick to Poly Haven (CC0) and known sources; check the license (much of Poly Pizza is CC BY) |
+| Watch for prompt injection | text inside downloaded files or web pages can carry instructions to the model |
+| Keep API keys in add-on preferences or env variables | never in prompts, scripts or committed .blend files |
+| Stop the server and disable the add-on when done | an open socket on localhost accepts code from any local process |
+| Review MCP tool calls rather than auto-approving them | Claude Code, Codex and ChatGPT all offer per-tool approval |
+
+## Other 3D chores for LLMs
+
+| Chore | Prompt it with |
+| :---- | :------------- |
+| three.js loading code | "GLTFLoader + DRACOLoader + KTX2Loader, TypeScript, r18x, play the clip named Idle" ([Models & animation](/typescript/three-js/models-animation/)) |
+| GLSL / TSL shaders | "three.js ShaderMaterial, uniform time, vertex wind sway for grass" ([Shaders](/typescript/three-js/shaders-postprocessing/)) |
+| Godot shaders | "Godot 4.7 spatial shader, triplanar rock with a moss mask on top" ([Godot shaders](/game-dev/godot/shaders/)) |
+| Texture prompts | "write 10 image-model prompts for a consistent medieval street texture set" ([templates](/3d/ai-workflows/ai-generation/)) |
+| Naming conventions | the table below, pasted in the preamble |
+| Import settings | "Godot import suffixes for collision on these objects" ([Godot export](/3d/export/godot/)) |
+| Checking a GLB | paste `gltf-transform inspect` output and ask what to shrink ([three.js export](/3d/export/web-threejs/)) |
+
+| Thing | Convention (pick one and keep it) |
+| :---- | :-------------------------------- |
+| Mesh objects | `SM_Crate_01`, `SK_Hero` (skinned) |
+| Materials | `M_Brick_Red` |
+| Textures | `T_Brick_BaseColor`, `T_Brick_Normal`, `T_Brick_ORM` (occlusion, roughness, metallic packed) |
+| Collections | one per export unit: `Kit_Wall`, `Prop_Crates` |
+| Collision (Godot) | name suffix such as `-col` or `-colonly` |
+| Animations | `Idle`, `Walk`, `Run`, `Jump_Start` (engines look them up by name) |
+
+## Recipes
+
+### Low-poly house with Claude and MCP
+Use when you want an editable building fast and will finish it by hand.
+
+```text
+1. Blender 5.x with MCP for Blender running; Claude Desktop or Claude Code connected.
+2. Paste the preamble, then the LOW-POLY HOUSE prompt (walls only first).
+3. After each step: "screenshot from the front and from the top; list sizes".
+4. Next steps: openings → roof → trim → materials → a ground plane.
+5. Save cottage_v01.blend, v02… between steps.
+6. Finish by hand: bevels, UVs, textures (/3d/blender/materials-uv/), then export.
+```
+
+### Modular kit with plain ChatGPT (no MCP)
+Use on a locked-down machine, or to keep full control of what runs.
+
+```text
+1. Paste the preamble and MODULAR WALL KIT into ChatGPT (or Claude).
+2. Read the script, paste it into a new text in Blender, Alt P.
+3. Run scene_report(), paste the JSON back: "the door piece is 2.1 m wide,
+   it must be 2.0 m".
+4. Repeat until it tiles; then run export_each() below.
+```
+
+### Street blockout with Poly Haven assets
+Use for a game level or a web hero scene with real lighting.
+
+```text
+1. MCP for Blender with the Poly Haven checkbox on (no key needed; assets are CC0).
+2. STREET SCENE BLOCKOUT prompt.
+3. Ask for a camera at 1.7 m eye height and a screenshot; fix scale and gaps.
+4. Replace box buildings with kit pieces or AI props (/3d/ai-workflows/ai-generation/).
+5. Keep the HDRI for Blender renders; engines need their own sky setup.
+```
+
+### Turntable preview for a web page or portfolio
+Use to show a model off, or to check an AI mesh from every side.
+
+```text
+1. Model at the origin, on the ground, real size.
+2. Run turntable() (above) or the TURNTABLE prompt.
+3. Render: EEVEE, 1080 × 1080, 120 frames, FFmpeg MP4 (or a PNG sequence).
+4. For an interactive version, export GLB and use OrbitControls with autoRotate.
+```
+
+### Batch export for Godot or three.js
+Use for kits and prop packs: one file per object.
+
+```py
+import os
+import bpy
+
+def export_each(col_name: str, out_dir: str) -> None:
+    """One GLB per object in a collection."""
+    os.makedirs(out_dir, exist_ok=True)
+    for ob in bpy.data.collections[col_name].objects:
+        bpy.ops.object.select_all(action="DESELECT")
+        ob.select_set(True)
+        bpy.context.view_layer.objects.active = ob
+        bpy.ops.export_scene.gltf(
+            filepath=os.path.join(out_dir, ob.name + ".glb"),
+            export_format="GLB",
+            use_selection=True,
+            export_apply=True,  # apply modifiers
+        )
+
+export_each("Kit_Wall", bpy.path.abspath("//export"))
+```
+
+Objects keep their world position in the file: lay kit pieces out at the origin (or move them there and back),
+as in the BATCH EXPORT prompt.
+
+### Hosted scene with the Higgsfield scene builder
+Use when you're away from your Blender, or want a GLB for the web straight away.
+
+```text
+1. Add the Higgsfield connector in Claude; sign in.
+2. "Create a new 3D scene: a small market stall under string lights, meter scale,
+   camera at eye height, portable Principled materials."
+3. Ask for a preview render after each change; name the objects you want changed.
+4. Download the .glb (web) or .blend (keep editing locally).
+5. Open the .blend in your Blender, review it, then export per target.
+```
+
+## References
+
+- [MCP for Blender README](https://github.com/ahujasid/mcp-for-blender): install, client configs, tools, safe mode, telemetry
+- [Blender Lab MCP Server](https://www.blender.org/lab/mcp-server/): official add-on and server, requirements, security note; [Blender connector in Claude's directory](https://claude.com/connectors/blender)
+- [Higgsfield MCP](https://higgsfield.ai/mcp), [Scene Builder](https://higgsfield.ai/mcp/scene-builder), [Higgsfield for Blender](https://higgsfield.ai/plugins/blender)
+- [Claude Code: MCP](https://code.claude.com/docs/en/mcp): `claude mcp add`, scopes, `/mcp`; [modelcontextprotocol.io](https://modelcontextprotocol.io/): the protocol
+- [OpenAI: MCP in ChatGPT desktop and Codex](https://learn.chatgpt.com/docs/extend/mcp), [ChatGPT developer mode](https://developers.openai.com/api/docs/guides/developer-mode): plans, remote servers, write-action warnings
+- [Blender Python API](https://docs.blender.org/api/current/) and [5.0 API changes](https://developer.blender.org/docs/release_notes/5.0/python_api/)
+- [Blender Manual: Scripting & Security](https://docs.blender.org/manual/en/latest/advanced/scripting/security.html) and [Text Editor](https://docs.blender.org/manual/en/latest/editors/text_editor.html)
+- [Anthropic: Claude for Creative Work](https://www.anthropic.com/news/claude-for-creative-work), [BlenderNation update](https://www.blendernation.com/2026/05/01/update-anthropic-joins-the-blender-development-fund/), [blender.org: Development Fund and AI policies](https://www.blender.org/news/upcoming-blender-development-fund-and-ai-policies/)
+- [Poly Haven](https://polyhaven.com/) (CC0 assets) and [Poly Pizza](https://poly.pizza/) (check each model's license)

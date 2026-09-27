@@ -1,0 +1,471 @@
+---
+title: Blender to the web (three.js)
+date: 2026-09-27
+order: 1
+---
+
+Getting a Blender 5.x model onto a web page: preparing the scene, the glTF exporter's settings, what survives
+the trip, shrinking the file with glTF Transform or gltfpack, and the first lines of three.js or React Three
+Fiber that load it. The three.js side in depth (decoders, the animation mixer, picking, performance) is in
+[Models, animation & picking](/typescript/three-js/models-animation/); the ideas behind meshes, PBR and
+rigs are in [Fundamentals](/3d/fundamentals/core-concepts/).
+
+## The pipeline
+
+<Diagram src="/images/diagrams/export-pipeline-web.svg" label="Six stacked steps: Blender scene, glTF exporter writing model.glb, gltf-transform or gltfpack, a public folder or CDN, GLTFLoader with decoders, and scene.add; the first three are the Blender side, the last two the three.js side" caption="Blender to browser: the first three steps are this sheet, the last two are the three.js sheets." />
+
+| Term | Meaning |
+| :--- | :------ |
+| glTF 2.0 | Khronos' open format for 3D scenes, "the JPEG of 3D": meshes, PBR materials, node tree, skins, animations |
+| `.glb` | binary glTF: everything (JSON, geometry, textures) in one file; use this for the web |
+| `.gltf` + `.bin` + images | the same data as separate files; easy to inspect or edit, more requests |
+| PBR | physically based rendering: materials described by base color, metalness, roughness, normal maps |
+| Draco / Meshopt | geometry compression; the browser needs a decoder |
+| KTX2 | GPU-compressed textures (Basis Universal); small on the GPU, not just on the wire |
+| Draw call | one mesh × one material sent to the GPU; the main cost to keep low |
+
+## Before you export
+
+Work through this in Blender before touching the export dialog; most "it looks wrong in three.js" bugs start
+here.
+
+| Check | How in Blender | Why |
+| :---- | :------------- | :-- |
+| Apply transforms | Object > Apply > All Transforms (`Ctrl A`) | scale 1 and rotation 0 on the object, so the mesh itself has the real size; skinned rigs and physics break otherwise |
+| Origins | Object > Set Origin > Origin to Geometry, or to the base for props | the origin becomes the pivot you move and rotate in code |
+| Scale in meters | Scene Properties > Units: Metric, Unit Scale 1.0; a door is about 2 m | glTF and three.js both use 1 unit = 1 m; physical lights and cameras assume it |
+| Up axis | model Z-up as usual; the exporter's +Y Up converts | three.js is Y-up; never rotate the model by hand to compensate |
+| Front | the model looks toward Blender's -Y | becomes +Z in glTF, the "front" three.js and Godot expect |
+| Triangulate or not | leave quads; the exporter triangulates. Add a Triangulate modifier only to lock the split (for baked normal maps) | the GPU draws triangles; the split changes shading slightly |
+| Normals | Shade Smooth plus the Smooth by Angle modifier; recalculate outside (`Shift N` in Edit Mode) | hard edges and flipped faces show as black patches or seams |
+| Remove unused data | File > Clean Up > Purge Unused Data; delete hidden helper objects | unused images and meshes can still be exported |
+| Name everything | objects, meshes, materials, actions (`Crate`, `Door_L`, `Walk`) | names become node and clip names you look up in code |
+| Materials | Principled BSDF with Image Texture nodes only (plus Normal Map, Mix for alpha) | the exporter reads this pattern; other node setups are dropped |
+| Procedural materials | bake them to images first ([Materials & UVs](/3d/blender/materials-uv/)) | noise, wave, color ramps and the like are not exported |
+| Texture sizes | power of two (1024, 2048); 1–2K for most assets, 4K only for hero surfaces | GPU memory and download size; KTX2 needs multiples of 4 |
+| Materials per mesh | one where you can; join small parts that share a material | each material on a mesh is a separate draw call |
+| Poly budget | tens of thousands of triangles per hero asset, far fewer per prop ([Core concepts](/3d/fundamentals/core-concepts/)) | phones render the whole scene every frame |
+| UVs | every textured mesh has a UV map with no overlaps (except mirrored parts) | missing UVs show a single texel's color |
+| Rest pose | rigs in rest or T-pose at frame 0; armature and mesh applied | the exported bind pose is what skinning starts from |
+
+<Note kind="tip">Save a copy as `model-export.blend`, apply modifiers and clean up there, and keep the working
+file editable.</Note>
+
+## Exporter settings
+
+File > Export > glTF 2.0 (.glb/.gltf). The dialog has collapsible panels; this is the web setup, with labels as
+in the Blender 5.2 manual. Tick **Remember Export Settings** to store them in the `.blend`.
+
+| Panel > option | Web setting | Notes |
+| :------------- | :---------- | :---- |
+| Format | glTF Binary (.glb) | glTF Separate for debugging; Embedded is hidden unless enabled in the add-on preferences |
+| Include > Limit to | Selected Objects, Visible Objects, Renderable Objects or Active Collection | keeps cameras, lights and helpers out; Active Collection with Include Nested Collections is the tidy option |
+| Include > Data | Custom Properties on if code reads them; Cameras and Punctual Lights usually off | custom properties land in `object.userData` in three.js |
+| Transform > +Y Up | on | the Z-up to Y-up conversion |
+| Data > Scene Graph > GPU Instances | on for scattered copies of one mesh | exports `EXT_mesh_gpu_instancing`; three.js builds an `InstancedMesh` |
+| Data > Mesh > Apply Modifiers | on (off by default) | exports the evaluated mesh (mirror, bevel, subdivision as seen in the viewport) |
+| Data > Mesh > UVs, Normals | on | |
+| Data > Mesh > Tangents | on only with baked normal maps that show seams | three.js otherwise derives tangents in the shader |
+| Data > Mesh > Vertex Color > Use Vertex Color | Material (default) | exports colors only when the material uses them |
+| Data > Material > Materials | Export | Placeholder keeps slots without textures; Viewport exports only the viewport display color |
+| Data > Material > Images | Automatic, JPEG or WebP | Automatic keeps PNG as PNG and JPEG as JPEG; WebP is smallest but has no fallback unless WebP Fallback is on |
+| Data > Material > Image Quality | 75–90 for JPEG or WebP | |
+| Data > Shape Keys | on if the model has them | shape keys become morph targets |
+| Data > Armature > Use Rest Position Armature | on | |
+| Data > Armature > Export Deformation Bones Only | on for game-style rigs | drops control bones; their motion is baked into deform bones |
+| Data > Skinning > Bone Influences | 4 | many viewers only handle 4 per vertex |
+| Data > Lighting > Lighting Mode | Standard | converts Blender watts into glTF's physical units (candela for point and spot, lux for sun), which `GLTFLoader` passes to three.js lights as-is |
+| Data > Compression | Draco Mesh Compression or Meshopt Compression, or neither and compress later | compressing later with glTF Transform gives more control |
+| Animation > Mode | Actions | see [Animations for the web](#animations-for-the-web) |
+| Animation > Sampling > Always Sample Animations | on | bakes constraints, drivers and custom interpolation into plain keyframes |
+| Animation > Sampling > Sampling Rate | 1 (every frame) | raise to 2 for smaller files on slow motion |
+| Animation > Optimize > Optimize Animation Size | on | removes duplicate keys |
+| Animation > Shape Keys > Shape Key Animations | on for facial or morph animation | |
+| Animation > Rest & Ranges > Limit to Playback Range | off unless the timeline range is set per action | clips can be cut short otherwise |
+
+The same exporter runs from Python as `bpy.ops.export_scene.gltf(...)`; see the recipe
+[Export from the command line](#export-from-the-command-line) and batch exports in
+[Python scripting](/3d/blender/python-scripting/).
+
+## What survives export
+
+| Blender | glTF | three.js |
+| :------ | :--- | :------- |
+| Mesh objects | meshes (triangles), one primitive per material slot | `Mesh`, or a `Group` of meshes for multi-material objects |
+| Curves, text, metaballs | only if converted to mesh, or with Apply Modifiers | |
+| Empties, parenting | nodes with transforms | `Object3D` hierarchy; names sanitized (`Wheel.001` → `Wheel001`) |
+| Principled BSDF: Base Color, Metallic, Roughness, Normal, Emission, Alpha | core PBR material | `MeshStandardMaterial` |
+| Coat, Sheen, Transmission, IOR, Specular, Anisotropy, Volume, Dispersion, Iridescence | `KHR_materials_*` extensions | `MeshPhysicalMaterial` |
+| Emission above 1 (Strength or color) | `KHR_materials_emissive_strength` | emissive intensity (pair with bloom) |
+| Alpha: rounded to 0 or 1, or blended | alpha mode MASK or BLEND | `alphaTest` or `transparent` |
+| Backface Culling off (default) | `doubleSided: true` | `side: DoubleSide`; turn culling on in Blender for closed meshes |
+| Mapping node (offset, rotation, scale) | `KHR_texture_transform` | texture `offset`, `repeat`, `rotation` |
+| Emission-only camera-ray trick | `KHR_materials_unlit` | `MeshBasicMaterial` |
+| Point, Spot, Sun lights | `KHR_lights_punctual` | `PointLight`, `SpotLight`, `DirectionalLight` |
+| Area lights, World (HDRI, sky) | dropped | add lights and an environment map in three.js |
+| Cameras | cameras | `gltf.cameras` |
+| Object, bone and shape key animation | animations | `gltf.animations` (`AnimationClip[]`) |
+| Material, light, camera animation | only with the experimental Animation Pointer option (NLA Tracks or Scene mode) | check loader support before relying on it |
+| Custom properties | `extras` | `userData` |
+| Procedural textures, geometry nodes fields, particles, physics, modifiers not applied | dropped | bake or apply first |
+
+Extensions the exporter can write (Blender 5.2): `KHR_draco_mesh_compression`, `KHR_lights_punctual`,
+`KHR_materials_clearcoat`, `_transmission`, `_unlit`, `_emissive_strength`, `_volume`, `_sheen`, `_specular`,
+`_anisotropy`, `_dispersion`, `_ior`, `_variants`, `KHR_texture_transform`, `EXT_mesh_gpu_instancing`,
+`EXT_meshopt_compression` or `KHR_meshopt_compression` (a Meshopt option), and `EXT_texture_webp` when
+Images is WebP. It does not write KTX2 (`KHR_texture_basisu`); add that with the tools in
+[Optimize after export](#optimize-after-export).
+
+## Animations for the web
+
+A glTF **animation** is a clip that moves objects, bones or shape keys. In Blender the unit is an **action**
+(a set of keyframed curves). The exporter only sees actions that are active on an object or stashed in the
+**NLA** (non-linear animation) editor.
+
+| Animation > Mode | Exports | Use |
+| :--------------- | :------ | :-- |
+| Actions (default) | each active or stashed action as its own clip, named after the action | characters with Idle, Walk, Run: the usual choice |
+| Active Actions merged | one clip from whatever is active on every object | a single scripted sequence |
+| Broadcast actions | every compatible action onto every object that can play it | shared clips across several objects |
+| NLA Tracks | one clip per NLA track, strips and modifiers applied | edited sequences built from strips |
+| Scene | what the timeline shows, one clip or one per object | cutscenes, product turntables |
+
+| Step | How |
+| :--- | :-- |
+| Make one action per clip | Action Editor: New, key it, name it `Walk` |
+| Keep it | Push Down or Stash so it sits on an NLA track; unstashed actions with no users are skipped |
+| Name the clip | the action name, or rename the NLA track to override it |
+| Loop cleanly | first and last keys identical; loop in code with `LoopRepeat` |
+| Bones not keyed in every clip | leave Reset Pose Bones Between Actions on (the default) |
+| Constraints, IK, drivers | Always Sample Animations on (bakes them) |
+| Check | import the `.glb` back into Blender, or drop it in a viewer, and play each clip |
+
+Blender 4.4 introduced slotted actions (one action can drive several objects); since then the Actions mode
+merges tracks that use the same action. More in [Blender animation](/3d/blender/animation/).
+
+Watch for how the clips are set up in Blender before export, then how the app plays them with the mixer.
+
+<YouTube id="GByT8ActvDk" title="How To Export 3D Models With Their Animation From Blender And Import Them Into Your Three.js App" channel="Wael Yasmina" />
+
+## Optimize after export
+
+Blender's output is correct but big. Run it through one optimizer before shipping.
+
+```bash
+# glTF Transform: all-in-one (defaults: Meshopt, 2048 px max)
+bunx @gltf-transform/cli optimize model.glb web.glb \
+  --compress meshopt --texture-compress webp
+# Draco geometry, 1K textures, keep named nodes for code
+bunx @gltf-transform/cli optimize model.glb web.glb \
+  --compress draco --texture-compress webp \
+  --texture-size 1024 --join false --flatten false
+# report: sizes, draw calls, texture memory
+bunx @gltf-transform/cli inspect web.glb
+bunx @gltf-transform/cli validate web.glb
+
+# gltfpack: Meshopt, keep named nodes, KTX2 textures
+# (native binary; the npm build has no texture compression)
+gltfpack -i model.glb -o web.glb -cc -kn -tc
+```
+
+| Tool / flag | Does |
+| :---------- | :--- |
+| `optimize` | dedup, prune, instance, flatten, join, weld, simplify, resample, texture resize and compression in one pass |
+| `--compress meshopt \| draco \| quantize \| false` | geometry compression (default `meshopt`) |
+| `--texture-compress webp \| avif \| ktx2 \| auto \| false` | `ktx2` needs [KTX-Software](https://github.com/KhronosGroup/KTX-Software) installed |
+| `--texture-size 1024` | max texture size in pixels (default 2048) |
+| `--join false --flatten false` | keep separate named nodes; the defaults merge meshes, which breaks `getObjectByName` |
+| `--simplify false` | the default simplifier is conservative; turn it off for hard-surface models if edges move |
+| `resize`, `webp`, `etc1s`, `uastc`, `draco`, `meshopt`, `simplify` | the individual steps, for finer control (`--pattern`, `--slots` pick textures) |
+| `gltfpack -cc` | Meshopt compression at the higher ratio |
+| `gltfpack -tc` / `-tw` | KTX2 (ETC1S) / WebP textures |
+| `gltfpack -si 0.5` | simplify to about half the triangles |
+| `gltfpack -kn` / `-km` | keep named nodes / named materials |
+
+| Texture format | Download | GPU memory | Choose when |
+| :------------- | :------- | :--------- | :---------- |
+| PNG / JPEG | large / medium | full size (4 bytes per pixel plus mips) | never for final web assets |
+| WebP / AVIF | small | full size, the browser decodes to RGBA | small scenes, fast to set up |
+| KTX2 (ETC1S, UASTC) | small / medium | stays compressed, about 1 byte per pixel or less | many or large textures, phones |
+
+A 2048 × 2048 RGBA texture takes about 22 MB of GPU memory with mipmaps as PNG, JPEG or WebP, and about
+5.6 MB as KTX2 transcoded to a GPU format. The download size says nothing about GPU cost.
+
+Measured on a test scene exported from Blender 5.2 (Suzanne with Subdivision level 3 applied, 63k triangles,
+two 2048² textures, one action). The textures are synthetic, so real ones compress differently; the ratios are
+typical.
+
+| Output | File size | GPU texture memory |
+| :----- | :-------- | :----------------- |
+| Exporter, Images Automatic (PNG), no compression | 11.5 MB | 2 × 22 MB |
+| Exporter, Images WebP | 2.0 MB | 2 × 22 MB |
+| `optimize --compress meshopt --texture-compress webp` | 0.95 MB | 2 × 22 MB |
+| `optimize --compress draco --texture-compress webp` | 0.83 MB | 2 × 22 MB |
+| Meshopt, WebP, `--texture-size 1024` | 0.33 MB | 2 × 5.6 MB |
+
+The default `optimize` also simplified the mesh from 63k to 43k triangles (flat areas lose the most); pass
+`--simplify false` if silhouettes or UV seams change.
+
+## Load it in three.js
+
+Copy the Draco decoder from `node_modules/three/examples/jsm/libs/draco/` to `public/draco/`
+([Compression decoders](/typescript/three-js/models-animation/#compression-decoders)). The minimum, with an
+environment map so PBR materials are not black and AgX tone mapping to look closer to Blender's default:
+
+```ts
+import {
+  AgXToneMapping, AnimationMixer, PMREMGenerator,
+  PerspectiveCamera, Scene, Timer, WebGLRenderer,
+} from "three";
+import { GLTFLoader } from
+  "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from
+  "three/addons/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from
+  "three/addons/libs/meshopt_decoder.module.js";
+import { RoomEnvironment } from
+  "three/addons/environments/RoomEnvironment.js";
+
+const renderer = new WebGLRenderer({ antialias: true });
+renderer.toneMapping = AgXToneMapping; // Blender's default
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+
+const scene = new Scene();
+const pmrem = new PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(
+  new RoomEnvironment(),
+).texture; // stands in for the Blender World
+
+const camera = new PerspectiveCamera(
+  50, innerWidth / innerHeight, 0.1, 100,
+);
+camera.position.set(0, 1.6, 4); // meters, eye height
+
+const draco = new DRACOLoader().setDecoderPath("/draco/");
+const loader = new GLTFLoader()
+  .setDRACOLoader(draco)
+  .setMeshoptDecoder(MeshoptDecoder);
+
+const gltf = await loader.loadAsync("/models/robot.glb");
+scene.add(gltf.scene);
+
+const mixer = new AnimationMixer(gltf.scene);
+const walk = gltf.animations.find((c) => c.name === "Walk");
+if (walk) mixer.clipAction(walk).play();
+
+const timer = new Timer();
+renderer.setAnimationLoop((t) => {
+  timer.update(t);
+  mixer.update(timer.getDelta());
+  renderer.render(scene, camera);
+});
+```
+
+Next steps on the three.js side: a shared cached loader and KTX2 in
+[Models, animation & picking](/typescript/three-js/models-animation/#recipes), HDRI lighting and tone mapping
+in [Lights & shadows](/typescript/three-js/lights-shadows/#environment--ibl), color spaces in
+[Fundamentals](/typescript/three-js/fundamentals/#color-management).
+
+## React Three Fiber
+
+`gltfjsx` turns the file into a typed component and can optimize it on the way
+([React Three Fiber: gltfjsx](/typescript/three-js/react-three-fiber/#gltfjsx)):
+
+```bash
+bunx gltfjsx public/models/robot.glb --transform --types
+# -T/--transform  writes robot-transformed.glb: Draco,
+#                 prune, textures resized (-R, default
+#                 1024) and converted (-f, default webp)
+# -t/--types      TypeScript definitions for the nodes
+# -s/--shadows    cast and receive shadows
+# -k/--keepnames  keep original names
+```
+
+Without a generated component, `useGLTF` from drei is enough:
+
+```tsx
+import { Suspense, useEffect } from "react";
+import { Canvas } from "@react-three/fiber";
+import {
+  Environment, useAnimations, useGLTF,
+} from "@react-three/drei";
+
+const URL = "/models/robot.glb";
+
+function Robot() {
+  const { scene, animations } = useGLTF(URL);
+  const { actions } = useAnimations(animations, scene);
+  useEffect(() => {
+    actions["Walk"]?.reset().fadeIn(0.3).play();
+  }, [actions]);
+  return <primitive object={scene} />;
+}
+useGLTF.preload(URL);
+
+export function Viewer() {
+  return (
+    <Canvas camera={{ position: [0, 1.6, 4] }}>
+      <Suspense fallback={null}>
+        <Robot />
+        <Environment preset="city" />
+      </Suspense>
+    </Canvas>
+  );
+}
+```
+
+`useGLTF` wires Draco (decoder from a CDN by default) and Meshopt for you. A `<primitive>` can be mounted once;
+for copies use drei's `<Clone>` or the gltfjsx component.
+
+## Check and debug
+
+| Tool | Use |
+| :--- | :-- |
+| [glTF Viewer](https://gltf-viewer.donmccurdy.com/) (Don McCurdy) | drag and drop; three.js renderer, so what you see is what your page gets; shows clips, validation and stats |
+| [three.js editor](https://threejs.org/editor/) | import, inspect the node tree and materials, tweak and re-export |
+| [Khronos glTF Sample Viewer](https://github.khronos.org/glTF-Sample-Viewer-Release/) | the reference renderer: if it looks right here and wrong in your app, the bug is in your app |
+| [glTF Validator](https://github.khronos.org/glTF-Validator/) | spec errors and warnings; also `gltf-transform validate` |
+| `gltf-transform inspect` | per-mesh vertex counts, texture sizes and GPU memory, extensions used |
+| Blender, File > Import > glTF 2.0 | round-trip check: names, clips, materials |
+
+## Common problems
+
+| Symptom | Likely cause | Fix |
+| :------ | :----------- | :-- |
+| Too dark or flat | no environment map; Blender's World lighting is not exported | set `scene.environment` (RoomEnvironment or an HDRI) |
+| Black model | lit materials with no lights or environment; or Metallic at 1 with nothing to reflect | add an environment map; check Metallic |
+| Washed out or too contrasty | tone mapping differs: Blender uses AgX, three.js defaults to none | `renderer.toneMapping = AgXToneMapping` (or `NeutralToneMapping`); compare exposure |
+| Colors wrong on your own textures | color maps loaded without sRGB | GLTFLoader handles glTF textures; for hand-loaded maps set `colorSpace = SRGBColorSpace` |
+| Exported lights blinding or invisible | light units | Lighting Mode Standard in the exporter, or leave lights out and light the scene in three.js |
+| Huge or tiny | unapplied scale, or Unit Scale not 1 | apply scale in Blender; measure with `Box3().setFromObject` |
+| Lying on its side or facing away | +Y Up off, or front not facing -Y in Blender | export with +Y Up; rotate the mesh in Blender and apply |
+| Missing textures | `.gltf` uploaded without its images; non-image-texture nodes; UVs missing | ship `.glb`; bake procedurals; check the UV map |
+| Pink or failed load | compressed file without decoder | `setDRACOLoader`, `setMeshoptDecoder`, `setKTX2Loader` before loading |
+| Animation not playing | no `mixer.update(dt)` in the loop; clip name differs; action not stashed | log `gltf.animations` names; push actions to the NLA |
+| Parts not moving with the rig | mesh not skinned (parented without weights) or transforms not applied | Ctrl P > With Automatic Weights; apply transforms before binding |
+| Flicker where surfaces meet | z-fighting: coplanar faces or a tiny `near` | remove overlapping faces; raise `camera.near` |
+| Shading seams or black blotches | flipped normals, split normals, or normal map without matching tangents | recalculate normals; Smooth by Angle; export Tangents |
+| Transparent parts sorting wrong | many BLEND materials overlapping | use MASK (alpha rounded) where possible; split blended parts |
+| Named node missing in code | the optimizer merged or renamed it | `--join false --flatten false` or `gltfpack -kn`; names lose `.` (`Door.001` → `Door001`) |
+| File huge | 4K PNGs, unapplied subdivision, unused data | optimize pass, lower Subdivision before Apply Modifiers, purge unused |
+
+## Recipes
+
+### Export from the command line
+Use in a build script so every export uses the same settings (see
+[Python scripting](/3d/blender/python-scripting/) for batching many files).
+
+```py
+# export_web.py
+# run: blender -b scene.blend -P export_web.py
+import bpy
+
+out = bpy.path.abspath("//build/scene.glb")
+bpy.ops.export_scene.gltf(
+    filepath=out,
+    export_format="GLB",
+    use_visible=True,
+    export_yup=True,
+    export_apply=True,  # Apply Modifiers
+    export_image_format="WEBP",
+    export_animation_mode="ACTIONS",
+    export_lights=False,  # light it in three.js
+)
+```
+
+### A hero asset under 5 MB
+Use for a product or character that has to load fast on phones.
+
+1. In Blender: apply transforms, purge unused data, bake procedural materials, 2K textures at most.
+2. Export GLB with Apply Modifiers, Images Automatic, no compression.
+3. `bunx @gltf-transform/cli inspect model.glb` to find the biggest textures and meshes.
+4. `bunx @gltf-transform/cli optimize model.glb web.glb --compress meshopt --texture-compress ktx2`
+   (or `webp` without KTX-Software).
+5. Open `web.glb` in the glTF Viewer; check clips, materials and the validator.
+6. Serve with a long cache lifetime and a versioned file name (`robot.3f2a.glb`).
+
+### Inspect what arrived
+Use when the model looks wrong: size in meters, mesh and material names, clip names and lengths.
+
+```ts
+import { Box3, Vector3 } from "three";
+import type { Mesh, Object3D } from "three";
+import type { GLTF } from
+  "three/addons/loaders/GLTFLoader.js";
+
+/** Log what Blender actually exported. */
+export function report(gltf: GLTF): void {
+  const size = new Box3().setFromObject(gltf.scene)
+    .getSize(new Vector3());
+  console.table({ x: size.x, y: size.y, z: size.z }); // m
+  gltf.scene.traverse((o: Object3D) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    const mats = [m.material].flat().map((x) => x.name);
+    console.log(m.name, mats.join(", "));
+  });
+  for (const c of gltf.animations) {
+    console.log("clip", c.name, c.duration.toFixed(2), "s");
+  }
+}
+
+/** Scale so the largest side is `size` m, base on y = 0. */
+export function fit(root: Object3D, size = 1): void {
+  const dims = new Box3().setFromObject(root)
+    .getSize(new Vector3());
+  root.scale.multiplyScalar(
+    size / Math.max(dims.x, dims.y, dims.z),
+  );
+  const box = new Box3().setFromObject(root);
+  const c = box.getCenter(new Vector3());
+  root.position.set(
+    root.position.x - c.x,
+    root.position.y - box.min.y,
+    root.position.z - c.z,
+  );
+}
+```
+
+`fit` is for model viewers with arbitrary uploads; for your own assets, fix the scale in Blender instead.
+
+### Bake a procedural material
+Use when a material built from noise or color ramps turns flat gray in the browser.
+
+1. UV unwrap the mesh (Smart UV Project is enough for baking).
+2. Add an Image Texture node (not connected) with a new 2048 image, and select it.
+3. Render Properties: Cycles; Bake Type Diffuse with only Color ticked (base color), then Roughness, then
+   Normal, each into its own image.
+4. Save each image, rebuild the material as Principled BSDF with those three Image Texture nodes.
+5. Export. Details in [Materials & UVs](/3d/blender/materials-uv/).
+
+### A character with several clips
+Use for a rigged character driven by code (idle, walk, run, jump).
+
+1. One action per move, named `Idle`, `Walk`, `Run`, `Jump`; each starts and ends in a matching pose.
+2. Push Down each action so each sits on its own NLA track; mute the tracks so they don't mix in the viewport.
+3. Export: Mode Actions, Always Sample Animations on, Export Deformation Bones Only on, Bone Influences 4.
+4. Check the clip list in the glTF Viewer.
+5. In three.js, cross-fade between clips with the
+   [character state machine recipe](/typescript/three-js/models-animation/#character-state-machine).
+
+### Keep names for code
+Use when code finds parts by name (a door to open, a screen to texture).
+
+- Name the object in Blender without dots or spaces (`Door_L`, not `Door.001`).
+- Keep it a separate object; don't join it into a bigger mesh.
+- Optimize with `--join false --flatten false` (glTF Transform) or `-kn` (gltfpack).
+- Find it with `gltf.scene.getObjectByName("Door_L")`.
+
+## References
+
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): every exporter option, material mapping, extensions, animation modes
+- [Blender Python API: export_scene.gltf](https://docs.blender.org/api/current/bpy.ops.export_scene.html#bpy.ops.export_scene.gltf): the same options as script keywords
+- [Khronos glTF-Blender-IO](https://github.com/KhronosGroup/glTF-Blender-IO): the exporter's source, issues and changelog
+- [glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html) and [extension registry](https://github.com/KhronosGroup/glTF/tree/main/extensions)
+- [Khronos: glTF overview](https://www.khronos.org/gltf/): what the format is for, ecosystem and tools
+- [three.js docs: GLTFLoader](https://threejs.org/docs/#examples/en/loaders/GLTFLoader) and the [loading 3D models manual](https://threejs.org/manual/#loading-3d-models)
+- [glTF Transform CLI](https://gltf-transform.dev/cli): `optimize` and every single-step command
+- [gltfpack](https://meshoptimizer.org/gltf/): flags and native binaries
+- [gltfjsx](https://github.com/pmndrs/gltfjsx) and [drei useGLTF](https://drei.docs.pmnd.rs/loaders/gltf-use-gltf)
+- [glTF Viewer](https://gltf-viewer.donmccurdy.com/), [glTF Sample Viewer](https://github.khronos.org/glTF-Sample-Viewer-Release/), [glTF Validator](https://github.khronos.org/glTF-Validator/)
