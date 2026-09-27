@@ -114,6 +114,8 @@ export function usePlaygroundRun(): PlaygroundRun {
   const cap = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The run whose "running" signal was already accepted (only the first one can be genuine). */
   const runningSeen = useRef<string | null>(null);
+  /** Bumped by every Run and Stop: a late timeout from an earlier run must not touch a newer one. */
+  const generation = useRef(0);
 
   const emit = useCallback((stream: Stream, text: string) => {
     setOutput((current) => appendOutput(current, stream, replaceModuleUrls(text, urls.current)));
@@ -221,6 +223,7 @@ export function usePlaygroundRun(): PlaygroundRun {
       clearTimer();
       if (cap.current) clearTimeout(cap.current);
       abort.current?.abort();
+      generation.current += 1;
       setServed(null);
       rearmIdle.current = null;
       const runToken = newRunToken();
@@ -292,7 +295,14 @@ export function usePlaygroundRun(): PlaygroundRun {
                 : {}),
             });
           })
-          .catch(fail);
+          .catch((error: unknown) => {
+            if (token.current !== runToken) return;
+            // The previous run's frame is only replaced once linking succeeds: kill it here too,
+            // or it keeps running (with no limit left, and its output landing after "failed").
+            runner.reset();
+            setLive(false);
+            fail(error);
+          });
         return;
       }
 
@@ -367,6 +377,7 @@ export function usePlaygroundRun(): PlaygroundRun {
    */
   const stop = useCallback(() => {
     abort.current?.abort();
+    generation.current += 1;
     if (cap.current) clearTimeout(cap.current);
     if (activeFrame.current === "runner") runner.reset();
     if (activeFrame.current === "godot") godot.reset();
@@ -392,9 +403,15 @@ export function usePlaygroundRun(): PlaygroundRun {
         return Promise.resolve({ ok: false, error: "No server is running: press Run first." });
       rearmIdle.current?.();
       const id = newRunToken();
+      const server = generation.current;
       return new Promise<HttpResult>((resolve) => {
         const timeout = setTimeout(() => {
           pending.current.delete(id);
+          // Run or Stop since: that server is gone already, and the frame may hold a newer run.
+          if (generation.current !== server) {
+            resolve({ ok: false, error: "The server was stopped before it answered." });
+            return;
+          }
           // A handler that never answers (an endless loop) holds the worker: replace it.
           runner.reset();
           setServed(null);

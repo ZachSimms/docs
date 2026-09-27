@@ -71,7 +71,14 @@ export function isValidPath(path: string): boolean {
   return (
     segments.length <= PROJECT_LIMITS.maxDepth &&
     segments.every(
-      (s) => s.length <= PROJECT_LIMITS.maxSegment && SEGMENT.test(s) && s !== "." && s !== "..",
+      (s) =>
+        s.length <= PROJECT_LIMITS.maxSegment &&
+        SEGMENT.test(s) &&
+        s !== "." &&
+        s !== ".." &&
+        // Stored projects are parsed with `z.record`, which drops a `__proto__` key: the file
+        // would vanish on reload (and a missing entry file discards the whole project).
+        s !== "__proto__",
     )
   );
 }

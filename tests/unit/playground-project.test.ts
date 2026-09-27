@@ -51,6 +51,8 @@ describe("isValidPath", () => {
       "a\\b",
       "é.py",
       ".",
+      "__proto__",
+      "src/__proto__",
     ]) {
       expect(isValidPath(bad)).toBe(false);
     }
