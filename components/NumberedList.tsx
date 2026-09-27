@@ -132,6 +132,9 @@ export function NumberedList({ items }: { items: readonly NumberedItem[] }) {
             <span data-active={on}>{padNumber(item.number)}.</span>{"\u00a0"}
             <DottedLink
               href={item.href}
+              // Only the highlighted row (hovered, chosen with the keys, or the page just left)
+              // prefetches: a sheet's payload averages ~200 KB, and /sheets/ lists ~180 of them.
+              prefetch={i === active ? null : false}
               data-active={on}
               onMouseMove={i === active ? undefined : () => highlight(i)}
               onFocus={() => highlight(i)}

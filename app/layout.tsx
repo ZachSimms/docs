@@ -1,5 +1,5 @@
 /**
- * @file Root layout: `<html>`/`<body>`, global CSS (site + KaTeX), metadata,
+ * @file Root layout: `<html>`/`<body>`, global CSS, metadata,
  * the inline theme bootstrap script, the fixed theme toggle, the ⌘K palette and
  * the touch edge gestures.
  *
@@ -14,7 +14,6 @@ import { TapNav } from "@/components/TapNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
 import { EMBED_INIT_SCRIPT, THEME_INIT_SCRIPT } from "@/lib/theme";
-import "katex/dist/katex.min.css";
 import "./globals.css";
 
 /** Default title, `%s - Zach` template for child pages, and site description. */

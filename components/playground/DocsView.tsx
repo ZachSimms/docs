@@ -10,8 +10,7 @@
 
 "use client";
 
-import createDOMPurify from "dompurify";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/useTheme";
 import {
   buildDocSrcDoc,
@@ -32,6 +31,11 @@ function decodeFragment(fragment: string): string {
   }
 }
 
+/** DOMPurify, loaded with the first docs page rather than with the playground. */
+type PurifyFactory = typeof import("dompurify").default;
+let purifyModule: Promise<PurifyFactory> | undefined;
+const loadPurify = () => (purifyModule ??= import("dompurify").then((m) => m.default));
+
 /** Props for {@link DocsView}. */
 interface DocsViewProps {
   set: Docset;
@@ -43,7 +47,7 @@ interface DocsViewProps {
 
 /** A fetched page (or its failure), for the URL it came from; any other URL is still loading. */
 type Load =
-  | { url: string; status: "ready"; html: string }
+  | { url: string; status: "ready"; html: string; createPurify: PurifyFactory }
   | { url: string; status: "error"; message: string };
 
 /** Render the page. */
@@ -56,16 +60,16 @@ export function DocsView({ set, path, name, onNavigate }: DocsViewProps) {
   useEffect(() => {
     const controller = new AbortController();
     const url = pageUrl(set, path);
-    fetch(url, {
+    const page = fetch(url, {
       signal: controller.signal,
       credentials: "omit",
       referrerPolicy: "no-referrer",
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
-      .then((html) => setLoaded({ url, status: "ready", html }))
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    });
+    Promise.all([page, loadPurify()])
+      .then(([html, createPurify]) => setLoaded({ url, status: "ready", html, createPurify }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setLoaded({
@@ -79,22 +83,21 @@ export function DocsView({ set, path, name, onNavigate }: DocsViewProps) {
 
   const load = loaded?.url === pageUrl(set, path) ? loaded : null;
 
-  // Build the frame document; refuse to show anything if the sanitizer can't run here.
-  let srcDoc: string | null = null;
-  let problem: string | null =
-    load?.status === "error" ? `Docs unavailable (${load.message}).` : null;
-  if (load?.status === "ready") {
-    const purify = createDOMPurify(window);
-    if (purify.isSupported) {
-      srcDoc = buildDocSrcDoc(
-        load.html,
-        set,
-        path,
-        (dirty, config) => purify.sanitize(dirty, config) as string,
-        theme,
-      );
-    } else problem = "This browser can't show docs pages safely here.";
-  }
+  // Build the frame document once per page and theme (sanitizing a whole page isn't cheap);
+  // refuse to show anything if the sanitizer can't run here.
+  const built = useMemo((): { srcDoc: string | null; problem: string | null } => {
+    if (load?.status === "error")
+      return { srcDoc: null, problem: `Docs unavailable (${load.message}).` };
+    if (load?.status !== "ready") return { srcDoc: null, problem: null };
+    const purify = load.createPurify(window);
+    if (!purify.isSupported) {
+      return { srcDoc: null, problem: "This browser can't show docs pages safely here." };
+    }
+    const sanitize = (dirty: string, config: Parameters<typeof purify.sanitize>[1]) =>
+      purify.sanitize(dirty, config) as string;
+    return { srcDoc: buildDocSrcDoc(load.html, set, path, sanitize, theme), problem: null };
+  }, [load, set, path, theme]);
+  const { srcDoc, problem } = built;
 
   // The click handler outlives renders (it's added once per load): read the latest props.
   const latest = useRef({ path, onNavigate });

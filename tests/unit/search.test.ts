@@ -2,6 +2,7 @@
 import path from "node:path";
 import { describe, expect, it } from "bun:test";
 import { buildSearchIndex, extractHeadings, stripMarkdown } from "@/lib/search";
+import { isSearchIndex } from "@/lib/search-index-client";
 
 const root = path.join(__dirname, "..", "fixtures", "content");
 const topics = ["alpha", "beta"] as const;
@@ -60,5 +61,24 @@ describe("extractHeadings", () => {
   it("returns heading text without markers, ignoring code fences", () => {
     const body = "# A\n\n```\n# not a heading\n```\n\n### B c\n";
     expect(extractHeadings(body)).toEqual(["A", "B c"]);
+  });
+});
+
+describe("isSearchIndex", () => {
+  it("accepts the built index and refuses malformed ones", () => {
+    const doc = { topic: "t", slug: "s", title: "T", url: "/t/s/", headings: ["h"], text: "x" };
+    expect(isSearchIndex([doc])).toBe(true);
+    expect(isSearchIndex([])).toBe(true);
+    for (const bad of [
+      null,
+      {},
+      [null],
+      [{ ...doc, title: 1 }],
+      [{ ...doc, headings: "h" }],
+      [{ ...doc, headings: [1] }],
+      [{ topic: "t" }],
+    ]) {
+      expect(isSearchIndex(bad)).toBe(false);
+    }
   });
 });

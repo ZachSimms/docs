@@ -106,7 +106,13 @@ function useActiveIndex(ids: readonly string[]): readonly [number, (index: numbe
       pinned.current = null;
     };
     const onHash = () => {
-      const index = list.indexOf(decodeURIComponent(location.hash.slice(1)));
+      let id: string;
+      try {
+        id = decodeURIComponent(location.hash.slice(1));
+      } catch {
+        return; // a malformed hash (`#%E0%A4%A`) must not take the page down
+      }
+      const index = list.indexOf(id);
       if (index !== -1) {
         pinned.current = index;
         setActive(index);

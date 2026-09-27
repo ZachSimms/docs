@@ -24,6 +24,10 @@ keyboard navigation and the table-of-contents tracking.
 | `bun run lint` / `bun run typecheck` | ESLint / `tsc --noEmit`                                    |
 | `bun run format`                     | Prettier                                                   |
 
+To run the end-to-end tests with a Chromium that's already installed (when its
+build doesn't match the pinned Playwright), point `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
+at it, e.g. `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium bun run test:e2e`.
+
 ## Adding a cheatsheet
 
 Drop an `.mdx` file into `content/<topic>/`. The file name becomes the URL slug.
@@ -106,7 +110,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
 | ` ```html demo tailwind ` fence                                         | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
 | `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
-| `<YouTube id="…" title="…" channel="…" start={30} />`                   | lazy 16:9 embed (youtube-nocookie) with a caption link; bad ids fail the build |
+| `<YouTube id="…" title="…" channel="…" start={30} />`                   | click-to-play 16:9 embed (youtube-nocookie), caption link; bad ids fail build  |
 | `<Graph title="…" curves={[{ fn: "nlogn", label: "O(n log n)" }]} domain={[0, 16]} range={[0, 70]} />` | SVG function plot from the `lib/graph.ts` catalog (math functions plus `log2`, `nlogn`, `pow2` for Big-O); `a·f(b(x − h)) + k` transforms |
 | `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
 | `##` / `###` headings                                                   | table of contents in the right margin (wide viewports)           |

@@ -9,9 +9,14 @@
 
 "use client";
 
-import { useDeferredValue } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/useTheme";
-import { buildMarkdownSrcDoc } from "@/lib/playground/markdown";
+
+/** The renderer (micromark + GFM, ~30 KB gzipped), loaded with the first Markdown preview. */
+type Render = typeof import("@/lib/playground/markdown").buildMarkdownSrcDoc;
+let renderer: Promise<Render> | undefined;
+const loadRenderer = () =>
+  (renderer ??= import("@/lib/playground/markdown").then((m) => m.buildMarkdownSrcDoc));
 
 /** Props for {@link MarkdownPreview}. */
 interface MarkdownPreviewProps {
@@ -26,13 +31,19 @@ export function MarkdownPreview({ source, path }: MarkdownPreviewProps) {
   const theme = useTheme();
   // Typing stays responsive in long documents: the preview may lag a keystroke behind.
   const deferred = useDeferredValue(source);
+  const [render, setRender] = useState<Render | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadRenderer().then((r) => live && setRender(() => r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  // Rendered only when the text or theme changes, not on every playground update (output, …).
+  const doc = useMemo(() => (render ? render(deferred, theme) : ""), [render, deferred, theme]);
   return (
     <section className="pg-md-preview" aria-label={`Preview of ${path}`}>
-      <iframe
-        sandbox=""
-        srcDoc={buildMarkdownSrcDoc(deferred, theme)}
-        title={`Preview of ${path}`}
-      />
+      <iframe sandbox="" srcDoc={doc} title={`Preview of ${path}`} />
     </section>
   );
 }

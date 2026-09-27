@@ -17,6 +17,20 @@ import createMDX from "@next/mdx";
 const nextConfig: NextConfig = {
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
   trailingSlash: true,
+  // Every page is prerendered, so server code never reads public/ at run time (images and
+  // diagrams are measured and inlined at build). Without this, the sheet routes' traces hold
+  // the whole folder (~60 MB: the Godot engine, the pyright worker, …).
+  outputFileTracingExcludes: {
+    "/**": ["public/**/*"],
+  },
+  turbopack: {
+    resolveAlias: {
+      // @valtown/codemirror-ts imports "typescript" (the 5.x devDependency) while the
+      // playground's language service uses typescript-ls (6.x): without this, browsers
+      // download and parse two ~3.5 MB copies of TypeScript.
+      typescript: { browser: "typescript-ls" },
+    },
+  },
   async redirects() {
     // The topic was renamed from "Maths" (US English): keep old links working.
     return [
@@ -33,7 +47,28 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
+      },
+      {
+        // Everything but the playground (whose srcdoc frames inherit the policy and run the
+        // reader's own HTML): no plugins, and no <base> pointing chunk loads elsewhere.
+        // Same key as above, so frame-ancestors is repeated. A script-src policy would need
+        // per-request nonces for Next's inline scripts, which static pages can't have.
+        source: "/:path((?!playground(?:/|$)).*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+          },
+        ],
+      },
+      {
+        // The version is in the path, so a new release is a new URL: cache them for good
+        // (the pyright worker alone is 18 MB).
+        source: "/playground/:dir(pyright|ts-lib)/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
       {
         // The Godot runner loads its engine files from inside an opaque-origin sandbox,

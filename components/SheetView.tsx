@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
 import type { TocEntry } from "@/lib/toc";
 import { Page, type FooterLink } from "./Page";
 import { Toc } from "./Toc";
+// Math only appears on sheets: other pages (home, topics, the playground) skip KaTeX's CSS.
+import "katex/dist/katex.min.css";
+import "./SheetView.css";
 
 /** Props for {@link SheetView}. */
 interface SheetViewProps {

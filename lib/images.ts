@@ -39,7 +39,11 @@ export const readImageDimensions = cache(
     if (!publicPath.startsWith("/") || publicPath.split("/").includes("..")) return undefined;
     try {
       const resolvedRoot = fs.realpathSync(path.resolve(publicRoot));
-      const file = fs.realpathSync(path.resolve(resolvedRoot, `.${publicPath}`));
+      // Build-time only (pages are prerendered): without the ignore, Turbopack traces the whole
+      // project (.git included) into every page that renders an image.
+      const file = fs.realpathSync(
+        /*turbopackIgnore: true*/ path.resolve(resolvedRoot, `.${publicPath}`),
+      );
       if (!file.startsWith(resolvedRoot + path.sep)) return undefined;
       if (!fs.statSync(file).isFile()) return undefined;
       const { width, height } = imageSize(fs.readFileSync(file));

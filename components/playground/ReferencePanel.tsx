@@ -13,7 +13,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { BreakablePath } from "@/components/BreakablePath";
 import { DocsTab } from "@/components/playground/DocsTab";
 import { Splitter } from "@/components/playground/Splitter";
@@ -110,7 +110,10 @@ export function ReferencePanel({
   };
   useEffect(syncTheme);
 
-  const hits = docs && query.trim() ? rankSearch(docs, query, RESULT_LIMIT) : [];
+  const hits = useMemo(
+    () => (docs && query.trim() ? rankSearch(docs, query, RESULT_LIMIT) : []),
+    [docs, query],
+  );
   const items: { url: string; label: string }[] = (
     query.trim()
       ? hits.map((h) => ({ url: h.doc.url, label: docPath(h.doc) }))
@@ -210,8 +213,11 @@ export function ReferencePanel({
               <iframe
                 ref={frame}
                 src={url}
-                // Site sheets need their own origin (theme, search) and new-tab links, but may never
-                // navigate the playground itself; the flags stay if the frame goes elsewhere.
+                // Site sheets need their own origin (theme, search) and new-tab links. With
+                // allow-scripts + allow-same-origin on a same-origin page the sandbox is not a
+                // boundary (the sheet could reach `parent` or drop its own sandbox): this relies
+                // on `isSheetUrl` only ever loading the site's own static sheets. The flags do
+                // still apply if the frame navigates to another origin.
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 title={`Reference: ${url}`}
                 className="pg-refs-frame"

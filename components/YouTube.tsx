@@ -2,19 +2,22 @@
  * @file `<YouTube>`: an embedded YouTube video with a caption link.
  *
  * Server component. Props are validated by `lib/youtube.ts` (a bad id fails the
- * build). The player is a lazily loaded iframe from the privacy-enhanced host,
- * kept at 16:9 by CSS (`.video-frame`); the caption links to the watch page and
- * names the channel.
+ * build). The player loads only when the reader presses play on the thumbnail
+ * (see `YouTubePlayer`), from the privacy-enhanced host, kept at 16:9 by CSS
+ * (`.video-frame`); the caption links to the watch page and names the channel.
  *
  * @example
  * <YouTube id="dQw4w9WgXcQ" title="A-skips" channel="Some Coach" start={30} />
  */
 
 import { DottedLink } from "@/components/DottedLink";
-import { parseYouTubeProps, youtubeEmbedUrl, youtubeWatchUrl } from "@/lib/youtube";
-
-/** What the player may use; autoplay is left out on purpose. */
-const ALLOW = "encrypted-media; picture-in-picture; fullscreen";
+import { YouTubePlayer } from "@/components/YouTubePlayer";
+import {
+  parseYouTubeProps,
+  youtubeEmbedUrl,
+  youtubeThumbnailUrl,
+  youtubeWatchUrl,
+} from "@/lib/youtube";
 
 /** Props for {@link YouTube}. */
 interface YouTubeComponentProps {
@@ -34,13 +37,11 @@ export function YouTube(props: YouTubeComponentProps) {
   return (
     <figure className="video">
       <div className="video-frame">
-        <iframe
-          src={youtubeEmbedUrl(id, start)}
-          title={`YouTube video: ${title}`}
-          loading="lazy"
-          allow={ALLOW}
-          referrerPolicy="strict-origin-when-cross-origin"
-          allowFullScreen
+        <YouTubePlayer
+          title={title}
+          embedUrl={youtubeEmbedUrl(id, start, true)}
+          watchUrl={youtubeWatchUrl(id, start)}
+          thumbnailUrl={youtubeThumbnailUrl(id)}
         />
       </div>
       <figcaption>

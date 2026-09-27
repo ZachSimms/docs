@@ -3,20 +3,30 @@
  * palette and the playground's reference panel.
  */
 
-import { z } from "zod";
 import type { SearchDoc } from "@/lib/search-rank";
 
-/** The index's shape, checked on arrival (it's the site's own file, but still a boundary). */
-const searchIndexSchema = z.array(
-  z.object({
-    topic: z.string(),
-    slug: z.string(),
-    title: z.string(),
-    url: z.string(),
-    headings: z.array(z.string()),
-    text: z.string(),
-  }),
-);
+/** String fields every indexed doc has. */
+const STRING_FIELDS = ["topic", "slug", "title", "url", "text"] as const;
+
+/**
+ * Whether `value` is a valid index: the site's own file, but still a boundary.
+ *
+ * Hand-written rather than a zod schema: this module is loaded by the ⌘K palette
+ * on every page, and zod alone is ~85 KB gzipped of first-load JS.
+ */
+export function isSearchIndex(value: unknown): value is SearchDoc[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (doc: unknown) =>
+        typeof doc === "object" &&
+        doc !== null &&
+        STRING_FIELDS.every((key) => typeof (doc as Record<string, unknown>)[key] === "string") &&
+        Array.isArray((doc as { headings?: unknown }).headings) &&
+        (doc as { headings: unknown[] }).headings.every((h) => typeof h === "string"),
+    )
+  );
+}
 
 /** URL of the prerendered search index (see `app/search-index.json/route.ts`). */
 export const SEARCH_INDEX_URL = "/search-index.json";
@@ -37,7 +47,9 @@ export function loadSearchIndex(): Promise<SearchDoc[]> {
   indexCache ??= fetch(SEARCH_INDEX_URL)
     .then(async (res) => {
       if (!res.ok) throw new Error(`Search index request failed: ${res.status}`);
-      return searchIndexSchema.parse(await res.json()) satisfies SearchDoc[];
+      const json: unknown = await res.json();
+      if (!isSearchIndex(json)) throw new Error("Search index is malformed");
+      return json;
     })
     .catch((error: unknown) => {
       indexCache = undefined; // allow a retry on the next call

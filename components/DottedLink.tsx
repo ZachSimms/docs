@@ -21,6 +21,8 @@ interface DottedLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 
   ariaLabel?: string;
   /** The rendered anchor (React 19 passes `ref` as a prop). */
   ref?: Ref<HTMLAnchorElement>;
+  /** `next/link`'s `prefetch` for internal links (ignored for external and `mailto:`). */
+  prefetch?: boolean | null;
 }
 
 /** Screen-reader note on links that open in a new tab. */
@@ -47,13 +49,16 @@ export function DottedLink({
   inline = false,
   ariaLabel,
   className,
+  prefetch,
   ...rest
 }: DottedLinkProps) {
   const classes = [inline ? "inline" : undefined, className].filter(Boolean).join(" ") || undefined;
   const shared = { className: classes, "aria-label": ariaLabel, ...rest };
   if (EXTERNAL.test(href)) {
+    // A caller's `rel` (e.g. "nofollow") is kept, but never replaces noopener/noreferrer.
+    const rel = [...new Set(`${rest.rel ?? ""} noopener noreferrer`.split(/\s+/).filter(Boolean))];
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...shared}>
+      <a href={href} target="_blank" {...shared} rel={rel.join(" ")}>
         <i>{children}</i>
         <span className="sr-only"> {NEW_TAB_HINT}</span>
       </a>
@@ -67,7 +72,7 @@ export function DottedLink({
     );
   }
   return (
-    <Link href={href} {...shared}>
+    <Link href={href} prefetch={prefetch} {...shared}>
       <i>{children}</i>
     </Link>
   );

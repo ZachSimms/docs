@@ -681,3 +681,33 @@ describe("coming-soon pages", () => {
     expect(stale.map(label)).toEqual([]);
   });
 });
+
+/** A one-line block component: `<Contrast …>text</Contrast>` or `<Diagram … />`. */
+const ONE_LINE_COMPONENT = /^<([A-Z]\w*)\b.*(?:\/>|<\/\1>)\s*$/;
+
+/**
+ * One-line components followed directly by prose, as `line: text`. MDX merges
+ * the two into one paragraph, so the component's `<figure>` lands inside a
+ * `<p>`: the browser splits it apart, React's hydration fails, and the whole
+ * page is re-rendered on the client.
+ */
+function componentsGluedToProse(body: string): string[] {
+  const lines = body.split("\n");
+  let fenced = false;
+  return lines.flatMap((line, i) => {
+    if (line.trimStart().startsWith("```")) fenced = !fenced;
+    const next = lines[i + 1]?.trim() ?? "";
+    return !fenced && ONE_LINE_COMPONENT.test(line) && next !== "" && !next.startsWith("<")
+      ? [`${i + 1}: ${line.slice(0, 60)}`]
+      : [];
+  });
+}
+
+describe("MDX block components", () => {
+  it("are never glued to the next paragraph (a <figure> inside <p> breaks hydration)", () => {
+    const glued = listAllSheets().flatMap((sheet) =>
+      componentsGluedToProse(readSheetBody(sheet)).map((line) => `${label(sheet)}:${line}`),
+    );
+    expect(glued).toEqual([]);
+  });
+});
