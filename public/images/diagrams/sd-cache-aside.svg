@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 330" fill="none" stroke="currentColor">
+  <defs>
+    <marker id="sd-cache-aside-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" stroke="none"/>
+    </marker>
+  </defs>
+  <rect class="d-muted" x="8" y="8" width="286" height="272" rx="6" stroke-width="1"/>
+  <rect class="d-bg" x="16" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M52 88 V 242"/>
+  <rect class="d-fill-0 d-tint d-stroke-0" x="115" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M151 88 V 242"/>
+  <rect class="d-fill-1 d-tint d-stroke-1" x="214" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M250 88 V 242"/>
+  <path stroke-width="1.5" d="M55 116 H 148" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path class="d-muted" stroke-width="1.5" stroke-dasharray="5 3" d="M148 146 H 55" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path stroke-width="1.5" d="M55 176 H 247" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path class="d-muted" stroke-width="1.5" stroke-dasharray="5 3" d="M247 206 H 55" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path stroke-width="1.5" d="M55 236 H 148" marker-end="url(#sd-cache-aside-arrow)"/>
+  <rect class="d-muted" x="306" y="8" width="286" height="272" rx="6" stroke-width="1"/>
+  <rect class="d-bg" x="314" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M350 88 V 242"/>
+  <rect class="d-fill-0 d-tint d-stroke-0" x="413" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M449 88 V 242"/>
+  <rect class="d-fill-1 d-tint d-stroke-1" x="512" y="60" width="72" height="28" rx="5" stroke-width="1.5"/>
+  <path class="d-muted" stroke-width="1" stroke-dasharray="3 4" d="M548 88 V 242"/>
+  <path stroke-width="1.5" d="M353 116 H 545" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path class="d-muted" stroke-width="1.5" stroke-dasharray="5 3" d="M545 146 H 353" marker-end="url(#sd-cache-aside-arrow)"/>
+  <path stroke-width="1.5" d="M353 176 H 446" marker-end="url(#sd-cache-aside-arrow)"/>
+  <g fill="currentColor" stroke="none">
+    <text x="151" y="30" font-size="13" text-anchor="middle" font-weight="600">Read</text>
+    <text x="151" y="47" font-size="11" text-anchor="middle" class="d-muted">check the cache first</text>
+    <text x="52" y="79" font-size="12" text-anchor="middle" font-weight="600">app</text>
+    <text x="151" y="79" font-size="12" text-anchor="middle" class="d-fill-0" font-weight="600">cache</text>
+    <text x="250" y="79" font-size="12" text-anchor="middle" class="d-fill-1" font-weight="600">database</text>
+    <text x="62" y="110" font-size="11" text-anchor="start">1  GET key</text>
+    <text x="62" y="140" font-size="11" text-anchor="start">2  miss</text>
+    <text x="62" y="170" font-size="11" text-anchor="start">3  SELECT</text>
+    <text x="62" y="200" font-size="11" text-anchor="start">4  row</text>
+    <text x="62" y="230" font-size="11" text-anchor="start">5  SET key, TTL</text>
+    <text x="151" y="256" font-size="11" text-anchor="middle">on a hit, step 2 returns the value: done</text>
+    <text x="151" y="272" font-size="11" text-anchor="middle" class="d-muted">only requested keys get cached (lazy)</text>
+    <text x="449" y="30" font-size="13" text-anchor="middle" font-weight="600">Write</text>
+    <text x="449" y="47" font-size="11" text-anchor="middle" class="d-muted">database first, then invalidate</text>
+    <text x="350" y="79" font-size="12" text-anchor="middle" font-weight="600">app</text>
+    <text x="449" y="79" font-size="12" text-anchor="middle" class="d-fill-0" font-weight="600">cache</text>
+    <text x="548" y="79" font-size="12" text-anchor="middle" class="d-fill-1" font-weight="600">database</text>
+    <text x="360" y="110" font-size="11" text-anchor="start">1  UPDATE</text>
+    <text x="360" y="140" font-size="11" text-anchor="start">2  commit ok</text>
+    <text x="360" y="170" font-size="11" text-anchor="start">3  DEL key</text>
+    <text x="449" y="256" font-size="11" text-anchor="middle">the next read misses and reloads</text>
+    <text x="449" y="272" font-size="11" text-anchor="middle" class="d-muted">delete, don't update: avoids racing writers</text>
+    <text x="300" y="304" font-size="11" text-anchor="middle" class="d-muted">The app owns both paths; the cache never talks to the database (that would be read-through).</text>
+    <text x="300" y="322" font-size="11" text-anchor="middle" class="d-muted">TTL is the backstop if a delete is lost.</text>
+  </g>
+</svg>

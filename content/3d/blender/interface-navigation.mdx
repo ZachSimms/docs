@@ -1,0 +1,455 @@
+---
+title: Blender interface & navigation
+date: 2026-09-27
+order: 1
+---
+
+Getting around **Blender 5.x** (5.2 LTS): first-run preferences for a Mac trackpad, the extensions platform,
+editors and workspaces, viewport navigation, selection and modes, transforms, snapping, applying transforms,
+collections and a must-know shortcut table. The ideas behind it (axes, meshes, object vs mesh data) are in
+[Core concepts](/3d/fundamentals/core-concepts/); the next step is [Modeling](/3d/blender/modeling/).
+
+Keys are written Windows-style (Ctrl, Alt) with the macOS form where it differs. On macOS, **⌘ works in place
+of Ctrl** for almost every Blender shortcut; use ⌃ where macOS owns the ⌘ combination (⌘Space, ⌘Tab, ⌘H, ⌘M).
+Alt is ⌥ (Option). MMB is the middle mouse button (pressing the wheel), LMB/RMB left and right.
+
+## First-run setup
+
+Open Edit > Preferences (⌘, on macOS). Changes are saved automatically on exit unless you turn off
+**Auto-Save Preferences** in the ☰ menu at the bottom left of the Preferences window; then click **Save
+Preferences** there.
+
+| Preference | Where | Set to | Why |
+| :--------- | :---- | :----- | :-- |
+| Multi-touch Gestures | Input > Touchpad | on (the default) | two-finger orbit, pinch zoom on a trackpad |
+| Emulate 3 Button Mouse | Input > Mouse | on if you have no MMB | Alt-LMB (⌥-click) acts as MMB |
+| Emulate 3 Button Mouse > Modifier | Input > Mouse | OSKey (⌘) on macOS | keeps ⌥-click for loop select; not available on Windows |
+| Emulate Numpad | Input > Keyboard | on only if you have no numpad | the number row becomes numpad keys (see the warning below) |
+| Orbit Around Selection | Navigation > Orbit & Pan | on | orbit pivots on what you selected, not the screen center |
+| Zoom to Mouse Position | Navigation > Zoom | on | zoom toward the pointer |
+| Auto Save + Timer (Minutes) | Save & Load > Blend Files | on, 2 min (the defaults) | temporary backups for crash recovery (File > Recover > Auto Save) |
+| Save Versions | Save & Load > Blend Files | 2 or more (default 1) | keeps `.blend1`, `.blend2` backups next to the file |
+| Undo Steps | System > Memory & Limits | 64–128 (default 32) | more history; costs memory |
+| Allow Online Access | System > Network | on (off by default) | needed to browse and update extensions |
+| Cycles Render Devices | System | Metal (Apple Silicon), OptiX/CUDA (NVIDIA), HIP (AMD) | GPU rendering; see [Lighting & rendering](/3d/blender/lighting-rendering/) |
+
+<Note kind="warning">
+Emulate Numpad turns the number row into numpad keys everywhere, so the Edit Mode shortcuts 1 / 2 / 3
+(vertex / edge / face select) stop working; use the header buttons instead. Emulate 3 Button Mouse with the Alt
+modifier takes over ⌥-click, so in Edit Mode loop select becomes a **double-click** (Shift double-click to add,
+Ctrl double-click for an edge ring). Many trackpad users skip Emulate Numpad and use the view pie (`) instead.
+</Note>
+
+macOS: F-keys (F3 search, F9, F12 render) need fn unless System Settings > Keyboard > Keyboard Shortcuts >
+Function Keys > "Use F1, F2, etc. keys as standard function keys" is on. Home is fn-←.
+
+### Extensions
+
+Since Blender 4.2, add-ons and themes come from the **Extensions platform** (extensions.blender.org). In
+Preferences > **Get Extensions**: search, click Install; or drag an install link from the website into Blender;
+or the ⌄ menu > **Install from Disk** for a `.zip` (also how legacy add-ons are installed). Updates are
+manual: **Refresh Remote**, then **Install Available Updates** (both in the ⌄ menu at the top right). Disable instead of uninstalling to switch one off temporarily.
+
+Core add-ons still bundled (enable in Preferences > **Add-ons**): **glTF 2.0** (on by default), **Node
+Wrangler** (shader-editor shortcuts), **Rigify** (auto-rigging).
+
+| Free extension | What it adds | Useful for |
+| :------------- | :----------- | :--------- |
+| LoopTools | circle, relax, bridge, space loops | cleaning curved loops, round holes |
+| F2 | smarter Make Edge/Face (F) | fast retopology and hole filling |
+| Extra Mesh Objects | more primitives (gears, rounded cube, pipe joints) | quick props |
+| Bool Tool | one-key Boolean operations and cutters | hard-surface modeling |
+| Edit Mesh Tools | extra edge and face tools | modeling |
+| 3D Print Toolbox | checks: non-manifold, intersections, thickness, overhangs | cleaning AI-generated and scanned meshes |
+| Texel Density Checker | measure and set texel density | consistent texture resolution for games |
+| Copy Attributes Menu | copy transforms, modifiers, constraints between objects | batch fixes |
+| Mixamo Rig | control rig from a Mixamo FBX skeleton | animating Mixamo characters ([Animation](/3d/blender/animation/)) |
+| Ucupaint | layer-based texture painting | painting without an external painter |
+
+All are GPL, listed on extensions.blender.org and compatible with 4.2+ as of September 2026; check a
+listing's compatibility field before installing on a newer Blender.
+
+## Screen layout
+
+The window is a **Topbar** (menus and workspace tabs), **areas** (each shows one **editor**) and a **Status
+Bar** (current shortcuts; watch it while a tool runs). Change any area's editor with the Editor Type menu at
+its top-left. Drag a border to resize; drag from an area corner to split or join; Ctrl+Space (⌃Space)
+maximizes the area under the pointer.
+
+| Editor | Use | Notes |
+| :----- | :-- | :---- |
+| 3D Viewport | modeling, layout, posing | T toolbar, N sidebar (Item: exact transforms, View: lens, clip, lock) |
+| Outliner | scene tree: collections, objects, data | eye, monitor and camera icons control visibility (filter ▾ shows more toggles) |
+| Properties | settings in tabs | Tool, Render, Output, View Layer, Scene, World, Collection, Object, Modifiers, Particles, Physics, Constraints, Object Data, Material, Texture |
+| Timeline / Dope Sheet / Graph Editor | animation | see [Animation](/3d/blender/animation/) |
+| Shader Editor | material node graph | see [Materials, UVs & texturing](/3d/blender/materials-uv/) |
+| Image Editor / UV Editor | view images, edit UVs, render result | UV Editor needs Edit Mode in the viewport |
+| Geometry Node Editor | procedural modeling node graphs | used by modifiers such as Smooth by Angle |
+| Text Editor, Python Console, Info | scripting | see [Python scripting](/3d/blender/python-scripting/) |
+| File Browser, Asset Browser | files, drag-in assets | Asset Browser holds your reusable assets and brushes |
+
+**Workspaces** are saved layouts on the Topbar tabs (Ctrl+PageUp / Ctrl+PageDown to cycle):
+
+| Workspace | Arranged for |
+| :-------- | :----------- |
+| Layout | general: viewport, outliner, properties, timeline |
+| Modeling / Sculpting | mesh editing / sculpt brushes |
+| UV Editing | UV Editor beside a viewport in Edit Mode |
+| Texture Paint | painting on the model and the image side by side |
+| Shading | Shader Editor + File Browser + Material Preview viewport |
+| Animation | Dope Sheet, camera view, timeline |
+| Rendering / Compositing | render result, compositor nodes |
+| Geometry Nodes / Scripting | node editor + spreadsheet / text editor + console |
+
+Save a layout you like as the startup file: File > Defaults > Save Startup File.
+
+## Navigating the viewport
+
+| Action | Mouse | Trackpad (gestures on) | Emulated MMB (Alt modifier) |
+| :----- | :---- | :--------------------- | :-------------------------- |
+| Orbit | MMB drag | two-finger drag | ⌥ + drag |
+| Pan | Shift + MMB drag | ⇧ + two-finger drag | ⇧⌥ + drag |
+| Zoom | wheel, Ctrl + MMB drag | pinch, or ⌃ / ⌘ + two-finger drag | ⌃⌥ + drag |
+| Dolly (move the view forward) | Shift + Ctrl + MMB drag | | |
+| Right-click | RMB | two-finger tap | |
+| Snap view to an axis while orbiting | Alt + MMB drag | | |
+
+The navigation gizmo (top right) also works: drag the ball to orbit, click an axis to view along it, drag
+the hand to pan and the magnifier to zoom. The camera icon toggles the camera view; the grid icon toggles
+perspective / orthographic.
+
+| View | Numpad | Laptop alternative |
+| :--- | :----- | :----------------- |
+| Front / Right / Top | 1 / 3 / 7 | view pie (`), or click the gizmo axis |
+| Back / Left / Bottom | Ctrl + 1 / 3 / 7 | gizmo |
+| Align to the selection's local axis | Shift + 1 / 3 / 7 | View > Align View |
+| Orbit in steps (15° by default) | 2 / 4 / 6 / 8 | |
+| Perspective ↔ orthographic | 5 | gizmo grid icon |
+| Active camera view | 0 | view pie > View Camera |
+| Set active object as camera | Ctrl + 0 | View > Cameras > Set Active Object as Camera |
+| Align camera to the current view | Ctrl + Alt + 0 | View > Align View |
+| Frame selected | . (numpad period) | view pie > Frame Selected |
+| Frame all | Home (fn-← on a Mac) | view pie > Frame All |
+| Local view: isolate selection | numpad / | / (slash also works) |
+| View pie (all of the above) | ` (backtick, left of 1) | |
+| Walk / fly navigation | Shift + ` | WASD to move, E/Q up/down, wheel = speed, LMB confirms, RMB/Esc cancels |
+| Zoom to a drawn box | Shift + B | |
+
+Emulate Numpad does not remap the period key, so on a laptop use the view pie for Frame Selected.
+
+Watch the interface tour, navigation and selection parts; made for 4.x, but these basics work the same in 5.x.
+
+<YouTube id="lLqep5Q4MiI" title="Blender 4 for Absolute Beginners: A Comprehensive Guide from Scratch" channel="Grant Abbitt (Gabbitt)" />
+
+## Selecting & the 3D cursor
+
+| Action | Keys |
+| :----- | :--- |
+| Select / add / toggle | click / Shift-click (the Outliner uses Ctrl-click) |
+| Select all / none / invert | A / Alt+A (or tap A twice) / Ctrl+I |
+| Box / circle / lasso select | B / C (wheel resizes, RMB ends) / Ctrl + RMB drag |
+| Cycle toolbar select tools (tweak, box, circle, lasso) | W |
+| Select linked data / grouped | Shift+L / Shift+G |
+| Select parent / child | [ / ] (add Shift to extend) |
+| Hide selected / unselected / reveal | H / Shift+H / Alt+H |
+| X-ray (select through) | Alt+Z |
+
+The **active** object is the last one clicked (bright outline); many operations use it as the target (join,
+parent, copy to selected). The **3D cursor** (red-white ring) is where new objects appear and can be the pivot.
+Shift+RMB places it; **Shift+S** opens the snap pie:
+
+| Snap pie item | Does |
+| :------------ | :--- |
+| Cursor to Selected | cursor to the selection center (in Edit Mode: selected vertices) |
+| Cursor to World Origin | reset the cursor to (0, 0, 0) |
+| Selection to Cursor | move the selection to the cursor |
+| Selection to Active | move the selection onto the active object |
+| Cursor to Grid / Selection to Grid | round to the grid |
+
+## Modes
+
+Switch with the mode menu in the viewport header, **Tab** (Edit Mode toggle) or **Ctrl+Tab** (⌃Tab: mode pie;
+for an armature it toggles Pose Mode). Modes change the header, toolbar and shortcuts.
+
+| Mode | Object types | For |
+| :--- | :----------- | :-- |
+| Object | all | placing, rotating, scaling, duplicating whole objects |
+| Edit | meshes, curves, armatures, text… | changing vertices, edges and faces (1 / 2 / 3 select modes) |
+| Sculpt | meshes | brush-based shaping of dense meshes |
+| Vertex Paint | meshes | painting color attributes on vertices |
+| Weight Paint | meshes | painting vertex-group weights for skinning ([Animation](/3d/blender/animation/)) |
+| Texture Paint | meshes | painting image textures on the model |
+| Pose | armatures | posing and animating bones |
+| Draw / Sculpt / Edit… (Grease Pencil) | Grease Pencil | 2D drawing in 3D space |
+
+## Transforming
+
+Press **G** (move), **R** (rotate) or **S** (scale), move the mouse, then click or Enter to confirm; RMB or Esc
+cancels. While the transform runs:
+
+| Key | Effect |
+| :-- | :----- |
+| X / Y / Z | lock to that axis (press again: the local axis) |
+| Shift + X / Y / Z | lock to the plane, excluding that axis |
+| MMB (after moving) | lock to the axis the mouse points along |
+| type `2` `Enter` | exact value: `S 2 Enter` doubles, `R Z 90 Enter` turns 90° around Z |
+| `G X -1.5 Enter` | move −1.5 m on X |
+| Tab | next axis field while typing (`G 1 Tab 2 Tab 3`) |
+| = or numpad * | advanced input: units and expressions (`2cm`, `1/3`, `pi/4`) |
+| Ctrl (hold) | snap while dragging (increments by default) |
+| Shift (hold) | fine / slow movement |
+| R twice | trackball rotate |
+| Alt + G / R / S (not while transforming) | clear location / rotation / scale |
+
+Every object has **exact values** in the N sidebar > Item (Location, Rotation, Scale, Dimensions); type there
+for precision, and drag down across several fields to edit them together.
+
+| Header control | Shortcut | Options |
+| :------------- | :------- | :------ |
+| Transform Pivot Point | . (period) pie | Median Point (default), Bounding Box Center, 3D Cursor, Individual Origins, Active Element |
+| Transform Orientation | , (comma) pie | Global (world axes), Local (the object's axes), Normal (face direction, Edit Mode), Gimbal, View, Cursor, Parent, custom |
+| Snapping on/off | Shift+Tab (or hold Ctrl) | see below |
+| Proportional Editing | O | falloff pie Shift+O; wheel or PageUp/PageDown resizes the circle during the move; Alt+O Connected Only in Edit Mode |
+
+### Snapping
+
+The magnet menu (Snapping, or Shift+Ctrl+Tab for the popover) sets **Snap Target** (what you snap to) and
+**Snap Base** (which point of the selection snaps). Shift-click to enable several targets.
+
+| Snap Target | Use |
+| :---------- | :-- |
+| Increment | move in grid-sized steps from where the selection started |
+| Grid | land exactly on viewport grid points (or Increment + **Absolute Increment Snap**) |
+| Vertex / Edge / Edge Center / Face Center | put a corner or a midpoint exactly on another object's |
+| Face | slide onto a surface (turn on **Align Rotation to Target** to stand props on slopes) |
+| Face Project / Face Nearest | per element: each vertex lands on the surface (retopology, conforming a flat sheet) |
+| Volume | center inside a mesh (bones in a limb) |
+
+| Snap Base | Snaps |
+| :-------- | :---- |
+| Closest | the nearest vertex / bounding-box corner (for "corner to corner") |
+| Center | the pivot point |
+| Median | average of the selection |
+| Active | the active object or element |
+
+The **Affect** row picks which transforms snap (move by default; add rotate/scale for angle and size steps).
+
+## Origins, apply & units
+
+The **origin** (orange dot) is the object's own pivot and its location. Mesh vertices are stored relative to
+it. Object > **Set Origin** (also in the right-click menu):
+
+| Set Origin option | Result |
+| :---------------- | :----- |
+| Geometry to Origin | moves the mesh so it is centered on the origin |
+| Origin to Geometry | moves the origin to the mesh center |
+| Origin to 3D Cursor | origin to the cursor: combine with Cursor to Selected for exact pivots |
+| Origin to Center of Mass | physics-friendly center (assumes uniform density) |
+
+To move just the origin interactively: Tool settings > Options > Affect Only > Origins.
+
+**Apply** (Object > Apply, **Ctrl+A**) bakes the object's Location / Rotation / Scale into the mesh so the
+object shows location 0, rotation 0, scale 1 while looking the same.
+
+| Apply | When |
+| :---- | :--- |
+| Scale (or Rotation & Scale) | after scaling in Object Mode and **before** bevels, modifiers, rigging, UV texel checks or export |
+| All Transforms | a prop whose origin should be the world origin |
+| Visual Transform | keep the result of constraints |
+| Visual Geometry to Mesh | bake modifiers into the mesh (same as applying them all) |
+| Parent Inverse | clean up a child's hidden parent-inverse offset |
+
+Why: modifiers (Bevel, Solidify, Array) and physics read unscaled mesh sizes, so a scale of 3 makes a 2 cm
+bevel look like 6 cm; exporters and engines handle negative or non-uniform scale badly (flipped normals,
+wrong collisions); rigs bound to scaled meshes deform oddly. Applying a negative scale also flips normals
+unless **Corrective Flip Normals** is checked in the Adjust Last Operation panel. Objects sharing
+mesh data (Alt+D copies) must be made single-user first; Blender offers to.
+
+**Units:** Properties > Scene > **Units**: Unit System **Metric**, **Unit Scale 1.0**, Length **Meters** (the
+factory defaults; imported or older files may differ). Then 1 Blender unit = 1 m, which matches glTF, Godot
+and GTA V. Model at real size (a door is about 2.0 × 0.9 m); scale "to taste" later in the engine only if
+you must. Unit Scale only changes displayed values, not the data, so leave it at 1.
+
+## Collections, parenting & duplicates
+
+| Task | How |
+| :--- | :-- |
+| New collection | Outliner: right-click > New Collection |
+| Move / link to a collection | M / Shift+M (an object can live in several collections) |
+| Parent (children follow) | select child(ren), then the parent last, Ctrl+P > Object (Keep Transform keeps the look) |
+| Clear parent | Alt+P > Clear Parent (and Keep Transformation) |
+| Duplicate: independent copy | **Shift+D** (copies the mesh too) |
+| Linked duplicate: shared mesh | **Alt+D** (edit one, all change; each keeps its own transform) |
+| Make a linked copy independent | Object > Relations > Make Single User, or click the user count in Object Data |
+| Join into one object / split apart | Ctrl+J / Edit Mode P > By Loose Parts / Selection / Material |
+
+| Visibility toggle | Scope | Use |
+| :---------------- | :---- | :-- |
+| Hide in Viewports (eye, H) | this view layer, viewport only | quick temporary hiding; Alt+H reveals |
+| Disable in Viewports (monitor) | all view layers, viewport only | long-term off; not evaluated, speeds playback |
+| Disable in Renders (camera) | render only | helpers, reference images, cutters |
+| Disable Selection (arrow) | viewport | reference images you never want to grab |
+| Exclude from View Layer (checkbox) | collection | removes it from viewport, render and evaluation |
+| Holdout / Indirect Only | collection, render | cut a hole in the render / only affect shadows and reflections (Cycles) |
+
+Show more toggles with the Outliner's filter ▾ > Restriction Toggles. Ctrl-click an icon to isolate that
+collection.
+
+## Search, favorites & redo
+
+| Feature | Key | Use |
+| :------ | :-- | :-- |
+| Menu Search | F3 | type any command name; results show where the menu lives |
+| Search inside an open menu | just type (or Space first) | filter long menus |
+| Quick Favorites | Q | right-click any menu item or button > Add to Quick Favorites |
+| Adjust Last Operation | F9, or the panel at the bottom left | change an operator's options after running it (bevel segments, array count) |
+| Repeat Last | Shift+R | do the previous operation again (duplicate-and-move in a line) |
+| Undo History | Edit > Undo History | jump back several steps |
+| Copy a button's Python | Ctrl+C while hovering | paste into scripts ([Python scripting](/3d/blender/python-scripting/)) |
+| Reset a field to default | Backspace while hovering | |
+| Edit many objects at once | hold Alt while changing a value | applies to all selected |
+| Tooltips with Python names | Preferences > Interface > Python Tooltips | find API names |
+
+The Adjust Last Operation panel only survives until you do something else (including many view changes); open
+it right away.
+
+## Must-know shortcuts
+
+```text
+ ACTION                          WINDOWS / LINUX             MACOS
+ ─ general ─────────────────────────────────────────────────────────────────
+ Menu search                     F3                          F3 (fn F3)
+ Quick favorites                 Q                           Q
+ Adjust last operation           F9                          F9 (fn F9)
+ Repeat last                     Shift+R                     ⇧R
+ Undo / redo                     Ctrl+Z / Shift+Ctrl+Z       ⌘Z / ⇧⌘Z
+ Save / save as                  Ctrl+S / Shift+Ctrl+S       ⌘S / ⇧⌘S
+ Preferences                     Edit > Preferences          ⌘,
+ Rename active                   F2                          F2 (fn F2)
+ Maximize area                   Ctrl+Space                  ⌃Space
+ Toolbar / sidebar               T / N                       T / N
+ Add object                      Shift+A                     ⇧A
+ Delete                          X or Delete                 X or fn⌫
+ Play / stop animation           Space                       Space
+ ─ view ────────────────────────────────────────────────────────────────────
+ Orbit / pan / zoom              MMB / Shift+MMB / wheel     2-finger / ⇧2-finger / pinch
+ Front / right / top             Numpad 1 / 3 / 7            ` view pie
+ Opposite side                   Ctrl + Numpad 1 / 3 / 7     ` view pie
+ Camera view                     Numpad 0                    ` > View Camera
+ Perspective / ortho             Numpad 5                    gizmo grid icon
+ Frame selected / all            Numpad . / Home             ` pie / fn←
+ Local view (isolate)            Numpad / or /               /
+ View pie                        `                           `
+ Walk navigation                 Shift+`                     ⇧`
+ Shading pie / wireframe         Z / Shift+Z                 Z / ⇧Z
+ X-ray                           Alt+Z                       ⌥Z
+ ─ select ──────────────────────────────────────────────────────────────────
+ All / none / invert             A / Alt+A / Ctrl+I          A / ⌥A / ⌘I
+ Box / circle / lasso            B / C / Ctrl+RMB drag       B / C / W (cycles to Lasso)
+ Hide / reveal                   H / Alt+H                   H / ⌥H
+ 3D cursor / snap pie            Shift+RMB / Shift+S         ⇧ right-click / ⇧S
+ ─ modes & transform ───────────────────────────────────────────────────────
+ Edit mode / mode pie            Tab / Ctrl+Tab              Tab / ⌃Tab
+ Vertex / edge / face (Edit)     1 / 2 / 3                   1 / 2 / 3
+ Move / rotate / scale           G / R / S                   G / R / S
+ Axis / plane lock               X Y Z / Shift+X Y Z         X Y Z / ⇧X Y Z
+ Clear location / rot / scale    Alt+G / Alt+R / Alt+S       ⌥G / ⌥R / ⌥S
+ Apply transforms                Ctrl+A                      ⌘A
+ Snap toggle / hold to snap      Shift+Tab / Ctrl            ⇧Tab / ⌃ or ⌘
+ Proportional editing            O                           O
+ Pivot pie / orientation pie     . / ,                       . / ,
+ ─ objects ─────────────────────────────────────────────────────────────────
+ Duplicate / linked duplicate    Shift+D / Alt+D             ⇧D / ⌥D
+ Join                            Ctrl+J                      ⌘J
+ Parent / clear parent           Ctrl+P / Alt+P              ⌘P / ⌥P
+ Move to collection              M                           M
+ Render image / animation        F12 / Ctrl+F12              fn F12 / ⌘ fn F12
+```
+
+## Does this survive export?
+
+| Blender thing | In glTF / engines | Do this |
+| :------------ | :---------------- | :------ |
+| Object transforms (location, rotation, scale) | exported per node | apply scale (and usually rotation) on props so the engine sees scale 1 |
+| Origin | becomes the node pivot | put it where the engine should rotate or place the asset (bottom center for props) |
+| Z-up axes | glTF is +Y up | leave the exporter's **+Y Up** on; it converts ([Core concepts](/3d/fundamentals/core-concepts/)) |
+| Units | meters | Metric, Unit Scale 1 |
+| Parenting | node hierarchy | kept; apply transforms before parenting to avoid inverse-matrix surprises |
+| Collections | not nodes (unless **Full Collection Hierarchy**) | use them for organizing and for "Active Collection" exports |
+| Linked duplicates (Alt+D) | shared mesh; optional GPU instancing | smaller files; see the exporter's GPU Instances option |
+| Hidden / disabled objects | exported unless you filter | use Include > Visible / Renderable / Selected Objects |
+| Names | node names | name objects before export; engines look them up by name |
+| Custom properties | glTF `extras` (Include > Custom Properties) | tags for game logic |
+
+Next steps per target: [Web / Three.js](/3d/export/web-threejs/), [Godot](/3d/export/godot/),
+[GTA V](/3d/export/gta-v/).
+
+## Recipes
+
+### Set up Blender for a MacBook trackpad
+Use on a laptop without a mouse or numpad.
+
+1. ⌘, > Input > Touchpad: **Multi-touch Gestures** on. Two-finger drag orbits, ⇧ + two fingers pans, pinch
+   zooms, two-finger tap is right-click.
+2. Input > Mouse: **Emulate 3 Button Mouse** on, Modifier **OSKey**, so ⌘-drag orbits for tools that need MMB
+   and ⌥-click stays loop select.
+3. Leave Emulate Numpad off; use ` for the view pie and / for local view.
+4. Navigation: Orbit Around Selection on, Zoom to Mouse Position on.
+5. Save & Load: Auto Save on; System: Undo Steps 64; System > Network: Allow Online Access.
+6. macOS System Settings: F-keys as standard function keys (for F3, F9, F12).
+
+### Model at real-world scale
+Use at the start of any game or web asset.
+
+1. Scene > Units: Metric, Unit Scale 1, Length Meters (or Centimeters for small props).
+2. Add a 1.8 m reference: Shift+A > Mesh > Cube, N sidebar > Dimensions 0.5, 0.3, 1.8; put it in a
+   "reference" collection and disable it in renders.
+3. Type sizes in the N panel, or `S 2 Enter`, `G Z 1 Enter`.
+4. Ctrl+A > Scale when the shape is roughed in.
+
+### Reset a messy imported model
+Use on downloads and AI-generated models that arrive rotated, huge or off-center.
+
+1. Select all parts, Ctrl+J to join if they should be one object (skip for rigged or multi-part models).
+2. Ctrl+A > All Transforms.
+3. Object > Set Origin > Origin to Geometry, then Shift+S > Selection to Cursor with the cursor at the world
+   origin (Shift+C resets the cursor and frames everything).
+4. Check scale against a reference cube; scale with S and apply again.
+5. Continue with the cleanup recipe in [Modeling](/3d/blender/modeling/).
+
+### Put the origin at the bottom center
+Use for props so they sit on the floor when placed in an engine.
+
+1. Tab into Edit Mode, 3 (face select), click the bottom face (or select the lowest vertices).
+2. Shift+S > Cursor to Selected, Tab back to Object Mode.
+3. Object > Set Origin > Origin to 3D Cursor.
+4. Shift+S > Cursor to World Origin, then Shift+S > Selection to Cursor: the prop now stands at (0, 0, 0).
+
+### Instanced fence posts
+Use when one mesh repeats many times: edit once, export once.
+
+1. Model one post; apply scale.
+2. Alt+D, X, `2 Enter` places a linked copy 2 m along X.
+3. Shift+R repeats the duplicate-and-move; do it 10 times.
+4. Edit any post in Edit Mode: all change. Object > Relations > Make Single User to break one out.
+
+### Find any command
+Use when you don't remember where something lives.
+
+1. F3, type part of the name (`merge dist`, `smooth ang`, `origin`).
+2. The result shows its menu path; right-click it in the menu > Add to Quick Favorites.
+3. Press Q next time.
+
+## References
+
+- [Blender Manual: User Interface](https://docs.blender.org/manual/en/latest/interface/index.html): windows, areas, workspaces, menus, undo and F9
+- [Blender Manual: Default Keymap](https://docs.blender.org/manual/en/latest/interface/keymap/blender_default.html): common shortcuts including the macOS ⌘ note
+- [Blender Manual: Input preferences](https://docs.blender.org/manual/en/latest/editors/preferences/input.html) and [Hardware / touchpad gestures](https://docs.blender.org/manual/en/latest/getting_started/configuration/hardware.html): emulation and trackpads
+- [Blender Manual: Get Extensions](https://docs.blender.org/manual/en/latest/editors/preferences/extensions.html): installing and updating extensions
+- [Blender Manual: 3D Viewport navigation](https://docs.blender.org/manual/en/latest/editors/3dview/navigate/index.html): orbit, pan, zoom, views, walk/fly, local view
+- [Blender Manual: Snapping](https://docs.blender.org/manual/en/latest/editors/3dview/controls/snapping.html), [Pivot Point](https://docs.blender.org/manual/en/latest/editors/3dview/controls/pivot_point/index.html), [Transform Orientation](https://docs.blender.org/manual/en/latest/editors/3dview/controls/orientation.html), [Proportional Editing](https://docs.blender.org/manual/en/latest/editors/3dview/controls/proportional_editing.html)
+- [Blender Manual: Apply](https://docs.blender.org/manual/en/latest/scene_layout/object/editing/apply.html) and [Object Origin](https://docs.blender.org/manual/en/latest/scene_layout/object/origin.html): transforms and pivots
+- [Blender Manual: Outliner restriction toggles](https://docs.blender.org/manual/en/latest/editors/outliner/interface.html) and [Collections](https://docs.blender.org/manual/en/latest/scene_layout/collections/collections.html)
+- [Blender Manual: Scene Units](https://docs.blender.org/manual/en/latest/scene_layout/scene/properties.html): unit system and scale
+- [Blender Extensions](https://extensions.blender.org/): the official extension catalog
+- [Grant Abbitt: Blender for Absolute Beginners](https://www.youtube.com/watch?v=lLqep5Q4MiI): a full first session

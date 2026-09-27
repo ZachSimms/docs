@@ -1,0 +1,387 @@
+---
+title: Buildings & scenes
+date: 2026-09-27
+order: 6
+---
+
+Architecture and environments in **Blender 5.x (5.2 LTS)**: blockouts at real-world scale, modular kits on a
+grid, instancing and the Asset Browser, openings and bevels, Geometry Nodes for scattering and procedural
+buildings, terrain and sky, composition and interiors, performance, and what a game level needs that a render
+doesn't. Mesh and material basics are in [Modeling](/3d/blender/modeling/) and
+[Materials & UVs](/3d/blender/materials-uv/); light and camera settings in
+[Lighting & rendering](/3d/blender/lighting-rendering/); concepts in
+[Core concepts](/3d/fundamentals/core-concepts/). Destinations: [Three.js](/3d/export/web-threejs/),
+[Godot](/3d/export/godot/), [GTA V](/3d/export/gta-v/).
+
+## Blockout & real-world scale
+
+A **blockout** (graybox) is the level or building made of untextured primitives: cubes for rooms, cylinders
+for columns, planes for floors. Walk it, frame it with the camera, fix the proportions, and only then model
+detail. Work in meters (Scene Properties › Units: Metric, Unit Scale 1.0): glTF, three.js and Godot all use
+1 unit = 1 m, and Rigify and Mixamo characters assume it.
+
+| Element | Typical size | Basis |
+| :------ | :----------- | :---- |
+| Person | 1.7–1.8 m tall, eyes at ~1.6 m | use a 1.8 m capsule or mannequin as the scale reference |
+| Interior door | 2.0–2.1 m × 0.8–0.9 m | US standard 80 in (2.03 m); accessible clear width ≥ 32 in (815 mm, ADA) |
+| Ceiling (home) | 2.4–2.7 m | IRC R305.1 minimum 7 ft (2.13 m) for habitable rooms |
+| Floor-to-floor | ~3 m homes, 3.5–4.5 m offices and shops | ceiling + 0.3–0.5 m slab and services |
+| Stair riser | 15–18 cm | IRC R311.7.5.1 maximum 7¾ in (196 mm); commercial codes are lower (~7 in, 178 mm) |
+| Stair tread (going) | 25–30 cm | IRC minimum 10 in (254 mm) |
+| Stair width | ≥ 0.9 m | IRC 36 in |
+| Handrail | 0.86–0.97 m above the tread nose | IRC 34–38 in |
+| Guard (railing) at drops | ≥ 0.9 m homes, ≥ 1.07 m public | 36 in residential, 42 in commercial (typical US codes) |
+| Window sill / head | sill 0.8–1.0 m, head ~2.1 m (lines up with doors) | typical |
+| Wall thickness | 0.1–0.15 m interior, 0.2–0.35 m exterior | typical |
+| Countertop / table / chair seat | 0.9 m / 0.75 m / 0.45 m | typical |
+| Road lane / sidewalk curb | 3–3.7 m / ~15 cm | typical |
+
+Values are typical, not a code check: local codes vary. Games usually **exaggerate** interiors for a
+third-person camera (doors 1.2–1.5 m wide and 2.4 m tall, corridors ≥ 2 m, ceilings 3–4 m); decide your
+character's capsule first and scale the kit around it.
+
+| Blockout habit | Why |
+| :------------- | :-- |
+| Keep object scale at 1 (Ctrl A › Scale) | modifiers, bevels, UVs, physics and exports all assume it |
+| Measure with the Measure tool, or Edit Mode › Overlays › Edge Length | numbers beat eyeballing |
+| One collection per floor or zone | toggle visibility, export per zone |
+| Camera at eye height (1.6 m) with a 24–35 mm lens | reads the space the way a player sees it |
+| Name pieces now (`Wall_4m`, `Door_2m`) | the names become glTF node names and Godot suffixes later |
+
+## Modular kits on a grid
+
+A **modular kit** is a small set of pieces that tile on a fixed grid: walls, corners, floors, doors, windows,
+stairs. Build a hundred rooms from ten meshes, and let the engine instance them.
+
+<Diagram src="/images/diagrams/blender-modular-grid.svg" label="Top view of a 1 m grid with modular pieces: two 4 m walls along X with pivots at their left corners, a 2 m door piece, an outer corner piece, and a 4 by 4 m floor tile with its pivot at the corner" caption="Pieces are multiples of the grid, pivots sit on grid corners, walls run along +X" />
+
+| Rule | Setting |
+| :--- | :------ |
+| Pick a module | 1 m base grid; pieces of 1, 2 or 4 m (walls 4 m wide × 3 m tall is a common default) |
+| Pivot at a corner | origin at the piece's bottom-left grid corner: Shift S › Cursor to Selected on that vertex, then Object › Set Origin › Origin to 3D Cursor |
+| Consistent direction | every wall runs along +X from its pivot, faces −Y (outside); rotate in 90° steps only |
+| Snap placement | Snap (Shift Tab) with Snap Target **Grid**, or Increment with Absolute Increment Snap; hold Ctrl to snap temporarily |
+| Grid size | Viewport Overlays › Guides › Scale and Subdivisions |
+| Rotate in 90° steps | Snapping › Affect: Rotate, Rotation Increment 90° (or R Z 90) |
+| Wall thickness | decide once whether walls sit inside the grid line (as drawn) or centered on it; a corner piece covers the overlap where two walls meet |
+| Closed, clean pieces | no hidden faces where pieces touch; merge by distance, recalculate normals (Shift N) |
+
+| Piece | Variants worth making |
+| :---- | :-------------------- |
+| Wall | 1, 2, 4 m; plain, window, door, half-height, damaged |
+| Corner | inner, outer, column |
+| Floor / ceiling | 2 × 2 m and 4 × 4 m tiles; stair-well hole |
+| Stairs | one floor high, same footprint as floor tiles |
+| Trim | skirting, cornice, window frame (instanced along edges) |
+| Roof | slope, ridge, gable end, flat parapet |
+
+## Instances, collections & the Asset Browser
+
+**Instancing** reuses one mesh many times: memory and file size stay flat, and engines can draw copies
+cheaply.
+
+| Method | How | Exports as |
+| :----- | :-- | :--------- |
+| Linked duplicate | Alt D (Shift D makes a full copy) | glTF nodes sharing one mesh; with **GPU Instances** on, `EXT_mesh_gpu_instancing` (three.js `InstancedMesh`) when they share a parent |
+| Collection instance | put a multi-object piece in a collection, then Add › Collection Instance | glTF: nodes for the collection's contents under the instancer (Full Collection Hierarchy keeps the collections as empties) |
+| Array modifier | repeats along a line, circle or curve (5.x version is node-based; the classic one is "Array (Legacy)") | one merged mesh after Apply Modifiers; enable its Realize Instances |
+| Geometry Nodes instances | Instance on Points | needs Realize Instances or the experimental exporter option (see [What survives export](#what-survives-export)) |
+| Make real | Object › Apply › Make Instances Real, or Visual Geometry to Objects (keeps shared meshes) | ordinary objects |
+
+The **Asset Browser** (an editor, or the Asset Shelf in some modes) turns a kit into a drag-and-drop palette:
+
+1. In the kit's .blend, right-click each piece in the Outliner (or Object › Asset) › **Mark as Asset**; a
+   preview is generated. Mark collections to keep multi-object pieces together.
+2. Organize assets into **catalogs** (folders in the Asset Browser sidebar).
+3. Save the file inside a folder registered in Preferences › File Paths › Asset Libraries.
+4. In any scene, open the Asset Browser, pick the library, drag pieces in. Import method: **Link** (read-only,
+   updates when the kit changes), **Append** (a local copy), or **Append (Reuse Data)** (append once, reuse
+   the mesh for later drags); 5.x adds Pack.
+
+Blender 5.x also downloads assets on demand from **remote asset libraries**, including the online part of
+the bundled Essentials library.
+
+## Openings, bevels & surface detail
+
+| Task | Tool | Settings |
+| :--- | :--- | :------- |
+| Cut a window or door | **Boolean** modifier, Difference, with a cutter object (or a Collection of cutters) | Solver: **Exact** (robust, slow), **Manifold** (fast, needs closed meshes), Float (fast, fragile; was "Fast" before 5.0) |
+| Hide cutters | Object Properties › Viewport Display › Display As: Wire; disable render and export visibility | keep them in a `Cutters` collection |
+| A row of windows | Array modifier on the cutter (the Boolean uses the evaluated cutter) | Count, Offset Method Relative or Offset |
+| Rounded real-world edges | **Bevel** modifier | Limit Method: Angle (30°), Amount 1–2 cm, Segments 2–3, Harden Normals |
+| Flat faces that shade cleanly | **Weighted Normal** modifier after Bevel | Weighting Mode Face Area, **Keep Sharp** on |
+| Smooth by angle | Object › Shade Auto Smooth (adds the Smooth by Angle modifier from the Essentials library) | Angle 30°; Shade Flat / Smooth removes it |
+| Panel lines, insets | Edit Mode: I inset, E extrude, Ctrl R loop cut | keep n-gons on flat walls only |
+
+Big surfaces get their look from textures, not polygons:
+
+| Technique | What | Export note |
+| :-------- | :--- | :---------- |
+| Tiling texture | a seamless material repeated across walls and floors (brick, plaster, tiles) | needs UVs scaled to real size: keep one **texel density** (pixels per meter) across the kit |
+| Trim sheet | one texture of horizontal strips (moldings, panels, pipes, edges); map long thin faces onto a strip | the standard way to detail modular kits with one material |
+| Decals | small alpha-blended planes with grime, signs, cracks | one draw call each; batch them onto an atlas |
+| Box projection | Image Texture node, Projection: Box, Blend | Blender-only: glTF needs real UVs (UV › Cube Projection) |
+| Vertex color masks | paint dirt or moss blends | glTF exports vertex colors when the material uses them |
+
+UV workflows and texel density are in [Materials & UVs](/3d/blender/materials-uv/).
+
+## Geometry Nodes basics
+
+**Geometry Nodes** (GN) is a node-based modifier: a node tree reads the object's geometry, generates or changes
+it, and outputs new geometry every time something changes. Add it with Add Modifier › Generate › Geometry
+Nodes › New, and edit it in the Geometry Nodes workspace.
+
+| Idea | Meaning |
+| :--- | :------ |
+| Geometry | what flows along the thick links: mesh, curves, point cloud, instances, volume |
+| Attribute | per-element data stored on the geometry: `position`, `normal`, UV maps, your own named values |
+| Field | a per-element function evaluated inside a node (diamond sockets, dashed links); e.g. `Position.z > 2` is a boolean field that selects high points |
+| Instance | a lightweight reference to geometry (an object, a collection child, a mesh) placed with a transform |
+| Realize | turn instances into real, editable geometry: more memory, but needed to edit or export them as one mesh |
+| Group Input / Output | the modifier's parameters (shown in the modifier panel) and result |
+
+| Node | Does |
+| :--- | :--- |
+| Distribute Points on Faces | scatter points on a mesh; Random or **Poisson Disk** (minimum distance); density per m²; outputs Normal and Rotation |
+| Instance on Points | place an instance on each point; **Pick Instance** chooses per point from a Collection Info |
+| Collection Info / Object Info | bring a collection's children or another object in (Separate Children, Reset Children) |
+| Realize Instances | instances → real geometry |
+| Random Value | per-element random float, integer, vector or boolean (seeded) |
+| Mesh Line, Grid, Cube, Cylinder | primitives, often used as point generators |
+| Transform Geometry, Set Position | move, rotate, scale |
+| Join Geometry | combine several geometry streams |
+| Rotate / Scale / Translate Instances | per-instance variation |
+| Align Rotation to Vector | orient instances to a normal or tangent |
+| Named Attribute, Store Named Attribute | read a painted vertex group or write your own attribute |
+| Merge by Distance, Set Material | clean up, assign materials |
+| Viewer (Shift Ctrl click a node) | preview any node's output in the viewport and Spreadsheet |
+
+The bundled **Essentials** node assets appear in the Add menu next to the regular nodes and in Add Modifier:
+
+| Asset | Use |
+| :---- | :-- |
+| Scatter on Surface | a complete scatter setup: density or amount, Random or Poisson Disk, mask, collection picking, random transforms, optional Realize |
+| Array | line, circle, curve or transform arrays with randomization and merge |
+| Curve to Tube | pipes, cables, railings from curves |
+| Randomize Transforms, Random Rotation | jitter instances (position, rotation, scale) |
+| Instance on Elements | instance on faces or edges, not just points |
+| Normal Selection, Box / Sphere Selection | fields that select by facing or region (e.g. no trees on steep slopes) |
+| Displace Geometry, Smooth Geometry | terrain-style deformation |
+| Smooth by Angle | the auto-smooth modifier |
+| Hair nodes, Cloth Dynamics (Experimental) | hair curves (grass works too); simulation assets |
+
+CG Cookie's crash course builds procedural models and animation from scratch; watch for fields,
+instancing on points and realizing instances.
+
+<YouTube id="rCTeWgeWrTQ" title="ASSEMBLE: Geometry Nodes Crash Course on Procedural Modeling and Animation" channel="CG Cookie – Learn Blender" />
+
+## Node recipes: scatter & procedural building
+
+**Scatter trees and rocks** on a terrain (or use the Scatter on Surface asset, which wraps the same idea):
+
+| # | Node | Settings |
+| :- | :--- | :------- |
+| 1 | Group Input | the terrain mesh |
+| 2 | Named Attribute (Float) | `forest`: a vertex group you weight-painted where trees may grow |
+| 3 | Distribute Points on Faces | Poisson Disk, Distance Min 3 m, Density Max 0.1; Density Factor ← node 2 |
+| 4 | Collection Info | `Trees` collection; Separate Children and Reset Children on |
+| 5 | Random Value (Float) | 0.8–1.2 for scale |
+| 6 | Random Value (Vector) | Max Z = 6.283 (2π) for yaw |
+| 7 | Instance on Points | Points ← 3, Instance ← 4, **Pick Instance** on, Rotation ← 6, Scale ← 5 |
+| 8 | Join Geometry | node 1 (the terrain) + node 7 |
+| 9 | Group Output | |
+
+**Procedural facade** (floors × window bays), for a building you can resize by typing numbers:
+
+| # | Node | Settings |
+| :- | :--- | :------- |
+| 1 | Group Input | new inputs: Floors (int), Bays (int), Floor Height (3 m), Bay Width (2 m) |
+| 2 | Mesh Line | Count ← Floors, Offset (0, 0, Floor Height): one point per floor |
+| 3 | Mesh Line | Count ← Bays, Offset (Bay Width, 0, 0): one point per bay |
+| 4 | Instance on Points | Points ← 2, Instance ← 3: the grid of bay positions (nested instances) |
+| 5 | Realize Instances | flatten to a Bays × Floors point grid |
+| 6 | Collection Info | `Facade` collection (wall bay, window bay, door bay; pivots at bottom-left) |
+| 7 | Random Value (Int) | Min 0, Max 1: wall or window per bay; for ground-floor doors, a Compare (Position Z less than 0.5) into a Switch that outputs 2 |
+| 8 | Instance on Points | Points ← 5, Instance ← 6, Pick Instance on, Instance Index ← 7 |
+| 9 | Transform Geometry ×4 + Join Geometry | four facades rotated 0°, 90°, 180°, 270° around the footprint; add a roof slab on top |
+| 10 | Realize Instances | only for export, or when later nodes must edit the result |
+
+Expose Floors and Bays on Group Input and they show up in the modifier panel. From Python in 5.2 the inputs
+are `mod.properties.inputs.<identifier>.value` (see [bpy](/3d/blender/python-scripting/)).
+
+## What survives export
+
+| In Blender | glTF (three.js, Godot) | What to do |
+| :--------- | :--------------------- | :--------- |
+| Modifiers (Bevel, Array, Boolean, Weighted Normal) | only the result, with **Apply Modifiers** on (off by default) | or apply them yourself; Apply Modifiers drops shape keys |
+| Geometry Nodes real geometry | the evaluated mesh, with Apply Modifiers | fine |
+| Geometry Nodes **instances** | dropped: Apply Modifiers exports only real geometry. **Geometry Nodes Instances (Experimental)** exports them as nodes sharing one mesh | Realize Instances as the last node, or Object › Apply › Visual Geometry to Mesh / to Objects |
+| Linked duplicates | nodes sharing one mesh; GPU instancing with the GPU Instances option | best for repeated kit pieces |
+| Collection instances | exported as nodes | fine |
+| Boolean cutters | exported like any visible object | hide or exclude them (Include › Visible / Selected Objects) |
+| Box-projected / procedural textures | not exported | UV unwrap and bake to image textures |
+| Custom normals (Weighted Normal, Harden Normals, Smooth by Angle) | exported with Normals on, but only with Apply Modifiers on (they come from modifiers) | keep both on, or apply the modifiers |
+| Curves, text | not exported | Object › Convert › Mesh |
+| n-gons and quads | triangulated on export | fine for flat walls |
+
+Godot imports `.blend` files by running Blender's glTF exporter, so the same rules apply there.
+
+## Terrain, vegetation & sky
+
+| Task | How |
+| :--- | :-- |
+| Terrain from a heightmap | Plane, scale to size, Subdivision Surface (Simple) or Edit › Subdivide, **Displace** modifier with an image or Clouds texture, Strength = height range |
+| Hand-shaped hills | Sculpt Mode (Draw, Clay Strips, Smooth, Grab) on a dense plane, or dynamic topology / Remesh |
+| Procedural landscapes | [A.N.T. Landscape](https://extensions.blender.org/add-ons/antlandscape/) extension (Get Extensions) |
+| Paths and riverbeds | a Curve with a Shrinkwrap to the terrain, or sculpt; drive a GN mask with it |
+| Vegetation | scatter recipe above, or Scatter on Surface; grass as hair curves or instanced cards; keep a few tree variants |
+| Water | a plane with Principled BSDF: Transmission Weight 1, Roughness 0.05, a Noise-driven normal map; engines replace it with their own water shader |
+| HDRI sky | World › Surface: Environment Texture with an HDRI ([Poly Haven](https://polyhaven.com/hdris), CC0); lights and reflects the scene |
+| Procedural sky | World › Sky Texture, type **Multiple Scattering** (most accurate) or Single Scattering; very bright by default: lower Color Management › Exposure |
+| Fog and depth | Volume Scatter in the World or a cube (render only); engines use their own fog |
+
+Web and game engines usually rebuild sky, water and fog natively; export the terrain mesh and props, and
+bake the terrain's look to textures.
+
+## Composition & interiors
+
+| Camera | Guidance |
+| :----- | :------- |
+| Focal length | 24–35 mm (36 mm sensor) for architecture; 50 mm for details; ultra-wide below 20 mm distorts |
+| Vertical lines | keep the camera level and use Camera › Lens › **Shift Y** to frame the top instead of tilting |
+| Framing | Camera › Viewport Display › Composition Guides (thirds, golden ratio); one clear focal point |
+| Eye height | 1.6 m for "you are here"; low for grandeur; high for layouts |
+| Depth | foreground frame (door, foliage), middle subject, background; Depth of Field for close shots |
+| Placement | N sidebar › View › Lock Camera to View, then navigate; Ctrl Alt Numpad 0 aligns the camera to the view |
+
+| Lighting mood | Setup |
+| :------------ | :---- |
+| Daylight exterior | Sun lamp + Sky Texture or HDRI; warm sun, cool sky |
+| Golden hour | low sun, orange, long shadows; HDRI rotated to match |
+| Overcast | HDRI only, no sun: soft shadows |
+| Night | dim blue world, warm point / area lights in windows, emissive signs |
+
+**Interiors** get most light from bounces through windows:
+
+| Renderer | Do this |
+| :------- | :------ |
+| Cycles | Area lights in window openings with **Portal** on (they guide sampling of the sky; less noise indoors, useless outdoors); raise Light Paths › Diffuse bounces; denoise |
+| EEVEE | a **Light Probe Volume** fitted to each room, baked, for indirect light; Sphere probes for reflections; raytracing in Render Properties |
+| Games | bake lightmaps (a second UV map without overlaps) or rely on the engine's GI; see [Godot export](/3d/export/godot/) |
+
+Details on engines, samples and color management: [Lighting & rendering](/3d/blender/lighting-rendering/).
+
+## Performance
+
+| Check | How |
+| :---- | :-- |
+| Scene size | Viewport Overlays › **Statistics** (objects, vertices, faces, triangles; depends on selection) |
+| Repeated props | linked duplicates / instances instead of copies |
+| Far or background objects | **Decimate** modifier: Collapse (ratio), Un-Subdivide, Planar (merges flat faces; great for architecture) |
+| Heavy viewports | Render Properties › Simplify (cap subdivision levels); hide collections you're not editing |
+| Levels of detail (LOD) | Godot generates mesh LODs on import; three.js `LOD` objects need LOD meshes you export (`Tree_LOD0`, `Tree_LOD1`); GTA V uses explicit LOD models |
+| Draw calls | each mesh × material is at least one; merge static props that share a material (Ctrl J), but keep large levels in chunks so the engine can cull them |
+| Textures | shared atlases and trim sheets; ≤ 2K for the web |
+
+Web budgets that hold on phones: tens of thousands of triangles per hero asset, a few hundred draw calls per
+scene (see [Three.js performance](/typescript/three-js/models-animation/#performance)).
+
+## Game levels vs render scenes
+
+| Concern | Render scene | Game level |
+| :------ | :----------- | :--------- |
+| Geometry | anything the camera sees; booleans, n-gons, subdivision | clean, closed pieces; triangle budget; no hidden faces |
+| Collision | none | simple collision meshes: Godot name suffixes (`-col`, `-colonly`, `-convcolonly`); see [Godot export](/3d/export/godot/) |
+| Materials | complex node trees | Principled BSDF with image textures only; few materials, atlases |
+| Lighting | Cycles or EEVEE, any lights | baked lightmaps (UV2) or engine GI; engine lights |
+| Scale & pivots | loose | strict: 1 unit = 1 m, pivots on the grid, applied transforms |
+| Instancing | optional | essential: kit pieces as linked duplicates or placed in the engine |
+| Interiors | a room behind the camera | GTA V needs an MLO (interior archetype, `.ytyp`) with portals and rooms: see [GTA V export](/3d/export/gta-v/) |
+| Export | render passes | glTF / .blend per zone or per kit piece |
+
+A common split: model the **kit** in Blender, export each piece once, and assemble the level in the engine
+(Godot scenes, GTA via CodeWalker), keeping Blender for hero set pieces.
+
+## AI & asset libraries
+
+| Source | Good for | Notes |
+| :----- | :------- | :---- |
+| Higgsfield Scene Builder | a blockout from a prompt as editable geometry in a .blend (Blender plugin + MCP server) | treat it as a starting layout; replace pieces with your kit; see [AI generation](/3d/ai-workflows/ai-generation/) |
+| Image-to-3D (Higgsfield, Meshy, Tripo…) | single props: statues, furniture, rubble | dense, triangulated meshes: decimate or retopologize, re-UV; check each vendor's license |
+| MCP servers + Claude / GPT (the community `mcp-for-blender`, formerly blender-mcp; Blender Lab's official MCP server for 5.1+) | an LLM driving Blender: place kit pieces, write GN setups; the community server also fetches Poly Haven and Sketchfab assets | they run arbitrary Python in Blender; review what they do; see [LLMs driving Blender](/3d/ai-workflows/llm-blender/) |
+| [Poly Haven](https://polyhaven.com/) | HDRIs, PBR textures, models | CC0 (no attribution needed) |
+| [Sketchfab](https://sketchfab.com/) | downloadable models | license per model (often CC BY: credit the author); check before shipping |
+| Essentials / remote asset libraries | node assets, materials | bundled or downloaded on demand in the Asset Browser |
+
+## Recipes
+
+### Modular wall kit
+Use when a game or web scene needs many rooms from a few meshes.
+
+1. Scene units metric, grid Scale 1 m; snap to Grid.
+2. Model `Wall_4m`: 4 × 0.2 × 3 m, pivot at the outer bottom-left corner, running along +X.
+3. Duplicate into `Wall_4m_Window` (Boolean with an arrayed cutter, then apply) and `Wall_4m_Door`
+   (a 1.2 × 2.4 m opening for a third-person camera).
+4. Add `Corner_Out`, `Corner_In`, `Floor_4x4`; bevel and Weighted Normal each; UV to one trim sheet.
+5. Mark all as assets in a `Kit_Town` catalog; save into a registered asset library.
+6. Build rooms by dragging pieces in, **Link** or Alt D so meshes are shared; export pieces individually for
+   the engine, or the assembled level with GPU Instances on for three.js.
+
+### Scatter trees with Geometry Nodes
+Use to dress a terrain with trees and rocks without placing them by hand.
+
+1. Put 3–5 tree variants (each at the origin, applied scale) in a `Trees` collection; exclude it from the view
+   layer.
+2. On the terrain, weight-paint a vertex group `forest`.
+3. Add Modifier › Geometry Nodes › New; build the scatter table above (or Add › Scatter on Surface, Density
+   Method Density, Instance Type Collection).
+4. Tune Distance Min and density; change Seed until it looks natural.
+5. For export: add Realize Instances last (big meshes), or Visual Geometry to Objects to keep shared tree
+   meshes and export with GPU Instances.
+
+### Resizable building with Geometry Nodes
+Use for city backgrounds where you need many buildings of different sizes.
+
+1. Model three facade bays (2 × 3 m): wall, window, door, pivot bottom-left; put them in `Facade`.
+2. On an empty mesh object add a GN modifier and build the procedural facade table above.
+3. Expose Floors, Bays, Seed; duplicate the object and change the numbers per building.
+4. Before export: Object › Apply › Visual Geometry to Mesh, then Decimate (Planar) for far buildings.
+
+### Window openings along a wall
+Use for a facade with evenly spaced windows that stay editable.
+
+1. Add a cube cutter 1.2 × 0.5 × 1.4 m at the first window position, Display As Wire.
+2. Array modifier on the cutter: Count 4, Offset 2 m along X.
+3. Boolean on the wall: Difference, Object = cutter, Solver Exact.
+4. Add Bevel (Angle, 1 cm) then Weighted Normal (Keep Sharp) on the wall.
+5. Insert window frames as instanced trim pieces; hide the cutter from render.
+
+### Blockout to a playable Godot level
+Use to test a level's layout in-engine before modeling detail.
+
+1. Blockout with cubes at real scale; walkable floors on whole meters; stairs with 0.18 m risers.
+2. Duplicate collision shapes and name them `Floor-colonly`, `Wall_A-colonly` (see [Godot export](/3d/export/godot/)).
+3. Apply transforms (Ctrl A › All Transforms); one collection per zone.
+4. Save the .blend into the Godot project (Godot re-imports on save) or export glTF per zone.
+5. Walk it with a CharacterBody3D; fix scale issues in Blender, not in the engine.
+
+### Interior render quick setup
+Use for a clean interior still in Cycles.
+
+1. World: an HDRI at strength 1 for the view outside the windows.
+2. Area light in every window opening, sized to it, **Portal** on.
+3. Camera 24 mm at 1.4–1.6 m, level, Shift Y for framing; Composition Guides on.
+4. Light Paths: raise Diffuse bounces; Denoise on; AgX view transform.
+5. Add one warm practical light (lamp) as the focal point.
+
+## References
+
+- [Blender Manual: Geometry Nodes](https://docs.blender.org/manual/en/latest/modeling/geometry_nodes/index.html): fields, instances, every node, Essentials assets (Scatter on Surface, Array)
+- [Blender Manual: Modifiers](https://docs.blender.org/manual/en/latest/modeling/modifiers/index.html): Boolean, Array, Bevel, Weighted Normal, Decimate, Displace, Smooth by Angle
+- [Blender Manual: Snapping](https://docs.blender.org/manual/en/latest/editors/3dview/controls/snapping.html) and [Viewport Overlays](https://docs.blender.org/manual/en/latest/editors/3dview/display/overlays.html): grid, increments, statistics
+- [Blender Manual: Asset Libraries](https://docs.blender.org/manual/en/latest/files/asset_libraries/index.html) and [Asset Browser](https://docs.blender.org/manual/en/latest/editors/asset_browser.html): marking, catalogs, link vs append, remote libraries
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): Apply Modifiers, GPU Instances, Geometry Nodes Instances
+- [Blender Manual: Light Probes](https://docs.blender.org/manual/en/latest/render/eevee/light_probes/index.html) and [Light objects (portals)](https://docs.blender.org/manual/en/latest/render/lights/light_object.html)
+- [2021 IRC chapter 3](https://codes.iccsafe.org/content/IRC2021P1/chapter-3-building-planning): stair, headroom and ceiling-height rules behind the "typical" table; [2010 ADA Standards](https://www.ada.gov/law-and-regs/design-standards/2010-stds/) for door widths
+- [Godot: node type customization](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/node_type_customization.html): collision and navmesh suffixes
+- [Poly Haven](https://polyhaven.com/) (CC0 HDRIs, textures, models) and [A.N.T. Landscape](https://extensions.blender.org/add-ons/antlandscape/)

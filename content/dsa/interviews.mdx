@@ -1,0 +1,532 @@
+---
+title: Coding interviews
+date: 2026-09-27
+order: 8
+---
+
+How coding interviews run and how to work through one: formats and a 45-minute timeline, a solving
+framework, what to say, how you're scored, TypeScript and Python gotchas, an edge-case checklist and an
+8-week prep plan. The patterns themselves are in [Problem patterns](/dsa/problem-patterns/); costs in
+[Big-O](/dsa/big-o/); design rounds in [System design interviews](/dsa/system-design-interviews/).
+
+## Formats
+
+| Round | Length | What happens |
+| :---- | :----- | :----------- |
+| Recruiter call | 15–30 min | not technical: role, level, timeline, logistics; defer salary numbers until you have an offer |
+| Online assessment (OA) | 60–120 min | 2–4 auto-graded problems with hidden tests, often proctored, no interviewer; partial credit per passing test |
+| Technical phone screen | 45–60 min | 1–2 problems (easy–medium) in a shared editor (CoderPad, HackerRank, a Google Doc); often no running the code |
+| Onsite / virtual loop | 4–6 rounds of 45–60 min | 2–3 coding, 1 system design (mid-level and up), 1 behavioral; sometimes a practical round (debug, extend a codebase, build a small feature) |
+| Take-home | hours to days | a small realistic project; judged on structure, tests and README more than cleverness |
+
+Ask the recruiter for the format of every round, the language options, whether code must run, and whether
+the editor has autocomplete. They'll usually tell you.
+
+### A 45-minute round
+
+| Minutes | Spend it on | Output |
+| :------ | :---------- | :----- |
+| 0–3 | introductions | a 30-second "who I am", not a career story |
+| 3–8 | clarify, restate, examples | agreed inputs, outputs, constraints, 1–2 worked examples |
+| 8–15 | brute force, then optimize out loud | an approach the interviewer agrees with, with its cost |
+| 15–32 | code | complete, readable solution |
+| 32–38 | test by tracing, fix bugs | a walked example and the edge cases |
+| 38–42 | complexity, follow-ups | final time and space; "what if the input doesn't fit in memory?" |
+| 42–45 | your questions | 1–2 real questions about the team or work |
+
+At minute 20 with no approach, code the brute force. A working O(n²) solution beats an unfinished O(n) one.
+
+## Solving framework
+
+```text
+clarify ─► examples ─► brute force ─► optimize
+  3–5 min    2 min        2 min        5–8 min
+   ─► plan ─► code ─► test ─► complexity
+      1–2 min  15–20   5 min    1 min
+```
+
+1. **Clarify.** Input types and sizes (`n ≤ ?` sets the target cost), value ranges, negatives, zeros,
+   duplicates, empty input, sorted or not, can I modify the input, one answer or all, what to return when
+   there is none, ties.
+2. **Examples by hand.** Work the given example, then make a small tricky one. Solving it by hand often
+   shows the algorithm.
+3. **Brute force, out loud, with its cost.** "Checking every pair is O(n²) time, O(1) space." It proves you
+   understand the problem and gives a fallback.
+4. **Optimize.** Look up the signals in [Problem patterns](/dsa/problem-patterns/#signal--pattern). Ask:
+   what work is repeated? Would sorting help? Would a hash map remove the inner loop? Can I trade space for
+   time? What is the best conceivable runtime (usually the input size)?
+5. **Plan before code.** Say the steps, name the data structures, get a nod. Two minutes here saves ten of
+   rewriting.
+6. **Code cleanly.** Real names, small helpers (`inBounds(r, c)`, `neighbors(node)`), no premature
+   micro-optimizations. Stub a helper and come back to it if it's routine.
+7. **Test by tracing.** Walk a small example through the code line by line, tracking variables. Then run the
+   edge cases in your head. Fix bugs calmly and say what was wrong.
+8. **State the final complexity** of what you wrote, and mention trade-offs or a better approach you'd try
+   with more time.
+
+## Talking while coding
+
+| Step | Say something like |
+| :--- | :----------------- |
+| Clarify | "Can the array be empty? Can values be negative? Is it sorted?" |
+| Restate | "So I return the indexes, not the values, and there's exactly one answer?" |
+| Brute force | "The simplest thing is every pair: O(n²) time. Let me find something better." |
+| Optimize | "For each number I need its complement fast, so I'll keep a map from value to index." |
+| Plan | "One pass: check the map, then insert. Does that sound right before I code it?" |
+| Coding | "This loop grows the window; this inner `while` shrinks it until it's valid again." |
+| Shortcut | "I'll assume a `MinHeap` class; I can write it after if you want." |
+| Testing | "Let me trace `[2, 7, 11]`, target 9: i = 0, map is empty, store 2…" |
+| Bug found | "Off by one here: `hi` should start at `n - 1`. Fixing." |
+| Wrap-up | "O(n) time, O(n) space for the map. Sorting would save space but cost O(n log n)." |
+
+Silence longer than a minute or so reads as stuck. If you need to think quietly, say so: "Give me 30
+seconds to think about the invariant."
+
+### When you're stuck
+
+- Shrink the example (n = 2, 3) and solve it by hand; write down the steps you took.
+- Go back to the brute force and ask where it repeats work.
+- Walk the signal table: sorted? contiguous? top k? choices with overlap? graph in disguise?
+- Change the representation: sort it, count it, index it by value, build a graph.
+- Solve an easier version (no duplicates, only positives, k = 1) and extend.
+- Ask for a hint gracefully, with what you've tried: "I have O(n²) with two loops and I'm looking for a way
+  to avoid rescanning. Am I on the right track with a hash map?" Taking a hint well costs little; a long
+  silent stall costs more.
+
+## What interviewers score
+
+Most large companies grade four areas separately and combine them into a hire / no-hire recommendation.
+
+| Area | They look for | Strong signal | Weak signal |
+| :--- | :------------ | :------------ | :---------- |
+| Problem solving | understanding, a sound approach, trade-offs, optimization | reaches a good solution with little help and explains why it works | jumps to code, can't get past brute force, needs the key idea given |
+| Coding | correct, readable, idiomatic code at a reasonable speed | clear names, helpers, few bugs, fluent in the language | tangled logic, off-by-one bugs, fighting the syntax |
+| Verification | tests normal and edge cases, finds own bugs | traces an example, catches bugs before the interviewer does | "looks right", or relies on the interviewer to find bugs |
+| Communication | clarifies, explains while coding, uses hints | thinks aloud, checks in at decisions, adapts to feedback | codes in silence, defensive about hints, unclear explanations |
+
+Level changes the bar, not the areas: seniors are expected to drive, spot edge cases unprompted and discuss
+trade-offs; juniors get more hints.
+
+## Language choice
+
+Use the language you can write fastest without looking anything up. If two are equal, Python is shorter
+and ships the data structures interviews use.
+
+| Language | Good | Watch out |
+| :------- | :--- | :-------- |
+| Python | shortest code; `heapq`, `deque`, `Counter`, `bisect`, `@cache`; big ints | recursion limit; min-only heap; slower (rarely matters) |
+| TypeScript | your daily language; `Map` / `Set`; types document intent | no heap, deque or sorted map; default string sort; 53-bit integers |
+| Java | `PriorityQueue`, `ArrayDeque`, `TreeMap` built in | verbose; boxing in collections |
+| C++ | STL `priority_queue`, `set`, `map`; fastest | verbose; undefined behavior on bugs |
+| Go | simple, fast | `container/heap` needs an interface implementation |
+
+Some OA platforms and editors run JavaScript but not TypeScript: be ready to drop the types.
+
+## Gotchas
+
+### TypeScript
+
+| Gotcha | Trap | Do instead |
+| :----- | :--- | :--------- |
+| Default `sort` compares strings | `[10, 9, 1].sort()` gives `[1, 10, 9]` | `sort((a, b) => a - b)`; `toSorted` for a copy |
+| `sort` mutates | the caller's array changes | `[...xs].sort(…)` or `xs.toSorted(…)` |
+| `shift()` is O(n) | a BFS loop with `q.shift()` is O(n²) | array + head index, or a deque class ([Linear structures](/dsa/linear-structures/)) |
+| No heap, no deque | nothing built in | the `MinHeap` from [Trees & graphs](/dsa/trees-graphs/#heaps); say you'll assume one |
+| Integer division | `7 / 2` is `3.5` | `Math.floor(a / b)` (like Python `//`) or `Math.trunc(a / b)` (toward 0) |
+| `floor` vs `trunc` on negatives | `Math.floor(-7 / 2)` is `-4`, `Math.trunc(-7 / 2)` is `-3` | pick the one the problem means; `x \| 0` also truncates but wraps past 2³¹ |
+| `%` keeps the dividend's sign | `-7 % 3` is `-1` | `((a % n) + n) % n` |
+| Precision past 2⁵³ | above `Number.MAX_SAFE_INTEGER` (9 007 199 254 740 991), `2 ** 53 + 1 === 2 ** 53` | `BigInt` (`10n ** 18n`) |
+| Modular products | `a * b % 1_000_000_007` with `a, b` near 10⁹ exceeds 2⁵³ and is wrong | `BigInt(a) * BigInt(b) % MOD` |
+| Object keys become strings | `obj[1]` is `obj["1"]`; `Object.keys` returns strings; integer-like keys iterate in ascending order | `Map` keeps key types |
+| `Map` / `Set` order | insertion order, not sorted | sort entries: `[...m].sort((a, b) => a[0] - b[0])` |
+| `new Array(n).fill([])` | one inner array shared by every row | `Array.from({ length: n }, () => [])` |
+| `new Array(n).map(f)` | holes are skipped, `f` never runs | `Array.from({ length: n }, (_, i) => f(i))` |
+| Reference equality | `[1, 2] === [1, 2]` is `false`; a `Set` of arrays never dedupes | string keys: `` `${r},${c}` `` |
+| `for…in` on arrays | yields string indexes | `for…of`, `xs.entries()` |
+| `Math.max(...xs)` | throws `RangeError` on very large arrays (engine-dependent) | a loop or `reduce` |
+| Recursion depth | V8 overflows around 10⁴ frames; a DFS down a 10⁵-node path throws | explicit stack |
+
+### Python
+
+| Gotcha | Trap | Do instead |
+| :----- | :--- | :--------- |
+| Mutable default argument | `def dfs(node, path=[])` shares one list across calls | `path: list[int] \| None = None`, then `if path is None: path = []` |
+| `[[0] * n] * m` | m references to one row: setting `g[0][0]` changes every row | `[[0] * n for _ in range(m)]` |
+| `//` floors | `-7 // 2` is `-4` | `int(a / b)` truncates toward 0 (floats: exact only below 2⁵³); ceil is `-(-a // b)` |
+| `%` takes the divisor's sign | `-7 % 3` is `2` (JS gives `-1`) | usually what you want for wraparound |
+| Recursion limit | default 1000 frames: deep DFS raises `RecursionError` | explicit stack; or `sys.setrecursionlimit(10**6)`, which can still crash on very deep recursion |
+| `heapq` is min-only | no max-heap | push `-x` or `(-count, x)`; `heapq.nlargest(k, xs)` |
+| Heap tuples compare fully | equal priorities fall through to payloads that can't compare (`TypeError`) | `(priority, counter, item)` |
+| `sort()` returns `None` | `xs = xs.sort()` sets `xs` to `None` | `xs.sort()` alone, or `ys = sorted(xs)` |
+| Integers are unbounded | no overflow, so "32-bit" problems need explicit checks | `if not -2**31 <= x < 2**31: return 0` |
+| Hidden O(n) | `list.pop(0)`, `list.insert(0, x)`, `x in some_list` | `deque`, `set` |
+| String building | `s += c` in a loop can go quadratic | collect parts, `"".join(parts)` |
+| Late-binding closures | `[lambda: i for i in range(3)]` all return `2` | `lambda i=i: i` |
+| `@cache` needs hashable args | a list argument raises `TypeError` | pass a tuple or an index |
+| Aliasing | `b = a` shares the list; `a[:]` copies one level | `copy.deepcopy(a)` for nested lists |
+| Swap with a dependent index | `xs[i], xs[xs[i]] = …` assigns `xs[i]` first | compute `j = xs[i]` before swapping |
+
+### Safe idioms
+
+The traps above, done right in both languages.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // numbers: always pass a comparator
+    const asc = (xs: number[]): number[] =>
+      [...xs].sort((a, b) => a - b);
+
+    // m × n grid: a fresh row per index, never fill([])
+    const grid = (m: number, n: number): number[][] =>
+      Array.from({ length: m }, () =>
+        new Array<number>(n).fill(0));
+
+    // Python-style floor division and modulo
+    const floorDiv = (a: number, b: number): number =>
+      Math.floor(a / b);
+    const mod = (a: number, n: number): number =>
+      ((a % n) + n) % n;
+
+    // BFS queue without O(n) shift(): array + head index
+    function bfs(adj: number[][], start: number): number[] {
+      const seen = new Set([start]);
+      const q = [start];
+      for (let head = 0; head < q.length; head++) {
+        for (const v of adj[q[head]]) {
+          if (!seen.has(v)) {
+            seen.add(v);
+            q.push(v);
+          }
+        }
+      }
+      return q; // visit order
+    }
+
+    // counting: Map keeps number keys as numbers
+    function counts(xs: number[]): Map<number, number> {
+      const c = new Map<number, number>();
+      for (const x of xs) c.set(x, (c.get(x) ?? 0) + 1);
+      return c;
+    }
+
+    // pair keys: arrays compare by reference, so encode
+    const key = (r: number, c: number): string =>
+      `${r},${c}`;
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter, deque
+
+    def asc(xs: list[int]) -> list[int]:
+        return sorted(xs)  # xs.sort() would return None
+
+    def grid(m: int, n: int) -> list[list[int]]:
+        return [[0] * n for _ in range(m)]  # not [[0]*n]*m
+
+    def floor_div(a: int, b: int) -> int:
+        return a // b  # already floors toward -infinity
+
+    def mod(a: int, n: int) -> int:
+        return a % n  # already has the sign of n
+
+    def bfs(adj: list[list[int]], start: int) -> list[int]:
+        seen = {start}
+        q = deque([start])  # popleft is O(1), pop(0) O(n)
+        order: list[int] = []
+        while q:
+            u = q.popleft()
+            order.append(u)
+            for v in adj[u]:
+                if v not in seen:
+                    seen.add(v)
+                    q.append(v)
+        return order  # visit order
+
+    def counts(xs: list[int]) -> Counter[int]:
+        return Counter(xs)
+
+    def key(r: int, c: int) -> tuple[int, int]:
+        return (r, c)  # tuples hash directly; lists don't
+    ```
+
+  </Tab>
+</Tabs>
+
+All O(1) except `asc` O(n log n), `grid` O(mn), `bfs` O(V + E) and `counts` O(n).
+
+## Interview template
+
+Write the signature first, then a tiny harness you can run (or trace) at the end: the given example, then
+edge cases. In an editor that runs code, this is your test step.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Two Sum: indexes of the two values adding to target
+    function twoSum(nums: number[], target: number): number[] {
+      const seen = new Map<number, number>(); // value → index
+      for (let i = 0; i < nums.length; i++) {
+        const j = seen.get(target - nums[i]);
+        if (j !== undefined) return [j, i];
+        seen.set(nums[i], i);
+      }
+      return [];
+    }
+
+    type Case = [nums: number[], target: number, want: number[]];
+    const cases: Case[] = [
+      [[2, 7, 11, 15], 9, [0, 1]], // given example
+      [[3, 3], 6, [0, 1]], // duplicates
+      [[-1, -2, -3], -5, [1, 2]], // negatives
+      [[1, 2], 7, []], // no answer
+      [[], 0, []], // empty
+    ];
+    for (const [nums, target, want] of cases) {
+      const got = twoSum(nums, target);
+      const ok = JSON.stringify(got) === JSON.stringify(want);
+      console.log(ok ? "ok  " : "FAIL", nums, target, got);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def two_sum(nums: list[int], target: int) -> list[int]:
+        seen: dict[int, int] = {}  # value → index
+        for i, x in enumerate(nums):
+            if target - x in seen:
+                return [seen[target - x], i]
+            seen[x] = i
+        return []
+
+    cases = [
+        ([2, 7, 11, 15], 9, [0, 1]),  # given example
+        ([3, 3], 6, [0, 1]),  # duplicates
+        ([-1, -2, -3], -5, [1, 2]),  # negatives
+        ([1, 2], 7, []),  # no answer
+        ([], 0, []),  # empty
+    ]
+    for nums, target, want in cases:
+        got = two_sum(nums, target)
+        tag = "ok  " if got == want else "FAIL"
+        print(tag, nums, target, got)
+    ```
+
+  </Tab>
+</Tabs>
+
+`twoSum` is O(n) time, O(n) space. Check the map **before** inserting the current value, or `[3]` with
+target 6 pairs index 0 with itself.
+
+## Edge-case checklist
+
+| Input | Try |
+| :---- | :-- |
+| Array | empty, one item, two items, all equal, already sorted, reverse sorted, negatives, zeros, duplicates, max size |
+| String | empty, one char, all the same char, mixed case, spaces and punctuation, non-ASCII, palindrome |
+| Numbers | 0, 1, negative, `INT_MIN` / `INT_MAX` (overflow in 32-bit problems), float precision |
+| Linked list | `null`, one node, two nodes, cycle, target at head or tail |
+| Tree | `null`, one node, skewed (a list: recursion depth), complete, duplicate keys in a BST |
+| Graph | disconnected, cycle, self-loop, parallel edges, one node, no edges, unreachable target |
+| Grid | 0 × 0, 1 × n, n × 1, all walls, start equals goal, start blocked |
+| Intervals | touching ends (`[1, 2]` and `[2, 3]`), nested, identical, unsorted input |
+| k / target | k = 0, k = 1, k = n, k greater than n, no valid answer, several valid answers |
+
+## Prep plan
+
+### Problem lists
+
+| List | Size | What it is |
+| :--- | :--- | :--------- |
+| [Blind 75](https://www.teamblind.com/post/New-Year-Gift---Curated-List-of-Top-75-LeetCode-Questions-to-Save-Your-Time-OaM1orEU) | 75 | the original curated list (2018, by Yangshun Tay, posted on Blind); the minimum set of core patterns |
+| [Grind 75](https://www.techinterviewhandbook.org/grind75/) | 75, up to 169 | the same author's update; builds a week-by-week schedule from the weeks and hours per week you have |
+| [NeetCode 150](https://neetcode.io/practice) | 150 | Blind 75 plus 75 more, grouped by pattern, each with a video solution |
+| [NeetCode 250](https://neetcode.io/practice/practice/neetcode250) | 250 | NeetCode 150 plus 100 more; gentler ramp for people new to algorithms |
+
+Pick one list and finish it rather than sampling several. Two months out: Grind 75 or NeetCode 150. New to
+the material: NeetCode 250 in pattern order, alongside the [DS&A sheets](/dsa/).
+
+### 8-week schedule
+
+About 8–10 hours a week: 1–2 new problems a day plus reviews.
+
+| Week | Focus | Sheets | Mock interviews |
+| :--- | :---- | :----- | :-------------- |
+| 1 | Big-O, arrays, hashing, strings | [Big-O](/dsa/big-o/), [Linear structures](/dsa/linear-structures/) | none |
+| 2 | two pointers, sliding window, prefix sums | [Problem patterns](/dsa/problem-patterns/) | none |
+| 3 | stacks, monotonic stack, linked lists, fast & slow | [Linear structures](/dsa/linear-structures/), [Problem patterns](/dsa/problem-patterns/) | none |
+| 4 | sorting, binary search (and on the answer), intervals | [Sorting & searching](/dsa/sorting-searching/) | 1 |
+| 5 | trees, BSTs, heaps, tries | [Trees & graphs](/dsa/trees-graphs/) | 1 |
+| 6 | graphs: BFS, DFS, topological sort, union-find, Dijkstra | [Graph algorithms](/dsa/graph-algorithms/) | 1 |
+| 7 | backtracking, 1-D and 2-D DP | [Recursion & DP](/dsa/recursion-dp/) | 1 |
+| 8 | mixed timed sets (2 problems in 45 min), re-solve failures | this sheet | 2–3 |
+
+Each day: one review problem first (from the spaced-repetition queue), then new problems. Time-box a new
+problem to about 25 minutes (easy 15, hard 40) before reading a solution.
+
+### Spaced repetition
+
+Keep a problem log and re-solve each problem on a schedule; drop it once it's clean twice in a row.
+
+| After | Re-solve on |
+| :---- | :---------- |
+| needed the solution | day 1, 3, 7, 14, 30 |
+| needed a hint or had bugs | day 3, 7, 21 |
+| solved clean and fast | day 14, then only in mixed sets |
+
+**Re-solve without looking.** A review counts only if you write the solution from a blank editor, without
+notes, and it passes the examples. Recognizing the solution is not the same as producing it.
+
+### Mock interviews
+
+- Start in week 4; do the last 2–3 in the final week under real conditions (camera on, shared editor, 45
+  minutes, talking throughout).
+- A peer who interviews for a living is best; paid services with working engineers (such as
+  [interviewing.io](https://interviewing.io/)) are next; trading mocks with a friend works if you both give
+  honest scores against [the rubric](#what-interviewers-score).
+- Record yourself once. Silences, filler and skipped testing are obvious on playback.
+
+### Reviewing a problem you failed
+
+1. Write down where you got stuck: didn't see the pattern, saw it but couldn't implement it, or bugs.
+2. Read one good solution until you can explain **why** it works (the invariant), not just what it does.
+3. Close it and re-solve from scratch the same day.
+4. Name the signal you missed and add it to your own signal table.
+5. Solve one sibling problem of the same pattern, then queue the original for day 1 and day 3.
+
+## Behavioral
+
+Most loops include one behavioral round, and it can sink an otherwise strong loop. Prepare 6–8 true stories
+(a conflict, a failure, a hard deadline, leading without authority, ambiguity, your biggest impact) and tell
+each in **STAR** form, in about 2 minutes:
+
+| Part | Share | Content |
+| :--- | :---- | :------ |
+| Situation | small | context in one or two sentences |
+| Task | small | your responsibility or goal |
+| Action | most | what **you** did and why (say "I", not "we") |
+| Result | some | the outcome, with numbers if possible, and what you learned |
+
+More in the [Tech Interview Handbook: behavioral interviews](https://www.techinterviewhandbook.org/behavioral-interview/).
+
+## The day before and the day of
+
+| When | Do |
+| :--- | :- |
+| Day before | 2–3 easy re-solves from your log to warm up, no new hard problems |
+| Day before | re-read this sheet's gotchas for your language and the [signal table](/dsa/problem-patterns/#signal--pattern) |
+| Day before | test the setup: editor link, camera, mic, charger, a quiet room; know the interviewer names and times |
+| Day before | sleep; stop studying in the evening |
+| Day of | eat, water nearby, paper and pen for drawing examples |
+| Day of | join 5 minutes early; close notifications and other tabs |
+| Day of | one warm-up easy problem an hour before |
+| Between rounds | forget the last round; each interviewer scores independently |
+| After | write a short post-mortem ([template](#post-mortem-template)) while it's fresh |
+
+## Recipes
+
+### The first 5 minutes
+
+A script for the start of every coding problem; it covers the clarify and examples steps.
+
+```text
+1. Read the prompt out loud, or restate it in your own words.
+2. "Let me make sure I understand the input and output":
+   types, sizes, return value.
+3. Ask the clarifying questions: empty? negatives? duplicates?
+   sorted? modify in place? one answer or all? what to return
+   when there's none? how big can n get?
+4. Work the given example by hand, writing the steps you take.
+5. Write one small tricky example of your own and agree on
+   its expected output.
+6. "The brute force is … at O(…). I'll look for something
+   better before coding."
+```
+
+### Generating test cases
+
+When asked "how would you test this?", or before declaring done.
+
+```text
+[ ] the given example, traced line by line through your code
+[ ] smallest inputs: empty, one element, two elements
+[ ] boundaries: first and last index, k = 0, k = n, max values
+[ ] duplicates and all-equal input
+[ ] negatives and zero
+[ ] no valid answer / several valid answers
+[ ] worst case for time: sorted, reverse sorted, all same
+[ ] a random small case checked against the brute force
+    (if the code runs)
+```
+
+### Out of time at minute 30
+
+When the optimal solution isn't coming together.
+
+```text
+1. Say it: "I'm going to write the brute force so we have
+   something correct."
+2. Code the brute force cleanly (5–8 minutes).
+3. Test it on the example.
+4. Describe the optimization you'd make and its complexity,
+   in words or pseudocode.
+5. If there's time left, start converting the slow part
+   (e.g., inner loop → hash map).
+```
+
+### Problem log
+
+One row per attempt, kept in a spreadsheet with columns date, problem, pattern, result, time, missed signal
+and next review. Sort by "next review" each morning.
+
+```text
+date  problem               pattern      result  time  next
+09-27 Min Window Substring  sliding win  hint    38m   09-30
+      missed: shortest ⇒ shrink while valid
+09-27 Daily Temperatures    mono stack   clean   14m   10-11
+09-28 Course Schedule       topo sort    failed  40m   09-29
+      missed: "prerequisites" ⇒ graph
+```
+
+### Post-mortem template
+
+Right after a real or mock interview.
+
+```text
+Company / round / date:
+Problem (name or paraphrase):
+What I asked when clarifying; what I forgot to ask:
+Approach I reached and at what minute:
+Where I got stuck, and what unstuck me (hint? smaller example?):
+Bugs I wrote, and whether I found them or the interviewer did:
+Complexity I stated; was it right?
+Communication: silences, missed check-ins:
+The pattern / signal to add to my table:
+Problems to add to the log:
+```
+
+## References
+
+- [Tech Interview Handbook: coding interview prep](https://www.techinterviewhandbook.org/coding-interview-prep/): the end-to-end guide this sheet's process follows
+- [Tech Interview Handbook: coding interview rubrics](https://www.techinterviewhandbook.org/coding-interview-rubrics/): how the four areas are graded
+- [Tech Interview Handbook: coding interview techniques](https://www.techinterviewhandbook.org/coding-interview-techniques/): approaches for when you're stuck
+- [Grind 75](https://www.techinterviewhandbook.org/grind75/): a configurable schedule of problems
+- [NeetCode practice](https://neetcode.io/practice) and [roadmap](https://neetcode.io/roadmap): NeetCode 150 / 250 by pattern, with videos
+- [Blind 75 (original post)](https://www.teamblind.com/post/New-Year-Gift---Curated-List-of-Top-75-LeetCode-Questions-to-Save-Your-Time-OaM1orEU): the list that started it
+- [MDN: Array.prototype.sort](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort): default string comparison, comparators, `toSorted`
+- [MDN: Remainder (%)](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Remainder): sign follows the dividend
+- [MDN: Math.trunc](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/trunc): truncation vs `Math.floor` and `\| 0`
+- [MDN: Number.MAX_SAFE_INTEGER](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER): where integer precision ends
+- [MDN: Array.prototype.shift](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/shift): reindexes the whole array
+- [Python FAQ: shared default values](https://docs.python.org/3/faq/programming.html#why-are-default-values-shared-between-objects) and [multidimensional lists](https://docs.python.org/3/faq/programming.html#how-do-i-create-a-multidimensional-list): the two classic aliasing bugs
+- [Python docs: heapq](https://docs.python.org/3/library/heapq.html): min-heap only, tuple priorities
+- [Python docs: sys.setrecursionlimit](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit): the recursion limit and its risks
+- [Python wiki: TimeComplexity](https://wiki.python.org/moin/TimeComplexity): the cost of every list, deque, dict and set operation
+- *Cracking the Coding Interview* (Gayle Laakmann McDowell): the classic book on the process and problem types

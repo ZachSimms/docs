@@ -1,0 +1,325 @@
+---
+title: Lighting & rendering in Blender
+date: 2026-09-27
+order: 4
+---
+
+Making images and videos in **Blender 5.x** (5.2 LTS): EEVEE vs Cycles vs Workbench, viewport shading and
+matcaps, world and HDRI lighting, lights and their units, three-point lighting and light linking, cameras,
+render settings and denoising, color management (AgX), image and video output, website turntables and
+transparent PNGs, and speed on a Mac. Why light and materials behave as they do is in
+[Materials & lighting](/3d/fundamentals/materials-lighting/); materials themselves are in
+[Materials, UVs & texturing](/3d/blender/materials-uv/). Keys are Windows-style; on macOS read Ctrl as ⌘ (or
+⌃), Alt as ⌥, and press fn with F-keys unless macOS is set to use them as standard function keys.
+
+## Render engines
+
+Properties > **Render** tab > Render Engine.
+
+| | EEVEE | Cycles | Workbench |
+| :- | :---- | :----- | :-------- |
+| Method | real-time rasterizer (like a game engine) with optional screen-space ray tracing | path tracer: simulates light bounces | flat preview shading |
+| Speed per frame | fractions of a second to seconds | seconds to minutes | instant |
+| Global illumination | light probes and screen-trace (Render > Raytracing, off by default) | physically correct bounces | none |
+| Shadows, reflections, glass | good; screen-space limits (off-screen objects don't reflect) | accurate | basic |
+| Noise | none (anti-aliasing samples: 64 render, 16 viewport by default) | yes: needs samples + denoising | none |
+| Baking | no | yes ([baking](/3d/blender/materials-uv/)) | no |
+| Use for | animation, stylized work, previews, look close to real-time engines | final stills, product shots, glass and caustics, bakes | modeling previews, playblasts, clay renders |
+
+EEVEE is the default engine for new files. Material Preview shading uses EEVEE, so it predicts what EEVEE
+renders.
+
+## Viewport shading & matcaps
+
+**Z** opens the shading pie; Shift+Z toggles wireframe; Alt+Z X-ray. The header's four spheres do the same,
+and the ▾ next to them holds options.
+
+| Mode | Engine | Use | Options worth knowing |
+| :--- | :----- | :-- | :-------------------- |
+| Wireframe | overlay | topology, hidden parts | X-ray opacity |
+| Solid | Workbench | modeling and sculpting | Lighting Studio / **MatCap** / Flat; Color Material / Object / Random / Attribute / Texture; Cavity; Backface Culling; Shadow |
+| Material Preview | EEVEE | material work under a studio HDRI | pick an HDRI and rotate it; toggle Scene Lights / Scene World |
+| Rendered | the scene's engine | lighting, final look | Cycles viewport samples (1024 max by default); turn on viewport Denoise; use a render region |
+
+**MatCaps** (Solid > Lighting > MatCap) are shiny "material capture" spheres: they exaggerate every bump and
+pinch, so they are the fastest way to check surface quality while modeling. Color **Random** tells objects
+apart; Color **Texture** shows image textures in Solid mode without the cost of Material Preview.
+
+## World & HDRI lighting
+
+Properties > **World** sets the background and ambient light (a **Background** shader: Color + Strength).
+An **HDRI** (high dynamic range 360° photo, `.hdr` or `.exr`) lights a scene realistically in one step.
+
+1. World tab > Surface > Color: click the socket dot > **Environment Texture**; Open an HDRI (Poly Haven,
+   ambientCG: CC0).
+2. **Strength** scales it (1 = as shot).
+3. Rotate: Shader Editor, switch to **World**, select the Environment Texture node, **Ctrl+T** (Node
+   Wrangler) adds Mapping; change Rotation Z.
+4. Hide the background but keep its light: Render > Film > **Transparent** (then composite over any
+   color), or in Cycles World > Ray Visibility > uncheck Camera.
+
+Use the Environment Texture node, not Image Texture: it maps equirectangular (lat-long) images correctly.
+EEVEE treats world light as indirect and stores it in an internal light probe, so it is less precise than in
+Cycles.
+
+## Lights
+
+Shift+A > **Light**. Select a light, then Properties > Object Data (green bulb) for its settings. Right-click
+> Adjust Light Power changes it interactively.
+
+| Light | Unit | Size control | Like |
+| :---- | :--- | :----------- | :--- |
+| Point | Power, W | Radius (bigger = softer shadows) | bulb, candle |
+| Spot | Power, W | Radius; Beam Shape Angle and Blend (soft edge) | stage light, flashlight |
+| Area | Power, W | Shape Square / Rectangle / Disk / Ellipse, Size | softbox, window, screen |
+| Sun | Strength, W/m² | Angle (angular diameter; bigger = softer) | sunlight; position doesn't matter, only rotation |
+
+Watts here are radiant power, not a bulb's electrical rating: the manual lists an 800 lm LED bulb as about 2.1
+W and clear-sky sun as about 1000 W/m², but rendering those needs camera-like exposure. New point, spot and
+area lights start at 10 W, a new Sun at 1, and the startup scene's light at 1000 W. In practice: put the
+light at its real distance, raise power until the subject reads well, then fine-tune with **Exposure** in
+Color Management. Every light also has Color, **Temperature** (Kelvin) and an Exposure slider.
+
+### Three-point lighting
+
+The classic product and character setup (theory and diagram in
+[Materials & lighting](/3d/fundamentals/materials-lighting/)):
+
+1. **Key**: an Area light 45° to one side of the camera and 30–45° above the subject, aimed at it (rotate it,
+   or add a **Track To** constraint targeting the subject). The brightest light; its size sets shadow
+   softness.
+2. **Fill**: a larger Area light on the opposite side at about ⅓–½ of the key's power, to open up shadows.
+3. **Rim** (back light): behind and above the subject, facing the camera, strong and narrow, to outline the
+   silhouette against the background.
+4. Optional: a dim HDRI or a gray World color (Strength 0.1–0.3) so shadows are never pure black.
+
+### Light linking
+
+Light linking makes a light affect only some objects; shadow linking picks which objects block it. Works in
+Cycles and EEVEE (emissive meshes: Cycles only).
+
+1. Select the light, Properties > **Object** > **Shading** > Light Linking.
+2. New collection, drag objects or collections from the Outliner into it; set each to Include or Exclude.
+3. Shortcut: select the receivers, then the light last, Ctrl+L > Link Receivers to Emitter.
+
+Use it for a rim light on a character only, or to keep a key light off the backdrop.
+
+## Camera
+
+| Task | How |
+| :--- | :-- |
+| Look through the active camera | numpad 0 (view pie > View Camera) |
+| Make an object the active camera | select it, Ctrl + numpad 0 (View > Cameras > Set Active Object as Camera) |
+| Put the camera where you are looking | Ctrl + Alt + numpad 0 (View > Align View > Align Active Camera to View) |
+| Fly the camera with the viewport | N sidebar > View > View Lock > **Camera to View** (red dashed frame), then navigate |
+| Focal length | Camera Properties > Lens > Focal Length (50 mm default; 85–135 mm flattering products and faces; 18–24 mm wide interiors) |
+| Orthographic | Lens > Type Orthographic, Orthographic Scale (icons, isometric shots) |
+| Depth of field | Camera Properties > **Depth of Field** on; Focus on Object (pick the subject) or Distance; **F-Stop** (2.8 default; lower = blurrier) |
+| Clipping | Lens > Clip Start / End (objects outside are cut) |
+| Composition | Viewport Display > Composition Guides (Thirds, Center, Golden…); Passepartout darkens outside the frame |
+| Aim at a subject | Object Constraints > **Track To** (target an Empty or the subject) |
+| Resolution / aspect | Output tab > Format (1920 × 1080, 1080 × 1080 for social, 1080 × 1920 vertical) |
+
+## Render settings
+
+**Cycles** (Render tab):
+
+| Setting | Default | Guidance |
+| :------ | :------ | :------- |
+| Device | CPU | **GPU Compute** after enabling a device in Preferences > System > Cycles Render Devices (Metal on Apple Silicon) |
+| Sampling > Render > Noise Threshold | 0.01 | 0.01–0.05; adaptive sampling stops clean pixels early |
+| Max Samples | 4096 | 256–1024 is plenty with denoising for most stills |
+| Time Limit | 0 (off) | cap per frame for previews |
+| Denoise (Render / Viewport) | on, Automatic → OpenImageDenoise | OIDN everywhere; OptiX only on NVIDIA; Passes Albedo + Normal keeps detail |
+| Light Paths > Max Bounces | 12 total | lower (4–6) for speed; raise Transmission for lots of glass |
+| Light Paths > Clamping > Indirect Light | 10 | lower (1–5) if fireflies (bright speckles) remain; 0 disables |
+| Film > Transparent | off | on for PNG cut-outs; add Transparent Glass for see-through glass |
+| Performance > Persistent Data | off | on for animations: keeps scene data between frames |
+
+**EEVEE** (Render tab):
+
+| Setting | Default | Guidance |
+| :------ | :------ | :------- |
+| Sampling > Render / Viewport samples | 64 / 16 | 64–128 renders; more smooths soft shadows and depth of field |
+| Raytracing | off | on for reflections and GI; Method Screen-Trace, or Light Probe with placed probes |
+| Shadows, Volumes, Motion Blur, Depth of Field | panels | DoF follows the camera settings |
+| Light probes | Shift+A > Light Probe: Sphere, Plane, Volume | local reflections, mirrors and indirect light when ray tracing is off |
+| Film > Transparent, Filter Size | off, 1.5 px | as in Cycles |
+
+**Output tab > Format**: Resolution X / Y and **%** (render at 50% for tests), Frame Rate; **Render Region**
+(Ctrl+B in camera view draws it, Ctrl+Alt+B clears) renders only part of the frame.
+
+| Action | Keys |
+| :----- | :--- |
+| Render the current frame | F12 |
+| Render the animation | Ctrl+F12 |
+| Show the render window / play back rendered frames | F11 / Ctrl+F11 |
+| Cancel | Esc |
+| Save the render | Image > Save As in the render window (still renders are not saved automatically) |
+| Quick preview of the viewport | View > Render Viewport Preview / Render Playblast (Workbench or EEVEE only) |
+
+Watch the finale for lighting, camera and final render settings on a finished scene.
+
+<YouTube id="WobATxh3i-g" title="The Basics of Lighting and Rendering in Blender (Donut Finale)" channel="Blender Guru" />
+
+## Color management
+
+Render tab > **Color Management** converts the linear render into display colors. Same settings apply to
+the viewport, the render window and saved PNG/JPEG/WebP (EXR stays linear).
+
+| Setting | Default | Options and use |
+| :------ | :------ | :-------------- |
+| Display | sRGB | Display P3 for wide-gamut Mac screens (pair with a wide working space) |
+| View (transform) | **AgX** | AgX: photoreal, handles bright light gracefully; **Standard**: no tone mapping, flat colors match hex values (UI, stylized, compositing); **Khronos PBR Neutral**: base colors stay faithful (product shots); ACES 1.3 / 2.0; Filmic (deprecated); False Color (exposure heat map) |
+| Look | None | AgX looks: Punchy, Base Contrast, Low / Medium / High Contrast, plus a black-and-white look |
+| Exposure | 0 | in stops: +1 doubles brightness |
+| Gamma | 1 | leave at 1 |
+| White Balance | off | Temperature / Tint, or pick a white point |
+| Working Space (5.0+) | Linear Rec.709 | keep for glTF / web work |
+
+Matching the web: three.js renders with no tone mapping unless you set one; it has `AgXToneMapping` and
+`NeutralToneMapping` (Khronos PBR Neutral). Pick the same transform on both sides when you compare
+Blender renders with the live model ([Three.js lights & shadows](/typescript/three-js/lights-shadows/)).
+
+## Output: images & video
+
+Output tab > **Output**: File Path (`//` = next to the .blend; `//render/frame_` gives `frame_0001.png`),
+**Media Type** Image / Multi-Layer EXR / Video, then format settings.
+
+| Format | Alpha | Bits | Use |
+| :----- | :---- | :--- | :-- |
+| PNG | RGBA | 8 / 16 | lossless stills and image sequences; transparent cut-outs |
+| JPEG | no | 8 | small previews |
+| WebP | RGBA | 8 | web-ready stills (quality slider or lossless) |
+| AVIF | RGBA | 8 / 10 / 12 | smaller web stills; HDR-capable |
+| OpenEXR / Multi-Layer EXR | yes | 16 / 32 float | linear data for compositing; render passes in one file |
+| Video (Media Type Video) | codec-dependent | 8–12 | Encoding panel: container MPEG-4 + H.264 or AV1; WebM + VP9 (supports alpha); QuickTime + ProRes for editing |
+
+**Render animations as image sequences**, then encode: a crash loses one frame instead of the video, you can
+re-render single frames, and you can encode several formats from one render. Enable **Overwrite** off +
+**Placeholders** on to resume or split a render across machines.
+
+```sh
+# macOS: brew install ffmpeg
+ffmpeg -framerate 30 -i frame_%04d.png \
+  -c:v libx264 -pix_fmt yuv420p -crf 18 turntable.mp4
+
+# transparent video for the web (VP9 WebM with alpha)
+ffmpeg -framerate 30 -i frame_%04d.png \
+  -c:v libvpx-vp9 -pix_fmt yuva420p -b:v 0 -crf 30 \
+  turntable.webm
+```
+
+`yuv420p` needs even width and height. Blender can also encode directly (Media Type Video) or assemble a
+sequence in the Video Sequencer.
+
+## Rendering for websites
+
+| Shot | Setup |
+| :--- | :---- |
+| Transparent PNG / WebP cut-out | Film > Transparent; PNG or WebP, **RGBA**; shadow on an invisible floor: floor object > Object Properties > Visibility > Mask > **Shadow Catcher** (Cycles) |
+| Studio product shot | seamless backdrop (a plane with one edge extruded up and beveled), three area lights or an HDRI, 85–100 mm lens, Khronos PBR Neutral or AgX |
+| Turntable video | camera parented to an Empty that rotates 360° (recipe below); 120–240 frames at 30 fps |
+| Hero image | 2× the displayed size (e.g. 2400 px for a 1200 px slot) for Retina, saved as WebP or AVIF |
+| Poster frame for a 3D viewer | same camera angle as the web viewer's default, so the swap from image to live model is seamless |
+
+## Performance on a Mac
+
+- Preferences > System > Cycles Render Devices > **Metal**, tick the Apple GPU; Render tab > Device **GPU
+  Compute**. Apple Silicon also gets GPU denoising and hardware ray tracing (MetalRT, Auto by default).
+  Intel Macs are no longer supported by Blender 5.
+- Cycles: Noise Threshold 0.02–0.05 with **Max Samples** 256–512 and OIDN denoise; Light Paths bounces 4–6;
+  keep indirect clamping on.
+- Test at 25–50% resolution and with a **Render Region**; use EEVEE for look development and animations.
+- Render tab > **Simplify**: cap Max Subdivision and Texture Limit for previews.
+- Animations: Persistent Data on; render image sequences; keep the Mac plugged in (battery mode throttles
+  the GPU).
+- Unified memory is shared with the system: close heavy apps, and downsize 8K textures to 2K–4K.
+
+## Does this survive export?
+
+Lights, cameras, render settings and color management mostly stay in Blender.
+
+| Blender thing | glTF / engines | Notes |
+| :------------ | :------------- | :---- |
+| Point, Spot, Sun lights | `KHR_lights_punctual` if Include > **Punctual Lights** is on | intensities are converted (Lighting Mode Standard: physical units); expect to re-tune in the engine |
+| Area lights | not exported | fake with an emissive plane or bake the light |
+| World / HDRI | not exported | load the same HDRI as the environment in three.js (`HDRLoader`) or Godot (`WorldEnvironment`) |
+| Cameras | exported if Include > **Cameras** is on | perspective and orthographic |
+| Cycles lighting and shadows | only via **baking** (Combined or Diffuse lighting into textures or lightmaps) | static scenes for the web: bake, then light cheaply in the engine |
+| AgX / color management | not in the file | set tone mapping in the engine to match |
+| Rendered stills and videos | ship as PNG / WebP / AVIF / MP4 / WebM | poster images and fallbacks for web 3D viewers |
+
+Per target: [Web / Three.js](/3d/export/web-threejs/), [Godot](/3d/export/godot/),
+[GTA V](/3d/export/gta-v/) (GTA lights are placed in-game or via map files, not from Blender renders).
+
+## Recipes
+
+### Studio turntable render
+Use for a product or model preview video on a website.
+
+1. Model at the world origin, origin at the bottom center.
+2. Shift+A > Empty > Plain Axes at (0, 0, 0). Select the camera, then the Empty, Ctrl+P > Object: the camera
+   now orbits with the Empty.
+3. Frame 1: Empty Rotation Z = 0, hover the field, **I**. Frame 121: Rotation Z = 360, I.
+4. Frame range 1–120 (so frame 121, identical to frame 1, is never rendered). In the Timeline or Graph Editor:
+   select all keys, T (Interpolation) > **Linear** for constant speed.
+5. Lighting: three area lights parented to nothing (the model turns through fixed light) or parented to the
+   Empty (light turns with the camera).
+6. Output: `//render/frame_`, PNG RGBA, Film Transparent if the page supplies the background; Ctrl+F12.
+7. Encode with the FFmpeg commands above.
+
+### Transparent PNG product shot
+Use for cut-out images on a landing page.
+
+1. Cycles; Film > **Transparent**.
+2. Add a floor plane under the product; Object Properties > Visibility > Mask > **Shadow Catcher**: only the
+   shadow renders.
+3. Key + fill area lights; 85 mm lens; View Transform Khronos PBR Neutral.
+4. Output PNG or WebP, **RGBA**; F12; Image > Save As.
+
+### Quick realistic lighting with an HDRI
+Use to preview a model or light an exterior in one step.
+
+1. Download a 2K–4K HDRI (Poly Haven), World > Color > Environment Texture > Open.
+2. Ctrl+T (Node Wrangler) on it; rotate Mapping Z until the sun direction flatters the model.
+3. Add a Sun with the same direction for crisp shadows (the HDRI's sun is often soft in EEVEE).
+4. Film > Transparent if the background shouldn't show.
+
+### Fast, clean Cycles still on a MacBook
+Use for a portfolio render in minutes, not hours.
+
+1. Device GPU Compute (Metal).
+2. Noise Threshold 0.03, Max Samples 512, Denoise OIDN with Albedo + Normal.
+3. Light Paths: Max Bounces 6; lower Clamping > Indirect Light if fireflies appear.
+4. Render at 50% to check; 100% for the final; save as PNG or EXR.
+
+### Light a character with three points
+Use for character turnarounds and thumbnails.
+
+1. Key: Area light, Size 1 m, 45° left and 40° up, Track To the head; 100–300 W at 2–3 m, then adjust.
+2. Fill: Area 2 m, opposite side, about a third of the key.
+3. Rim: Spot or narrow Area behind, above, aimed at the shoulders; enable Light Linking to the character only
+   so it doesn't hit the backdrop.
+4. World: gray, Strength 0.2. Check with View Transform AgX and False Color for clipped highlights.
+
+### Encode a PNG sequence to MP4 and WebM
+Use after any animation render.
+
+1. Render frames to `//render/frame_` (PNG, RGBA if transparency is needed).
+2. Run the FFmpeg commands from the output section in that folder.
+3. For the web: MP4 H.264 for opaque video, WebM VP9 with alpha for transparent video; use a PNG
+   poster frame.
+
+## References
+
+- [Blender Manual: Render engines](https://docs.blender.org/manual/en/latest/render/render_engines.html): EEVEE, Cycles, Workbench compared
+- [Blender Manual: EEVEE](https://docs.blender.org/manual/en/latest/render/eevee/index.html): [sampling](https://docs.blender.org/manual/en/latest/render/eevee/render_settings/sampling.html), [raytracing](https://docs.blender.org/manual/en/latest/render/eevee/render_settings/raytracing.html), light probes, limitations
+- [Blender Manual: Cycles sampling and denoising](https://docs.blender.org/manual/en/latest/render/cycles/render_settings/sampling.html) and [GPU rendering](https://docs.blender.org/manual/en/latest/render/cycles/gpu_rendering.html): noise threshold, OIDN / OptiX, Metal
+- [Blender Manual: Light objects](https://docs.blender.org/manual/en/latest/render/lights/light_object.html): types, units, typical power values; [Light linking](https://docs.blender.org/manual/en/latest/render/lights/light_linking.html); [World](https://docs.blender.org/manual/en/latest/render/lights/world.html)
+- [Blender Manual: Cameras](https://docs.blender.org/manual/en/latest/render/cameras.html): lens, depth of field, sensor
+- [Blender Manual: Color management views](https://docs.blender.org/manual/en/latest/render/color_management/displays_views.html): AgX, Standard, Khronos PBR Neutral, looks, exposure
+- [Blender Manual: Output properties](https://docs.blender.org/manual/en/latest/render/output/properties/output.html), [Format](https://docs.blender.org/manual/en/latest/render/output/properties/format.html) and [Video formats](https://docs.blender.org/manual/en/latest/files/media/video_formats.html): media types, codecs, alpha support
+- [Blender Manual: Viewport shading](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html) and [Viewport render](https://docs.blender.org/manual/en/latest/editors/3dview/viewport_render.html): matcaps, playblasts
+- [FFmpeg documentation](https://ffmpeg.org/ffmpeg.html): encoding image sequences
+- [Poly Haven HDRIs](https://polyhaven.com/hdris): CC0 environment lighting

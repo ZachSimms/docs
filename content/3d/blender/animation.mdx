@@ -1,0 +1,429 @@
+---
+title: Animating in Blender
+date: 2026-09-27
+order: 5
+---
+
+Animation in **Blender 5.x (5.2 LTS)**: the timeline, keyframes, the Dope Sheet, Graph Editor and NLA,
+actions and their slots (4.4+), armatures, weight painting, Rigify, shape keys, Mixamo, baking, and the glTF
+animation export modes. What keyframes, bones and skinning *are* is in
+[Animation & rigging fundamentals](/3d/fundamentals/animation-rigging/); the destinations are
+[Three.js](/3d/export/web-threejs/), [Godot](/3d/export/godot/) and [GTA V](/3d/export/gta-v/).
+
+## Timeline, frame rate & range
+
+| Setting | Where | Notes |
+| :------ | :---- | :---- |
+| Frame rate | Output Properties › Format › Frame Rate | default 24 fps; 30 or 60 for games and web. Changing it later does not move keys, so motion speeds up or slows down |
+| Frame range | Timeline header Start/End, or Output Properties › Frame Range | default 1–250; this is also the range **Scene** export mode bakes |
+| Time Stretching | Output Properties › Frame Range | remap an existing animation to a new length (Old → New frames) |
+| Preview range | P drag a box / Alt P clears | loop a short segment while working; does not affect rendering |
+| Loop mode (5.2) | Playback popover › Loop | Infinite (default), Stop at End Frame, Stop at Start Frame, Restore Frame, Bounce |
+
+Since 5.0 every animation editor (Timeline, Dope Sheet, Graph Editor, NLA) has the same **Playback
+Controls** footer: play buttons, frame range, keying popover and auto-key.
+
+| Key | Action |
+| :-- | :----- |
+| Space | play / pause (the default Spacebar Action) |
+| Shift Ctrl Space | play backward |
+| Left / Right, Alt Wheel | one frame back / forward |
+| Up / Down | previous / next keyframe (swapped in 5.0: 4.x tutorials say Up = next) |
+| Shift Left / Shift Right | jump to start / end |
+| Ctrl Left / Ctrl Right | jump back / forward by a set delta (5.0+) |
+| Shift RMB drag | scrub from anywhere in an animation editor |
+| Ctrl T | toggle timecode (seconds) instead of frames |
+
+glTF, three.js and Godot store **seconds**, not frames: a key on frame 49 at 24 fps is at 2 s.
+
+## Keyframes & keying sets
+
+A **keyframe** (key) stores a property's value at a frame; Blender interpolates between keys along an
+**F-Curve** (one curve per animated property channel, e.g. X location).
+
+| Do this | How |
+| :------ | :-- |
+| Key the selection | I in the 3D Viewport (Object › Animation › Insert Keyframe): keys the channels set in **Preferences › Animation › Default Key Channels** (Location, Rotation, Scale and Custom Properties by default), or the active keying set if there is one |
+| Pick what to key | K opens the keying set menu (Location, Rotation, Scale, Location Rotation & Scale, Available, Visual…) |
+| Key one property | hover any field and press I, or right-click › Insert Keyframe |
+| Pie of channels | enable "Pie Menu on Drag" in Preferences › Keymap, then drag while holding I |
+| Delete / clear | Alt I deletes keys on this frame; Shift Alt I clears all keys |
+| Auto keying | the record button in the Playback Controls; keys transforms whenever you move, rotate or scale |
+| Custom keying set | Scene Properties › Keying Set, add paths; Shift K sets the active one |
+
+| Preference (Animation) | Effect |
+| :--------------------- | :----- |
+| Default Key Channels | what I keys when no keying set is active |
+| Only Insert Needed (Manual / Auto) | skip keys that would not change the curve; off for manual keying, on for auto-keying by default |
+| Visual Keying | key the result of constraints, not the raw values |
+| Only Insert Available | auto-key only channels that already have F-Curves. **On by default since 5.2**: press I once before auto-keying a new object |
+| Default Interpolation, handles | for new keys: Bézier with Auto Clamped handles |
+
+Key types (Right-click a key › Keyframe Type, or R in the Dope Sheet) only color-code keys: Keyframe,
+Breakdown, Moving Hold, Extreme, Jitter, Generated.
+
+## Dope Sheet & Graph Editor
+
+The **Dope Sheet** shows keys as diamonds per channel (timing); the **Graph Editor** shows the F-Curves
+themselves (value over time, spacing). Its **Action Editor** mode edits one action at a time.
+
+| Key (both editors) | Does |
+| :----------------- | :--- |
+| G / S / E (Dope Sheet) | move / scale in time / extend keys around the playhead |
+| T | Interpolation Mode: Constant, Linear, Bézier, plus easing presets (Sine, Quad, Cubic, Back, Bounce, Elastic…) |
+| Ctrl E | Easing Type for the preset modes: Ease In, Ease Out, Ease In and Out |
+| V | handle type: Free, Aligned, Vector, Automatic, Auto Clamped |
+| Shift E | extrapolation before the first / after the last key: Constant, Linear, **Make Cyclic**, Clear Cyclic |
+| Shift Ctrl M | add an F-Curve modifier (Graph Editor; settings in Sidebar › Modifiers) |
+| Shift D, Ctrl C / Ctrl V | duplicate, copy / paste keys |
+| X (Graph Editor) | delete, or Key › Density › Clean Keyframes to remove redundant keys |
+| Alt O / Shift Alt O | smooth / bake keys to one per frame |
+| Ctrl M | mirror keys (e.g. over the current frame) |
+| Home, Numpad . | frame all / selected |
+
+| Interpolation | Looks like | Use |
+| :------------ | :--------- | :-- |
+| Constant | holds, then jumps | stepped blocking, visibility toggles |
+| Linear | constant speed | turntables, mechanical loops, conveyor belts |
+| Bézier (default) | eases in and out, shaped by handles | almost everything organic |
+| Back / Elastic / Bounce | overshoot / wobble / bounce | UI-style motion, drops |
+
+| F-Curve modifier | Use |
+| :--------------- | :-- |
+| **Cycles** | repeat the keyed range forever (must be first in the stack); "Make Cyclic" adds it |
+| Noise | camera shake, flicker |
+| Stepped | fake low frame rate (stop-motion look) |
+| Limits | clamp values |
+| Smooth (Gaussian) (5.1+) | non-destructive smoothing (also first in the stack) |
+
+F-Curve modifiers do **not** export to glTF on their own: the exporter samples the evaluated curve over the
+action's range, so a Cycles modifier gives you one period, which you then loop in the engine.
+
+## Actions & slots
+
+An **action** is the data-block that stores animation (its F-Curves); objects, materials and shape keys point
+at an action the way a mesh points at a material. Since **4.4** an action has **slots**: each slot holds
+the channels for one animated data-block, so one "DoorOpen" action can drive the door object (slot
+`OBDoor`) and its handle (slot `OBHandle`) together.
+
+<Diagram src="/images/diagrams/blender-actions-slots.svg" label="One action named DoorOpen containing two slots, each with its own F-Curves; the door object and the handle object each point at the action plus one slot; the NLA stack below holds pushed-down actions as strips" caption="Data-blocks point at an action and a slot; pushed-down actions become NLA strips, and each becomes a glTF clip" />
+
+| Term | Meaning |
+| :--- | :------ |
+| Action | named, reusable clip (Walk, Run, Idle). A data-block: append, link, fake-user it |
+| Slot | the part of an action meant for one data-block; name + type (object, material…) is unique inside the action |
+| Active action | the one a data-block is playing and the Dope Sheet edits; set in the Action Editor header or Properties › Animation panel |
+| Channel group | folder of channels, one per bone by default |
+| Layers / strips | exist in the Python API since 4.4, not in the UI yet |
+
+| Operation | Where | Does |
+| :-------- | :---- | :--- |
+| New action | Action Editor header › New | stashes the previous active action automatically |
+| Fake user | shield icon next to the name | keeps an action with 0 users from being deleted on save |
+| Push Down | Action Editor › Action menu, or NLA | moves the active action to a new NLA track (a strip) |
+| Stash | Action Editor › Action | like Push Down but the track is muted |
+| Merge Animation | Action Editor › Action | merges the selected objects' animation into the active object's action, one slot each |
+| Separate Slots | Action Editor › Action | splits every slot into its own action |
+| Replace Action (5.1+) | Object/Pose › Animation, Action Editor | swaps an action on every data-block using it |
+| Manual Frame Range, Cyclic Animation | Dope Sheet / NLA sidebar › Action | the clip's intended range and loop intent; the glTF exporter uses this range for the clip |
+
+## NLA editor & naming clips
+
+The **NLA** (NonLinear Animation) editor stacks actions as **strips** on **tracks**, like layers. The
+orange top row is the active action; everything below is strips.
+
+| Key / menu | Does |
+| :--------- | :--- |
+| Push Down (button on the action row) | active action → new track below |
+| Tab / Shift Tab | tweak mode: edit the strip's action (Shift Tab isolates it) |
+| Shift A | add an action strip to the active track |
+| Shift T | transition strip between two selected strips |
+| Star icon (Solo) | play only this track |
+| H | mute strips |
+| Y | split a strip at the playhead |
+| Shift D / Alt D | linked duplicate (same action) / real copy |
+| Strip sidebar (N) | Repeat, Scale, Blend In/Out, Extrapolation, Blending (Replace, Add, Multiply) |
+
+For export, each action you want as a clip must be **the active action or pushed down / stashed** on an
+object. Exception: with one armature in the export, **Export all Armature Actions** (on by default) also
+exports every other action that fits it, stashed or not; delete or rename test actions first. The glTF clip name is the **action name**; with Merge Animation set to NLA Track Names (or the NLA
+Tracks mode) it is the **track name** instead. Name them for the engine:
+
+| Target | Naming |
+| :----- | :----- |
+| three.js | `AnimationClip.name` = the name; `AnimationClip.findByName(gltf.animations, "Walk")` |
+| Godot | end or start the name with `loop` or `cycle` (`Walk-loop`, `Run_cycle`) to import it looping; a `-loop` or `_cycle` ending is stripped (`Walk`); see [Godot export](/3d/export/godot/) |
+| GTA V | clips go through Sollumz, not glTF; see [GTA V export](/3d/export/gta-v/) |
+
+Prefix actions per character (`Knight_Walk`) when several rigs share a file: every action is visible
+everywhere.
+
+## Armatures, weights & IK
+
+An **armature** is a skeleton object made of **bones**; the mesh follows the bones through **vertex
+groups** (one per bone, weights 0–1) and an **Armature modifier**. Model the character in a **T-pose or
+A-pose**, facing −Y, with applied scale (Ctrl A › All Transforms) before rigging.
+
+| Step | Mode | How |
+| :--- | :--- | :-- |
+| Add an armature | Object | Shift A › Armature (one bone at the 3D cursor) |
+| Add a bone | Edit | Shift A (redo panel: Space, Align, Length, Deform in 5.2) |
+| Extrude a child bone | Edit | E from a tip; Shift E extrudes a mirrored `.L` / `.R` pair (Extrude Forked) |
+| Add by clicking | Edit | Ctrl RMB where the new tip should go |
+| Name for mirroring | Edit | `UpperArm.L` / `UpperArm.R`; Armature › Names › AutoName Left/Right, Symmetrize |
+| Bone roll | Edit | Shift N Recalculate Roll (e.g. Global +Z), Ctrl R set roll, Alt R clear |
+| Parent a bone | Edit | select child, then parent, Ctrl P › Keep Offset / Connected |
+| See bones through the mesh | Object Data › Viewport Display | In Front |
+| Skin the mesh | Object | select mesh, Shift-select armature, Ctrl P › **With Automatic Weights** |
+| Pose | Pose | Ctrl Tab on the armature; G / R / S bones; Alt G / Alt R / Alt S clear |
+| Apply rest pose | Pose | Ctrl A › Apply Pose as Rest Pose |
+| IK | Pose | select the target bone, then the chain tip; Shift I › Target Selected Bone; set **Chain Length** |
+| Remove IK | Pose | Ctrl Alt I |
+
+**Bone roll** is the twist around the bone's own axis; inconsistent roll makes mirrored poses and
+retargeting go wrong. **IK** (inverse kinematics) rotates a chain so its tip reaches a target (feet on the
+ground, hands on a rail); a **Pole Target** aims the knee or elbow. IK always evaluates after other
+constraints on those bones.
+
+**Weight painting** fixes what automatic weights get wrong (armpits, hips, clothing):
+
+1. Armature in Pose Mode, then select the mesh and switch to Weight Paint (Ctrl Tab pie). Uncheck
+   Edit › Lock Object Modes if it blocks you.
+2. Alt LMB (or Shift Ctrl LMB) a bone to show its group; paint with LMB. Red = 1, blue = 0.
+3. Brushes: Paint (blend modes Mix, Add, Subtract…), Blur, Average, Smear, plus the Gradient tool; X mirror in the header.
+4. Weights menu: **Normalize All** (every vertex sums to 1), **Limit Total** to 4 influences (the common
+   engine limit; glTF exports 4 by default), Clean (drop tiny weights), Mirror Vertex Group.
+5. Test with extreme poses; keyframe a few test poses on frames you delete later.
+
+Ryan King Art's beginner rigging tutorial: watch for bone placement, automatic weights, and fixing weights
+at the joints.
+
+<YouTube id="mYgznqvbisM" title="Character Rigging for Beginners (Blender Tutorial)" channel="Ryan King Art" />
+
+## Rigify & game skeletons
+
+**Rigify** generates a full animation rig (IK/FK arms and legs, spine, fingers, face) from a simple
+**meta-rig**. It ships with Blender; enable it in Preferences › Add-ons › Rigify.
+
+1. Object Mode: Shift A › Armature › **Human** (or Basic Human, Basic Quadruped, Bird, Cat, Horse, Shark, Wolf).
+2. Match the character: scale the meta-rig in Pose Mode and Apply Pose as Rest Pose, or move bones in
+   Edit Mode. Keep knees and elbows slightly bent so the IK direction is known; delete the face bones
+   (Face bone collection) if you animate the face with shape keys. Rigify assumes 1 unit = 1 m.
+3. Armature Properties › Rigify › **Generate Rig**. Regenerate after editing the meta-rig; it overwrites
+   the rig in place.
+4. Parent the mesh to the generated rig with Automatic Weights.
+
+| Rigify bone prefix | Role | Engine needs it? |
+| :----------------- | :--- | :--------------- |
+| `DEF-` | deforms the mesh (Deform checked) | **yes**: the only bones the engine should see |
+| `ORG-` | copies of the meta-rig bones | no |
+| `MCH-` | mechanism (helper math) | no |
+| no prefix | animator controls (circles, IK handles) | no |
+
+Game engines want a **small, clean hierarchy of deform bones**: every extra bone costs skinning time and file
+size, and control bones mean nothing outside Blender. Export with glTF **Data › Armature › Export
+Deformation Bones Only** (it bakes the controls' effect onto the deform bones). Rigify's `DEF-` chain is not
+one tidy parent hierarchy, so check the result in the engine; for strict skeletons (retargeting in Godot,
+Unity humanoid) build a separate game skeleton that follows the rig with Copy Transforms constraints and
+bake it (see [Baking](#baking-constraints-ik--physics)).
+
+## Shape keys
+
+**Shape keys** (morph targets, blend shapes) store alternate vertex positions of the same mesh: smiles,
+blinks, phonemes, corrective shapes. Object Data Properties › Shape Keys:
+
+| Step | How |
+| :--- | :-- |
+| Create the Basis | + once: the rest shape |
+| Add a shape | + again, then edit that key in Edit Mode (the others stay untouched) |
+| Preview | Value slider 0–1 (Range Min/Max can extend it) |
+| Animate | hover Value, press I; or drive it from a bone (right-click › Add Driver) |
+| Mirror | Shape Key Specials › Mirror Shape Key, or the 5.0 "Flipped" variants of Join as Shapes |
+| New from the current mix | Shape Key Specials › New Shape from Mix |
+| Make a key the new basis | Make Basis (5.0), or Apply to Basis (5.1) |
+
+| Export fact | Detail |
+| :---------- | :------ |
+| glTF | shape keys → morph targets; their Value animation → morph weight tracks (Data › Shape Keys, Animation › Shape Keys Animations) |
+| Apply Modifiers | the glTF option **cannot** export shape keys; apply modifiers yourself or keep the stack shape-key-safe (Armature is excluded anyway) |
+| Driven by bones | exported only when sampled and the mesh is a direct child of the armature |
+| three.js | `mesh.morphTargetDictionary["Smile"]`, see [Models & animation](/typescript/three-js/models-animation/) |
+| Budget | each key stores a full copy of changed vertex data; keep counts low for web |
+
+## Mixamo characters
+
+[Mixamo](https://www.mixamo.com/) (free with an Adobe ID; not actively supported) auto-rigs a humanoid and
+has a large motion library.
+
+1. Export your mesh as FBX (or OBJ) from Blender: one mesh, T-pose, applied transforms, facing −Y.
+2. Upload, place the chin / wrists / elbows / knees / groin markers, and let it rig.
+3. Pick animations; tick **In Place** for locomotion you'll drive from code. Download **FBX Binary**, the
+   first clip **With Skin**, the rest **Without Skin**, at your project frame rate.
+4. Blender: File › Import › FBX (5.x has a new native importer; each FBX "take" becomes an action).
+
+| Problem | Fix |
+| :------ | :-- |
+| Armature imports at 0.01 scale and 90° X rotation | leave it until every clip is imported; applying scale early breaks the Hips location curves. The glTF export carries the object transform correctly |
+| Need scale 1 / a root bone for games | the [Import Mixamo – Root Motion](https://extensions.blender.org/add-ons/import-mixamo-root-motion/) extension batch-applies transforms and adds a root bone |
+| Want to edit Mixamo motion | [Mixamo Rig](https://extensions.blender.org/add-ons/mixamo-rig/) extension (GPL, Blender 4.2+): one-click IK control rig, bake to and from the skeleton |
+| Bones called `mixamorig:Hips` | three.js strips `:` from track names; rename (see the [bpy sheet](/3d/blender/python-scripting/#rename-bones-for-mixamo)) or keep names consistent across all clips |
+| Each clip arrives as its own armature | keep one armature, assign each imported action to it (Action Editor), push down, delete the extra armatures |
+
+## Object animation for websites
+
+Most web "3D motion" is a few transforms on a loop: a spinning product, a floating logo, a door that opens
+on scroll. Keep it small and seamless.
+
+| Effect | Keys | Settings |
+| :----- | :--- | :------- |
+| Turntable | Rotation Z: 0° at frame 1, 360° at frame 121 | Linear interpolation, Make Cyclic; export the full 1–121 range (engines loop by time, so 360° wraps cleanly to 0°); render video frames 1–120 |
+| Hover bob | Location Z: 0 at 1, 0.1 at 31, 0 at 61 | Bézier (ease in/out), Make Cyclic |
+| Pulse | Scale: 1 → 1.05 → 1 | Sine interpolation, Ease In and Out |
+| Door / drawer | Rotation or Location, two keys | Bézier; one action per state (`Door_Open`) so code can play it |
+| Camera fly-through | Follow Path or keyed camera; Scene mode export | sample every frame; keep it under ~10 s |
+
+When the motion is this simple, animating in code (a `rotation.y += dt` or a tween) is smaller than a clip;
+export clips for motion that's hard to write by hand or for rigged characters. Playback on the web side is
+in [Three.js models & animation](/typescript/three-js/models-animation/) and
+[Web export](/3d/export/web-threejs/).
+
+## Baking constraints, IK & physics
+
+Engines understand keyed transforms of objects and bones and shape key weights. Constraints, IK, drivers,
+F-Curve modifiers and simulations must be **baked** to plain keys.
+
+| Source | Bake with | Notes |
+| :----- | :-------- | :---- |
+| Constraints, IK, drivers on bones | Pose › Animation › **Bake Action** | tick **Visual Keying**; Clear Constraints to drop the rig logic; Only Selected Bones; Bake Data: Pose |
+| Constraints on objects | Object › Animation › Bake Action | Bake Data: Object; Clear Parents if it follows another object |
+| NLA stack (layers, transitions) | NLA › Strip › Bake Action | produces one action per object |
+| Rigid body | Object › Rigid Body › **Bake To Keyframes** | one key per frame per object; then Clean Keyframes |
+| Cloth, soft body, fluids | Physics tab › Cache › Bake; File › Export › Alembic (.abc) for other DCC tools | glTF has no per-vertex animation except shape keys: for the web, use a few shape keys or a vertex animation texture |
+| Geometry Nodes simulation | node Bake, then Alembic or realize per frame | same limits as cloth |
+
+Bake Action options: Start / End / Frame Step, Only Selected Bones, **Visual Keying** (key the final
+transform with constraints applied), Clear Constraints, Clear Parents, **Overwrite Current Action** (off
+creates a new action), Clean Curves, Bake Data (Pose / Object), Channels (Location, Rotation, Scale, B-Bone,
+Custom Properties). The glTF exporter samples animation by default and has **Bake All Objects Animations**
+for constrained objects, but an explicit bake is what you can inspect and fix.
+
+## glTF animation export
+
+File › Export › glTF 2.0 › **Animation** panel. Only object transforms, pose bones and shape key values are
+exported in the core format; material, light and camera property animation needs the experimental
+**Animation Pointer** option (NLA Tracks or Scene mode only).
+
+| Animation mode | Exports | Pick it for |
+| :------------- | :------ | :---------- |
+| **Actions** (default) | every action that is active or on an NLA track (pushed down / stashed) as its own clip; since 4.4 grouped by action, so all slots of one action play together | characters with a clip library: **three.js and Godot** |
+| Active actions merged | the currently assigned actions of all objects as one clip | a single scene-wide animation (intro, product reveal) |
+| Broadcast actions | every compatible action onto every object it fits | shared clips across several rigs |
+| NLA Tracks | each NLA track as a clip, with strip timing, blending and modifiers | when you composed clips from several strips |
+| Scene | what you see in the viewport over the scene range, baked | cutscenes, camera fly-throughs, physics bakes |
+
+| Option | Recommendation |
+| :----- | :------------- |
+| Animation › Merge Animation | by Action (default: clips named after actions); NLA Track Names to name clips after tracks and group same-named tracks across objects |
+| Rest & Ranges › Set all glTF Animation starting at 0 | **on** for loops |
+| Rest & Ranges › Limit to Playback Range | clips every clip to the scene range; off for loops whose closing key sits past the scene end |
+| Armature › Export all Armature Actions | on by default: with a single armature, every action that fits it becomes a clip |
+| Armature › Reset pose bones between actions | on (default), so un-keyed bones don't inherit the previous clip |
+| Data › Armature › Export Deformation Bones Only | on for Rigify and other control rigs |
+| Sampling › Sampling Rate | 1 (every frame); raise to shrink files |
+| Optimize Animation Size | on (default): drops duplicate keys |
+| Data › Skinning › Bone influences | 4 (default); 8 only if the engine supports it |
+
+three.js: each clip is an `AnimationClip` in `gltf.animations`. Godot: each becomes an `Animation` in the
+imported `AnimationPlayer`, looping if the name has `loop` / `cycle`. Checklists live in
+[Web export](/3d/export/web-threejs/) and [Godot export](/3d/export/godot/).
+
+## Recipes
+
+### Loop a walk cycle for Godot
+Use for any looping locomotion clip.
+
+1. Key the contact pose on frame 1 and copy it (Ctrl C / Ctrl V in the Dope Sheet) to frame 25; key the
+   passing and opposite contact poses in between (13 is the mirrored contact: Pose › Paste Pose Flipped).
+2. Graph Editor: select all, Shift E › Make Cyclic; smooth the seam with handles, not extra keys.
+3. Action Editor: name the action `Walk-loop`; in the sidebar set **Manual Frame Range** 1–25 and
+   **Cyclic Animation**. The range includes the closing key, and the exporter uses it as the clip length
+   (1 s at 24 fps), so the engine wraps from frame 25 to the identical frame 1 without a hitch.
+4. Push Down. Export glTF, Animation mode **Actions**, "Set all glTF Animation starting at 0" on.
+5. In Godot the clip imports as `Walk` (suffix stripped) with looping on; enable root motion or move the
+   body in code.
+
+### Export several actions as clips
+Use for a character with Idle / Walk / Run / Jump for three.js or Godot.
+
+1. Create each clip with Action Editor › New, name it, animate, then **Push Down** (or Stash).
+2. Check the NLA: one track per action on the armature; mute nothing you want exported.
+3. Export: Animation mode Actions, Export all Armature Actions on, Reset pose bones on, Deformation Bones Only
+   if you used Rigify.
+4. Verify in [glTF Viewer](https://gltf-viewer.donmccurdy.com/) that the clip list matches.
+
+The same stashing from Python (5.x API, slots set explicitly). Exported with Merge Animation › NLA Track
+Names, the clips are `Walk`, `Run`…; with the default they keep the action names:
+
+```py
+import bpy
+
+arm = bpy.data.objects["Knight"]
+ad = arm.animation_data or arm.animation_data_create()
+for act in bpy.data.actions:
+    if not act.name.startswith("Knight_"):
+        continue
+    track = ad.nla_tracks.new()
+    track.name = act.name.removeprefix("Knight_")
+    strip = track.strips.new(act.name, 1, act)
+    if act.slots:
+        strip.action_slot = act.slots[0]
+ad.action = None  # nothing active; all clips on tracks
+```
+
+### Turntable for a product page
+Use for a 360° product spin that loops forever.
+
+1. Parent the product to an Empty at the origin; animate the Empty's Rotation Z.
+2. Frame 1: key Z = 0°. Frame 121: key Z = 360°. Select both keys, T › Linear, Shift E › Make Cyclic.
+3. For a rendered video, set the scene range 1–120 (frame 121 would repeat frame 1). For glTF, keep the
+   action's full 1–121 range and leave Limit to Playback Range off: the clip lasts exactly 5 s at 24 fps.
+4. Export with Animation mode Actions and "starting at 0"; in three.js play it with `LoopRepeat`.
+
+### Fix a Mixamo character for the web
+Use when a Mixamo FBX looks right in Blender but wrong in the browser.
+
+1. Import all FBX clips; merge their actions onto one armature and push each down with a clean name.
+2. Rename bones to drop `mixamorig:`. Blender renames the matching channels in the actions the armature
+   uses (active and on its NLA tracks), so push every clip down first, then play each one to check.
+3. Remove the extra armatures and meshes; apply transforms last, or leave the 0.01 scale and let glTF carry it.
+4. Export: Actions mode, Deformation Bones Only off (Mixamo bones already all deform), Limit Total weights 4.
+
+### Bake an IK rig for export
+Use when feet slide or hands float in the engine but look right in Blender.
+
+1. Select the armature, Pose Mode, select all bones (A).
+2. Pose › Animation › Bake Action: frames of the clip, **Visual Keying** on, Clear Constraints on,
+   Overwrite Current Action off, Bake Data Pose.
+3. Rename the baked action (`Knight_Climb`), push it down, and export only the baked actions.
+4. Keep the original rigged action (fake user) for further edits.
+
+### Face animation with shape keys
+Use for blinking, lip sync or expressions on a web or Godot character.
+
+1. Model Basis, then keys `Blink`, `Smile`, `A`, `O`, `M` (edit each in Edit Mode with the key selected).
+2. Key the Values in an action (or drive them from a jaw bone).
+3. Don't enable "Apply Modifiers" on export (it drops shape keys); apply Mirror or Subdivision before
+   making the keys.
+4. three.js: set `morphTargetInfluences[dict["Blink"]]`; Godot: `mesh.set_blend_shape_value()`.
+
+## References
+
+- [Blender Manual: Animation](https://docs.blender.org/manual/en/latest/animation/index.html): keyframes, keying sets, actions & slots, shape keys, constraints, drivers
+- [Blender Manual: Actions](https://docs.blender.org/manual/en/latest/animation/actions.html): slots, slot types, assigning and replacing actions
+- [Blender Manual: Graph Editor](https://docs.blender.org/manual/en/latest/editors/graph_editor/index.html), [Dope Sheet](https://docs.blender.org/manual/en/latest/editors/dope_sheet/index.html) and [NLA Editor](https://docs.blender.org/manual/en/latest/editors/nla/index.html): shortcuts, F-Curve modifiers, Bake Action options
+- [Blender Manual: Armatures](https://docs.blender.org/manual/en/latest/animation/armatures/index.html), [weight painting](https://docs.blender.org/manual/en/latest/sculpt_paint/weight_paint/index.html) and [Rigify](https://docs.blender.org/manual/en/latest/addons/rigify/index.html)
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): animation modes and every export option
+- [Blender release notes 5.0](https://developer.blender.org/docs/release_notes/5.0/animation_rigging/), [5.1](https://developer.blender.org/docs/release_notes/5.1/animation_rigging/) and [5.2](https://developer.blender.org/docs/release_notes/5.2/animation_rigging/): what changed in animation
+- [Godot: node type customization](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/node_type_customization.html): the `loop` / `cycle` clip names
+- [Mixamo Rig](https://extensions.blender.org/add-ons/mixamo-rig/) and [Import Mixamo – Root Motion](https://extensions.blender.org/add-ons/import-mixamo-root-motion/) extensions
+- [Animation & rigging fundamentals](/3d/fundamentals/animation-rigging/): the concepts behind this sheet

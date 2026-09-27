@@ -19,7 +19,10 @@ export type FunctionName =
   | "cos"
   | "tan"
   | "exp"
-  | "ln";
+  | "ln"
+  | "log2"
+  | "nlogn"
+  | "pow2";
 
 /** A catalog entry: the function plus a domain and range that show it well. */
 export interface CatalogueEntry {
@@ -46,6 +49,10 @@ export const FUNCTIONS: Record<FunctionName, CatalogueEntry> = {
   tan: { f: Math.tan, domain: [-Math.PI, Math.PI], range: [-4, 4], formula: "tan x" },
   exp: { f: Math.exp, domain: [-3, 2.2], range: [-1, 8], formula: "eˣ" },
   ln: { f: Math.log, domain: [0, 8], range: [-3, 3], formula: "ln x" },
+  // Growth rates for Big-O comparisons: the variable is n and the windows start at n = 0.
+  log2: { f: Math.log2, domain: [0, 16], range: [0, 5], formula: "log₂ n" },
+  nlogn: { f: (x) => x * Math.log2(x), domain: [0, 16], range: [0, 70], formula: "n log₂ n" },
+  pow2: { f: (x) => 2 ** x, domain: [0, 10], range: [0, 100], formula: "2ⁿ" },
 };
 
 /** One curve: a catalog function with an optional transform and legend label. */
@@ -168,12 +175,28 @@ export interface Tick {
   readonly label: string;
 }
 
+/** Round tick spacings, smallest first; {@link intStep} picks from these. */
+const NICE_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000] as const;
+
+/** Most integer ticks an axis shows before it switches to a coarser round step. */
+const MAX_TICKS = 11;
+
+/**
+ * Spacing between integer ticks for an axis spanning `count` integers: every one up to 9,
+ * then the smallest round step that keeps the axis to {@link MAX_TICKS} ticks.
+ */
+function intStep(count: number): number {
+  if (count <= 9) return 1;
+  return NICE_STEPS.find((s) => s >= 2 && Math.ceil(count / s) <= MAX_TICKS) ?? NICE_STEPS.at(-1)!;
+}
+
 /**
  * Ticks for an axis window.
  *
- * `"int"` gives every integer in the window (thinned to every 2 when there are
- * more than 9); `"pi"` gives multiples of π labeled `-2π … 2π`. Zero is never
- * labeled, since the axes cross there.
+ * `"int"` gives every integer in the window, thinned to every 2 when there are
+ * more than 9 and to a round step (5, 10, 20…) when even that would exceed
+ * {@link MAX_TICKS}; `"pi"` gives multiples of π labeled `-2π … 2π`. Zero is
+ * never labeled, since the axes cross there.
  */
 export function ticks(window: readonly [number, number], kind: "int" | "pi" = "int"): Tick[] {
   const [lo, hi] = window;
@@ -181,9 +204,11 @@ export function ticks(window: readonly [number, number], kind: "int" | "pi" = "i
   const first = Math.ceil(lo / unit);
   const last = Math.floor(hi / unit);
   const count = last - first + 1;
-  const step = kind === "int" && count > 9 ? 2 : 1;
+  const step = kind === "int" ? intStep(count) : 1;
+  // Steps above 2 land on round multiples (10, 20, …); 1 and 2 count from the window's edge as before.
+  const start = step > 2 ? Math.ceil(first / step) * step : first;
   const out: Tick[] = [];
-  for (let n = first; n <= last; n += step) {
+  for (let n = start; n <= last; n += step) {
     if (n === 0) continue;
     const label = kind === "pi" ? (n === 1 ? "π" : n === -1 ? "-π" : `${n}π`) : String(n);
     out.push({ at: n * unit, label });

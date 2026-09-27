@@ -1,0 +1,342 @@
+---
+title: Materials, textures & lighting
+date: 2026-09-27
+order: 2
+---
+
+How surfaces and light work in any modern renderer: the PBR metal/roughness model and sane values, texture
+maps and their color spaces, normal maps, packing and baking, light types and units, image-based and
+three-point lighting, shadows and global illumination, tone mapping, and cameras. Geometry basics are in
+[Core 3D concepts](/3d/fundamentals/core-concepts/); doing it in Blender is in
+[Materials & UVs](/3d/blender/materials-uv/) and [Lighting & rendering](/3d/blender/lighting-rendering/).
+
+## PBR: the metal/roughness model
+
+**PBR** (physically based rendering) describes a surface by measurable properties instead of hand-tuned
+"shininess", so one material looks right under any light. glTF, three.js, Godot and Blender's
+**Principled BSDF** all share the **metal/roughness** model.
+
+<Diagram src="/images/diagrams/3d-pbr-maps.svg" label="Five texture swatches in a row: base color (sRGB), normal, occlusion, roughness and metallic (all Non-Color), each with an arrow into one material sphere. A bracket over occlusion, roughness and metallic notes that glTF packs them into one ORM image." caption="One material, five maps: only base color is a color; the rest are data." />
+
+| Input | Controls | Values | Map color space |
+| :---- | :------- | :----- | :-------------- |
+| Base color (albedo) | diffuse color of non-metals; reflection color of metals; no light or shadow painted in | see the values table | sRGB |
+| Metallic | metal or not | 0 or 1; in-between only where they blend (rust, worn edges, dirt) | Non-Color |
+| Roughness | micro-surface: 0 = mirror, 1 = fully matte (gloss = 1 − roughness in older workflows) | 0–1 | Non-Color |
+| Normal | fakes small bumps by bending the shading normal | tangent-space RGB | Non-Color |
+| Ambient occlusion (AO) | darkens crevices that ambient light can't reach; affects indirect light only | 0 (hidden) – 1 (open) | Non-Color |
+| Emission | light the surface gives off (screens, neon, lava) | color × strength | sRGB (color) |
+| Alpha / opacity | cutout (alpha clip / mask) or see-through (blend) | 0–1 | Non-Color (often base color's A channel) |
+| IOR | index of refraction: how strongly non-metals reflect head-on | 1.5 default (≈4% reflectance); water 1.33 | value |
+| Transmission | light passing through (glass, liquids); costly in real time | 0–1 | Non-Color |
+| Extras | clearcoat (car paint), sheen (velvet), subsurface (skin, wax), anisotropy (brushed metal) | per extension | varies |
+
+glTF core covers base color, metallic, roughness, normal, occlusion, emission and alpha; the rest travel
+as `KHR_materials_*` extensions that Blender exports and three.js reads. Godot's `StandardMaterial3D`
+covers most of them natively.
+
+## Typical values
+
+Values from [Physically Based](https://physicallybased.info/), as **linear** RGB (the number you type in a
+color field set to linear; image textures store the brighter-looking sRGB equivalent).
+
+| Material | Base color (linear RGB) | Metallic | Roughness (typical) | IOR |
+| :------- | :---------------------- | :------- | :------------------ | :-- |
+| Charcoal (darkest common) | 0.02, 0.02, 0.02 | 0 | 0.9 | 1.5 |
+| Tire rubber | 0.023, 0.023, 0.023 | 0 | 0.7 | 1.5 |
+| Brick | 0.26, 0.10, 0.06 | 0 | 0.9 | 1.5 |
+| Concrete | 0.51, 0.51, 0.51 | 0 | 0.5–0.9 | 1.5 |
+| Skin (darkest → lightest) | 0.09, 0.05, 0.02 → 0.85, 0.64, 0.55 | 0 | 0.4–0.6 | 1.4 |
+| Fresh snow (brightest common) | 0.85, 0.85, 0.85 | 0 | 0.5 | 1.31 |
+| Water / glass | 1, 1, 1 + transmission 1 | 0 | 0–0.1 | 1.33 / 1.52 |
+| Iron | 0.53, 0.51, 0.49 | 1 | 0.3–0.6 | n/a |
+| Aluminum | 0.92, 0.92, 0.92 | 1 | 0.2–0.5 | n/a |
+| Copper | 0.93, 0.62, 0.52 | 1 | 0.2–0.5 | n/a |
+| Gold | 1.0, 0.77, 0.31 | 1 | 0.1–0.4 | n/a |
+
+| Rule | Why |
+| :--- | :-- |
+| Non-metals (dielectrics): base color between ~0.02 and ~0.85 linear (≈ 40–240 in 8-bit sRGB) | nothing real absorbs or reflects all light |
+| Never pure black (0) or pure white (1) albedo | black reads as a hole and kills bounce light; white glows and blows out GI (bounced light) |
+| Metals: bright, often tinted base color (≈ 0.5–1.0 linear) and metallic = 1 | a metal's color is its reflection; dark metal looks like plastic |
+| Metals need something to reflect | with no environment map or HDRI (a 360° photo of surroundings, see [Lighting a scene](#lighting-a-scene)), metallic = 1 renders nearly black |
+| Put variation in roughness | roughness maps sell realism more than base color detail does |
+| Keep lighting out of base color | baked shadows in albedo double up with real shadows |
+
+## Texture maps & color spaces
+
+A **texture map** is an image the material samples through the mesh's UVs. Some maps hold **colors**,
+others hold **data** (numbers stored in pixels). They need different **color spaces**:
+
+- **sRGB**: the image's values are gamma-encoded for human eyes; the renderer decodes them to linear before
+  lighting. Right for anything you'd call a color.
+- **Non-Color / linear**: the numbers are used as-is. Right for anything that is a measurement.
+
+| Map | Color space | Blender Image Texture node | three.js `texture.colorSpace` | Godot |
+| :-- | :---------- | :------------------------- | :---------------------------- | :---- |
+| Base color, emission | sRGB | sRGB | `SRGBColorSpace` | automatic in albedo / emission slots |
+| Normal | linear | **Non-Color** | `NoColorSpace` (default) | import as normal map (detected when used) |
+| Roughness, metallic, AO, ORM | linear | **Non-Color** | `NoColorSpace` (default) | automatic in those slots |
+| Height / displacement, masks, opacity | linear | **Non-Color** | `NoColorSpace` (default) | same |
+
+This is the most common beginner bug. The symptoms:
+
+| Mistake | Looks like |
+| :------ | :--------- |
+| Data map left on sRGB | roughness too shiny (0.5 becomes ≈ 0.21), normal maps light from the wrong angle, lumpy shading |
+| Color map on Non-Color | washed-out, pale, low-contrast colors |
+| three.js texture loaded by hand without `SRGBColorSpace` | same washed-out look; `GLTFLoader` sets it for you |
+
+Also set the output: three.js `renderer.outputColorSpace` is `SRGBColorSpace` by default; leave it.
+
+## Normal, bump & displacement maps
+
+| Technique | Stores | Moves geometry? | Cost | Use |
+| :-------- | :----- | :-------------- | :--- | :-- |
+| Normal map | per-pixel surface direction (RGB = XYZ) | no, shading only | cheap | the default for game and web detail |
+| Bump / height map | grayscale height; renderer derives normals | no | cheap, softer than normal maps | quick detail in Blender; converts to normal maps |
+| Parallax occlusion | height, ray-marched in the shader | no, but fakes depth | medium | bricks, cobbles in engines (Godot has it; not in glTF) |
+| Displacement | grayscale height | **yes**: vertices move | needs dense mesh or subdivision | offline renders, terrain; bake to geometry for export |
+
+**Tangent-space** normal maps (the light blue-purple ones; flat = RGB 128, 128, 255) store directions
+relative to the surface, so they survive deformation and reuse. They need **tangents** on the mesh; the
+standard is **MikkTSpace**, which Blender bakes with and glTF expects.
+
+**OpenGL vs DirectX:** the green channel means "up" in OpenGL style (Y+) and "down" in DirectX style (Y−).
+
+| Convention | Used by |
+| :--------- | :------ |
+| OpenGL (Y+) | Blender, glTF, three.js, Godot, Unity |
+| DirectX (Y−) | Unreal, many texture sites' "DX" downloads |
+
+Wrong convention: bumps look like dents, lit from the opposite side. Fix by inverting the green channel
+(or download the "GL" version).
+
+## Resolution, power of two & compression
+
+| Size | Uncompressed RGBA8 in GPU memory (+ mipmaps) | Typical use |
+| :--- | :------------------------------------------- | :---------- |
+| 512² | 1 MB (≈ 1.3 MB) | small props, mobile |
+| 1024² (1K) | 4 MB (≈ 5.3 MB) | props, web default |
+| 2048² (2K) | 16 MB (≈ 21 MB) | hero assets, web max on phones |
+| 4096² (4K) | 64 MB (≈ 85 MB) | film, desktop hero close-ups |
+
+- The **PNG/JPEG file size is not the memory cost**: every image is decompressed to the table above on the
+  GPU. Ten 4K maps are ~850 MB of VRAM, which crashes phones.
+- **Power-of-two** sizes (256, 512, 1024, 2048) are safest: mipmaps and GPU block compression want them
+  (or at least multiples of 4). WebGL2 accepts other sizes, but some pipelines don't.
+- **Mipmaps** are pre-shrunk copies used at distance; they stop shimmering and cost +33% memory.
+- **GPU compression** (KTX2 / Basis Universal on the web, BCn on desktop, ASTC/ETC on mobile) stays compressed
+  in VRAM, about 4–8× smaller; see [three.js compression decoders](/typescript/three-js/models-animation/#compression-decoders).
+
+## Channel packing (ORM)
+
+Grayscale maps use one channel each, so engines pack three into one RGB image: one file, one texture
+fetch, a third of the memory.
+
+| Channel | glTF (and three.js, Unreal "ORM") |
+| :------ | :-------------------------------- |
+| R | occlusion (AO) |
+| G | roughness |
+| B | metallic |
+
+glTF's `metallicRoughnessTexture` reads **G = roughness, B = metallic**; `occlusionTexture` reads **R**, and
+the two may point at the same image. Blender's glTF exporter packs them for you when the maps are wired
+separately. Godot has `ORMMaterial3D` for this layout. Other engines pack differently (Unity HDRP's mask map
+is metallic, AO, detail, smoothness), so check before reusing a texture set.
+
+## Procedural textures & baking
+
+| | Image textures | Procedural textures |
+| :- | :------------- | :------------------ |
+| Made of | pixels painted, photographed or generated | math: noise, Voronoi, gradients, node graphs |
+| Resolution | fixed | infinite, no UVs needed for 3D noise |
+| Tweakable | repaint | change a number |
+| Exports to glTF / engines | yes | **no**: engines can't run Blender node trees |
+
+**Baking** renders something expensive into an image the engine can sample cheaply:
+
+| Bake | From | Into |
+| :--- | :--- | :--- |
+| Procedural → image | Blender node material | base color, roughness… maps |
+| High-poly → low-poly | sculpted detail | normal map (+ AO) on the light mesh |
+| Ambient occlusion | the mesh's own crevices | AO map |
+| Lighting | lights + GI of a static scene | lightmap (needs unique UV2) |
+| Animation / simulation | constraints, physics | keyframes or shape keys (see [Animation & rigging](/3d/fundamentals/animation-rigging/)) |
+
+Games bake because runtime cost matters more than flexibility. Blender bakes with Cycles; the steps are in
+[Blender materials & UVs](/3d/blender/materials-uv/).
+
+## Lights and their units
+
+| Type | Emits | Blender | glTF (`KHR_lights_punctual`) | three.js | Godot |
+| :--- | :---- | :------ | :--------------------------- | :------- | :---- |
+| Point | all directions from a point | Point (W) | `point` (candela) | `PointLight` | `OmniLight3D` |
+| Spot | a cone | Spot (W) | `spot` (candela) | `SpotLight` | `SpotLight3D` |
+| Sun / directional | parallel rays from infinitely far; position doesn't matter | Sun (W/m²) | `directional` (lux) | `DirectionalLight` | `DirectionalLight3D` |
+| Area | a rectangle or disk; soft shadows | Area (W) | not supported | `RectAreaLight` (no shadows) | none: use emission + GI, or light size for soft shadows |
+| Emissive surface | a glowing mesh | Emission shader | emissive material | emissive material | emission (+ GI to light others) |
+| Sky / ambient | everywhere | World | not stored | `HemisphereLight`, `scene.environment` | `WorldEnvironment` |
+
+Units differ, so brightness rarely survives export:
+- **Blender**: point, spot and area power in **watts** of radiant power (not a bulb's electrical watts);
+  sun strength in **W/m²** (the manual gives ~1000 for a clear sky; lower it with exposure, since eyes adapt
+  and renders don't).
+- **glTF**: point and spot in **candela**, directional in **lux**. Blender's exporter converts with its
+  Lighting Mode (Standard = physical units, or Unitless).
+- **three.js**: `GLTFLoader` passes those values straight to its lights; `PointLight` and `SpotLight`
+  intensity is documented in candela.
+- **Godot**: unitless energy by default; physical units (lumens, lux) are an opt-in project setting.
+
+Plan to re-balance lights in the engine, or bake the lighting.
+
+## Lighting a scene
+
+**Image-based lighting (IBL)**: an **HDRI** (a 360° high-dynamic-range photo, `.hdr` / `.exr`) wraps the
+scene, lights it from every direction and gives shiny surfaces something to reflect. Fastest route to a
+believable look; [Poly Haven](https://polyhaven.com/hdris) has free CC0 ones. Blender: World > Environment
+Texture. three.js: `scene.environment`. Godot: `WorldEnvironment` with a panorama sky. glTF doesn't carry
+it, so set it up again in the engine.
+
+**Three-point lighting** is the classic setup for a character or product:
+
+<Diagram src="/images/diagrams/3d-three-point-lighting.svg" label="Top-down view: a subject in the middle facing a camera below it. A strong key light sits front-left, a weaker fill light front-right, and a rim light behind the subject on the right." caption="Key shapes the form, fill softens its shadows, rim separates it from the background." />
+
+| Light | Where | Strength |
+| :---- | :---- | :------- |
+| Key | ~45° to one side of the camera, ~30–45° above | brightest; sets the shadow direction |
+| Fill | the other side, lower | ~25–50% of the key; an HDRI or sky often does this job |
+| Rim / back | behind the subject, above | bright, thin highlight on the silhouette |
+
+## Shadows & global illumination
+
+**Direct light** travels from a light straight to a surface. **Global illumination (GI)** adds light that
+bounces: the red glow a red wall throws on a white floor, light filling a room from a window.
+
+| Technique | What | Where |
+| :-------- | :--- | :---- |
+| Shadow maps | render depth from the light's view; per shadow-casting light, each frame | every rasterizer; watch resolution, bias (acne vs "peter-panning"), cascades for the sun |
+| Contact / screen-space shadows | small shadows the shadow map misses | Godot, EEVEE |
+| Path-traced GI | full bounced light | Cycles; the reference |
+| Screen-space GI / ray tracing | bounce from what's on screen | EEVEE (4.2+), Godot SSIL |
+| Real-time GI volumes | voxels or signed distance fields | Godot `VoxelGI`, `SDFGI` |
+| Baked lightmaps | GI precomputed into textures on static meshes | Godot `LightmapGI`; three.js `lightMap`; Blender bakes |
+| Reflection probes / env maps | a captured cube of surroundings for reflections | Godot `ReflectionProbe`; three.js env maps |
+
+| | Baked lightmaps | Real-time lighting |
+| :- | :-------------- | :----------------- |
+| Runtime cost | almost free | shadow maps and GI every frame |
+| Quality | high: soft shadows, bounces | limited by the frame budget |
+| Moving lights or objects | no (static only) | yes |
+| Needs | unique second UV set, bake time, texture memory | nothing extra |
+| Best for | architecture, web scenes, static levels | day/night cycles, destructible or dynamic scenes |
+
+Common hybrid: bake static lighting, add one real-time light for moving characters, and use probes for
+reflections. three.js has no built-in GI, so web scenes bake or rely on an HDRI.
+
+## Exposure & tone mapping
+
+Rendered light values range from near 0 to thousands (high dynamic range); screens show 0–1. **Exposure**
+scales the scene (one "stop" = twice or half as bright), then **tone mapping** squeezes the range into the
+display without harsh clipping.
+
+| Tone mapper | Look | Where |
+| :---------- | :--- | :---- |
+| None / Standard / Linear | clips highlights; colors match input exactly | Blender "Standard"; for UI, pixel art, color checks |
+| Filmic | soft film-like highlights, desaturates | Blender (default before 4.0), Godot |
+| AgX | smooth highlight rolloff that keeps hues; Blender's default since 4.0 | Blender, three.js `AgXToneMapping`, Godot |
+| ACES | punchy, contrasty filmic curve | three.js `ACESFilmicToneMapping`, Godot |
+| Khronos PBR Neutral | keeps base colors true under neutral light; for products | Blender (4.2+), three.js `NeutralToneMapping` |
+
+Use the same tone mapper in Blender and the engine, or the export will look different from the render.
+Texture maps and baked colors should be authored and baked without tone mapping in them.
+
+## Cameras
+
+| Setting | Meaning | Notes |
+| :------ | :------ | :---- |
+| Focal length (mm) | lens zoom; with the sensor size it sets the field of view | 24–35 mm wide, 50 mm "normal", 85 mm+ portrait / tele; Blender uses mm |
+| Field of view (FOV) | the angle the camera sees | three.js `fov` is vertical, in degrees (default 50); Godot `fov` vertical by default (75) |
+| Sensor size | film or chip width | Blender default 36 mm (full frame) |
+| Depth of field | blur in front of and behind the focus distance; stronger at low f-stop | cheap in Cycles, a post effect in real time |
+| Perspective vs orthographic | distant things smaller vs no foreshortening | ortho for isometric games, technical views, UI, sun shadows |
+| Clip start / end (near / far) | nothing closer or farther is drawn | depth precision depends on far ÷ near: raise near first (three.js defaults 0.1 / 2000, Godot 0.05 / 4000) |
+
+Converting a Blender focal length to an engine FOV:
+$\text{FOV} = 2 \arctan\left(\frac{\text{sensor}}{2 f}\right)$. A 50 mm lens on a 36 mm sensor gives
+≈ 39.6° across the sensor's fitted side; use the sensor height (or Blender's Sensor Fit: Vertical) when the
+engine wants vertical FOV.
+
+## Recipes
+
+### Debug a black or pink material
+Work down the list; the first match is usually it.
+
+| Symptom | Cause | Fix |
+| :------ | :---- | :-- |
+| Magenta / pink in Blender | image file missing or moved | File > External Data > Find Missing Files, or pack resources |
+| Black metal | metallic = 1 with nothing to reflect | add an HDRI / environment map |
+| Black or dark everywhere in the engine | no lights, or exposure too low | add a light or environment; check exposure |
+| Dark or missing faces | flipped normals + backface culling | recalculate normals (see [Core concepts](/3d/fundamentals/core-concepts/#normals)) |
+| Weird lighting direction, lumpy look | normal map on sRGB, or DirectX green channel | Non-Color; invert green |
+| Too shiny or too matte | roughness map on sRGB | Non-Color |
+| Pale, washed-out colors | base color on Non-Color, or missing `SRGBColorSpace` | sRGB |
+| Fine in Blender, flat gray in the engine | procedural nodes or unsupported nodes | bake to image textures |
+
+### Wire a texture set correctly
+Use for any downloaded or generated set (base color, normal, roughness, metallic, AO).
+
+- [ ] Base color → Base Color, **sRGB**
+- [ ] Normal → Normal Map node (Tangent Space) → Normal, **Non-Color**; check GL vs DX
+- [ ] Roughness, metallic, AO → **Non-Color**; ORM split with a Separate Color node (R, G, B)
+- [ ] Alpha → Alpha, and set the material to clip or blend
+- [ ] All maps share the same UV map and resolution
+- [ ] Preview under an HDRI, not just the default light
+
+### Make a material survive export
+Use before exporting to glTF, three.js or Godot.
+
+- [ ] One Principled BSDF per material, fed only by Image Texture, Normal Map and Separate Color nodes
+- [ ] Procedural, mix and custom nodes baked to images
+- [ ] Texture sizes power of two, ≤ 2K for web
+- [ ] Emission strength and alpha mode set deliberately
+- [ ] Few materials per object (each is a draw call)
+- [ ] Re-check in the target engine with its own lights and tone mapper
+
+### Light a hero shot fast
+Use for a product, prop or character render or a web viewer.
+
+1. HDRI for ambient light and reflections; rotate it until the highlight falls where you want.
+2. Add a key light ~45° to the side and above; the HDRI now acts as fill.
+3. Add a rim light behind to separate the subject from the background.
+4. Tone mapping: AgX (or Khronos PBR Neutral for exact product colors); set exposure so whites aren't clipped.
+5. Soft shadows: make the key light larger (Blender radius / size).
+
+### Pick a texture resolution
+Use when choosing how big each map should be.
+
+1. Choose a texel density for the project (e.g. 512 px/m for third-person, 1024 px/m for first-person).
+2. Longest side of the UV area in meters × density = pixels needed: a 2 m wall at 512 px/m → 1024.
+3. Round up to the next power of two, cap by target (2K on phones).
+4. Reuse tiling textures and trim sheets for big surfaces instead of one huge unique texture.
+
+### Match a Blender camera in the engine
+Use when a web or game view must match a Blender render.
+
+1. Note Blender's focal length, sensor size, Sensor Fit, and the render resolution.
+2. Convert to vertical FOV with the formula above (use sensor height = sensor width × height ÷ width for a
+   horizontal fit).
+3. Export the camera with glTF (it stores vertical FOV) or set `fov` by hand in three.js / Godot.
+4. Match near/far clip and the tone mapper.
+
+## References
+
+- [MDN: Explaining basic 3D theory](https://developer.mozilla.org/en-US/docs/Games/Techniques/3D_on_the_web/Basic_theory): materials, lighting and the fragment stage in plain words
+- Blender Manual: [Principled BSDF](https://docs.blender.org/manual/en/latest/render/shader_nodes/shader/principled.html), [Image Texture node](https://docs.blender.org/manual/en/latest/render/shader_nodes/textures/image.html), [color management](https://docs.blender.org/manual/en/latest/render/color_management/index.html), [light objects and units](https://docs.blender.org/manual/en/latest/render/lights/light_object.html), [cameras](https://docs.blender.org/manual/en/latest/render/cameras.html), [baking](https://docs.blender.org/manual/en/latest/render/cycles/baking.html)
+- [Blender Manual: glTF 2.0 add-on](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): which material setups export, ORM packing, lighting modes
+- [Khronos glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html): the metallic-roughness model, texture channels, color spaces; [KHR_lights_punctual](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_lights_punctual/README.md): light units
+- [three.js manual: color management](https://threejs.org/manual/#en/color-management): `colorSpace`, output and tone mapping
+- Godot docs: [Standard Material 3D](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html), [lights and shadows](https://docs.godotengine.org/en/stable/tutorials/3d/lights_and_shadows.html), [physical light units](https://docs.godotengine.org/en/stable/tutorials/3d/physical_light_and_camera_units.html), [GI introduction](https://docs.godotengine.org/en/stable/tutorials/3d/global_illumination/introduction_to_global_illumination.html), [environment and post-processing](https://docs.godotengine.org/en/stable/tutorials/3d/environment_and_post_processing.html)
+- [Physically Based](https://physicallybased.info/): measured base color, IOR and light values
+- [LearnOpenGL: PBR theory](https://learnopengl.com/PBR/Theory): the math behind metal/roughness, Fresnel and energy conservation
+- [Poly Haven HDRIs](https://polyhaven.com/hdris): free CC0 environment maps

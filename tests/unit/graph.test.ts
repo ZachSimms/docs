@@ -26,6 +26,30 @@ describe("evaluate", () => {
   });
 });
 
+describe("growth-rate functions (Big-O)", () => {
+  it("evaluates log₂ n, n log₂ n and 2ⁿ", () => {
+    expect(evaluate({ fn: "log2" }, 8)).toBe(3);
+    expect(evaluate({ fn: "nlogn" }, 8)).toBe(24);
+    expect(evaluate({ fn: "pow2" }, 10)).toBe(1024);
+  });
+
+  it("is undefined where log n is (n ≤ 0), so sampling skips it", () => {
+    expect(Number.isFinite(evaluate({ fn: "log2" }, 0))).toBe(false);
+    expect(Number.isNaN(evaluate({ fn: "nlogn" }, -1))).toBe(true);
+    const segments = sampleCurve({ fn: "nlogn" }, [-2, 4], [-1, 10]);
+    expect(segments.flat().every(([x]) => x > 0)).toBe(true);
+  });
+
+  it("has Big-O legends and windows that start at n = 0", () => {
+    expect(curveLabel({ fn: "log2" })).toBe("log₂ n");
+    expect(curveLabel({ fn: "nlogn" })).toBe("n log₂ n");
+    expect(curveLabel({ fn: "pow2" })).toBe("2ⁿ");
+    for (const fn of ["log2", "nlogn", "pow2"] as const) {
+      expect(FUNCTIONS[fn].domain[0]).toBe(0);
+    }
+  });
+});
+
 describe("sampleCurve", () => {
   it("returns one continuous segment for a smooth function", () => {
     const segments = sampleCurve({ fn: "square" }, [-3, 3], [-1, 9]);
@@ -88,6 +112,13 @@ describe("ticks", () => {
   it("lists integers in the window, skipping zero and thinning long axes", () => {
     expect(ticks([-3, 3]).map((t) => t.label)).toEqual(["-3", "-2", "-1", "1", "2", "3"]);
     expect(ticks([-10, 10]).map((t) => t.at)).toEqual([-10, -8, -6, -4, -2, 2, 4, 6, 8, 10]);
+  });
+
+  it("keeps tall axes to about ten ticks on round multiples", () => {
+    expect(ticks([0, 70]).map((t) => t.at)).toEqual([10, 20, 30, 40, 50, 60, 70]);
+    expect(ticks([0, 100]).map((t) => t.at)).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    expect(ticks([0, 16]).map((t) => t.at)).toEqual([2, 4, 6, 8, 10, 12, 14, 16]);
+    expect(ticks([0, 40]).map((t) => t.at)).toEqual([5, 10, 15, 20, 25, 30, 35, 40]);
   });
 
   it("labels multiples of pi", () => {

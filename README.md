@@ -107,6 +107,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | ` ```html demo tailwind ` fence                                         | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
 | `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
 | `<YouTube id="…" title="…" channel="…" start={30} />`                   | lazy 16:9 embed (youtube-nocookie) with a caption link; bad ids fail the build |
+| `<Graph title="…" curves={[{ fn: "nlogn", label: "O(n log n)" }]} domain={[0, 16]} range={[0, 70]} />` | SVG function plot from the `lib/graph.ts` catalog (math functions plus `log2`, `nlogn`, `pow2` for Big-O); `a·f(b(x − h)) + k` transforms |
 | `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
 | `##` / `###` headings                                                   | table of contents in the right margin (wide viewports)           |
 
@@ -132,7 +133,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 | Route                    | Content                                                      |
 | ------------------------ | ------------------------------------------------------------ |
-| `/`                      | the nineteen topics, numbered, plus `v` to all sheets         |
+| `/`                      | the twenty-one topics, numbered, plus `v` to all sheets      |
 | `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug` |
 | `/<topic>/`              | that topic's directories and sheets                          |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                 |

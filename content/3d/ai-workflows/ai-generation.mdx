@@ -1,0 +1,412 @@
+---
+title: AI 3D generation
+date: 2026-09-27
+order: 1
+---
+
+Making meshes, textures, rigs and motion with generative AI as of September 2026: what each kind of tool does,
+the landscape (Higgsfield, Meshy, Tripo, Rodin, Hunyuan3D, TRELLIS.2, Stability), image models for concept art
+and textures, prompt templates, what comes out broken and the Blender cleanup that fixes it, and licensing. This
+space changes monthly: vendor claims are attributed and dated, so check pricing and terms before you rely on
+them. Terms are defined in [Core concepts](/3d/fundamentals/core-concepts/); driving Blender with an LLM is
+[Claude & GPT with Blender](/3d/ai-workflows/llm-blender/).
+
+## What "AI 3D" means
+
+| Kind | In → out | Quality today | Use it for |
+| :--- | :------- | :------------ | :--------- |
+| Text → 3D | prompt → textured mesh | weakest control; the model invents the design | quick props, ideas |
+| Image → 3D | one picture → textured mesh | best value: you control the design in 2D first | props, characters, statues |
+| Multi-view → 3D | 2–4 views of one subject → mesh | better geometry on the hidden sides | characters, vehicles |
+| AI texturing | your mesh + prompt/image → PBR textures (defined below) | good on props; seams and baked light still happen | re-skinning a clean mesh |
+| Auto-retopology / remesh | dense mesh → lighter quad or triangle mesh | fine for props, rarely animation-grade edge flow | budget cuts |
+| Auto-rigging | humanoid mesh → mesh + skeleton + weights | good on clear T/A-pose humanoids; fails on odd shapes | NPCs, prototypes |
+| Text → motion | prompt → animation clip (FBX/BVH) | usable for generic actions (walk, wave, idle) | background characters |
+| Video → mocap | phone video → animation clip | decent body motion; feet slide, hands are rough | reference, blocking |
+| Scene agents | prompt → a whole editable Blender scene | blockouts and layout, not final art | staging, previz |
+
+**Mesh** (vertices, edges and faces with UVs and materials) is what games and three.js render. A **Gaussian
+splat** is a cloud of millions of soft colored blobs, great for photoreal captures and viewing, but it has no
+surfaces to collide with, no UVs, can't be rigged or relit and isn't supported by Godot or GTA V. Some generators
+(Meta's SAM 3D Objects, for one) can output either; for games, always take the mesh.
+
+| | Mesh | Gaussian splat |
+| :- | :--- | :------------- |
+| Engines | everything (glTF, FBX) | three.js via add-on loaders, dedicated viewers |
+| Physics, collision | yes | no |
+| Rigging, animation | yes | no (research only) |
+| Editing in Blender | full | view-only add-ons |
+| Best at | games, interactive web | photoreal captures, walkthroughs |
+
+## Tool landscape
+
+As of September 2026; features and names are the vendors' own. **PBR** (physically based rendering) means the
+texture set a game engine expects: base color, roughness, metallic, normal. **Topology** is how the faces are
+laid out: "triangle soup" is a dense, irregular triangle mesh; "quads" are four-sided faces in clean loops.
+
+| Tool | Inputs | Outputs | Topology | PBR | Rig / motion | Runs |
+| :--- | :----- | :------ | :------- | :-- | :----------- | :--- |
+| [Higgsfield](https://higgsfield.ai/) | image, 2–4 images | GLB | from the engine (its Blender add-on lists Meshy 5) | optional | rigging + a clip library | hosted, credits |
+| [Meshy](https://www.meshy.ai/) | text, image, multi-image | GLB, FBX, OBJ, USDZ, STL, .blend | quad or triangle remesh, target face count | yes | humanoid auto-rig, presets, text-to-motion | hosted, API |
+| [Tripo](https://www.tripo3d.ai/) | text, image, multi-image | GLB, FBX, OBJ and more | "Smart Mesh" quads (vendor claim) | yes | auto-rig, animations | hosted, API |
+| [Rodin / Hyper3D](https://hyper3d.ai/) | text, image, multi-image | GLB, FBX and more | triangle or quad | yes (vendor: up to 4K) | — | hosted, API |
+| [Hunyuan3D](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) | image (2.1 open); text, image (3.x hosted) | GLB, OBJ | dense triangles | 2.1: yes | hosted 3.x lists rigging | 2.1 local (≈ 29 GB VRAM), 3.x hosted |
+| [TRELLIS.2](https://github.com/microsoft/TRELLIS.2) | image | GLB | dense triangles | base color, roughness, metallic, opacity | no | local, Linux, 24 GB+ NVIDIA |
+| [Stable Fast 3D](https://github.com/Stability-AI/stable-fast-3d) / [SPAR3D](https://github.com/Stability-AI/stable-point-aware-3d) | image | GLB, UV-unwrapped | low-poly, optional quad remesh | roughness, metallic | no | local, ≈ 6–10 GB VRAM, Mac (MPS) |
+| [SAM 3D Objects](https://ai.meta.com/blog/sam-3d/) | image + object mask | mesh or splat | dense | color texture | — | local weights, playground |
+
+| Tool | License / commercial use (brief; read the terms) | Good for |
+| :--- | :----------------------------------------------- | :------- |
+| Higgsfield | check your plan's terms | one place for concept image → 3D → scene, also from Claude |
+| Meshy | free: CC BY 4.0 (credit Meshy); paid: you own the assets | all-rounder with the most pipeline tools |
+| Tripo | free: public; its pricing page says CC BY 4.0 while its terms reserve broad rights; paid: private, commercial | stylized props, quads |
+| Rodin | pay when you download; paid tiers "any use" | high-detail hero props |
+| Hunyuan3D 2.1 | Tencent community license: not valid in the EU, UK or South Korea; separate license over 1M monthly users | local experiments outside those regions |
+| TRELLIS.2 | MIT (code and weights) | self-hosted batches |
+| SF3D / SPAR3D | Stability AI Community License: free under USD 1M annual revenue, register, credit | fast, light, runs on a Mac |
+| SAM 3D Objects | SAM License (research and commercial, with use restrictions) | objects cut out of real photos |
+
+## Higgsfield
+
+Higgsfield is a hosted creative suite (image, video, audio, 3D) sold on credits. As of September 2026 it reaches
+3D in four ways; all four were checked on higgsfield.ai, not tested end to end.
+
+| Surface | What it does | Output |
+| :------ | :----------- | :----- |
+| Image → 3D (web, API, MCP `generate_3d`) | picture, or 2–4 views, to a textured mesh; optional rigging and a library of about 680 animation clips | GLB |
+| Blender add-on ([plugins/blender](https://higgsfield.ai/plugins/blender)) | floating bar in the viewport (Blender 5.1+) with Scene Builder, 3D Model, Character Animation, Image, Video, Camera and Asset tabs; results land in your open .blend | editable objects, image planes |
+| Higgsfield MCP connector (`https://mcp.higgsfield.ai/mcp`) | the same generators as tools for Claude, ChatGPT or Cursor | job ids, downloads |
+| 3D scene builder (MCP `scene_builder_3d_*`, the "3D Jutsu" workspace) | the model writes Blender Python that runs on Higgsfield's hosted Blender 5.2 worker, imports GLBs from a curated catalog and renders previews | .blend, .glb, PNG/MP4 |
+
+- The connector's own tool notes say the mesh reproduces only what is in the source image: to add a prop or
+  change clothing, edit the image first (`generate_image`), then convert.
+- Multi-view input (`multi_image_to_3d`) gives better hidden sides than a single image; there's also
+  `sam_3_3d` to lift one object out of a busy photo, and `3d_rigging` for an existing GLB.
+- The add-on also has a **Blender Bridge** MCP URL (`https://bridge.higgsfield.ai/mcp`) so an assistant can act
+  on your open scene; setup is in [Claude & GPT with Blender](/3d/ai-workflows/llm-blender/).
+- Image and video models on Higgsfield (its pages list GPT Image, Nano Banana, Seedream, Soul; Kling and
+  Seedance for video) are useful for the concept art, turnaround sheets and texture sources below, and video for
+  motion reference.
+- Costs show before you generate (on the add-on's Generate button; `get_cost` on the MCP tools).
+
+## Image models for inputs
+
+Image-to-3D quality is decided by the input image. Make it with an image model (GPT Image in ChatGPT or the
+API, where the current models are `gpt-image-2.5-*` as of September 2026; Higgsfield's catalog; any other):
+
+| Input | Why | Caveats |
+| :---- | :-- | :------ |
+| Concept art | pick a design before spending 3D credits | pretty is not the same as buildable; check the silhouette |
+| Orthographic turnaround (front, side, back) | multi-view → 3D, and reference images for modeling by hand | views drift apart; regenerate until they agree |
+| Character in A-pose or T-pose | auto-riggers need spread arms and legs | hands and feet are often mangled |
+| Seamless tileable texture | walls, floors, ground | "seamless" often isn't: tile it 2×2 and fix seams |
+| Trim sheet | strips of molding, panels, bolts for architecture | spacing is inexact; square the strips up in an image editor |
+| Decals | stains, signs, graffiti on alpha | ask for a plain background, then remove it (no true alpha from some models) |
+| Sky backdrop | background plate | 8-bit, not HDR, rarely a correct 360° panorama: light with a real HDRI (Poly Haven) |
+
+An image model gives you **one** texture: albedo (base color). Derive normal and roughness maps in a
+material tool, or ask for them separately and check they line up. See
+[Materials & UVs](/3d/blender/materials-uv/) for wiring them.
+
+## Prompt templates
+
+Replace the brackets. These work in GPT Image, Higgsfield's image models and most others.
+
+```text
+CONCEPT (single object for image-to-3D)
+A [stylized low-poly | realistic | hand-painted] [object], one object only,
+centered, whole object in frame with margin, three-quarter view from slightly
+above, plain light-gray background, soft even studio lighting, no cast
+shadows, no text, no props, clear silhouette, solid (not transparent) materials.
+```
+
+```text
+TURNAROUND SHEET (props, vehicles, buildings)
+Orthographic reference sheet of [object]: front, left side, back and top views
+in a row, same scale, aligned on a common ground line, no perspective,
+flat neutral lighting, plain white background, thin gaps between views,
+no labels, identical design in every view.
+```
+
+```text
+CHARACTER TURNAROUND
+Character reference sheet of [description], full body, A-pose (arms 45° down,
+legs slightly apart), front, side and back views side by side, same height,
+orthographic, neutral expression, flat even lighting, plain background,
+fingers separated, no weapon or loose props, no motion blur, no cropping.
+```
+
+```text
+SEAMLESS TILEABLE TEXTURE
+Seamless tileable [red brick wall | mossy cobblestone | oak planks] texture,
+top-down orthographic, fills the whole square frame, even diffuse lighting,
+no shadows, no highlights, no vignette, no perspective, [2 m] of real-world
+surface per tile, consistent scale, 1:1 aspect.
+```
+
+```text
+TRIM SHEET
+Game trim sheet texture, square, horizontal strips stacked edge to edge:
+[crown molding, plain concrete band, metal panel with rivets, window frame,
+brick soldier course], each strip full width, flat front view, even lighting,
+no shadows, no gaps, no text.
+```
+
+```text
+DECAL
+Single [rust stain | peeling poster | graffiti tag] decal, centered on a plain
+pure-white background, front view, flat lighting, soft natural edges, no
+frame, no shadow, isolated.
+```
+
+```text
+SKY BACKDROP (background only, not lighting)
+Wide 360-degree equirectangular panorama of [overcast sky over low hills],
+horizon exactly at the vertical middle, no sun disk, no buildings, soft gradient.
+```
+
+## Prompting for 3D
+
+| Do | Why |
+| :- | :-- |
+| One object, centered, fully in frame | cropped parts become holes or stubs |
+| Plain background, flat light, no cast shadows | shadows get baked into the texture (see below) |
+| Simple, readable silhouette | the generator guesses the unseen sides from the outline |
+| Avoid thin parts (antennae, straps, wires, hair strands) | they come out blobby or detached |
+| Avoid glass, transparency, mirrors | reconstructed as solid, oddly colored shells |
+| Name the style: low-poly, stylized, realistic | sets both geometry and texture detail |
+| Set a face budget where the tool allows (Meshy `target_polycount`, Tripo face limit, SF3D remesh) | saves a decimation pass |
+| Feed 2–4 matching views when supported | fixes invented backs |
+| Ask for quad or low-poly output only if you will rig or edit it | quads cost detail |
+| Generate 3–4 variants, keep the best | results vary a lot between seeds |
+
+## What comes out broken
+
+| Problem | Symptom | Fix in Blender |
+| :------ | :------ | :------------- |
+| Dense triangle soup | 100k–1M triangles, no edge loops | Decimate modifier for props; retopology for anything you deform or edit ([Modeling](/3d/blender/modeling/)) |
+| Baked-in lighting | shadows and highlights painted into the albedo; looks wrong under your lights | delight it (paint out, or regenerate with flat light); vendors' "delighting" options help |
+| No, or messy, UVs | hundreds of tiny UV islands; texture can't be edited | Smart UV Project or seams + unwrap, then bake the old texture onto the new UVs ([Materials & UVs](/3d/blender/materials-uv/)) |
+| Wrong scale, rotation, origin | 40 m tall mug, lying on its side, pivot in space | set real size, apply transforms, origin to the bottom center (script below) |
+| Non-manifold, holes | mesh isn't watertight; bad for 3D printing, physics, booleans | Select All by Trait → Non Manifold, Fill, Merge by Distance |
+| Floaters | small detached junk pieces | Select Linked, delete loose parts; separate by loose parts to find them |
+| Symmetry drift | left and right differ | cut in half, Mirror modifier, re-bake |
+| Mushy details | text, faces, hands, mechanical parts blurred | model those parts by hand, or use a normal map |
+| Bad rigs | wrong joints, weights bleeding (arm moves the torso) | re-rig, fix weights ([Animation](/3d/blender/animation/)); auto-rigs expect clean humanoids |
+| Too many materials | several materials per small prop = several draw calls | join, bake to one material and one texture set |
+
+## Cleanup pipeline
+
+<Diagram src="/images/diagrams/ai3d-pipeline.svg" label="Pipeline: concept image, then image-to-3D, then Blender cleanup steps (scale, weld, retopo or decimate, UV, bake, material check, rig), then export to three.js, Godot or GTA V" caption="Generation is minutes; cleanup is where the hours go." />
+
+```text
+ generate (image → 3D, 3–4 variants)       pick the one with the best silhouette
+      │
+ import GLB into Blender 5.x               File > Import > glTF 2.0
+      │
+ scale, orient, origin                     real meters, Z up, feet on 0, apply transforms
+      │
+ clean                                     merge by distance, delete floaters, fill holes
+      │
+ retopo or decimate                        props: Decimate; characters: retopology
+      │
+ UV unwrap                                 new, clean UVs on the low-poly mesh
+      │
+ bake                                      old texture + high-poly detail → new maps
+      │
+ material check                            one Principled BSDF, image textures only
+      │
+ rig (optional)                            vendor auto-rig, Mixamo, or Rigify
+      │
+ export                                    GLB for web and Godot, Sollumz for GTA V
+```
+
+A first-pass script for the "scale, orient, origin" and "decimate" steps: run it in the Text Editor with the
+imported mesh active (bpy is covered in [Python scripting](/3d/blender/python-scripting/)).
+
+```py
+import bpy
+import bmesh
+from mathutils import Matrix, Vector
+
+def tris(ob: bpy.types.Object) -> int:
+    return sum(len(p.vertices) - 2 for p in ob.data.polygons)
+
+def normalize(ob: bpy.types.Object, height: float) -> None:
+    """Bake transforms into the mesh, scale it to `height`
+    meters, origin at bottom center, placed at 0,0,0."""
+    me = ob.data
+    mw = ob.matrix_world.copy()
+    ob.parent = None  # glTF imports may add a parent
+    me.transform(mw)
+    ob.matrix_world = Matrix.Identity(4)
+    lo = Vector([min(v.co[i] for v in me.vertices)
+                 for i in range(3)])
+    hi = Vector([max(v.co[i] for v in me.vertices)
+                 for i in range(3)])
+    k = height / (hi.z - lo.z)
+    base = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2,
+                   lo.z))
+    me.transform(Matrix.Scale(k, 4) @
+                 Matrix.Translation(-base))
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts,
+                             dist=0.0001)  # weld seams
+    bm.to_mesh(me)
+    bm.free()
+
+def decimate(ob: bpy.types.Object, target: int) -> None:
+    """Non-destructive Decimate modifier to ~target tris."""
+    mod = ob.modifiers.new("Decimate", "DECIMATE")
+    mod.ratio = min(1.0, target / max(tris(ob), 1))
+
+ob = bpy.context.active_object
+normalize(ob, height=1.0)  # this prop is 1 m tall
+decimate(ob, target=5000)
+```
+
+Budgets depend on the target: see [three.js export](/3d/export/web-threejs/),
+[Godot export](/3d/export/godot/) and [GTA V export](/3d/export/gta-v/).
+
+## AI or by hand
+
+| Asset | Use AI for | Do by hand | Verdict |
+| :---- | :--------- | :--------- | :------ |
+| Background props (crates, rocks, bins, plants) | the mesh and texture | decimate, one material | AI wins |
+| Hero props (the sword, the product on a web page) | concept, first mesh, texture ideas | retopo, clean UVs, bake, details | AI draft, human finish |
+| Characters | concept, turnaround, first mesh, auto-rig for prototypes | retopology for deformation, face, hands, weights | AI for NPCs; heroes by hand |
+| Buildings, interiors | facade concepts, textures, trim sheets, decals, scripted layouts via an LLM | blockout, modular kits on a grid, procedural nodes ([Buildings & scenes](/3d/blender/buildings-scenes/)) | AI is weak at straight walls, right angles and openings |
+| Terrain | height-map ideas, ground textures | sculpt, geometry nodes, displacement | mostly procedural |
+| Vehicles | concept, reference sheets | hard-surface modeling, separate wheels and doors | by hand (parts must move) |
+| Animation | text-to-motion for generic loops, video mocap for blocking | keyframing, cleanup of foot slide, anything acted | AI for crowds |
+
+Image-to-3D output is one fused lump: doors don't open, wheels don't turn, and a building has no interior. If a
+part must move or be entered, model it or cut it out and rebuild it.
+
+## Rigging and animation
+
+| Step | AI options (September 2026) | Watch for |
+| :--- | :-------------------------- | :-------- |
+| Auto-rig | Meshy Rigging (textured humanoids, face toward +Z per its docs, ≤ 300k faces), Tripo, Higgsfield `3d_rigging`, Mixamo | non-humanoids fail; check shoulders, hips, fingers |
+| Preset clips | Meshy animation library, Higgsfield's clip library, Mixamo | skeleton names differ between vendors |
+| Text → motion | Meshy Text to Motion (2–10 s clips, FBX or BVH), DeepMotion SayMotion | generic motion; retarget onto your rig |
+| Video → mocap | DeepMotion Animate 3D, Rokoko Vision (FBX; free tier is short) | foot sliding, jitter, hand errors |
+| Retarget and clean up | Blender NLA and Graph Editor ([Animation](/3d/blender/animation/)) | scale 0.01 and `mixamorig:` bone names on Mixamo FBX |
+
+Mixamo is still free with an Adobe ID as of September 2026 but isn't actively supported; the
+[Mixamo Rig](https://extensions.blender.org/add-ons/mixamo-rig/) extension adds a control rig in Blender. Rigging
+concepts: [Animation & rigging](/3d/fundamentals/animation-rigging/).
+
+## Licensing and ethics
+
+| Issue | What to know |
+| :---- | :----------- |
+| Free tiers | often public and CC BY 4.0 (you must credit) or with rights kept by the vendor; paid tiers usually give private assets and commercial use |
+| Open weights ≠ open use | Hunyuan3D 2.1's license excludes the EU, UK and South Korea; Stability's is free only under USD 1M revenue; TRELLIS.2 is MIT |
+| Copyright of outputs | purely AI-generated work may not be protectable in some countries (the US Copyright Office requires human authorship); your edits can be |
+| Other people's IP | don't upload characters, logos or photos you don't own to make "their" model; a generator's output can still infringe |
+| Steam | the Content Survey asks you to disclose AI content that ships and is seen by players (pre-generated) and content generated while the game runs (live, with guardrails); AI used only as an efficiency tool is out of scope |
+| Records | keep prompts, source images, tool, plan and date per asset, in case a store, client or licensor asks |
+| People | it's your call, but say so when AI made the art, and don't pass it off as someone's hand work |
+
+## Recipes
+
+### Prop from a concept image with Higgsfield
+Use for a single web or game prop in under an hour.
+
+```text
+1. Image model: CONCEPT template → 3–4 options → pick one; regenerate a
+   side and back view if the tool takes multi-view input.
+2. Higgsfield image → 3D (web, add-on "3D Model" tab, or ask Claude with the
+   Higgsfield connector: "turn this image into a 3D model"). Download the GLB.
+3. Blender: File > Import > glTF 2.0. Run normalize() + decimate() above
+   (target 5–20k tris for web).
+4. Check the albedo for baked shadows; paint them out or regenerate.
+5. If you will edit the texture: Smart UV Project on a copy, bake the
+   original texture across ("Selected to Active").
+6. Export GLB → optimize and load: /3d/export/web-threejs/.
+```
+
+### Character for Godot: turnaround → Meshy or Tripo → Mixamo
+Use for NPCs and prototypes, not a hero character.
+
+```text
+1. CHARACTER TURNAROUND template (A-pose, fingers apart, no props).
+2. Meshy or Tripo multi-image → 3D, humanoid, quad or low-poly output,
+   ~10–30k faces.
+3. Blender: normalize(height=1.75), delete floaters, Mirror modifier if the
+   halves drifted, one material, check the face and hands.
+4. Rig: vendor auto-rig, or export FBX → Mixamo auto-rigger → download with
+   skin; add clips "without skin".
+5. Blender: import the FBX, fix 0.01 scale, rename or keep mixamorig: bones,
+   push each clip to its own NLA track, name them (Idle, Walk, Run).
+6. Export GLB; in Godot the clips arrive in an AnimationPlayer:
+   /3d/export/godot/.
+```
+
+### Tileable brick texture with an image model
+Use for walls, floors and ground in Blender, three.js or Godot.
+
+```text
+1. SEAMLESS TILEABLE TEXTURE template, "red brick wall, 2 m per tile".
+2. Check tiling: place the image 2×2 (any image editor, or a Blender plane with
+   the UVs scaled by 2). Fix seams by offsetting 50% and painting the cross.
+3. Make normal and roughness maps from it (Materials & UVs covers the nodes),
+   or generate them and confirm the bricks line up.
+4. Principled BSDF: Base Color (sRGB), Roughness and Normal (Non-Color).
+5. UV the wall to real size so one tile covers 2 m; bake or export as GLB.
+```
+
+### A building: blockout plus AI surfaces
+Use when image-to-3D gives you a melted house.
+
+```text
+1. TURNAROUND SHEET of the facade for reference; generate trim sheet and
+   decals with the templates above.
+2. Block out walls, floors, openings on a 1 m grid by hand, from a modular
+   kit, or with Claude + MCP (/3d/ai-workflows/llm-blender/).
+3. Map the trim sheet onto moldings and window frames; tileable textures on
+   walls; decals for dirt and signs.
+4. Use image-to-3D only for small props that dress it (planters, lamps).
+5. Export per target; collision meshes stay simple boxes.
+```
+
+### A shelf of background props, locally
+Use when you need 30 rocks, crates or bins and don't want to pay per model.
+
+```text
+1. Image model: one CONCEPT image per prop, same style words in every prompt.
+2. Run Stable Fast 3D (≈ 6 GB VRAM, runs on Apple Silicon) or TRELLIS.2
+   (24 GB NVIDIA) on the folder; mind each model's license.
+3. Blender: import all, run normalize() + decimate(target=2000) per object,
+   join each prop into one material.
+4. Batch-export one GLB per object (script in /3d/ai-workflows/llm-blender/).
+```
+
+### An NPC wave with text-to-motion
+Use for a generic gesture you don't want to keyframe.
+
+```text
+1. Rig the character (auto-rig or Mixamo) and export it.
+2. Meshy Text to Motion: "a character waving with the right hand", 3 s;
+   or pick a clip from Higgsfield's animation library.
+3. Apply it to your rig in the vendor tool, or import the FBX/BVH into Blender
+   and retarget onto your armature.
+4. Clean foot slide and the first/last frames so it loops; export.
+```
+
+## References
+
+- [Higgsfield for Blender](https://higgsfield.ai/plugins/blender) and [its blog post](https://higgsfield.ai/blog/higgsfield-blender-plugin): add-on tabs, install, Bridge MCP URL
+- [Higgsfield MCP](https://higgsfield.ai/mcp), [Scene Builder](https://higgsfield.ai/mcp/scene-builder), [3D Jutsu announcement](https://higgsfield.ai/blog/higgsfield-3d-jutsu): connector, hosted scene building
+- [Meshy docs](https://docs.meshy.ai/en): image, multi-image and text to 3D, Remesh, Rigging, Animation, Text to Motion; [Meshy pricing](https://www.meshy.ai/pricing) for license by plan
+- [Tripo](https://www.tripo3d.ai/) and [its terms](https://www.tripo3d.ai/terms); [Hyper3D Rodin pricing](https://hyper3d.ai/pricing) and [API docs](https://developer.hyper3d.ai/)
+- [Hunyuan3D 2.1](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) with its [license text](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1/blob/main/LICENSE)
+- [TRELLIS.2](https://github.com/microsoft/TRELLIS.2), [Stable Fast 3D](https://github.com/Stability-AI/stable-fast-3d), [SPAR3D](https://github.com/Stability-AI/stable-point-aware-3d), [Stability AI Community License](https://stability.ai/community-license-agreement)
+- [Meta SAM 3D](https://ai.meta.com/blog/sam-3d/): single-image objects, mesh or splat
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): import and export settings
+- [Steamworks Content Survey](https://partner.steamgames.com/doc/gettingstarted/contentsurvey): the AI disclosure section
+- [US Copyright Office: Copyright and AI](https://www.copyright.gov/ai/): human authorship reports
+- [Mixamo](https://www.mixamo.com/), [Mixamo Rig extension](https://extensions.blender.org/add-ons/mixamo-rig/), [DeepMotion](https://www.deepmotion.com/), [Rokoko Vision](https://www.rokoko.com/products/vision)
+- [Poly Haven](https://polyhaven.com/): CC0 HDRIs, textures and models for real lighting and filler assets

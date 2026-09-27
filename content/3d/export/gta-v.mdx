@@ -1,0 +1,325 @@
+---
+title: Blender to GTA V
+date: 2026-09-27
+order: 3
+---
+
+Making GTA V (PC) props, vehicles and interiors in Blender 5.x with the Sollumz add-on and CodeWalker, and
+loading them in single-player or on a FiveM (multiplayer mod platform) server. Covers the rules, Legacy vs Enhanced editions, the RAGE
+file formats, the Sollumz workflow, budgets, and step lists for the common mod types. Modeling itself is in
+[Blender](/3d/blender/); scene-building ideas are in [Buildings & scenes](/3d/blender/buildings-scenes/) and
+[Open-world design](/game-dev/design/open-world/).
+
+<Note kind="warning">**Rules first.** Take-Two has said since 2017 that it generally won't take legal action
+against PC single-player mods that are non-commercial and respect other people's IP. Rockstar's written Mod
+Guidelines (September 2026, as reported by the press) keep that line and add limits: multiplayer modding only
+on Rockstar's licensed Creator Platform (FiveM and RedM, run by Cfx.re, part of Rockstar since 2023), no story
+or continuity expansions, no assets carried over from other Rockstar games, no use of others' IP or real
+people's likenesses, and selling only through approved storefronts. Modding GTA Online gets accounts banned.
+Never redistribute Rockstar's own files: ship only what you made. This is a summary, not legal advice; read
+the guidelines linked in [References](#references).</Note>
+
+## Rules at a glance
+
+| Activity | Status |
+| :------- | :----- |
+| Your own props, cars, interiors in single-player, free | tolerated (Take-Two 2017 statement, 2026 guidelines) |
+| The same on a FiveM server | allowed on the licensed platform, under the Cfx.re Creator Platform License Agreement |
+| Anything in GTA Online (menus, models, scripts) | bannable; ScriptHookV itself quits the game when you go online |
+| Uploading Rockstar's models, textures or `.rpf` archives | not allowed; share your own files, or instructions |
+| Real car brands, film characters, store-bought models | not allowed without the rights holder's permission |
+| Assets ripped from RDR2, GTA IV or leaked GTA VI material | prohibited by the 2026 guidelines |
+| Paid mods, loot boxes, crypto | only through Rockstar-approved storefronts; gambling and crypto banned outright |
+
+## Editions & tools
+
+GTA V on PC now comes in two editions. **Legacy** is the 2015 PC version. **Enhanced** (March 4, 2025) is the
+PS5/Xbox Series port with a new renderer (DirectX 12, ray tracing). Their asset formats differ (Gen8 vs Gen9),
+so tools and mods are edition-specific.
+
+| Tool | Legacy | Enhanced | Notes |
+| :--- | :----- | :------- | :---- |
+| [CodeWalker](https://github.com/dexyfex/CodeWalker) | yes | yes (dev48 or newer) | world viewer, RPF explorer, map editor; builds from its Discord `#releases`; includes an Asset Converter (Legacy → Enhanced) |
+| [Sollumz](https://docs.sollumz.org/) | yes | yes | exports native Gen8 or Gen9 files, or CodeWalker XML |
+| OpenIV | yes | not supported officially | RPF editing and the `mods` folder for Legacy |
+| OpenRPF | no | yes | community loader: modified files from a `mods` folder on Enhanced |
+| ScriptHookV + ASI loader | yes | yes (builds for both since 2025) | runs `.asi` script plugins; single-player only |
+| FiveM | yes | FiveM for GTAV Enhanced, early access | Enhanced servers convert assets with Cfx.re's Alchemist tool; client graphics mods are blocked there for now |
+
+Pick one edition per project and export for it. Converting later is possible (CodeWalker's Asset Converter,
+Alchemist) but vehicles with many materials can need rework.
+
+## Loaders & script hooks
+
+| Piece | What it is | Where it goes |
+| :---- | :--------- | :------------ |
+| ASI loader (`dinput8.dll`) | loads `.asi` plugins at startup | game folder |
+| ScriptHookV (`ScriptHookV.dll`) | lets `.asi` plugins call the game's script functions (natives) | game folder; update it after every game patch |
+| ScriptHookVDotNet | C# scripts on top of ScriptHookV | game folder + `scripts/` |
+| OpenIV.asi + `mods` folder (Legacy) | the game reads edited `.rpf` copies from `mods/` instead of the originals | `mods/` mirrors the game's folder layout |
+| OpenRPF (Enhanced) | the same idea for Enhanced (`dsound.dll` + `OpenRPF.asi`) | game folder + `mods/` |
+| DLC pack | an add-on `dlc.rpf` (with `content.xml`, `setup2.xml`) listed in `dlclist.xml` | `mods/update/x64/dlcpacks/<name>/` |
+| FiveM resource | a folder with `fxmanifest.lua` and a `stream/` folder | server `resources/`, started from `server.cfg` |
+
+Map files (models, textures, placements) need a loader, not ScriptHookV; scripts need ScriptHookV. Always
+work on copies in `mods/`, never on the original archives.
+
+## File formats
+
+GTA V runs on RAGE (Rockstar Advanced Game Engine). Its files are named `.y??` on PC and packed in `.rpf`
+archives.
+
+| Extension | Holds | Typical use |
+| :-------- | :---- | :---------- |
+| `.ydr` | Drawable: meshes in up to 4 LODs (High, Medium, Low, Very Low), shaders, optional embedded textures, skeleton, lights, embedded collision | static props, map pieces |
+| `.ydd` | Drawable dictionary: several drawables in one file | ped and clothing components, grouped props |
+| `.yft` | Fragment: a drawable plus physics (collision, breakable parts, bones) | vehicles (`name.yft` + `name_hi.yft`), breakable props, glass |
+| `.ytd` | Texture dictionary: DDS textures shared by several models | textures for one or more `.ydr`/`.yft`; `+hi.ytd` for HD versions |
+| `.ybn` | Bounds: static collision (composite of boxes, spheres, capsules, poly meshes) with collision materials | world collision, interiors |
+| `.ytyp` | Archetype definitions: per model name, texture dictionary, LOD distance, flags; also MLO (interior) archetypes | registers your model with the game |
+| `.ymap` | Map data: entity placements (archetype, position, rotation), LOD hierarchy, car generators, occluders | places things in the world |
+| `.ycd` | Clip dictionary: animations | animated props, peds |
+| `_manifest.ymf` | map metadata: which `.ytyp` each `.ymap` depends on, HD texture bindings | generated by CodeWalker; required for maps |
+| `.rpf` | archive (can nest) | the game's data; mods ship their own `dlc.rpf` |
+| `.meta` (XML) | data files: `vehicles.meta`, `handling.meta`, `carcols.meta`, `carvariations.meta` | vehicle stats, colors, liveries |
+
+<Diagram src="/images/diagrams/export-gta-files.svg" label="How the files reference each other: a .ymap entity names an archetype in the .ytyp; the archetype names the .ydr drawable and the .ytd texture dictionary; the .ybn collision stands on its own in world space or is embedded in the .ydr" caption="A placed prop: the .ymap names an archetype, the archetype names the model and its textures." />
+
+## Units, axes & names
+
+| | Blender | GTA V |
+| :- | :------ | :---- |
+| Up | +Z | +Z |
+| Units | meters | meters (1 unit = 1 m) |
+| Conversion | none | Sollumz imports and exports 1:1, no axis flip |
+
+- Model props at the world origin with the origin at the base; placement happens in the `.ymap`.
+- World collision (`.ybn`) and interiors are modeled **in world coordinates** at their real map location
+  (import the surrounding map from CodeWalker as a reference).
+- Names are hashed by the game: keep them lowercase, unique, ASCII, with a personal prefix (`zs_crate01`) so
+  they don't collide with vanilla or other mods. The drawable, archetype and file name should match.
+- Vertex counts rise after export (a game vertex is position plus normal, UV and color, like Blender's face
+  corners); judge cost by triangle count.
+
+## Sollumz setup
+
+1. Blender 4.2 or newer (Sollumz 2.9 supports up to 5.2): Edit > Preferences > Get Extensions > Repositories >
+   `+` > Add Remote Repository `https://repo.sollumz.org/`, then search "Sollumz" and Install. Updates arrive in
+   the same panel.
+2. Accept the optional pyMateria install: it enables direct native (binary) import and export, not just
+   CodeWalker XML.
+3. Install CodeWalker (dev48 or newer), point it at the game folder, enable Options > Start in Edit Mode, and
+   add the community `nametables.rpf` (from the CodeWalker Discord) so file names resolve.
+4. Create your own `.rpf` in CodeWalker's RPF Explorer for test files (single-player), or a FiveM resource
+   folder.
+5. To edit vanilla assets: CodeWalker RPF Explorer > export XML (or open the native file directly in
+   Sollumz); save the textures to a folder named after the model so Sollumz finds them on import.
+
+Everything lives in the 3D viewport's N-panel under **Sollumz Tools**; `V` opens the Sollumz pie menu
+(convert, import, export), `Shift V` switches the visible LOD.
+
+## Shaders & textures
+
+GTA materials are **Sollumz shader materials**, not the Principled BSDF: each one mirrors a game shader
+(`.sps`) with fixed texture slots and parameters.
+
+| Shader | Slots | Use |
+| :----- | :---- | :-- |
+| `default` | DiffuseSampler | flat color map only |
+| `normal` | Diffuse, Bump | color + normal map |
+| `spec` | Diffuse, Spec | color + specular |
+| `normal_spec` | Diffuse, Bump, Spec | the common prop shader |
+| `normal_spec_alpha`, `normal_alpha` | + alpha in the diffuse | glass-like or soft transparency |
+| `cutout`, `normal_cutout`, `normal_spec_cutout` | alpha as a hard mask | foliage, fences, decals with holes |
+| `emissive`, `emissivenight` | + emissive | signs and lamps (night-only variant) |
+| `decal`, `normal_decal` | projected on top of other surfaces | dirt, graffiti, stains |
+| `glass`, `glass_env` | | windows |
+| `vehicle_paint1`, `vehicle_paint3`, `vehicle_generic`, `vehicle_tire`, `vehicle_lightsemissive` | | vehicles (see Sollumz Vehicle Shaders) |
+| `terrain_cb_w_4lyr` | four blended layers painted by vertex color | ground |
+
+| Rule | Detail |
+| :--- | :----- |
+| Create | select the model, Sollumz Tools > Drawable > Shader Tools, search (`Ctrl F`) the shader, Create Shader Material |
+| Textures | `.dds`, power of two, with mipmaps; DXT1 (BC1) for opaque, DXT5 (BC3) with alpha; about 2048 max. NVIDIA Texture Tools exports DDS |
+| Normal maps | set the BumpSampler image's color space to Non-Color |
+| Embedded vs `.ytd` | Set all Materials Embedded puts textures inside the `.ydr` (simplest); a `.ytd` shares them between models (Sollumz Tools > Texture Dictionaries), and the archetype's Texture Dictionary must name it |
+| UV and color names | UV maps `UVMap 0`, `UVMap 1`; color attribute `Color 1` (Face Corner, Byte Color); Sollumz warns about wrong names |
+| Vertex colors | the game uses them for lighting: red for outdoor props, green inside interiors; unpainted props glow pinkish red at night or turn black indoors |
+| Convert existing | Shader Tools can convert a Principled BSDF material; other node setups fail on export |
+
+Watch for how the vertex color channels are painted and why an unpainted prop glows at night.
+
+<YouTube id="hBH1vZY8rWc" title="Sollumz Quick Tips: Vertex Colors" channel="Stumpy Mason" />
+
+## LODs & collision
+
+| Task | How in Sollumz |
+| :--- | :------------- |
+| Assign LOD meshes | Mesh Properties > Sollumz LODs: High, Medium, Low, Very Low (Very High only for vehicle `_hi.yft`) |
+| Generate LODs | Sollumz Tools > Drawable > LOD Tools: decimates the High mesh by a step per level; check the result |
+| Separate map LOD models | a second, simpler drawable placed at the same spot in a parent `.ymap` (LOD hierarchy, set in CodeWalker or the Sollumz Maps panel) |
+| LOD distance | per archetype in the `.ytyp`: how far away the model still draws |
+| Embedded collision | Collisions > Create Bounds on the drawable: Bound Composite > Bound GeometryBVH (apply a Flag Preset) > Bound Poly Box, Poly Sphere, Poly Capsule or Poly Mesh children, each with a collision material |
+| Static world collision (`.ybn`) | model in world space, apply Location, Collisions > Create Bounds > Convert to Composite; composite empties at 0, 0, 0; rename the Bound Composite to the file name |
+| Collision materials | per bound mesh: concrete, wood, metal, grass… (footsteps, bullet impacts, tire grip) |
+| Interior rooms | the floor's collision material carries the Room ID used by the MLO |
+
+Primitive bounds (box, sphere, capsule) are cheaper and more robust than poly meshes: build collision from them
+where the shape allows. The classic mistake is a Bound GeometryBVH with no Flag Preset: nothing collides.
+
+## Budgets & limits
+
+Community rules of thumb, not official numbers, except where a source is named.
+
+| Item | Guideline |
+| :--- | :-------- |
+| Small prop, High LOD | up to about 5–10k triangles; each lower LOD roughly half the previous |
+| Vehicle, highest LOD | about 60–120k triangles, down to about 1k at the lowest LOD |
+| Textures | power of two, 2048 max per the Sollumz FAQ, 1024 or smaller for small props; DXT compressed with mipmaps |
+| Materials or geometries per file (Enhanced) | 128 at most; more crashes the game (Sollumz Enhanced conversion guide) |
+| One streamed asset on FiveM | the server warns above 16 MiB of memory per asset and flags anything over 48 MiB as likely to cause streaming problems (FiveM source) |
+| Many add-ons in single-player | memory pools can fill ("pool full" crashes); players raise pool sizes with community `gameconfig` mods |
+| LOD distance | as short as looks right; long distances keep models and textures in memory |
+
+## Common problems
+
+| Symptom | Likely cause | Fix |
+| :------ | :----------- | :-- |
+| Model invisible in game | archetype not loaded (`.ytyp` missing or not in `_manifest.ymf`), archetype name mismatch, or LOD distance too short | regenerate `_manifest.ymf`; match names; raise LOD distance |
+| Invisible even in CodeWalker | UV map or color attribute names wrong | rename to `UVMap 0` and `Color 1`, re-export |
+| Purple, checkered or white surfaces | textures not found: wrong texture dictionary name, non-DDS images, or not embedded | embed, or fix the archetype's Texture Dictionary; convert to DDS with mipmaps |
+| Glows pink at night, black indoors | no vertex colors | paint `Color 1` (red outside, green inside) |
+| Walk or drive through it | no collision, no Flag Preset on the Bound GeometryBVH, or a `.ybn` built at the wrong position | add bounds, apply the flag preset, model `.ybn` in world space |
+| Error or nothing on Sollumz export | object has no Sollumz Type, or no Sollumz shader material | Convert to Drawable; create shader materials |
+| Import fails | outdated Sollumz or a file type it doesn't support (some animal ped `.yft`s) | update Sollumz |
+| Enhanced: `ERR_GFX_STATE` crash entering a converted car | a `script_rt_` texture in the wrong format | re-save it as uncompressed RGBA8 without mipmaps |
+| Enhanced: crash on spawn | over 128 materials or geometries | round-trip through Sollumz to merge, or reduce materials |
+| Legacy mod does nothing on Enhanced (or the reverse) | Gen8 vs Gen9 files | export for the right edition, or convert with CodeWalker's Asset Converter |
+| MLO vanishes in first person | wrong Room ID on the floor collision, or bad portals | fix Room IDs and portal assignments |
+| It rains inside the MLO | the vanilla exterior's particle effects still apply | edit the vanilla exterior `.ytyp` (Archetype Extension mode in CodeWalker) |
+| FiveM console: "Oversized assets" | textures too large for one asset | downscale textures, split the model, or move textures to a `.ytd` |
+
+## Tools
+
+| Tool | For |
+| :--- | :-- |
+| [Sollumz](https://github.com/Sollumz/Sollumz) | Blender add-on: import/export of `.ydr`, `.ydd`, `.yft`, `.ybn`, `.ytd`, `.ytyp`, `.ymap`, `.ycd` |
+| [CodeWalker](https://github.com/dexyfex/CodeWalker) | explore the map and archives, place entities, edit `.ymap`/`.ytyp`, generate `_manifest.ymf`, convert Legacy ↔ Enhanced |
+| [OpenIV](https://openiv.com/) | Legacy archive editing and the `mods` folder |
+| [OpenRPF](https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced) | `mods` folder loader for Enhanced |
+| [Script Hook V](http://www.dev-c.com/gtav/scripthookv/) | script plugins in single-player |
+| [NVIDIA Texture Tools](https://developer.nvidia.com/texture-tools-exporter) | DDS export with mipmaps |
+| [gta5-mods.com](https://www.gta5-mods.com/) | the main mod hosting site; install guides and tools |
+| [FiveM docs](https://docs.fivem.net/docs/) | resources, streaming, the 3D asset beginner series, Enhanced migration |
+
+## Recipes
+
+### A custom prop in the world
+Use for a static object (crate, sign, bench) placed on the map: `.ydr` + `.ytyp` + `.ymap`.
+
+1. Model it at the origin, base on the ground plane, apply transforms; UV map `UVMap 0`, color attribute
+   `Color 1` painted red.
+2. Select it, `V` > Convert to Drawable; rename the Drawable empty to your prefixed name (`zs_crate01`).
+3. Shader Tools: create `normal_spec`; set DiffuseSampler, BumpSampler (Non-Color) and SpecSampler DDS
+   textures; Set all Materials Embedded.
+4. LODs: assign or generate Medium and Low meshes; add embedded collision (Create Bounds, Flag Preset,
+   a Bound Poly Box).
+5. Sollumz Tools > Archetype Definition: `+` a new `.ytyp`, select the drawable, Auto-Create From Selected; set
+   LOD Distance (for example 100).
+6. `V` > Export RAGE Assets: Native, Gen8 (Legacy and FiveM) or Gen9 (Enhanced); export the `.ytyp`.
+7. CodeWalker: add the files to your RPF (or open them in a project), New Ymap > New Entity, Archetype
+   `zs_crate01`, move it into place, Calculate Extents and Calculate All Flags, save the `.ymap`.
+   Sollumz 2.9's Maps panel can also place entities in Blender.
+8. CodeWalker project > Tools > Manifest Generator > Generate, save `_manifest.ymf`.
+9. Ship `zs_crate01.ydr`, `.ytyp`, `.ymap` and `_manifest.ymf` in a FiveM `stream/` folder (below) or your
+   single-player RPF.
+
+### Replace or add a vehicle (outline)
+Use to put your own car model in the game. Start from a vanilla car of the same type; building a vehicle rig
+from scratch is much harder.
+
+1. Import a vanilla `name.yft` with its `name_hi.yft` (Sollumz, native or via CodeWalker XML) and its textures.
+2. Fit your body parts to the vanilla skeleton; keep the vanilla bone names (`chassis`, `wheel_lf`, `wheel_rf`,
+   `door_dside_f`, `door_pside_f`, `bonnet`, `boot`…) and weight each part to its bone.
+3. Use vehicle shaders (`vehicle_paint1` for body paint, `vehicle_tire`, `vehicle_lightsemissive` with light
+   IDs for lamps); windows are special glass children.
+4. Very High LOD goes into `_hi.yft`, High to Very Low into the base `.yft` (the Fragment export's Toggle LODs
+   option writes both).
+5. Changed collision shapes: tick Auto Calculate Inertia and Auto Calculate Volume on export. New bones: Auto
+   Calculate Bonetags.
+6. **Replace**: same file names as the vanilla car. **Add-on**: a new name plus `vehicles.meta`,
+   `carvariations.meta`, `carcols.meta` and `handling.meta` copied from the vanilla car and renamed.
+7. Details: the Sollumz vehicle tutorial and Fragment > Vehicle Setup pages.
+
+### An interior (MLO, outline)
+Use for an enterable building interior (MLO: "Milo", the game's interior system with rooms and portals).
+
+1. Pick a building; import its exterior from CodeWalker into Blender as a reference, in world coordinates.
+2. Plan the rooms and the portals (openings) between them and to the outside.
+3. Model the interior shell, props and decals; texture; vertex-color green inside.
+4. Build the collision `.ybn` with the right Room ID on each floor's collision material.
+5. In Sollumz Tools > Archetype Definition, create an MLO archetype: rooms and portals (from selected
+   vertices), entities, entity sets.
+6. Export; create a `.ymap` with the MLO instance at the building's position; generate `_manifest.ymf`.
+7. Details: the Sollumz Creating Interiors tutorial.
+
+### Stream it on FiveM
+Use to load map or model files on a FiveM server: everything in `stream/` is streamed to players.
+
+```text
+resources/[maps]/zs_crate/
+├─ fxmanifest.lua
+└─ stream/
+   ├─ zs_crate01.ydr
+   ├─ zs_crate01.ytyp
+   ├─ zs_crate01.ymap
+   └─ _manifest.ymf
+```
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+lua54 'yes'
+
+-- reloads map storage so .ymap placements appear
+this_is_a_map 'yes'
+```
+
+For an add-on vehicle, the `.yft`, `_hi.yft` and `.ytd` go in `stream/` and the meta files are registered:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+files { 'data/*.meta' }
+
+data_file 'HANDLING_FILE' 'data/handling.meta'
+data_file 'VEHICLE_METADATA_FILE' 'data/vehicles.meta'
+data_file 'CARCOLS_FILE' 'data/carcols.meta'
+data_file 'VEHICLE_VARIATION_FILE' 'data/carvariations.meta'
+```
+
+Add `ensure zs_crate` to `server.cfg` and restart. The server console lists assets that are too large.
+
+### Port a Legacy asset to Enhanced
+Use when a mod made for Legacy should run on the Enhanced edition.
+
+1. CodeWalker dev48 or newer > RPF Explorer > Asset Converter.
+2. Pick the folder of Legacy `.ydr`, `.yft`, `.ytd`, `.ydd` files and an output folder; Process.
+3. Load the result with OpenRPF (single-player) or on a FiveM for GTAV Enhanced server (which uses Cfx.re's
+   Alchemist for whole resources).
+4. For your own Blender sources, simply re-export from Sollumz as Gen9.
+
+## References
+
+- [Rockstar Games: Mod Guidelines](https://www.rockstargames.com/community-resources/mod-guidelines): the 2026 rules; read them in full
+- [Rockstar Support: PC Single-Player Mods](https://support.rockstargames.com/articles/115009494848/PC-Single-Player-Mods): Take-Two's 2017 single-player statement
+- [Cfx.re Creator Platform License Agreement](https://static.cfx.re/platform-license-agreement-12-jan-2026.pdf): the terms for FiveM servers and content
+- Press coverage of the 2026 guidelines: [Game Developer](https://www.gamedeveloper.com/production/-do-not-rockstar-outlines-modding-rules-before-gta-vi-touches-down), [Kotaku](https://kotaku.com/rockstar-asks-fans-to-respect-their-games-as-it-updates-strict-modding-guidelines-2000736306)
+- [Sollumz docs](https://docs.sollumz.org/): installation, tutorials (static meshes, collisions, props, vehicles, interiors, Enhanced conversion), per-format docs, FAQ
+- [Sollumz on GitHub](https://github.com/Sollumz/Sollumz): releases and changelog (2.9: YMAP rework, texture dictionaries, Blender 5.2)
+- [CodeWalker](https://github.com/dexyfex/CodeWalker): source and usage; current builds on its Discord
+- [FiveM docs: Guides for 3D assets](https://docs.fivem.net/docs/assets-manual/): an eight-part beginner series with Blender, Sollumz and CodeWalker
+- [FiveM docs: Introduction to resources](https://docs.fivem.net/docs/scripting-manual/introduction/introduction-to-resources/) and [resource manifest](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/): `fxmanifest.lua`, `this_is_a_map`, `data_file`
+- [FiveM docs: What's changed in FiveM for GTAV Enhanced](https://docs.fivem.net/docs/developers/legacy-vs-enhanced/): migration and limits
+- [Script Hook V](http://www.dev-c.com/gtav/scripthookv/): current builds and supported game patches

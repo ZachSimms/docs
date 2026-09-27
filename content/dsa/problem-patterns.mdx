@@ -1,0 +1,1156 @@
+---
+title: Problem patterns
+date: 2026-09-27
+order: 7
+---
+
+The recurring shapes behind most interview problems: how to spot each one from the prompt, a template in
+TypeScript and Python, its cost and the classic problems that use it. Structures are in
+[Linear structures](/dsa/linear-structures/) and [Trees & graphs](/dsa/trees-graphs/) (including the
+`MinHeap` used below), binary search in [Sorting & searching](/dsa/sorting-searching/), BFS and friends in
+[Graph algorithms](/dsa/graph-algorithms/), backtracking and DP in [Recursion & DP](/dsa/recursion-dp/). How
+to use all this under a clock is in [Coding interviews](/dsa/interviews/).
+
+## Signal → pattern
+
+Read the prompt for these signals first; the constraints (`n ≤ 20`, `n ≤ 10⁵`) confirm the target cost.
+
+| Signal in the prompt | Try | Typical cost |
+| :------------------- | :-- | :----------- |
+| sorted array + a pair / triple hitting a target | [two pointers](#two-pointers), opposite ends | O(n) per pass |
+| in-place remove / dedupe / partition | [two pointers](#two-pointers), same direction | O(n), O(1) space |
+| contiguous subarray / substring with a limit ("at most k", "no repeats") | [sliding window](#sliding-window) | O(n) |
+| subarray sums, range sum queries, "sum equals k" with negatives | [prefix sums + hash map](#prefix-sums) | O(n) |
+| next greater / smaller, span, "days until" | [monotonic stack](#monotonic-stack--deque) | O(n) |
+| max / min of every window | [monotonic deque](#monotonic-stack--deque) | O(n) |
+| top k, k-th largest, k closest, merge k sorted | [heap](#top-k--k-way-merge) | O(n log k) |
+| linked list cycle, middle, "find the duplicate" | [fast & slow pointers](#fast--slow-pointers) | O(n), O(1) space |
+| overlapping ranges, meetings, calendars | [sort + sweep](#intervals) | O(n log n) |
+| values in `1..n` in an array of size n, "missing / duplicate" | [cyclic sort](#cyclic-sort--index-as-hash) | O(n), O(1) space |
+| XOR, parity, "appears once", subsets of ≤ 20 items | [bits](#bit-manipulation) | O(n) or O(2ⁿ) |
+| all combinations / permutations / placements | backtracking, [Recursion & DP](/dsa/recursion-dp/) | exponential |
+| min / max / count over choices, subproblems repeat | DP, [Recursion & DP](/dsa/recursion-dp/) | states × transitions |
+| fewest steps, nearest, unweighted grid | BFS, [Graph algorithms](/dsa/graph-algorithms/) | O(V + E) |
+| prerequisites, build order | topological sort, [Graph algorithms](/dsa/graph-algorithms/) | O(V + E) |
+| "are these connected", merging groups online | [union-find](/dsa/trees-graphs/#union-find) | ≈ O(1) per op |
+| "minimum capacity / speed such that…" (monotonic yes/no) | binary search on the answer, [Sorting & searching](/dsa/sorting-searching/) | O(n log range) |
+| prefix / word lookups, autocomplete | trie, [Trees & graphs](/dsa/trees-graphs/) | O(word length) |
+
+| Constraint on n | Target (≈ 10⁸ simple ops / s) | Likely approach |
+| :-------------- | :---------------------------- | :-------------- |
+| ≤ 10 | O(n!) | permutations |
+| ≤ 20 | O(2ⁿ · n) | subsets, bitmask DP |
+| ≤ 500 | O(n³) | triple loop, interval DP |
+| ≤ 5 000 | O(n²) | 2-D DP, all pairs |
+| ≤ 10⁵ – 10⁶ | O(n log n) | sort, heap, binary search |
+| ≤ 10⁸ | O(n) | window, hashing, prefix sums |
+| above 10⁸ | O(log n) or O(1) | binary search, math |
+
+Full table and the reasoning: [Big-O](/dsa/big-o/#input-size--target-complexity).
+
+## Two pointers
+
+Two indexes walk the array instead of a nested loop. **Opposite ends** (sorted input): compare the pair, move
+the side that can only improve the answer. **Same direction**: `fast` reads, `slow` marks where the next kept
+item goes.
+
+<Diagram src="/images/diagrams/dsa-two-pointers.svg" label="Sorted array 1 3 4 6 8 11 with target 10: lo at the left end, hi at the right end; 1 + 11 = 12 is too big so hi moves left; 1 + 8 = 9 is too small so lo moves right; 3 + 8 = 11 too big, hi moves left; 3 + 6 = 9, lo moves right; 4 + 6 = 10 found" caption="Opposite ends on a sorted array: too big moves hi left, too small moves lo right." />
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Pair = [number, number];
+
+    // opposite ends: indexes of a pair summing to t
+    function pairSum(xs: number[], t: number): Pair | null {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo < hi) {
+        const s = xs[lo] + xs[hi];
+        if (s === t) return [lo, hi];
+        if (s < t) lo++; // too small: raise the low side
+        else hi--; // too big: lower the high side
+      }
+      return null;
+    }
+
+    // same direction: fast reads, slow is the write index
+    function dedupe(xs: number[]): number {
+      let slow = 0;
+      for (let fast = 0; fast < xs.length; fast++) {
+        if (fast === 0 || xs[fast] !== xs[fast - 1]) {
+          xs[slow++] = xs[fast];
+        }
+      }
+      return slow; // xs[0..slow) holds the unique values
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    Pair = tuple[int, int]
+
+    def pair_sum(xs: list[int], t: int) -> Pair | None:
+        lo, hi = 0, len(xs) - 1
+        while lo < hi:
+            s = xs[lo] + xs[hi]
+            if s == t:
+                return lo, hi
+            if s < t:
+                lo += 1  # too small: raise the low side
+            else:
+                hi -= 1  # too big: lower the high side
+        return None
+
+    def dedupe(xs: list[int]) -> int:
+        slow = 0
+        for fast in range(len(xs)):
+            if fast == 0 or xs[fast] != xs[fast - 1]:
+                xs[slow] = xs[fast]
+                slow += 1
+        return slow  # xs[:slow] holds the unique values
+    ```
+
+  </Tab>
+</Tabs>
+
+Time O(n), space O(1) (plus O(n log n) if you have to sort first).
+
+| Problem | Variant | Key move |
+| :------ | :------ | :------- |
+| Two Sum II (sorted input) | opposite ends | the template above |
+| Container With Most Water | opposite ends | move the **shorter** wall; the taller one can't do better with less width |
+| 3Sum | sort + fix one + opposite ends | skip equal neighbors to avoid duplicate triples ([recipe](#3sum-sort-then-two-pointers)) |
+| Valid Palindrome | opposite ends | skip non-alphanumerics, compare case-folded |
+| Remove Duplicates from Sorted Array, Move Zeroes | same direction | `slow` = next write slot |
+| Sort Colors (Dutch flag) | three pointers | `lo`, `mid`, `hi` partitions |
+
+## Sliding window
+
+A window `[l, r]` over a contiguous range. `r` always moves right (**expand**, add `xs[r]` to the window's
+state); `l` moves right only to restore the rule (**shrink**, remove `xs[l]`). Each index enters and leaves
+once, so O(n) total even with the inner `while`.
+
+<Diagram src="/images/diagrams/dsa-sliding-window.svg" label="Longest substring without repeats on abcabcbb: first the window a b c grows to a b c a when r reaches index 3, which is invalid because a appears twice; then l moves right past the first a, leaving b c a, which is valid again" caption="Expand with r until the window breaks the rule, then shrink with l until it holds again." />
+
+```text
+state = empty; l = 0
+for r in 0 .. n-1:
+    add xs[r] to state                 (expand)
+    while state breaks the rule:       (shrink while invalid)
+        remove xs[l] from state; l += 1
+    answer = best(answer, r - l + 1)   (longest valid window)
+```
+
+| Asked for | Shrink loop runs while | Record the answer |
+| :-------- | :--------------------- | :---------------- |
+| **longest** valid window | window is **invalid** | after the loop (window is valid again) |
+| **shortest** valid window | window is **valid** | inside the loop, before each shrink |
+| **count** of valid windows (at most k) | window is invalid | add `r - l + 1` after the loop (windows ending at `r`) |
+| exactly k | | `atMost(k) - atMost(k - 1)` |
+| fixed size k | never; drop `xs[r - k]` as `xs[r]` enters | once `r ≥ k - 1` |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // fixed size k (k ≤ n): add the new item, drop the old
+    function maxSumK(xs: number[], k: number): number {
+      let sum = 0;
+      for (let i = 0; i < k; i++) sum += xs[i];
+      let best = sum;
+      for (let r = k; r < xs.length; r++) {
+        sum += xs[r] - xs[r - k];
+        best = Math.max(best, sum);
+      }
+      return best;
+    }
+
+    // variable: longest substring without repeats
+    function longestUnique(s: string): number {
+      const count = new Map<string, number>();
+      let best = 0;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const c = s[r];
+        count.set(c, (count.get(c) ?? 0) + 1);
+        while (count.get(c)! > 1) { // invalid: shrink
+          const d = s[l++];
+          count.set(d, count.get(d)! - 1);
+        }
+        best = Math.max(best, r - l + 1); // valid here
+      }
+      return best;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+
+    def max_sum_k(xs: list[int], k: int) -> int:
+        total = best = sum(xs[:k])
+        for r in range(k, len(xs)):
+            total += xs[r] - xs[r - k]
+            best = max(best, total)
+        return best
+
+    def longest_unique(s: str) -> int:
+        count: Counter[str] = Counter()
+        best = l = 0
+        for r, c in enumerate(s):
+            count[c] += 1
+            while count[c] > 1:  # invalid: shrink
+                count[s[l]] -= 1
+                l += 1
+            best = max(best, r - l + 1)  # valid here
+        return best
+    ```
+
+  </Tab>
+</Tabs>
+
+Time O(n), space O(size of the alphabet or window). The window needs the rule to be **monotonic**: growing
+a valid window can break it, shrinking an invalid one can fix it. With negative numbers "sum ≤ k" is not
+monotonic, so use [prefix sums](#prefix-sums) instead.
+
+| Problem | Window state | Rule |
+| :------ | :----------- | :--- |
+| Maximum Average Subarray I | running sum | fixed size k |
+| Longest Substring Without Repeating Characters | char counts | every count ≤ 1 |
+| Longest Repeating Character Replacement | counts + top count | `len - maxCount ≤ k` ([recipe](#longest-repeating-character-replacement)) |
+| Minimum Window Substring | counts still needed | shortest window covering t ([recipe](#minimum-window-substring)) |
+| Permutation in String, Find All Anagrams | counts of the last `len(p)` chars | fixed size, counts equal |
+| Minimum Size Subarray Sum (positives) | running sum | shortest with sum ≥ target |
+| Subarrays with K Different Integers | counts | `atMost(k) - atMost(k - 1)` |
+
+## Prefix sums
+
+`pre[i]` is the sum of the first `i` items, so any range sum is one subtraction. Pair it with a hash map
+of prefix values seen so far to count or find subarrays with a target sum in one pass, negatives included.
+
+```text
+xs   =    3   -1    4    2
+pre  = 0  3    2    6    8
+sum(xs[l..r]) = pre[r+1] - pre[l]
+xs[l..r) sums to k  ⇔  pre[r] - pre[l] = k
+                    ⇔  pre[r] - k was seen before
+```
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // pre[i] = sum of xs[0..i)
+    function prefix(xs: number[]): number[] {
+      const pre = [0];
+      for (const x of xs) pre.push(pre.at(-1)! + x);
+      return pre;
+    }
+
+    // Subarray Sum Equals K: count, negatives allowed
+    function subarraySum(xs: number[], k: number): number {
+      const seen = new Map<number, number>([[0, 1]]);
+      let sum = 0;
+      let count = 0;
+      for (const x of xs) {
+        sum += x;
+        count += seen.get(sum - k) ?? 0;
+        seen.set(sum, (seen.get(sum) ?? 0) + 1);
+      }
+      return count;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+    from itertools import accumulate
+
+    def prefix(xs: list[int]) -> list[int]:
+        return list(accumulate(xs, initial=0))
+
+    def subarray_sum(xs: list[int], k: int) -> int:
+        seen = Counter({0: 1})  # the empty prefix
+        total = count = 0
+        for x in xs:
+            total += x
+            count += seen[total - k]
+            seen[total] += 1
+        return count
+    ```
+
+  </Tab>
+</Tabs>
+
+Build O(n), query O(1), space O(n). The `{0: 1}` seed counts subarrays that start at index 0.
+
+| Problem | Twist |
+| :------ | :---- |
+| Range Sum Query - Immutable | plain prefix array |
+| Subarray Sum Equals K | map of prefix → count |
+| Contiguous Array (equal 0s and 1s) | treat 0 as −1, map prefix → **first** index, maximize length |
+| Continuous Subarray Sum (multiple of k) | store `pre % k` → first index |
+| Product of Array Except Self | prefix and suffix **products** ([recipe](#product-of-array-except-self)) |
+| Range Sum Query 2D | `P[r][c]` over a grid, inclusion–exclusion |
+| Range updates (add v to `l..r`, many times) | difference array: `d[l] += v`, `d[r+1] -= v`, prefix-sum once at the end |
+
+## Monotonic stack & deque
+
+A stack whose values stay sorted (decreasing for "next greater"). Each new item pops everything it beats,
+and each pop is an answer: the popped index just found its next greater element. A **deque** version keeps
+the window maximum at the front.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Daily Temperatures: days until a warmer day
+    function dailyTemps(ts: number[]): number[] {
+      const ans = new Array<number>(ts.length).fill(0);
+      const stack: number[] = []; // indexes, temps falling
+      ts.forEach((t, i) => {
+        while (stack.length && ts[stack.at(-1)!] < t) {
+          const j = stack.pop()!;
+          ans[j] = i - j; // i is j's next warmer day
+        }
+        stack.push(i);
+      });
+      return ans;
+    }
+
+    // Sliding Window Maximum. JS has no deque: an array
+    // plus a head index gives O(1) pops at both ends
+    function windowMax(xs: number[], k: number): number[] {
+      const dq: number[] = []; // indexes, values falling
+      let head = 0; // dq[head..] is the live deque
+      const out: number[] = [];
+      for (let i = 0; i < xs.length; i++) {
+        while (dq.length > head && xs[dq.at(-1)!] <= xs[i]) {
+          dq.pop();
+        }
+        dq.push(i);
+        if (dq[head] <= i - k) head++; // left the window
+        if (i >= k - 1) out.push(xs[dq[head]]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import deque
+
+    def daily_temps(ts: list[int]) -> list[int]:
+        ans = [0] * len(ts)
+        stack: list[int] = []  # indexes, temps falling
+        for i, t in enumerate(ts):
+            while stack and ts[stack[-1]] < t:
+                j = stack.pop()
+                ans[j] = i - j  # i is j's next warmer day
+            stack.append(i)
+        return ans
+
+    def window_max(xs: list[int], k: int) -> list[int]:
+        dq: deque[int] = deque()  # indexes, values falling
+        out: list[int] = []
+        for i, x in enumerate(xs):
+            while dq and xs[dq[-1]] <= x:
+                dq.pop()
+            dq.append(i)
+            if dq[0] <= i - k:
+                dq.popleft()  # left the window
+            if i >= k - 1:
+                out.append(xs[dq[0]])
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+Time O(n) (each index is pushed and popped once), space O(n). Store **indexes**, not values: you need
+distances and window bounds.
+
+| Want | Stack order (bottom → top) | Pop while |
+| :--- | :------------------------- | :-------- |
+| next greater | decreasing | `top < x` |
+| next smaller | increasing | `top > x` |
+| previous greater | decreasing | `top ≤ x`; the top after popping is the answer |
+| window max / min | deque decreasing / increasing | back loses to `x`; front leaves the window |
+
+Classics: Daily Temperatures, Next Greater Element I and II (circular: loop `2n` with `i % n`), Online Stock
+Span, Largest Rectangle in Histogram (increasing stack; on pop, width runs from the new top to `i`), Trapping
+Rain Water, Sliding Window Maximum, Remove K Digits.
+
+## Fast & slow pointers
+
+Two pointers on a linked list (or any `next` function), one moving two steps per turn. In a cycle the fast
+one gains one node per turn, so they meet; on a straight list, fast hits the end when slow is halfway.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type ListNode = { val: number; next: Link };
+    type Link = ListNode | null;
+
+    function hasCycle(head: Link): boolean {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow!.next;
+        fast = fast.next.next;
+        if (slow === fast) return true;
+      }
+      return false;
+    }
+
+    // Floyd: after they meet, restart one at the head;
+    // stepping both by one, they meet at the cycle start
+    function cycleStart(head: Link): Link {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow!.next;
+        fast = fast.next.next;
+        if (slow === fast) {
+          let p = head;
+          while (p !== slow) {
+            p = p!.next;
+            slow = slow!.next;
+          }
+          return p;
+        }
+      }
+      return null;
+    }
+
+    // middle node (the second one for even lengths)
+    function middle(head: ListNode): ListNode {
+      let slow = head;
+      let fast: Link = head;
+      while (fast && fast.next) {
+        slow = slow.next!;
+        fast = fast.next.next;
+      }
+      return slow;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from dataclasses import dataclass
+
+    @dataclass(eq=False)  # compare nodes by identity
+    class ListNode:
+        val: int
+        next: "ListNode | None" = None
+
+    Link = ListNode | None
+
+    def has_cycle(head: Link) -> bool:
+        slow = fast = head
+        while fast and fast.next:
+            slow = slow.next
+            fast = fast.next.next
+            if slow is fast:
+                return True
+        return False
+
+    def cycle_start(head: Link) -> Link:
+        slow = fast = head
+        while fast and fast.next:
+            slow = slow.next
+            fast = fast.next.next
+            if slow is fast:
+                p = head
+                while p is not slow:
+                    p, slow = p.next, slow.next
+                return p
+        return None
+
+    def middle(head: ListNode) -> ListNode:
+        slow, fast = head, head
+        while fast and fast.next:
+            slow = slow.next
+            fast = fast.next.next
+        return slow
+    ```
+
+  </Tab>
+</Tabs>
+
+Time O(n), space O(1) (a `Set` of visited nodes also works, in O(n) space).
+
+| Problem | Use |
+| :------ | :-- |
+| Linked List Cycle, Linked List Cycle II | `hasCycle`, `cycleStart` |
+| Middle of the Linked List | `middle` |
+| Palindrome Linked List | find the middle, reverse the second half, compare |
+| Reorder List | middle + reverse + merge |
+| Happy Number | the "list" is `n → sum of squared digits`; a cycle without 1 means unhappy |
+| Find the Duplicate Number | `i → nums[i]` is a list with a cycle; its start is the duplicate |
+
+## Intervals
+
+Sort by start, then sweep once, comparing each interval with the last one kept. Two intervals `[a, b]` and
+`[c, d]` overlap when `a ≤ d` and `c ≤ b` (use `<` if touching ends don't count). For "how many at once",
+keep a **min-heap of end times**: its top is the room that frees up first.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Interval = [number, number];
+
+    function merge(xs: Interval[]): Interval[] {
+      const sorted = [...xs].sort((a, b) => a[0] - b[0]);
+      const out: Interval[] = [];
+      for (const [s, e] of sorted) {
+        const last = out.at(-1);
+        if (last && s <= last[1]) {
+          last[1] = Math.max(last[1], e); // overlap: extend
+        } else {
+          out.push([s, e]);
+        }
+      }
+      return out;
+    }
+
+    // Insert Interval: xs is sorted and non-overlapping
+    function insert(xs: Interval[], add: Interval): Interval[] {
+      const out: Interval[] = [];
+      let [s, e] = add;
+      let i = 0;
+      while (i < xs.length && xs[i][1] < s) out.push(xs[i++]);
+      while (i < xs.length && xs[i][0] <= e) { // overlaps
+        s = Math.min(s, xs[i][0]);
+        e = Math.max(e, xs[i][1]);
+        i++;
+      }
+      return [...out, [s, e], ...xs.slice(i)];
+    }
+
+    // Meeting Rooms II: the most meetings at once
+    function minRooms(xs: Interval[]): number {
+      const sorted = [...xs].sort((a, b) => a[0] - b[0]);
+      const ends = new MinHeap<number>((a, b) => a - b);
+      for (const [s, e] of sorted) {
+        // earliest-ending meeting is over: reuse its room
+        if (ends.size > 0 && ends.peek()! <= s) ends.pop();
+        ends.push(e);
+      }
+      return ends.size;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+
+    Interval = tuple[int, int]
+
+    def merge(xs: list[Interval]) -> list[Interval]:
+        out: list[Interval] = []
+        for s, e in sorted(xs):
+            if out and s <= out[-1][1]:  # overlap: extend
+                out[-1] = (out[-1][0], max(out[-1][1], e))
+            else:
+                out.append((s, e))
+        return out
+
+    Intervals = list[Interval]
+
+    def insert(xs: Intervals, add: Interval) -> Intervals:
+        s, e = add
+        out: list[Interval] = []
+        i = 0
+        while i < len(xs) and xs[i][1] < s:
+            out.append(xs[i])
+            i += 1
+        while i < len(xs) and xs[i][0] <= e:  # overlaps
+            s, e = min(s, xs[i][0]), max(e, xs[i][1])
+            i += 1
+        return out + [(s, e)] + xs[i:]
+
+    def min_rooms(xs: list[Interval]) -> int:
+        ends: list[int] = []  # min-heap of end times
+        for s, e in sorted(xs):
+            # earliest-ending meeting is over: reuse its room
+            if ends and ends[0] <= s:
+                heapq.heappop(ends)
+            heapq.heappush(ends, e)
+        return len(ends)
+    ```
+
+  </Tab>
+</Tabs>
+
+`merge` and `minRooms` O(n log n) (the sort), `insert` O(n); space O(n). `MinHeap` is the class from
+[Trees & graphs](/dsa/trees-graphs/#heaps).
+
+| Problem | Approach |
+| :------ | :------- |
+| Merge Intervals | `merge` |
+| Insert Interval | `insert`: before, overlapping, after |
+| Meeting Rooms (can one person attend all?) | sort by start; any `start < previous end` means no |
+| Meeting Rooms II / Car Pooling | heap of ends, or a sweep over `+1` at starts and `−1` at ends |
+| Non-overlapping Intervals (fewest to remove) | sort by **end**, greedily keep the earliest-ending |
+| Minimum Number of Arrows to Burst Balloons | sort by end, shoot at each kept end |
+| Interval List Intersections | two pointers over two sorted lists; advance the one that ends first |
+
+## Top-k & k-way merge
+
+A heap answers "best k so far" in O(log k) per item. For the k **largest**, keep a **min**-heap of size k:
+the smallest of the k best sits on top, ready to be evicted. For k sorted lists, a heap of each list's
+current head yields the global order.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // k largest, largest first
+    function topK(xs: number[], k: number): number[] {
+      const heap = new MinHeap<number>((a, b) => a - b);
+      for (const x of xs) {
+        heap.push(x);
+        if (heap.size > k) heap.pop(); // drop the smallest
+      }
+      const out: number[] = [];
+      while (heap.size > 0) out.push(heap.pop()!);
+      return out.reverse();
+    }
+
+    // merge k sorted arrays; entry = [value, list, index]
+    type Entry = [number, number, number];
+
+    function mergeK(lists: number[][]): number[] {
+      const heap = new MinHeap<Entry>((a, b) => a[0] - b[0]);
+      lists.forEach((xs, i) => {
+        if (xs.length) heap.push([xs[0], i, 0]);
+      });
+      const out: number[] = [];
+      while (heap.size > 0) {
+        const [v, i, j] = heap.pop()!;
+        out.push(v);
+        if (j + 1 < lists[i].length) {
+          heap.push([lists[i][j + 1], i, j + 1]);
+        }
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    import heapq
+
+    def top_k(xs: list[int], k: int) -> list[int]:
+        heap: list[int] = []
+        for x in xs:
+            heapq.heappush(heap, x)
+            if len(heap) > k:
+                heapq.heappop(heap)  # drop the smallest
+        return sorted(heap, reverse=True)
+        # built in: heapq.nlargest(k, xs)
+
+    def merge_k(lists: list[list[int]]) -> list[int]:
+        heap = [(xs[0], i, 0)
+                for i, xs in enumerate(lists) if xs]
+        heapq.heapify(heap)
+        out: list[int] = []
+        while heap:
+            v, i, j = heapq.heappop(heap)
+            out.append(v)
+            if j + 1 < len(lists[i]):
+                item = (lists[i][j + 1], i, j + 1)
+                heapq.heappush(heap, item)
+        return out
+        # built in: list(heapq.merge(*lists))
+    ```
+
+  </Tab>
+</Tabs>
+
+`topK` O(n log k) time, O(k) space; `mergeK` O(N log k) for N total items, O(k) heap. Put a tiebreaker
+(the list index) second in each tuple so Python never compares payloads such as `ListNode`s, which raises
+`TypeError`.
+
+| Problem | Heap holds | Alternative |
+| :------ | :--------- | :---------- |
+| Kth Largest Element in an Array | min-heap of size k | quickselect, O(n) average |
+| Top K Frequent Elements | `(count, value)`, size k | bucket sort by count, O(n) ([recipe](#top-k-frequent-elements-bucket-sort)) |
+| K Closest Points to Origin | **max**-heap of size k by distance (negate in Python) | quickselect |
+| Merge k Sorted Lists | `(val, i, node)` heads | pairwise merging, same O(N log k) |
+| Find Median from Data Stream | max-heap of the low half + min-heap of the high half | keep sizes within 1 |
+| Task Scheduler, Reorganize String | max-heap of remaining counts | greedy counting formula |
+
+## Cyclic sort & index as hash
+
+When values are in `1..n` (or `0..n`) and the array has n slots, the array can be its own hash table:
+swap each value to index `v - 1`, or flip the sign at `|v| - 1` to mark "seen". O(n) time, O(1) extra space,
+but it rewrites the input.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // First Missing Positive (reorders xs in place)
+    function firstMissingPositive(xs: number[]): number {
+      const n = xs.length;
+      for (let i = 0; i < n; i++) {
+        // swap xs[i] home until it's home or out of range
+        while (xs[i] >= 1 && xs[i] <= n
+            && xs[xs[i] - 1] !== xs[i]) {
+          const j = xs[i] - 1;
+          [xs[i], xs[j]] = [xs[j], xs[i]];
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        if (xs[i] !== i + 1) return i + 1;
+      }
+      return n + 1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def first_missing_positive(xs: list[int]) -> int:
+        n = len(xs)
+        for i in range(n):
+            # swap xs[i] home until it's home or out of range
+            while 1 <= xs[i] <= n and xs[xs[i] - 1] != xs[i]:
+                j = xs[i] - 1  # not xs[i], xs[xs[i]-1] = …
+                xs[i], xs[j] = xs[j], xs[i]
+        for i in range(n):
+            if xs[i] != i + 1:
+                return i + 1
+        return n + 1
+    ```
+
+  </Tab>
+</Tabs>
+
+Each swap puts one value home for good, so the inner loop runs at most n times in total: O(n). In Python,
+compute `j` first: `xs[i], xs[xs[i] - 1] = …` assigns `xs[i]` before evaluating the second target's index.
+
+Classics: Missing Number (or XOR / Gauss sum), Find All Numbers Disappeared in an Array, Find All Duplicates
+in an Array (negate `xs[|v| - 1]`; already negative means seen), First Missing Positive, Set Mismatch.
+
+## Bit manipulation
+
+| Trick | Does | Used in |
+| :---- | :--- | :------ |
+| `x & (x - 1)` | clears the lowest set bit; `x > 0 && (x & (x - 1)) === 0` is a power of two | Number of 1 Bits, Power of Two |
+| `x & -x` | isolates the lowest set bit | Fenwick trees, Single Number III |
+| `a ^ a = 0`, `a ^ 0 = a` | pairs cancel, order doesn't matter | Single Number, Missing Number |
+| `(x >> i) & 1` | test bit i | subsets, Counting Bits |
+| `x \| (1 << i)`, `x & ~(1 << i)`, `x ^ (1 << i)` | set, clear, toggle bit i | bitmask state |
+| `1 << n` | 2ⁿ: number of subsets of n items | subset enumeration, bitmask DP |
+| `mask & (1 << i)` | is item i in the subset | Subsets, Traveling Salesman DP |
+| `(sub - 1) & mask` | next smaller submask of `mask` | DP over submasks, O(3ⁿ) total |
+| `popcount(a ^ b)` | Hamming distance | Hamming Distance |
+| `x >> 1`, `x << 1` | halve (floor), double | Counting Bits: `bits[i] = bits[i >> 1] + (i & 1)` |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Single Number: every other value appears twice
+    function single(xs: number[]): number {
+      return xs.reduce((acc, x) => acc ^ x, 0);
+    }
+
+    // Kernighan: one iteration per set bit; works on the
+    // 32-bit pattern, so negatives count 32-bit style
+    function popcount(x: number): number {
+      let n = 0;
+      for (let v = x; v !== 0; v &= v - 1) n++;
+      return n;
+    }
+
+    // all subsets via masks 0 .. 2^n - 1 (n ≤ 30 in JS)
+    function subsets<T>(items: T[]): T[][] {
+      const out: T[][] = [];
+      for (let m = 0; m < 1 << items.length; m++) {
+        out.push(items.filter((_, i) => (m >> i) & 1));
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from functools import reduce
+    from operator import xor
+
+    def single(xs: list[int]) -> int:
+        return reduce(xor, xs, 0)
+
+    def popcount(x: int) -> int:
+        v, n = x & 0xFFFFFFFF, 0  # 32-bit view, like JS
+        while v:  # a raw negative int would never hit 0
+            v &= v - 1
+            n += 1
+        return n
+        # built in: (x & 0xFFFFFFFF).bit_count()
+
+    def subsets[T](items: list[T]) -> list[list[T]]:
+        n = len(items)
+        return [
+            [items[i] for i in range(n) if m >> i & 1]
+            for m in range(1 << n)
+        ]
+    ```
+
+  </Tab>
+</Tabs>
+
+`single` and `popcount` O(n) and O(bits); `subsets` O(n · 2ⁿ).
+
+| | JavaScript / TypeScript | Python |
+| :- | :---------------------- | :----- |
+| Integer width for bit ops | operands become **32-bit signed**; `1 << 31` is `-2147483648`, `2 ** 32 \| 0` is `0` | unbounded; `1 << 31` is `2147483648` |
+| Shift count | taken mod 32: `1 << 32` is `1` | exact: `1 << 32` is `4294967296` |
+| Unsigned view | `x >>> 0`; `>>>` is the unsigned right shift | `x & 0xFFFFFFFF` (no `>>>`) |
+| `~x` | `-x - 1` in 32 bits | `-x - 1`; negatives have infinite leading 1s |
+| Above 32 bits | `BigInt`: `1n << 40n`, can't mix with `number` | just works |
+| Popcount | no built-in; loop or table | `int.bit_count()` (3.10+) |
+| Reverse Integer style overflow checks | numbers are doubles; compare with `2 ** 31 - 1` | ints never overflow: check the 32-bit range by hand |
+
+## Recipes
+
+### Stuck? Try this order
+
+When no signal jumps out, walk this list and ask "does this make the repeated work go away?"
+
+```text
+1. Brute force out loud, with its cost. Where's the repeat?
+2. Sort it?          → two pointers, binary search, greedy
+3. Hash it?          → seen set, value → index, prefix counts
+4. Contiguous range? → sliding window or prefix sums
+5. Next bigger?      → monotonic stack
+6. Best k / stream   → heap
+7. Choices + overlap → DP (recurrence first, then memoize)
+8. All answers       → backtracking with pruning
+9. Graph in disguise → BFS / DFS / topo sort / union-find
+10. Monotonic answer → binary search on the answer
+```
+
+### Minimum Window Substring
+
+The **shortest**-window template: record and shrink while the window is valid. `missing` counts
+characters of `t` not yet covered, so validity is O(1) to check.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function minWindow(s: string, t: string): string {
+      const need = new Map<string, number>();
+      for (const c of t) need.set(c, (need.get(c) ?? 0) + 1);
+      let missing = t.length; // chars of t still uncovered
+      let bestL = 0;
+      let bestLen = s.length + 1;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const n = need.get(s[r]) ?? 0;
+        if (n > 0) missing--;
+        need.set(s[r], n - 1); // negative = surplus
+        while (missing === 0) { // valid: record, shrink
+          if (r - l + 1 < bestLen) {
+            bestL = l;
+            bestLen = r - l + 1;
+          }
+          const m = need.get(s[l])! + 1;
+          need.set(s[l++], m);
+          if (m > 0) missing++;
+        }
+      }
+      return bestLen > s.length
+        ? ""
+        : s.slice(bestL, bestL + bestLen);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+
+    def min_window(s: str, t: str) -> str:
+        need = Counter(t)
+        missing = len(t)  # chars of t still uncovered
+        best_l, best_len = 0, len(s) + 1
+        l = 0
+        for r, c in enumerate(s):
+            if need[c] > 0:
+                missing -= 1
+            need[c] -= 1  # negative = surplus
+            while missing == 0:  # valid: record, shrink
+                if r - l + 1 < best_len:
+                    best_l, best_len = l, r - l + 1
+                need[s[l]] += 1
+                if need[s[l]] > 0:
+                    missing += 1
+                l += 1
+        if best_len > len(s):
+            return ""
+        return s[best_l : best_l + best_len]
+    ```
+
+  </Tab>
+</Tabs>
+
+O(|s| + |t|) time, O(alphabet) space.
+
+### Longest Repeating Character Replacement
+
+The **longest**-window template: a window is fixable with k edits when `length - count of its most common
+letter ≤ k`. `maxFreq` never has to decrease: a stale (too high) value only lets the window slide at its
+current length, and the window grows only when some letter beats the old `maxFreq`, which is exactly when a
+longer answer exists.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function charReplacement(s: string, k: number): number {
+      const count = new Map<string, number>();
+      let maxFreq = 0; // top count seen in any window
+      let best = 0;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const n = (count.get(s[r]) ?? 0) + 1;
+        count.set(s[r], n);
+        maxFreq = Math.max(maxFreq, n);
+        while (r - l + 1 - maxFreq > k) { // invalid
+          count.set(s[l], count.get(s[l])! - 1);
+          l++;
+        }
+        best = Math.max(best, r - l + 1);
+      }
+      return best;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+
+    def char_replacement(s: str, k: int) -> int:
+        count: Counter[str] = Counter()
+        max_freq = best = l = 0
+        for r, c in enumerate(s):
+            count[c] += 1
+            max_freq = max(max_freq, count[c])
+            while r - l + 1 - max_freq > k:  # invalid
+                count[s[l]] -= 1
+                l += 1
+            best = max(best, r - l + 1)
+        return best
+    ```
+
+  </Tab>
+</Tabs>
+
+O(n) time, O(alphabet) space.
+
+### 3Sum: sort, then two pointers
+
+Fix the smallest element, run opposite-ends two pointers on the rest, and skip equal neighbors so each
+triple appears once.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function threeSum(xs: number[]): number[][] {
+      const a = [...xs].sort((x, y) => x - y);
+      const out: number[][] = [];
+      for (let i = 0; i < a.length - 2; i++) {
+        if (a[i] > 0) break; // three positives can't sum to 0
+        if (i > 0 && a[i] === a[i - 1]) continue; // dup
+        let lo = i + 1;
+        let hi = a.length - 1;
+        while (lo < hi) {
+          const s = a[i] + a[lo] + a[hi];
+          if (s < 0) lo++;
+          else if (s > 0) hi--;
+          else {
+            out.push([a[i], a[lo++], a[hi--]]);
+            while (lo < hi && a[lo] === a[lo - 1]) lo++;
+          }
+        }
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def three_sum(xs: list[int]) -> list[list[int]]:
+        a = sorted(xs)
+        out: list[list[int]] = []
+        for i in range(len(a) - 2):
+            if a[i] > 0:
+                break  # three positives can't sum to 0
+            if i > 0 and a[i] == a[i - 1]:
+                continue  # dup
+            lo, hi = i + 1, len(a) - 1
+            while lo < hi:
+                s = a[i] + a[lo] + a[hi]
+                if s < 0:
+                    lo += 1
+                elif s > 0:
+                    hi -= 1
+                else:
+                    out.append([a[i], a[lo], a[hi]])
+                    lo, hi = lo + 1, hi - 1
+                    while lo < hi and a[lo] == a[lo - 1]:
+                        lo += 1
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+O(n²) time, O(n) for the sorted copy. 4Sum adds one more fixed loop: O(n³).
+
+### Product of Array Except Self
+
+Prefix products from the left, then multiply by suffix products from the right, without division.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function productExceptSelf(xs: number[]): number[] {
+      const n = xs.length;
+      const out = new Array<number>(n).fill(1);
+      let pre = 1;
+      for (let i = 0; i < n; i++) {
+        out[i] = pre; // product of everything left of i
+        pre *= xs[i];
+      }
+      let suf = 1;
+      for (let i = n - 1; i >= 0; i--) {
+        out[i] *= suf; // times everything right of i
+        suf *= xs[i];
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def product_except_self(xs: list[int]) -> list[int]:
+        n = len(xs)
+        out = [1] * n
+        pre = 1
+        for i in range(n):
+            out[i] = pre  # product of everything left of i
+            pre *= xs[i]
+        suf = 1
+        for i in range(n - 1, -1, -1):
+            out[i] *= suf  # times everything right of i
+            suf *= xs[i]
+        return out
+    ```
+
+  </Tab>
+</Tabs>
+
+O(n) time, O(1) extra space besides the output.
+
+### Top K Frequent Elements: bucket sort
+
+Counts are between 1 and n, so bucket values by count and read buckets from the top: O(n), beating the
+O(n log k) heap.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function topKFrequent(xs: number[], k: number): number[] {
+      const freq = new Map<number, number>();
+      for (const x of xs) freq.set(x, (freq.get(x) ?? 0) + 1);
+      // buckets[f] = values seen exactly f times
+      const buckets: number[][] = Array.from(
+        { length: xs.length + 1 },
+        () => [],
+      );
+      for (const [x, f] of freq) buckets[f].push(x);
+      const out: number[] = [];
+      for (let f = xs.length; f > 0 && out.length < k; f--) {
+        out.push(...buckets[f]);
+      }
+      return out.slice(0, k);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+
+    def top_k_frequent(xs: list[int], k: int) -> list[int]:
+        freq = Counter(xs)
+        buckets: list[list[int]] = [
+            [] for _ in range(len(xs) + 1)
+        ]
+        for x, f in freq.items():
+            buckets[f].append(x)
+        out: list[int] = []
+        for f in range(len(xs), 0, -1):
+            out.extend(buckets[f])
+            if len(out) >= k:
+                break
+        return out[:k]
+        # heap version: [x for x, _ in freq.most_common(k)]
+    ```
+
+  </Tab>
+</Tabs>
+
+O(n) time and space.
+
+## References
+
+- [Tech Interview Handbook: algorithms study cheatsheets](https://www.techinterviewhandbook.org/algorithms/study-cheatsheet/): per-topic techniques, corner cases and practice problems
+- [NeetCode roadmap](https://neetcode.io/roadmap): problems grouped by pattern, with video walkthroughs
+- [Python docs: heapq](https://docs.python.org/3/library/heapq.html): min-heap functions, `nlargest`, `merge`, tuple tiebreakers
+- [Python docs: collections](https://docs.python.org/3/library/collections.html): `deque`, `Counter`, `defaultdict`
+- [Python docs: int.bit_count](https://docs.python.org/3/library/stdtypes.html#int.bit_count): popcount and the bitwise operators on unbounded ints
+- [MDN: Bitwise operators](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators#bitwise_shift_operators): 32-bit conversion, `>>>`
+- [MDN: Array.prototype.sort](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort): comparators, stability, default string order
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map): counting and index maps with non-string keys
+- *Introduction to Algorithms* (CLRS), ch. 6 (heaps) and 16 (greedy, activity selection): the proofs behind heaps and interval greedy
+- [LeetCode problem list](https://leetcode.com/problemset/): look up any problem named on this sheet

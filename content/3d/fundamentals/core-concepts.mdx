@@ -1,0 +1,432 @@
+---
+title: Core 3D concepts
+date: 2026-09-27
+order: 1
+---
+
+The ideas every 3D tool shares, without the tool: scenes, axes and units, transforms, meshes and normals,
+topology and polygon budgets, UVs, draw calls, how a renderer turns triangles into pixels, and which file
+format keeps what. Surfaces and light are in [Materials, textures & lighting](/3d/fundamentals/materials-lighting/),
+motion in [Animation & rigging concepts](/3d/fundamentals/animation-rigging/). For the how-to, see
+[Blender](/3d/blender/) and the [export](/3d/export/) sheets.
+
+## The mental model
+
+A **scene** is a tree of **objects**. Each object has a **transform** (where it is, how it is turned, how big
+it is) and may carry **mesh** data (the shape), **materials** (how the surface reacts to light), or be a
+**light** or **camera**. A **renderer** looks through the camera and turns all of it into pixels, one
+**frame** at a time.
+
+```text
+ Scene
+  ├─ Object  (transform: position · rotation · scale)
+  │    ├─ Mesh      vertices, edges, faces, normals, UVs
+  │    └─ Material  base color, roughness, metallic, textures…
+  ├─ Object (child)  inherits its parent's transform
+  ├─ Lights          sun, point, spot, area, sky (HDRI)
+  └─ Camera ──► renderer ──► pixels (one frame; 60 per second in a game)
+```
+
+| Concept | Blender | three.js | Godot 4 |
+| :------ | :------ | :------- | :------ |
+| Scene | Scene (with collections) | `Scene` | scene tree (a root `Node3D`) |
+| Object with a transform | Object | `Object3D` | `Node3D` |
+| Empty / group | Empty | `Group` | `Node3D` |
+| Mesh shape | Mesh data-block | `BufferGeometry` inside a `Mesh` | `Mesh` resource in a `MeshInstance3D` |
+| Material | Material (node tree, Principled BSDF) | `MeshStandardMaterial` | `StandardMaterial3D` |
+| Light | Light object | `DirectionalLight`, `PointLight`… | `DirectionalLight3D`, `OmniLight3D`… |
+| Camera | Camera object | `PerspectiveCamera` | `Camera3D` |
+
+Object and data are separate: many objects can share one mesh (Blender "linked duplicates"), which is the
+same idea engines call **instancing**.
+
+## Coordinate systems & handedness
+
+Every tool picks an **up axis** and a **handedness**. Right-handed: point your right thumb along +X and your
+index finger along +Y; your middle finger is +Z. Left-handed tools flip one axis, which mirrors everything.
+
+<Diagram src="/images/diagrams/3d-axes.svg" label="Two axis gizmos side by side. Blender: Z points up, X right, Y away from the viewer, and a model's front faces minus Y. glTF, three.js and Godot: Y points up, X right, Z toward the viewer; a model's front faces plus Z and cameras look down minus Z." caption="Blender is Z-up; glTF, three.js and Godot are Y-up. The exporter rotates between them." />
+
+| Tool / format | Up | Handed | Forward convention | Units |
+| :------------ | :- | :----- | :----------------- | :---- |
+| Blender | +Z | right | model front faces −Y (Front view looks toward +Y) | 1 unit = 1 m |
+| glTF 2.0 | +Y | right | asset front faces +Z | meters |
+| three.js | +Y | right | cameras look down −Z; `lookAt` turns other objects' +Z to the target | unitless, use meters |
+| Godot 4 | +Y | right | `Vector3.FORWARD` = −Z (cameras, nodes); imported models face +Z (`MODEL_FRONT`) | 1 unit = 1 m |
+| Unity | +Y | left | +Z | meters |
+| Unreal | +Z | left | +X (Epic has announced a move to right-handed Y-up, starting with UEFN) | centimeters |
+| GTA V (RAGE) | +Z | right | +Y (heading 0 = north) | meters |
+
+How exporters convert:
+- **Blender → glTF**: the exporter's **+Y Up** option (on by default) maps `(x, y, z)` to `(x, z, −y)`. Model
+  facing −Y in Blender, and it arrives facing +Z: what glTF, three.js and Godot's `MODEL_FRONT` expect.
+- **Blender → FBX**: the exporter has Forward / Up axis settings; Unity and Unreal convert on import. The
+  classic symptom of a mismatch is a model lying on its back, or a root object rotated −90° on X.
+- **Blender → GTA V**: same axes, so Sollumz (the Blender add-on for GTA files) exports without a swap; see
+  [GTA V](/3d/export/gta-v/).
+- A **negative scale** on one axis mirrors the object, which flips handedness, face winding and normals.
+  Apply it and recalculate normals before export.
+
+## Units & scale
+
+| Tool | 1 unit | Note |
+| :--- | :----- | :--- |
+| Blender | 1 m (Unit Scale 1.0, Metric) | keep the default |
+| glTF, Godot, three.js | 1 m | three.js has no units; physics and lights assume meters |
+| Unreal | 1 cm | exporters multiply by 100 |
+| FBX | carries a unit-scale field | mismatches show up as 100× or 0.01× |
+
+Why an object's **scale should read 1.0** before export:
+- Modifiers (bevel width, solidify thickness, array offsets) and physics use the scaled size, so an object
+  scaled 0.1 behaves like something ten times smaller than its numbers say.
+- Non-uniform scale (e.g. `2, 1, 1`) skews normals and distorts children and rotations.
+- Rigs, retargeting, collision shapes and lightmap UV density all expect scale 1.
+- Exporters carry object scale inconsistently; a mesh with scale baked in is the same everywhere.
+
+**Apply scale** bakes the object's scale into the vertex positions and resets the scale to 1 (Blender:
+Object > Apply > Scale, `Ctrl A`). Apply rotation the same way for static props; see
+[Blender modeling](/3d/blender/modeling/).
+
+Real-world sizes for blocking out scenes and buildings (rules of thumb):
+
+| Thing | Size |
+| :---- | :--- |
+| Adult person | 1.6–1.9 m tall; eye height ~1.6 m |
+| Interior door | ~2.0–2.1 m tall, 0.8–0.9 m wide |
+| Ceiling height (home) | 2.4–3.0 m; one story ≈ 3 m floor to floor |
+| Stair step | ~0.17–0.19 m rise, ~0.25–0.30 m run |
+| Table / counter | ~0.75 m / ~0.9 m high |
+| Car | ~4.5 m long, ~1.8 m wide, ~1.5 m tall |
+
+## Transforms & hierarchies
+
+| Term | Meaning |
+| :--- | :------ |
+| Position (location, translation) | where the object's origin is, in meters |
+| Rotation | how it is turned: Euler angles or a quaternion |
+| Scale | size multiplier per axis; 1 = as modeled |
+| Transform matrix | the three combined into one 4×4 matrix (applied as scale, then rotate, then translate) |
+| Local space | relative to the parent (what the inspector shows) |
+| World space | relative to the scene origin |
+| Parent / child | a child's world transform = parent's world transform × child's local transform |
+| Origin / pivot | the point an object rotates and scales around; the mesh's (0, 0, 0) |
+
+<Diagram src="/images/diagrams/3d-transform-hierarchy.svg" label="A tree: Car root with children Body, Wheel_FL and Door_L; Door_L has a child Handle. Each box lists its local position and the resulting world position, for example Wheel_FL local 0.8, 0.35, 1.3 becomes world 10.8, 0.35, 1.3 because Car sits at 10, 0, 0." caption="Children store positions relative to their parent; world positions are computed down the tree." />
+
+Put the origin where the object pivots: a door at its hinge, a character or building at floor level
+(center of the feet), a wheel at its axle. Engines rotate around the mesh's origin, so a misplaced origin
+means doors that orbit and characters that float.
+
+### Euler angles vs quaternions
+
+| | Euler angles | Quaternion |
+| :- | :---------- | :--------- |
+| Stored as | three angles, applied in an order (XYZ, YXZ…) | four numbers `(x, y, z, w)` |
+| Readable | yes: "rotate 90° on Z" | no |
+| Gimbal lock | yes: when the middle axis turns 90°, two axes line up and one degree of freedom is lost | no |
+| Interpolation | can spin the long way or flip | smooth shortest path (slerp) |
+| Where | Blender objects default to XYZ Euler; three.js `rotation`; Godot `rotation` (YXZ order by default) | Blender bones default; glTF stores all rotations; three.js `quaternion`; Godot `quaternion` / `basis` |
+
+Edit in Euler, let the engine store quaternions. If an animated rotation flips at 180°, switch it to
+quaternions or run Blender's Euler discontinuity filter.
+
+## Mesh anatomy
+
+<Diagram src="/images/diagrams/3d-mesh-anatomy.svg" label="A flat 3 by 2 grid mesh with one vertex, one edge and one face highlighted and a normal arrow pointing straight up from the face center; beside it a quad with a dashed diagonal showing its two triangles, a triangle and a five-sided n-gon." caption="Vertices, edges, faces and a face normal; quads split into two triangles." />
+
+| Term | Meaning |
+| :--- | :------ |
+| Vertex | a point: position `(x, y, z)`, plus per-vertex data (normal, UVs, color, bone weights) |
+| Edge | a straight line between two vertices |
+| Face (polygon) | a flat surface bounded by 3+ edges |
+| Tri / quad / n-gon | a face with 3 / 4 / 5 or more sides |
+| Face corner (loop) | a vertex as used by one face; UVs and split normals live here |
+| Winding order | the order a face's vertices are listed in; counter-clockwise seen from the front is the front side (glTF, OpenGL) |
+| Vertex color | a color stored per vertex or corner; masks, tinting, cheap AO |
+| Manifold / watertight | every edge is shared by exactly two faces: a closed surface with no holes |
+
+**GPU vertex count ≠ modeling vertex count.** The GPU needs one vertex per unique combination of position,
+normal and UV, so every UV seam and hard edge splits vertices. A 1,000-vertex model can upload as 1,500.
+
+**Non-manifold** geometry (holes, an edge shared by 3+ faces, interior faces, zero-area faces, duplicate
+vertices) breaks booleans, 3D printing, volume and collision generation, and some bakes. Fix it with Merge
+by Distance and by deleting interior faces; see [Blender modeling](/3d/blender/modeling/).
+
+## Normals
+
+A **normal** is a unit vector saying which way a surface faces. Lighting is computed from it.
+
+| Term | Meaning | Looks like |
+| :--- | :------ | :--------- |
+| Face normal | perpendicular to a face | one flat shade per face |
+| Vertex normal | average of the surrounding faces, interpolated across each face | smooth shading |
+| Flat shading | each face uses its face normal | faceted, low-poly look |
+| Smooth shading | vertex normals blended across faces | curved look on the same geometry |
+| Hard edge / sharp edge | normals split along chosen edges | crisp corners, smooth elsewhere (Blender 4.1+: Smooth by Angle) |
+| Flipped normal | normal points into the object | dark or missing faces, inverted lighting |
+| Backface culling | skip faces whose back side faces the camera | flipped faces become holes |
+
+| Tool | Culls back faces by default? | Setting |
+| :--- | :-------------------------- | :------ |
+| Blender viewport and renders | no: both sides render | material Backface Culling checkbox |
+| glTF | yes, unless the material is `doubleSided` | exported from the Blender material setting |
+| three.js | yes | `material.side = THREE.DoubleSide` |
+| Godot | yes | `StandardMaterial3D` Cull Mode |
+
+That table explains the most common beginner bug: a model looks fine in Blender and has holes in the
+engine. Turn on Blender's **Face Orientation** overlay (blue = outside, red = inside) and recalculate
+normals outward; use double-sided materials only for truly thin things (leaves, paper, cloth).
+
+## Topology & polygon budgets
+
+**Topology** is how faces are laid out across a surface, independent of its shape.
+
+| Term | Meaning |
+| :--- | :------ |
+| Edge loop | a ring of edges running around a form (around an eye, a limb, a column) |
+| Edge ring | the edges crossed by a loop, side by side |
+| Pole | a vertex with 3 or 5+ edges; loops end or split there; keep poles off bending areas |
+| Subdivision surface | smooths a cage by splitting every quad into 4 (Catmull-Clark) |
+| Retopology | rebuilding a dense sculpt or scan as a clean, light mesh |
+| Decimate / simplify | automatic triangle reduction; fine for static props, bad for deforming ones |
+
+Why **quads** while modeling:
+- Loop cuts and loop selection work, so you can add detail where it is needed.
+- Subdivision smooths quads predictably; triangles and n-gons pinch.
+- Deforming parts (joints, faces) bend cleanly with loops around them: give an elbow or knee ~3 loops.
+
+Why engines **triangulate**: GPUs only draw triangles, so every quad becomes 2 tris and an n-gon becomes
+n − 2. A quad's split direction changes how it shades when it bends, so **triangulate before baking a
+normal map** so the bake and the game use the same triangles. Count budgets in **triangles**.
+
+Triangle budgets (rules of thumb, not limits; test on your weakest target device):
+
+| Target | Triangles | Also watch |
+| :----- | :-------- | :--------- |
+| Mobile web, whole scene | 100k–300k | draw calls in the low hundreds, textures ≤ 2K |
+| Desktop web, whole scene | 500k–2M | texture memory, shadows |
+| Indie game hero character | 15k–60k | bone count, 1–3 materials |
+| Hero prop (weapon in first person) | 5k–20k | normal map carries the detail |
+| Background prop (crate, chair, rock) | 50–2,000 | share one texture atlas or trim sheet (see [UV mapping](#uv-mapping)) |
+| Building exterior at mid distance | 1k–20k | LODs (lighter distance versions), trim sheets |
+| GTA V vehicle, highest LOD (community figure) | 60k–120k | lower LODs down to ~1k; see [GTA V](/3d/export/gta-v/) |
+
+## UV mapping
+
+**UVs** are 2D coordinates stored per face corner that say which pixel of a texture lands on which part of
+the surface. U runs horizontally, V vertically, 0 to 1 across the image. **Unwrapping** is flattening the
+mesh like a cardboard box cut open.
+
+| Term | Meaning |
+| :--- | :------ |
+| Seam | an edge where the mesh is cut open; textures may show a line there, so hide seams in creases and undersides |
+| Island (shell) | one connected flat piece of the unwrap |
+| Stretching / distortion | an island's shape doesn't match the 3D face; a checker texture shows it |
+| Texel density | texture pixels per meter of surface; keep it consistent so nothing looks blurrier than its neighbor |
+| Padding (margin) | empty pixels between islands so mipmaps don't bleed colors across seams |
+| Overlapping UVs | several faces share the same texture area: mirrored halves, tiling, repeated bolts; saves memory |
+| Unique UVs | every face has its own area; required for baked AO, normal maps and lightmaps |
+| UV channel (UV map) | a mesh can hold several; the second is often the lightmap UV |
+| Tiling texture / trim sheet | a repeating texture, or one texture with strips (trims) many meshes map onto; standard for buildings |
+
+**Lightmaps need unique, non-overlapping UVs**, usually in a second UV channel (Godot can generate one on
+import for `LightmapGI`). Texel density rules of thumb: first-person games ~512–1024 px/m, third-person
+~256–512 px/m, web product views: whatever keeps a 1K–2K texture sharp at the closest zoom.
+
+The V axis points up in Blender and OpenGL but down in glTF; exporters and `GLTFLoader` handle the flip,
+so don't flip it by hand. How to unwrap: [Blender materials & UVs](/3d/blender/materials-uv/).
+
+## Draw calls, instancing & LOD
+
+A **draw call** is one command from the CPU telling the GPU "draw this mesh with this material". Each
+mesh × material is at least one draw call, and each costs CPU time regardless of triangle count, so 2,000
+tiny objects are slower than one 200k-triangle mesh. The web is the most sensitive: aim for draw calls in the
+low hundreds on phones.
+
+| Technique | What it does | three.js | Godot | Blender side |
+| :-------- | :----------- | :------- | :---- | :----------- |
+| Merge | join static meshes that share a material into one | `mergeGeometries` (BufferGeometryUtils) | merge before export | Join (`Ctrl J`) |
+| Atlas / trim sheet | many objects share one material and texture | fewer materials | same | pack UVs into one texture |
+| Instancing | draw one mesh many times in one call, each with its own transform | `InstancedMesh`, `BatchedMesh` | `MultiMeshInstance3D` | linked duplicates; glTF "GPU Instances" (`EXT_mesh_gpu_instancing`) |
+| LOD (level of detail) | swap in lighter meshes with distance | `LOD` | automatic mesh LOD on import; visibility ranges | model or decimate LOD1, LOD2… |
+| Frustum culling | skip objects outside the camera's view | automatic per object | automatic | keep huge meshes split so parts can cull |
+| Occlusion culling | skip objects hidden behind others | manual / libraries | `OccluderInstance3D` | occluder meshes |
+| Impostor / billboard | a camera-facing picture of a far object | sprites | `Sprite3D`, billboards | render to texture |
+
+Transparent surfaces cost extra: they are drawn back to front, can't be merged freely, and overlapping
+layers shade the same pixel many times (**overdraw**). Prefer alpha-clip (cutout) for leaves and fences.
+
+## Rendering: rasterization vs ray tracing
+
+| | Rasterization | Ray / path tracing |
+| :- | :------------ | :----------------- |
+| How | project each triangle onto the screen and shade the pixels it covers | shoot rays from the camera, bounce them off surfaces toward lights |
+| Speed | real time (milliseconds per frame) | offline (seconds to minutes per frame) unless GPU-accelerated and denoised |
+| Shadows, reflections, bounce light | approximated: shadow maps, screen-space effects, probes, baked lightmaps | fall out of the physics: soft shadows, true reflections, global illumination |
+| Noise | none | grainy until enough samples; denoisers help |
+| Where | games, three.js, Godot, Blender EEVEE, Blender viewport | Blender Cycles, film and product renders, baking; hybrid RT in some games |
+
+Blender has both: **EEVEE** (rasterizer with screen-space ray tracing since 4.2; seconds per frame, close to
+what an engine shows) and **Cycles** (path tracer; the reference for realism and the engine used for baking).
+A Cycles render will always look richer than the same scene in three.js or Godot; bake lighting into
+textures to close the gap. See [Lighting & rendering in Blender](/3d/blender/lighting-rendering/).
+
+The real-time GPU pipeline, once per frame:
+
+```text
+ CPU   scene graph ─► cull ─► sort ─► draw calls (mesh + material + uniforms)
+                                          │
+ GPU   vertex shader      per vertex: object → world → camera → clip space
+          ▼
+       primitive assembly, clipping, perspective divide → screen coordinates
+          ▼
+       rasterizer         triangles → fragments; interpolate UVs, normals
+          ▼
+       fragment shader    per pixel: material + lights → color
+          ▼
+       depth test, blending → framebuffer → post-processing → display
+```
+
+Watch for how vertex shading, rasterization and pixel shading map onto the steps above:
+
+<YouTube id="C8YtdC8mxTU" title="How do Video Game Graphics Work?" channel="Branch Education" />
+
+Frame budget: the CPU and GPU work in parallel, and the slower one sets the frame rate.
+
+| Target | Frame time |
+| :----- | :--------- |
+| 30 fps (cinematic, low-end mobile) | 33.3 ms |
+| 60 fps (standard for games and web) | 16.7 ms |
+| 90 fps (VR minimum) | 11.1 ms |
+| 120 fps (high-refresh displays) | 8.3 ms |
+
+## File formats
+
+| Format | Keeps | Loses / limits | Use it for |
+| :----- | :---- | :------------- | :--------- |
+| `.blend` | everything: modifiers, node materials, rigs, constraints, drivers, scenes | Blender only (Godot can import it by running Blender headless) | your working source file; keep it |
+| glTF 2.0 (`.gltf` + `.bin` + images, or one `.glb`) | meshes, PBR metal/rough materials and textures, hierarchy, skins, morph targets, TRS animation, cameras; lights, compression, instancing via extensions | procedural node materials (bake), modifiers (applied), constraints / IK / drivers (bake), particles | the default for web and Godot; the "JPEG of 3D" |
+| FBX (`.fbx`) | meshes, skins, animation, blend shapes, basic materials | proprietary, versioned SDK; materials unreliable; axis and unit surprises | Unity / Unreal pipelines, Mixamo |
+| OBJ (`.obj` + `.mtl`) | geometry, UVs, normals, simple non-PBR material | no animation, rigs, hierarchy transforms or PBR | static meshes, quick interchange, many AI generators |
+| USD (`.usd`, `.usda`, `.usdc`) / USDZ | whole scenes with layers, references, variants, materials, animation | heavy for games; engine support varies | film/VFX pipelines; USDZ (zipped USD) for Apple AR Quick Look |
+| STL (`.stl`) | triangles only | no UVs, colors, units or materials | 3D printing |
+| GTA V (`.ydr`, `.yft`, `.ytd`…) | game-specific | need Sollumz + CodeWalker | see [GTA V](/3d/export/gta-v/) |
+
+Loading glTF in code is in [three.js models & animation](/typescript/three-js/models-animation/); the
+Blender side is in [Export to three.js](/3d/export/web-threejs/) and [Export to Godot](/3d/export/godot/).
+
+## Glossary
+
+| Term | Meaning |
+| :--- | :------ |
+| Albedo | base color with no lighting or shadow in it |
+| Alpha | opacity channel; clip (cutout) or blend (see-through) |
+| Armature / skeleton | the bone hierarchy that deforms a mesh |
+| Bake | render something expensive (lighting, detail, procedural texture) into an image |
+| Bounding box | the smallest box around an object; used for culling and picking |
+| DCC | digital content creation tool: Blender, Maya, 3ds Max, Houdini |
+| Draw call | one CPU → GPU request to draw a mesh with a material |
+| Frustum | the pyramid-shaped volume a perspective camera sees, cut by near and far planes |
+| Gimbal lock | losing a rotation axis when two Euler axes line up |
+| GI (global illumination) | light that bounces off surfaces onto others |
+| HDRI | a 360° high-dynamic-range photo used as sky and light source |
+| Instancing | drawing one mesh many times in a single call |
+| Keyframe | a stored value at a point in time; the computer fills in between |
+| LOD | level of detail: lighter versions of a mesh for distance |
+| Lightmap | a texture holding precomputed lighting |
+| Manifold | closed surface where every edge joins exactly two faces |
+| Material | the description of a surface's look: color, roughness, metalness, maps |
+| Mesh | vertices, edges and faces that form a shape |
+| Mipmap | pre-shrunk copies of a texture for distant surfaces |
+| Modifier | a non-destructive operation stacked on a mesh (Blender) |
+| Morph target / shape key / blend shape | a stored alternate vertex layout, blended by weight |
+| N-gon | a face with more than four sides |
+| Normal | the direction a surface faces |
+| Normal map | a texture of normals that fakes small detail |
+| Origin / pivot | the point an object transforms around |
+| PBR | physically based rendering: materials described by real-world properties |
+| Polycount | triangle (or face) count of a model or scene |
+| Quaternion | four-number rotation without gimbal lock |
+| Rasterization | drawing triangles by filling the pixels they cover |
+| Retopology | rebuilding a mesh with clean, light topology |
+| Shader | a GPU program that computes positions (vertex) or colors (fragment) |
+| Skinning | deforming a mesh with bones via per-vertex weights |
+| Texel | one pixel of a texture as it lands on a surface |
+| Topology | how faces and edge loops are arranged on a surface |
+| Transform | position, rotation and scale |
+| Triangulate | split every face into triangles |
+| UV | 2D texture coordinates on a mesh |
+| Z-fighting | two surfaces at the same depth flicker through each other |
+
+## Recipes
+
+### Before you export anything
+Run this on every asset before it leaves Blender; most "broken model" reports come from skipping one line.
+
+- [ ] Real-world size; object **scale 1.0** and rotation applied on static meshes
+- [ ] Origin where the object pivots or stands (feet, hinge, axle, building base)
+- [ ] Front faces −Y in Blender (so it faces +Z in glTF / Godot)
+- [ ] Normals point outward (Face Orientation overlay all blue); no stray double-sided surfaces
+- [ ] Merge by Distance done; no interior or zero-area faces
+- [ ] Every mesh unwrapped; lightmapped meshes have a unique second UV map
+- [ ] Triangle count inside your budget; LODs made for anything seen at distance
+- [ ] Materials are Principled BSDF + image textures only; procedurals baked
+- [ ] Clear, unique object names (engines look nodes up by name)
+- [ ] Hidden helpers, unused materials and cameras removed, or excluded with Limit to Selected
+- [ ] Open the export in a second viewer (three.js editor, Godot, a glTF viewer) before building on it
+
+### Why does my model look faceted, inside-out or full of holes?
+Match the symptom to the cause before touching topology.
+
+| Symptom | Likely cause | Fix |
+| :------ | :----------- | :-- |
+| Faceted, "low-poly" look on a curved surface | flat shading | Shade Smooth, then Smooth by Angle for hard edges |
+| Smooth surface with dark smudges or streaks | bad custom normals, n-gons or long thin triangles | clear custom split normals; add supporting loops; triangulate evenly |
+| Faces missing in the engine, fine in Blender | flipped normals + backface culling | recalculate outside; check Face Orientation |
+| Whole model inside-out after export | negative scale | apply scale, recalculate normals |
+| Black seams along UV edges | no padding, or mip bleeding | more island margin; dilate/bleed the texture |
+| Flickering where two surfaces meet | Z-fighting (coplanar faces) or near plane too small | delete one surface or offset it; raise the camera's near clip |
+
+### Pick a poly budget
+Use when starting an asset, so detail goes where the camera will see it.
+
+1. Name the target and frame rate (phone browser at 60 fps, desktop game at 60, offline render).
+2. Take the whole-scene figure from the budget table and split it: hero objects get most, background
+   props share the rest.
+3. Ask how close the camera gets: silhouette detail needs geometry; surface detail goes in the normal map.
+4. Model to the budget, then triangulate and read the triangle count (Blender: Statistics overlay).
+5. Build LODs for anything that is also seen far away (roughly half the triangles per step).
+6. Profile on the real device; cut draw calls and texture size before cutting triangles.
+
+### Model arrives at the wrong size or rotation
+Use when an export is tiny, huge, lying down or facing backwards.
+
+| Symptom | Cause | Fix |
+| :------ | :---- | :-- |
+| 100× too big or small | cm vs m (FBX, Unreal, Mixamo) | set unit scale on export or import; keep Blender at 1 unit = 1 m |
+| Lying on its back | Y-up vs Z-up not converted | glTF: keep +Y Up on; FBX: set Forward / Up axes |
+| Faces away from the camera | modeled facing +Y in Blender | rotate 180° on Z and apply rotation |
+| Rotates around a far-away point | origin not on the object | set the origin (to geometry or 3D cursor) and re-export |
+| Children offset or skewed | unapplied or non-uniform parent scale | apply scale on parents first, then children |
+
+### Speed up a slow scene
+Use when frame time is over budget; measure first (three.js `renderer.info`, Godot's Monitors and
+Visual Profiler).
+
+1. **Draw calls**: merge static meshes, share materials via atlases or trim sheets, instance repeats.
+2. **Transparency and overdraw**: switch blend to alpha-clip where possible.
+3. **Shadows**: fewer shadow-casting lights, smaller shadow distance.
+4. **Textures**: KTX2 or other GPU-compressed formats, ≤ 2K on mobile, mipmaps on.
+5. **Triangles**: LODs, decimate background props.
+6. **Lighting**: bake static lighting instead of computing it every frame.
+
+## References
+
+- [MDN: Explaining basic 3D theory](https://developer.mozilla.org/en-US/docs/Games/Techniques/3D_on_the_web/Basic_theory): vertices, faces, the rendering pipeline, cameras, in plain words
+- [MDN: WebGL model view projection](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_model_view_projection): object → world → view → clip space, with the math
+- Blender Manual: [mesh structure](https://docs.blender.org/manual/en/latest/modeling/meshes/structure.html), [normals](https://docs.blender.org/manual/en/latest/modeling/meshes/editing/mesh/normals.html), [object origin](https://docs.blender.org/manual/en/latest/scene_layout/object/origin.html), [scene units](https://docs.blender.org/manual/en/latest/scene_layout/scene/properties.html), [UVs](https://docs.blender.org/manual/en/latest/modeling/meshes/uv/index.html), [EEVEE](https://docs.blender.org/manual/en/latest/render/eevee/index.html), [Cycles](https://docs.blender.org/manual/en/latest/render/cycles/index.html)
+- [Blender Manual: glTF 2.0 add-on](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): what the exporter keeps, +Y Up, instancing
+- [Khronos glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html): coordinate system and units, meshes, winding, `doubleSided`
+- [three.js manual](https://threejs.org/manual/): scene graph, cameras, optimizing lots of objects
+- Godot docs: [Introduction to 3D](https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html), [Using 3D transforms](https://docs.godotengine.org/en/stable/tutorials/3d/using_transforms.html), [Model export considerations](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/model_export_considerations.html), [Optimizing 3D performance](https://docs.godotengine.org/en/stable/tutorials/performance/optimizing_3d_performance.html), [Mesh LOD](https://docs.godotengine.org/en/stable/tutorials/3d/mesh_lod.html)
+- [LearnOpenGL: Coordinate systems](https://learnopengl.com/Getting-started/Coordinate-Systems): the spaces and matrices behind the pipeline diagram

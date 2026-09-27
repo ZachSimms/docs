@@ -1,0 +1,652 @@
+---
+title: Python scripting (bpy)
+date: 2026-09-27
+order: 7
+---
+
+Scripting **Blender 5.x (5.2 LTS)** with Python: where code runs, the `bpy` modules, creating meshes,
+modifiers, materials, collections and keyframes, applying transforms, batch glTF export, headless renders, an
+extension (add-on) skeleton, and the 5.0–5.2 API breaks. Scripts are also what Claude or GPT write when they
+drive Blender for you: see [LLMs driving Blender](/3d/ai-workflows/llm-blender/). Export targets:
+[Three.js](/3d/export/web-threejs/), [Godot](/3d/export/godot/), [GTA V](/3d/export/gta-v/).
+
+## Where code runs
+
+| Place | How | Good for |
+| :---- | :-- | :------- |
+| **Scripting** workspace | tab at the top: Text Editor + Python Console + Info editor | everyday scripting |
+| Text Editor | New, write, **Run Script** (Alt P); Templates › Python has starters | scripts saved inside the .blend |
+| Python Console | `C` = `bpy.context`, `D` = `bpy.data`; Tab autocompletes; Up / Down history | poking at data, one-liners |
+| Headless | `blender -b file.blend --python script.py` | batch jobs, CI, render farms |
+| One-liner | `blender -b file.blend --python-expr "import bpy; …"` | quick queries |
+| Extension (add-on) | `__init__.py` + `blender_manifest.toml`, installed from disk | tools with buttons and menus |
+| `bpy` from PyPI | `uv add bpy` (a Blender build as a module; needs the matching Python) | tests and pipelines without the app |
+
+```sh
+# macOS: the blender binary lives inside the app bundle
+B=/Applications/Blender.app/Contents/MacOS/Blender
+"$B" -b scene.blend --python export.py -- --out build
+"$B" -b --python-expr \
+  "import bpy; print(bpy.app.version_string)"
+"$B" -b scene.blend --python-exit-code 1 --python check.py
+```
+
+| Flag | Meaning |
+| :--- | :------ |
+| `-b`, `--background` | no UI; put it before the file |
+| `-P`, `--python file.py` | run a script (after loading the .blend given before it) |
+| `--python-expr "…"` | run a string |
+| `--python-exit-code 1` | exit with 1 when the script raises (for CI) |
+| `--` | everything after it is left for your script in `sys.argv` |
+| `--factory-startup` | ignore user preferences and startup file (reproducible runs) |
+| `-y` / `-Y` | enable / disable auto-running scripts inside the .blend |
+
+Blender **bundles its own Python**: **3.13** since Blender 5.1 (so 5.2 too), matching the VFX Reference
+Platform. Your system Python and its packages are not visible to it. To add a package, prefer an extension
+that ships **wheels**; for a personal script, install into Blender's user modules folder with its own
+interpreter (`sys.executable` inside Blender is the bundled Python):
+
+```py
+import subprocess
+import sys
+
+import bpy
+
+target = bpy.utils.user_resource(
+    'SCRIPTS', path="modules", create=True)
+subprocess.run([sys.executable, "-m", "ensurepip"],
+               check=True)
+subprocess.run([sys.executable, "-m", "pip", "install",
+                "--target", target, "shapely"], check=True)
+```
+
+Packages with compiled code must match Blender's Python version and platform; a Blender upgrade can break
+them. Pin versions, and don't install into the application folder.
+
+## The bpy map
+
+| Module | What | Example |
+| :----- | :--- | :------ |
+| `bpy.data` | every **data-block** in the file: objects, meshes, materials, actions, collections… | `bpy.data.objects["Cube"]` |
+| `bpy.context` | the current state: scene, view layer, active and selected objects, mode, area | `bpy.context.active_object` |
+| `bpy.ops` | **operators**: what menu items and buttons run; depend on context, slower | `bpy.ops.object.transform_apply()` |
+| `bpy.types` | the classes (`Object`, `Mesh`, `Operator`, `Panel`) for isinstance checks and subclassing | `class MyOp(bpy.types.Operator)` |
+| `bpy.props` | property definitions for your classes (`IntProperty`, `EnumProperty`, `PointerProperty`) | `count: bpy.props.IntProperty(default=3)` |
+| `bpy.utils` | register classes, resource paths, units | `bpy.utils.register_class(MyOp)` |
+| `bpy.app` | version, handlers (frame change, load post), binary path | `bpy.app.version >= (5, 2, 0)` |
+| `mathutils` | `Vector`, `Matrix`, `Euler`, `Quaternion`, `Color`, geometry helpers | `Matrix.Rotation(pi / 2, 4, 'Z')` |
+| `bmesh` | editable mesh with topology (verts, edges, faces, loops) and modeling ops | `bmesh.ops.bevel(bm, …)` |
+| `bpy_extras` | helpers: `anim_utils`, `object_utils`, `io_utils` | `anim_utils.action_get_channelbag_for_slot` |
+
+Data API vs operators:
+
+| | Data API (`bpy.data`, properties) | Operators (`bpy.ops`) |
+| :- | :------------------------------- | :-------------------- |
+| Speed | fast, no undo push or redraw | slow in loops (each call updates the scene) |
+| Context | none needed | need the right mode, area and selection |
+| Returns | the object you made | a status set such as `{'FINISHED'}` |
+| Use for | creating and editing data in scripts | things with no data API (importers, exporters, render, some modeling tools) |
+
+When an operator needs context you don't have (headless, wrong selection), pass it with
+`bpy.context.temp_override(...)` (the old dict override argument was removed in 4.0).
+
+## Meshes & objects
+
+A **mesh** is data (vertices, edges, faces); an **object** places data in the scene with a transform. Create the
+mesh, wrap it in an object, and link the object to a collection or it won't appear.
+
+```py
+import bpy
+
+verts = [(0, 0, 0), (2, 0, 0), (2, 1, 0), (0, 1, 0),
+         (1, 0.5, 1)]
+faces = [(3, 2, 1, 0), (0, 1, 4), (1, 2, 4),
+         (2, 3, 4), (3, 0, 4)]   # counter-clockwise = out
+
+me = bpy.data.meshes.new("Roof")
+me.from_pydata(verts, [], faces)
+me.validate()                  # fix bad indices, if any
+ob = bpy.data.objects.new("Roof", me)
+bpy.context.scene.collection.objects.link(ob)
+ob.location = (0, 0, 3)
+```
+
+`bmesh` when you need modeling operations (extrude, bevel, inset) or topology queries:
+
+```py
+import bmesh
+import bpy
+from mathutils import Matrix
+
+bm = bmesh.new()
+bmesh.ops.create_cube(
+    bm, size=1.0,
+    matrix=Matrix.Translation((0, 0, 0.5)))  # sits on 0
+top = [f for f in bm.faces if f.normal.z > 0.9]
+bmesh.ops.inset_region(bm, faces=top, thickness=0.1)
+me = bpy.data.meshes.new("Crate")
+bm.to_mesh(me)
+bm.free()                      # always free
+```
+
+| Useful | Does |
+| :----- | :--- |
+| `ob.data` | the mesh (or armature, light…) of an object |
+| `me.vertices[i].co`, `me.polygons`, `me.loops` | read geometry (loops are face corners) |
+| `me.attributes["name"]` | generic attributes (UVs, colors, custom) |
+| `ob.evaluated_get(depsgraph).to_mesh()` | the mesh after modifiers (call `to_mesh_clear()` after) |
+| `bpy.data.objects.remove(ob)` | delete; also `bpy.data.meshes.remove(me)` for orphaned data |
+| `ob.copy()`, `ob.data.copy()` | duplicate object only (linked) / also the data (full copy) |
+
+## Modifiers & materials
+
+```py
+bev = ob.modifiers.new(name="Bevel", type='BEVEL')
+bev.width = 0.02               # meters
+bev.segments = 3
+bev.limit_method = 'ANGLE'
+bev.harden_normals = True
+wn = ob.modifiers.new("WeightedNormal", 'WEIGHTED_NORMAL')
+wn.keep_sharp = True
+```
+
+Type strings are the enum ids (`'ARRAY'`, `'BOOLEAN'`, `'DECIMATE'`, `'MIRROR'`, `'SUBSURF'`, `'NODES'` for
+Geometry Nodes). Geometry Nodes inputs changed in **5.2**: they are real properties now, looked up by socket
+identifier, not `mod["Socket_2"]`:
+
+```py
+def set_gn_input(mod, name, value):
+    item = mod.node_group.interface.items_tree[name]
+    getattr(mod.properties.inputs, item.identifier) \
+        .value = value
+
+gn = ob.modifiers.new("Facade", 'NODES')
+gn.node_group = bpy.data.node_groups["Facade"]
+set_gn_input(gn, "Floors", 6)
+```
+
+Materials get a node tree with a Principled BSDF on creation (since 5.0 `use_nodes` is always on and
+deprecated):
+
+```py
+mat = bpy.data.materials.new("Brick")
+bsdf = mat.node_tree.nodes["Principled BSDF"]
+bsdf.inputs["Base Color"].default_value = (
+    0.55, 0.18, 0.1, 1.0)      # linear RGBA
+bsdf.inputs["Roughness"].default_value = 0.8
+bsdf.inputs["Metallic"].default_value = 0.0
+mat.diffuse_color = (0.55, 0.18, 0.1, 1.0)  # viewport
+ob.data.materials.append(mat)  # adds a material slot
+```
+
+Colors in node sockets are **linear**, not the sRGB hex you pick in a UI. Add an image texture with
+`nodes.new("ShaderNodeTexImage")`, set `.image = bpy.data.images.load(path)`, and
+`mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])`.
+
+## Collections & selection
+
+```py
+scene = bpy.context.scene
+kit = bpy.data.collections.new("Kit")
+scene.collection.children.link(kit)   # show it
+
+def move_to(ob, col):
+    for old in ob.users_collection:
+        old.objects.unlink(ob)
+    col.objects.link(ob)
+
+move_to(ob, kit)
+```
+
+```py
+# every selected mesh: rename, then add a bevel
+for ob in bpy.context.selected_objects:
+    if ob.type != 'MESH':
+        continue
+    if not ob.name.startswith("SM_"):
+        ob.name = f"SM_{ob.name}"
+    if "Bevel" not in ob.modifiers:
+        ob.modifiers.new("Bevel", 'BEVEL')
+```
+
+| Task | Code |
+| :--- | :--- |
+| Select / deselect | `ob.select_set(True)`; `ob.select_get()` |
+| Make active | `bpy.context.view_layer.objects.active = ob` |
+| All objects in a collection, nested | `col.all_objects` |
+| Objects in the current view layer | `bpy.context.view_layer.objects` |
+| Hide in viewport / render | `ob.hide_set(True)` (view layer), `ob.hide_render = True` |
+| Exclude a collection | `bpy.context.view_layer.layer_collection.children["Kit"].exclude = True` |
+| Parent keeping the world transform | `child.parent = p; child.matrix_parent_inverse = p.matrix_world.inverted()` |
+
+## Keyframes & actions
+
+`keyframe_insert(data_path, frame=…)` works on any animatable property. Since 4.4 an action stores F-Curves per
+**slot**, and in 5.0 the old `action.fcurves` was removed: go through a **channelbag**
+(see [Actions & slots](/3d/blender/animation/#actions--slots)).
+
+```py
+from bpy_extras import anim_utils
+
+ob.location = (0, 0, 0)
+ob.keyframe_insert("location", frame=1)
+ob.location.z = 0.2
+ob.keyframe_insert("location", frame=31)
+ob.location.z = 0.0
+ob.keyframe_insert("location", frame=61)
+
+ad = ob.animation_data
+ad.action.name = "Hover-loop"      # clip name on export
+bag = anim_utils.action_get_channelbag_for_slot(
+    ad.action, ad.action_slot)
+for fc in bag.fcurves:             # one per axis
+    for kp in fc.keyframe_points:
+        kp.interpolation = 'SINE'
+    fc.modifiers.new('CYCLES')     # loop in Blender
+```
+
+| Task | Code |
+| :--- | :--- |
+| Key a bone | `arm.pose.bones["Head"].keyframe_insert("rotation_quaternion", frame=10)` |
+| Key one axis | `ob.keyframe_insert("location", index=2, frame=1)` |
+| Key a shape key | `me.shape_keys.key_blocks["Smile"].keyframe_insert("value", frame=5)` |
+| Create an F-Curve directly | `anim_utils.action_ensure_channelbag_for_slot(act, slot).fcurves.ensure("location", index=0)` |
+| Slot of an action | `ad.action_slot`; `act.slots.new('OBJECT', "Door")` |
+| Push down to the NLA | `t = ad.nla_tracks.new(); t.strips.new(act.name, 1, act); ad.action = None` |
+| Scene range and rate | `scene.frame_start`, `scene.frame_end`, `scene.render.fps` |
+| Evaluate a frame | `scene.frame_set(24)` (runs drivers, constraints) |
+
+## Transforms & applying them
+
+Every object has `location`, `rotation_euler` (or `rotation_quaternion`), `scale`, and matrices:
+`matrix_basis` (its own transform), `matrix_world` (after parents). Math uses `mathutils` with `@` for
+matrix products.
+
+```py
+from math import radians
+
+from mathutils import Euler, Matrix, Vector
+
+ob.rotation_euler = Euler((0, 0, radians(90)), 'XYZ')
+up = ob.matrix_world.to_3x3() @ Vector((0, 0, 1))
+tip = ob.matrix_world @ Vector((0, 0, 2))  # local → world
+ob.matrix_world = Matrix.Translation((4, 0, 0)) \
+    @ ob.matrix_world               # move in world space
+```
+
+Applying transforms (Ctrl A) without operators: bake the object's transform into its mesh, then reset it.
+Children keep their world placement by absorbing the change in their parent inverse:
+
+```py
+def apply_transform(ob):
+    basis = ob.matrix_basis.copy()
+    ob.data.transform(basis)      # affects every user
+    for child in ob.children:
+        child.matrix_parent_inverse = (
+            basis @ child.matrix_parent_inverse)
+    ob.matrix_basis.identity()
+```
+
+The operator version, with the selection it needs passed through `temp_override` (works headless too):
+
+```py
+objs = [o for o in bpy.data.objects if o.type == 'MESH']
+with bpy.context.temp_override(
+        selected_editable_objects=objs,
+        active_object=objs[0]):
+    bpy.ops.object.transform_apply(
+        location=False, rotation=True, scale=True)
+```
+
+Both fail or duplicate work on meshes shared by several objects (linked duplicates): make them single-user
+first (`ob.data = ob.data.copy()`), or apply only to one user.
+
+## Export & render
+
+`bpy.ops.export_scene.gltf` takes the same options as the export dialog. The ones you'll use:
+
+| Parameter | Values | Dialog label |
+| :-------- | :----- | :----------- |
+| `filepath` | absolute path; `.glb` / `.gltf` | File name |
+| `export_format` | `'GLB'`, `'GLTF_SEPARATE'` | Format |
+| `use_selection`, `use_visible`, `use_active_collection` | bool | Include › Limit to |
+| `collection` | a collection name: only its objects (and children) | collection exporter |
+| `export_apply` | bool, default `False`: evaluated meshes (drops shape keys) | Apply Modifiers |
+| `export_yup` | bool, default `True` | +Y Up |
+| `export_draco_mesh_compression_enable` | bool; `export_draco_mesh_compression_level` 0–6; web only | Draco compression |
+| `export_meshopt_compression_enable` | bool; web only | Meshopt compression |
+| `export_image_format` | `'AUTO'`, `'JPEG'`, `'WEBP'`, `'NONE'` | Images |
+| `export_animation_mode` | `'ACTIONS'`, `'ACTIVE_ACTIONS'`, `'BROADCAST'`, `'NLA_TRACKS'`, `'SCENE'` | Animation mode |
+| `export_def_bones` | bool | Deformation Bones Only |
+| `export_gpu_instances` | bool | GPU Instances |
+| `export_extras` | bool: custom properties → glTF `extras` | Custom Properties |
+
+```py
+import bpy
+from pathlib import Path
+
+def export_collections(out_dir: str) -> int:
+    out = Path(bpy.path.abspath(out_dir))
+    out.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for col in bpy.data.collections:
+        if not col.all_objects or col.name.startswith("_"):
+            continue
+        name = bpy.path.clean_name(col.name)
+        bpy.ops.export_scene.gltf(
+            filepath=str(out / f"{name}.glb"),
+            export_format='GLB',
+            collection=col.name,
+            export_apply=True,
+            export_draco_mesh_compression_enable=True,
+        )
+        count += 1
+    return count
+
+export_collections("//export")   # // = next to the .blend
+```
+
+Draco compression is **web-only**: three.js needs the Draco decoder (see
+[Models & animation](/typescript/three-js/models-animation/#compression-decoders)), and Godot 4.7 refuses
+Draco, Meshopt or quantized GLBs. For Godot, export without compression (drop that line) or import the
+`.blend` directly. Apply Modifiers is off by default, hence `export_apply=True`.
+
+Rendering without the UI, from the command line:
+
+```sh
+B=/Applications/Blender.app/Contents/MacOS/Blender
+"$B" -b shot.blend -E CYCLES -o //renders/f_#### -F PNG -f 1
+"$B" -b shot.blend -a                   # whole frame range
+"$B" -b shot.blend -o //r/f_#### -s 1 -e 48 -a
+```
+
+Order matters: the `.blend` first, then output settings, then `-f` / `-a`. The same from Python:
+
+```py
+scene = bpy.context.scene
+scene.render.engine = 'CYCLES'     # or 'BLENDER_EEVEE'
+scene.render.resolution_x = 1920
+scene.render.resolution_y = 1080
+settings = scene.render.image_settings
+settings.media_type = 'IMAGE'      # 5.0+: set this first
+settings.file_format = 'PNG'
+scene.render.filepath = "//renders/hero.png"
+bpy.ops.render.render(write_still=True)
+```
+
+## An extension (add-on) skeleton
+
+Since 4.2, add-ons ship as **extensions**: a folder or `.zip` with `blender_manifest.toml` and
+`__init__.py`, installed from Preferences › Get Extensions › Install from Disk (or published on
+extensions.blender.org). No `bl_info`; imports inside the package must be relative.
+
+```text
+kit_tools/
+├─ blender_manifest.toml
+└─ __init__.py
+```
+
+```toml
+schema_version = "1.0.0"
+
+id = "kit_tools"
+version = "1.0.0"
+name = "Kit Tools"
+tagline = "Export each collection of a modular kit"
+maintainer = "Your Name <you@example.com>"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Write glTF files next to the blend file"
+```
+
+```py
+import bpy
+
+
+class KIT_OT_export(bpy.types.Operator):
+    """Export every collection as its own GLB"""
+    bl_idname = "kit.export_collections"
+    bl_label = "Export Collections"
+    bl_options = {'REGISTER'}
+
+    folder: bpy.props.StringProperty(
+        name="Folder", default="//export")
+
+    def execute(self, context):
+        n = export_collections(self.folder)
+        self.report({'INFO'}, f"Exported {n} files")
+        return {'FINISHED'}
+
+
+class KIT_PT_panel(bpy.types.Panel):
+    bl_label = "Kit Tools"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'          # the N sidebar
+    bl_category = "Kit"            # its tab
+
+    def draw(self, context):
+        self.layout.operator(KIT_OT_export.bl_idname)
+
+
+classes = (KIT_OT_export, KIT_PT_panel)
+
+
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+
+def unregister():
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
+```
+
+(`export_collections` is the function from [Export & render](#export--render), in the same file or a
+module imported with `from . import exporter`.)
+
+| Manifest field | Rule |
+| :------------- | :--- |
+| `schema_version` | `"1.0.0"` |
+| `id` | unique, a valid Python identifier |
+| `version` | semantic version |
+| `tagline` | up to 64 characters, no final punctuation |
+| `type` | `"add-on"` or `"theme"` |
+| `blender_version_min` | at least `"4.2.0"`; `blender_version_max` optional (first unsupported) |
+| `license` | SPDX ids with the `SPDX:` prefix |
+| `[permissions]` | `files`, `network`, `clipboard`, `camera`, `microphone`, each with a short reason |
+| `wheels`, `platforms`, `tags`, `website`, `copyright` | optional |
+
+Build and check with the CLI: `blender --command extension validate` and `blender --command extension build`
+(in the folder with the manifest). Network access must also check `bpy.app.online_access`; per-user files go in
+`bpy.utils.extension_path_user(__package__, create=True)`.
+
+## API changes in 5.0–5.2
+
+Code from tutorials, older add-ons, or an LLM trained on them often targets 3.x/4.x. The breaks you'll hit:
+
+| Old code | 5.x replacement | Since |
+| :------- | :-------------- | :---- |
+| `action.fcurves`, `action.groups` | `anim_utils.action_get_channelbag_for_slot(action, slot).fcurves` / `.groups` | 5.0 (slots since 4.4) |
+| `action.id_root` | `slot.target_id_type` | 5.0 |
+| `fcurves.new(..., action_group="X")` | `fcurves.new(..., group_name="X")` | 5.0 |
+| `context.space_data.action` (Dope Sheet) | `context.active_action` | 5.0 |
+| `bone.select`, `select_head`, `select_tail` | `pose_bone.select`, or `edit_bone.select*` in Edit Mode | 5.0 |
+| `bone.hide` for Pose Mode visibility | `pose_bone.hide` | 5.0 |
+| `ob["cycles"]`, dict access to add-on (`bpy.props`) data | the RNA path (`scene.cycles.samples`) | 5.0 |
+| `scene.node_tree` (compositor) | `scene.compositing_node_group` | 5.0 |
+| `material.use_nodes = True` | not needed: always on (deprecated, removed in 6.0) | 5.0 |
+| engine `'BLENDER_EEVEE_NEXT'` | `'BLENDER_EEVEE'` | 5.0 |
+| Boolean solver `'FAST'` | `'FLOAT'` (also `'EXACT'`, `'MANIFOLD'`) | 5.0 |
+| `image_settings.file_format = …` alone | set `image_settings.media_type` first | 5.0 |
+| `Image.bindcode`, `bgl` | `gpu.texture.from_image(image)`, the `gpu` module | 5.0 |
+| `gpu.types.GPUShader(vert, frag)` | `gpu.shader.create_from_info(info)` | 5.0 |
+| private helper modules (`rna_info`, `bl_ui_utils`, …) | don't import them | 5.0 |
+| `mod["Socket_2"] = 5` (Geometry Nodes) | `mod.properties.inputs.Socket_2.value = 5` | 5.2 |
+| Random Value / Compare socket identifiers | look sockets up by name | 5.2 |
+| Python 3.11 | Python 3.13 | 5.1 |
+
+Also in 5.0: names can be up to 255 bytes, `.blend` compression is on by default, and `mathutils` types
+expose float32 buffers.
+
+## Debugging & safety
+
+| Tool | How |
+| :--- | :-- |
+| **Info editor** | shows the Python of every operator you run in the UI: select lines, Ctrl C, paste into your script |
+| **Python Tooltips** | Preferences › Interface › Display › Python Tooltips: hover any field to see its data path |
+| Copy Data Path | right-click a field › Copy Data Path / Copy Full Data Path |
+| Developer Extras | Preferences › Interface: more menu items and operator search for developers |
+| `print()` output | goes to the system console: on macOS start Blender from Terminal (`/Applications/Blender.app/Contents/MacOS/Blender`); on Windows, Window › Toggle System Console |
+| Errors | full tracebacks print to that console; the UI shows only a short report |
+| Context problems | `with context.temp_override(...) as o: o.logging_set(True)` logs which context members an operator reads (5.0+) |
+| Reports from operators | `self.report({'WARNING'}, "…")` in your operator |
+| Reload an add-on | disable and enable it, or F3 › Reload Scripts |
+
+**Scripts in .blend files can run code on your machine.** Text blocks marked Register, and driver
+expressions, run when a file loads if **Auto Run Python Scripts** is enabled (Preferences › Save & Load). It's
+**off by default**; keep it off, trust files case by case (Trusted Source in the file browser, or the "Allow
+Execution" prompt), and never enable it for downloaded files. Headless runs follow the preference unless you
+pass `-y` / `-Y`. The same caution applies to add-ons, extensions and MCP servers: all run arbitrary Python.
+
+Mina Pêcheux's introduction covers the Scripting workspace, the console, the Info editor trick and a first
+operator; watch for the context vs data distinction.
+
+<YouTube id="aGsbOGK9Ia8" title="Here's Everything You Need To Get Started With Blender Scripting!" channel="Mina Pêcheux" />
+
+## Recipes
+
+### Batch export collections to GLB
+Use to turn a kit file into one `.glb` per piece for a game or web app. Put each piece in its own
+collection (prefix helper collections with `_`), save the .blend, then run headless:
+
+```sh
+blender -b kit.blend --python-text export.py   # text block
+blender -b kit.blend --python tools/export.py  # file
+```
+
+The script is `export_collections()` from [Export & render](#export--render) plus a call to it.
+
+### Generate a city block of boxes
+Use for a quick background city or a blockout: one shared mesh, many objects (instances on export).
+
+```py
+import random
+
+import bmesh
+import bpy
+from mathutils import Matrix
+
+rng = random.Random(7)
+city = bpy.data.collections.new("City")
+bpy.context.scene.collection.children.link(city)
+root = bpy.data.objects.new("City_Root", None)  # empty
+city.objects.link(root)
+
+bm = bmesh.new()   # 1 m cube with its origin at the base
+bmesh.ops.create_cube(
+    bm, size=1.0, matrix=Matrix.Translation((0, 0, 0.5)))
+box = bpy.data.meshes.new("Box")
+bm.to_mesh(box)
+bm.free()
+
+LOT, STREET, N = 20.0, 10.0, 6
+for i in range(N):
+    for j in range(N):
+        ob = bpy.data.objects.new(f"Bld_{i}_{j}", box)
+        ob.parent = root
+        ob.location = (i * (LOT + STREET),
+                       j * (LOT + STREET), 0)
+        floors = rng.randint(2, 20)
+        ob.scale = (rng.uniform(12, LOT),
+                    rng.uniform(12, LOT), floors * 3.0)
+        city.objects.link(ob)
+```
+
+Export with `export_gpu_instances=True` and the 36 buildings become one node with `EXT_mesh_gpu_instancing`
+(a three.js `InstancedMesh`). The exporter only does this for objects that share a mesh **and** a parent,
+hence the empty. Don't apply scale: it would give every building its own mesh.
+
+### Rename bones for Mixamo
+Use after importing a Mixamo FBX, so three.js and Godot see clean names (`Hips`, not `mixamorig:Hips`).
+
+```py
+import bpy
+
+arm = bpy.context.active_object      # the armature
+assert arm and arm.type == 'ARMATURE'
+for bone in arm.data.bones:
+    bone.name = bone.name.removeprefix("mixamorig:")
+```
+
+Renaming through the API also renames the mesh's vertex groups and the channels of the actions the armature
+uses. Push every clip onto the armature's NLA first, then rename.
+
+### Make a turntable in one call
+Use to preview a product or asset spinning, ready to render or export.
+
+```py
+import math
+
+import bpy
+from bpy_extras import anim_utils
+
+def turntable(ob, frames=120):
+    scene = bpy.context.scene
+    scene.frame_start, scene.frame_end = 1, frames
+    ob.rotation_mode = 'XYZ'
+    ob.rotation_euler.z = 0.0
+    ob.keyframe_insert("rotation_euler", index=2, frame=1)
+    ob.rotation_euler.z = 2 * math.pi
+    ob.keyframe_insert("rotation_euler", index=2,
+                       frame=frames + 1)
+    ad = ob.animation_data
+    ad.action.name = f"{ob.name}_Turntable-loop"
+    bag = anim_utils.action_get_channelbag_for_slot(
+        ad.action, ad.action_slot)
+    fc = bag.fcurves.find("rotation_euler", index=2)
+    for kp in fc.keyframe_points:
+        kp.interpolation = 'LINEAR'
+```
+
+The 360° key sits on frame 121: render frames 1–120 for a seamless video, and export the full 1–121 action
+to glTF (engines loop by time, so 5 s wraps cleanly back to 0°).
+
+### Audit a scene before export
+Use as a pre-flight check in CI or before handing files to an engine.
+
+```py
+import bpy
+
+problems = []
+for ob in bpy.data.objects:
+    if ob.type != 'MESH':
+        continue
+    if any(abs(s - 1) > 1e-4 for s in ob.scale):
+        problems.append(f"{ob.name}: unapplied scale")
+    if not ob.data.materials:
+        problems.append(f"{ob.name}: no material")
+    if not ob.data.uv_layers:
+        problems.append(f"{ob.name}: no UV map")
+    tris = sum(len(p.vertices) - 2
+               for p in ob.data.polygons)
+    if tris > 50_000:
+        problems.append(f"{ob.name}: {tris} triangles")
+print("\n".join(problems) or "ok")
+```
+
+Run it headless with `--python-exit-code 1` and end with `raise SystemExit(1)` when `problems` is non-empty to
+fail a build.
+
+## References
+
+- [Blender Python API](https://docs.blender.org/api/current/): `bpy.types`, `bpy.ops.export_scene.gltf`, `bmesh`, `mathutils`, `bpy_extras.anim_utils`, `Context.temp_override`
+- [API: Quickstart, Best Practice, Gotchas](https://docs.blender.org/api/current/info_quickstart.html): data vs operators, context, performance
+- [Blender Manual: Scripting](https://docs.blender.org/manual/en/latest/advanced/scripting/index.html) and [Scripting & Security](https://docs.blender.org/manual/en/latest/advanced/scripting/security.html): Auto Run, trusted sources
+- [Blender Manual: Command Line Arguments](https://docs.blender.org/manual/en/latest/advanced/command_line/arguments.html): `-b`, `--python`, `--python-expr`, render flags and their order
+- [Blender Manual: Extensions](https://docs.blender.org/manual/en/latest/advanced/extensions/getting_started.html): `blender_manifest.toml`, permissions, wheels, build and validate
+- Release notes: [5.0 Python API](https://developer.blender.org/docs/release_notes/5.0/python_api/), [5.1](https://developer.blender.org/docs/release_notes/5.1/python_api/) (Python 3.13), [5.2](https://developer.blender.org/docs/release_notes/5.2/python_api/) (Geometry Nodes modifier properties)
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): what each export option means
+- [bpy on PyPI](https://pypi.org/project/bpy/): Blender as a Python module for tests and pipelines
