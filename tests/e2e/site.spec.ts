@@ -1309,6 +1309,18 @@ test.describe("python, physics and ml-ai", () => {
       "/python/fastapi/",
       "/python/overview/",
     ]);
+    // A line's space between the directories' columns and the loose sheets' heading.
+    const [folders, loose] = await Promise.all([
+      page.locator(".topic-folders").boundingBox(),
+      page.locator(".topic-loose h2").boundingBox(),
+    ]);
+    expect(loose!.y - (folders!.y + folders!.height)).toBeGreaterThanOrEqual(0);
+    const lastRow = await page
+      .locator(".topic-folders .topic-folder")
+      .evaluateAll((sections) =>
+        Math.max(...sections.map((s) => s.lastElementChild!.getBoundingClientRect().bottom)),
+      );
+    expect(loose!.y - lastRow).toBeGreaterThan(16);
   });
 
   test("physics and ml-ai list their sheets before the overview", async ({ page }) => {
