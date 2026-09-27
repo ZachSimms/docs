@@ -47,7 +47,7 @@ $h$ is $\log n$ when balanced and $n$ when skewed.
 | Postorder | left, right, node | delete or free, compute heights and sizes (children first) |
 | Level order (BFS) | level by level, left to right | shortest depth, right-side view, per-level work |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -86,6 +86,44 @@ $h$ is $\log n$ when balanced and $n$ when skewed.
     function maxDepth(n: Tree): number {
       return n ? 1 + Math.max(maxDepth(n.left),
         maxDepth(n.right)) : 0;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class TreeNode {
+      val;
+      left;
+      right;
+      constructor(val, left = null, right = null) {
+        this.val = val;
+        this.left = left;
+        this.right = right;
+      }
+    }
+
+    // Recursive DFS: O(n) time, O(h) stack
+    function dfs(root, order) {
+      const out = [];
+      const walk = (n) => {
+        if (!n) return;
+        if (order === "pre") out.push(n.val);
+        walk(n.left);
+        if (order === "in") out.push(n.val);
+        walk(n.right);
+        if (order === "post") out.push(n.val);
+      };
+      walk(root);
+      return out;
+    }
+
+    // Height in nodes (0 for an empty tree)
+    function maxDepth(n) {
+      return n
+        ? 1 + Math.max(maxDepth(n.left), maxDepth(n.right))
+        : 0;
     }
     ```
 
@@ -141,7 +179,7 @@ Use an explicit stack when the tree may be deep enough to overflow the call stac
 10⁵ nodes will), and a queue (or a list per level) for level order. All are $O(n)$ time, $O(h)$ or
 $O(\text{width})$ space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -193,6 +231,69 @@ $O(\text{width})$ space.
       while (level.length > 0) {
         levels.push(level.map((n) => n.val));
         const next: TreeNode[] = [];
+        for (const n of level) {
+          if (n.left) next.push(n.left);
+          if (n.right) next.push(n.right);
+        }
+        level = next;
+      }
+      return levels;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function preorderIter(root) {
+      const out = [];
+      const stack = root ? [root] : [];
+      while (stack.length > 0) {
+        const n = stack.pop();
+        out.push(n.val);
+        if (n.right) stack.push(n.right); // right first,
+        if (n.left) stack.push(n.left); // so left pops first
+      }
+      return out;
+    }
+
+    function inorderIter(root) {
+      const out = [];
+      const stack = [];
+      let n = root;
+      while (n || stack.length > 0) {
+        while (n) {
+          // go as far left as possible
+          stack.push(n);
+          n = n.left;
+        }
+        const top = stack.pop();
+        out.push(top.val);
+        n = top.right;
+      }
+      return out;
+    }
+
+    // Postorder = reverse of (node, right, left)
+    function postorderIter(root) {
+      const out = [];
+      const stack = root ? [root] : [];
+      while (stack.length > 0) {
+        const n = stack.pop();
+        out.push(n.val);
+        if (n.left) stack.push(n.left);
+        if (n.right) stack.push(n.right);
+      }
+      return out.reverse();
+    }
+
+    // Level order: one array per level, no shift()
+    function levelOrder(root) {
+      const levels = [];
+      let level = root ? [root] : [];
+      while (level.length > 0) {
+        levels.push(level.map((n) => n.val));
+        const next = [];
         for (const n of level) {
           if (n.left) next.push(n.left);
           if (n.right) next.push(n.right);
@@ -297,7 +398,7 @@ Neither JS nor Python ships a sorted map. In interviews use a sorted array + bin
 lookup, $O(n)$ insert), a heap if you only need the min or max, or say you would use a library
 (`sortedcontainers` in Python). Implementing AVL or red-black rotations is rarely asked.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -326,6 +427,36 @@ lookup, $O(n)$ insert), a heap if you only need the min or max, or say you would
       if (n.val <= lo || n.val >= hi) return false;
       return isValidBST(n.left, lo, n.val) &&
         isValidBST(n.right, n.val, hi);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function bstSearch(n, x) {
+      while (n && n.val !== x) n = x < n.val ? n.left : n.right;
+      return n;
+    }
+
+    // Returns the (possibly new) root; duplicates ignored
+    function bstInsert(root, x) {
+      if (!root) return new TreeNode(x);
+      if (x < root.val) root.left = bstInsert(root.left, x);
+      else if (x > root.val)
+        root.right = bstInsert(root.right, x);
+      return root;
+    }
+
+    // Check against bounds from all ancestors, not just
+    // the parent: O(n) time, O(h) space
+    function isValidBST(n, lo = -Infinity, hi = Infinity) {
+      if (!n) return true;
+      if (n.val <= lo || n.val >= hi) return false;
+      return (
+        isValidBST(n.left, lo, n.val) &&
+        isValidBST(n.right, n.val, hi)
+      );
     }
     ```
 
@@ -395,7 +526,7 @@ JavaScript has **no built-in heap or priority queue**. This one takes a comparat
 `Array.prototype.sort` (negative means `x` comes out first), so the same class is a min-heap, a max-heap
 or a priority queue of objects. Other sheets link here for it.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -459,6 +590,67 @@ or a priority queue of objects. Other sheets link here for it.
   </Tab>
   <Tab>
 
+    ```js
+    export class MinHeap {
+      #a = [];
+      #cmp;
+
+      // cmp(x, y) < 0: x comes out first (like sort)
+      constructor(cmp) {
+        this.#cmp = cmp;
+      }
+
+      get size() {
+        return this.#a.length;
+      }
+
+      peek() {
+        return this.#a[0];
+      }
+
+      push(x) {
+        const a = this.#a;
+        a.push(x);
+        let i = a.length - 1;
+        while (i > 0) {
+          const p = (i - 1) >> 1;
+          if (this.#cmp(a[i], a[p]) >= 0) break;
+          [a[i], a[p]] = [a[p], a[i]];
+          i = p;
+        }
+      }
+
+      pop() {
+        const a = this.#a;
+        if (a.length === 0) return undefined;
+        const top = a[0];
+        const last = a.pop();
+        if (a.length > 0) {
+          a[0] = last;
+          this.#siftDown(0);
+        }
+        return top;
+      }
+
+      #siftDown(i) {
+        const a = this.#a;
+        for (;;) {
+          const l = 2 * i + 1;
+          const r = l + 1;
+          let m = i;
+          if (l < a.length && this.#cmp(a[l], a[m]) < 0) m = l;
+          if (r < a.length && this.#cmp(a[r], a[m]) < 0) m = r;
+          if (m === i) return;
+          [a[i], a[m]] = [a[m], a[i]];
+          i = m;
+        }
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
     ```py
     import heapq
 
@@ -482,7 +674,7 @@ or a priority queue of objects. Other sheets link here for it.
 
 ### Max-heaps & priorities
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -498,6 +690,29 @@ or a priority queue of objects. Other sheets link here for it.
     // [priority, label]: lowest priority first, ties by label
     type Task = [number, string];
     const tasks = new MinHeap<Task>(
+      (x, y) => x[0] - y[0] || x[1].localeCompare(y[1]),
+    );
+    tasks.push([2, "write"]);
+    tasks.push([1, "plan"]);
+    const first = tasks.pop(); // [1, "plan"]
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const minH = new MinHeap((x, y) => x - y);
+    const maxH = new MinHeap((x, y) => y - x);
+    for (const x of [5, 1, 4]) {
+      minH.push(x);
+      maxH.push(x);
+    }
+    const low = minH.pop(); // 1
+    const high = maxH.pop(); // 5
+
+    // [priority, label]: lowest priority first, ties by label
+
+    const tasks = new MinHeap(
       (x, y) => x[0] - y[0] || x[1].localeCompare(y[1]),
     );
     tasks.push([2, "write"]);
@@ -557,7 +772,7 @@ Children as a `Map` / `dict` keep memory proportional to the edges used; a 26-sl
 lowercase-only input. Tries power autocomplete, spell check, IP routing (longest prefix match) and
 "Word Search II".
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -592,6 +807,50 @@ lowercase-only input. Tries power autocomplete, spell check, IP routing (longest
 
       private find(prefix: string): TrieNode | undefined {
         let node: TrieNode | undefined = this.root;
+        for (const ch of prefix) {
+          node = node.children.get(ch);
+          if (!node) return undefined;
+        }
+        return node;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class TrieNode {
+      children = new Map();
+      isWord = false;
+    }
+
+    export class Trie {
+      #root = new TrieNode();
+
+      insert(word) {
+        let node = this.#root;
+        for (const ch of word) {
+          let next = node.children.get(ch);
+          if (!next) {
+            next = new TrieNode();
+            node.children.set(ch, next);
+          }
+          node = next;
+        }
+        node.isWord = true;
+      }
+
+      search(word) {
+        return this.#find(word)?.isWord ?? false;
+      }
+
+      startsWith(prefix) {
+        return this.#find(prefix) !== undefined;
+      }
+
+      #find(prefix) {
+        let node = this.#root;
         for (const ch of prefix) {
           node = node.children.get(ch);
           if (!node) return undefined;
@@ -664,7 +923,7 @@ edges both ways. **Weighted** edges carry a cost. A graph is **sparse** when $E$
 | Labeled nodes (strings) | `Map<string, string[]>` / `defaultdict(list)` |
 | Grid | implicit: neighbors are the 4 (or 8) adjacent cells, no list needed |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -699,6 +958,48 @@ edges both ways. **Weighted** edges carry a cost. A graph is **sparse** when $E$
       r: number, c: number, rows: number, cols: number,
     ): [number, number][] {
       const out: [number, number][] = [];
+      for (const [dr, dc] of DIRS) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols)
+          out.push([nr, nc]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // u, v, weight
+
+    // Nodes 0..n-1: O(V + E) time and space
+    function adjList(n, edges, directed = false) {
+      const g = Array.from({ length: n }, () => []);
+      for (const [u, v] of edges) {
+        g[u].push(v);
+        if (!directed) g[v].push(u);
+      }
+      return g;
+    }
+
+    // Weighted, directed: g[u] holds [v, w] pairs
+    function weightedAdj(n, edges) {
+      const g = Array.from({ length: n }, () => []);
+      for (const [u, v, w] of edges) g[u].push([v, w]);
+      return g;
+    }
+
+    // Grid as an implicit graph: in-bounds 4-neighbors
+    const DIRS = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    function neighbors(r, c, rows, cols) {
+      const out = [];
       for (const [dr, dc] of DIRS) {
         const nr = r + dr;
         const nc = c + dc;
@@ -778,7 +1079,7 @@ Each group is a tree stored in a `parent` array; the root names the group.
 Uses: connected components as edges arrive, cycle detection in undirected graphs (an edge whose ends are
 already joined), Kruskal's MST, grouping equal accounts or equations.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -813,6 +1114,48 @@ already joined), Kruskal's MST, grouping equal accounts or equations.
         if (this.size[ra] < this.size[rb]) [ra, rb] = [rb, ra];
         this.parent[rb] = ra; // smaller under larger
         this.size[ra] += this.size[rb];
+        this.count--;
+        return true;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    export class UnionFind {
+      #parent;
+      #size;
+      count; // number of groups
+
+      constructor(n) {
+        this.#parent = Array.from({ length: n }, (_, i) => i);
+        this.#size = new Array(n).fill(1);
+        this.count = n;
+      }
+
+      find(x) {
+        let root = x;
+        while (this.#parent[root] !== root)
+          root = this.#parent[root];
+        while (this.#parent[x] !== root) {
+          // path compression
+          const next = this.#parent[x];
+          this.#parent[x] = root;
+          x = next;
+        }
+        return root;
+      }
+
+      // false if a and b were already in one group
+      union(a, b) {
+        let ra = this.find(a);
+        let rb = this.find(b);
+        if (ra === rb) return false;
+        if (this.#size[ra] < this.#size[rb]) [ra, rb] = [rb, ra];
+        this.#parent[rb] = ra; // smaller under larger
+        this.#size[ra] += this.#size[rb];
         this.count--;
         return true;
       }
@@ -874,7 +1217,7 @@ Use for "Kth Largest Element in an Array" and its mirror: keep the $k$ best seen
 top is the worst of them. $O(n \log k)$ time, $O(k)$ space (quickselect averages $O(n)$, see
 [Sorting & searching](/dsa/sorting-searching/)).
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -886,6 +1229,21 @@ top is the worst of them. $O(n \log k)$ time, $O(k)$ space (quickselect averages
         if (heap.size > k) heap.pop(); // drop the largest
       }
       return heap.peek()!;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Max-heap of the k smallest; its top is the answer
+    function kthSmallest(xs, k) {
+      const heap = new MinHeap((x, y) => y - x);
+      for (const x of xs) {
+        heap.push(x);
+        if (heap.size > k) heap.pop(); // drop the largest
+      }
+      return heap.peek();
     }
     ```
 
@@ -912,7 +1270,7 @@ top is the worst of them. $O(n \log k)$ time, $O(k)$ space (quickselect averages
 Use for "Serialize and Deserialize Binary Tree": preorder with a marker for empty children is enough to
 rebuild the exact shape. $O(n)$ time and space both ways.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -935,6 +1293,40 @@ rebuild the exact shape. $O(n)$ time and space both ways.
       const tokens = s.split(",");
       let i = 0;
       const build = (): Tree => {
+        const t = tokens[i++];
+        if (t === "#") return null;
+        const node = new TreeNode(Number(t));
+        node.left = build();
+        node.right = build();
+        return node;
+      };
+      return build();
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function serialize(root) {
+      const out = [];
+      const walk = (n) => {
+        if (!n) {
+          out.push("#");
+          return;
+        }
+        out.push(String(n.val));
+        walk(n.left);
+        walk(n.right);
+      };
+      walk(root);
+      return out.join(",");
+    }
+
+    function deserialize(s) {
+      const tokens = s.split(",");
+      let i = 0;
+      const build = () => {
         const t = tokens[i++];
         if (t === "#") return null;
         const node = new TreeNode(Number(t));
@@ -987,7 +1379,7 @@ Use for "Word Search II": put all words in a trie, then DFS from every cell, fol
 abandoning a path as soon as no word has that prefix. Time $O(R \cdot C \cdot 3^{L})$ worst case for
 longest word $L$; space $O(\text{total characters})$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1014,6 +1406,49 @@ longest word $L$; space $O(\text{total characters})$.
       const C = board[0].length;
       const found: string[] = [];
       const dfs = (r: number, c: number, parent: Node) => {
+        if (r < 0 || r >= R || c < 0 || c >= C) return;
+        const ch = board[r][c];
+        const node = parent.kids.get(ch);
+        if (!node) return; // no word has this prefix
+        if (node.word !== undefined) {
+          found.push(node.word);
+          node.word = undefined; // report once
+        }
+        board[r][c] = "#"; // mark visited
+        dfs(r + 1, c, node);
+        dfs(r - 1, c, node);
+        dfs(r, c + 1, node);
+        dfs(r, c - 1, node);
+        board[r][c] = ch; // restore
+      };
+      for (let r = 0; r < R; r++)
+        for (let c = 0; c < C; c++) dfs(r, c, root);
+      return found;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function findWords(board, words) {
+      const root = { kids: new Map() };
+      for (const w of words) {
+        let n = root;
+        for (const ch of w) {
+          let next = n.kids.get(ch);
+          if (!next) {
+            next = { kids: new Map() };
+            n.kids.set(ch, next);
+          }
+          n = next;
+        }
+        n.word = w;
+      }
+      const R = board.length;
+      const C = board[0].length;
+      const found = [];
+      const dfs = (r, c, parent) => {
         if (r < 0 || r >= R || c < 0 || c >= C) return;
         const ch = board[r][c];
         const node = parent.kids.get(ch);
@@ -1089,7 +1524,7 @@ Use for "Number of Connected Components in an Undirected Graph", "Number of Prov
 "Redundant Connection": union every edge; the group count is the answer, and a failed `union` means
 the edge closes a cycle. $O(V + E \cdot \alpha(V))$ time, $O(V)$ space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1099,6 +1534,20 @@ the edge closes a cycle. $O(V + E \cdot \alpha(V))$ time, $O(V)$ space.
     ): { count: number; cycleEdge: [number, number] | null } {
       const uf = new UnionFind(n);
       let cycleEdge: [number, number] | null = null;
+      for (const [a, b] of edges) {
+        if (!uf.union(a, b)) cycleEdge ??= [a, b];
+      }
+      return { count: uf.count, cycleEdge };
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function components(n, edges) {
+      const uf = new UnionFind(n);
+      let cycleEdge = null;
       for (const [a, b] of edges) {
         if (!uf.union(a, b)) cycleEdge ??= [a, b];
       }
@@ -1128,7 +1577,7 @@ the edge closes a cycle. $O(V + E \cdot \alpha(V))$ time, $O(V)$ space.
 Use for "Merge k Sorted Lists" (and k-way merges of files or streams): a heap holds the current head of
 each list. $O(n \log k)$ time for $n$ items in total, $O(k)$ extra space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1147,6 +1596,28 @@ each list. $O(n \log k)$ time for $n$ items in total, $O(k)$ extra space.
         const xs = lists[li];
         if (i + 1 < xs.length)
           heap.push([xs[i + 1], li, i + 1]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Heap entries: [value, which list, index in that list]
+
+    function mergeK(lists) {
+      const heap = new MinHeap((x, y) => x[0] - y[0]);
+      lists.forEach((xs, li) => {
+        if (xs.length > 0) heap.push([xs[0], li, 0]);
+      });
+      const out = [];
+      while (heap.size > 0) {
+        const [v, li, i] = heap.pop();
+        out.push(v);
+        const xs = lists[li];
+        if (i + 1 < xs.length) heap.push([xs[i + 1], li, i + 1]);
       }
       return out;
     }

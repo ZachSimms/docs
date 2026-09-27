@@ -5,7 +5,7 @@ order: 8
 ---
 
 How coding interviews run and how to work through one: formats and a 45-minute timeline, a solving
-framework, what to say, how you're scored, TypeScript and Python gotchas, an edge-case checklist and an
+framework, what to say, how you're scored, TypeScript/JavaScript and Python gotchas, an edge-case checklist and an
 8-week prep plan. The patterns themselves are in [Problem patterns](/dsa/problem-patterns/); costs in
 [Big-O](/dsa/big-o/); design rounds in [System design interviews](/dsa/system-design-interviews/).
 
@@ -116,15 +116,17 @@ and ships the data structures interviews use.
 | :------- | :--- | :-------- |
 | Python | shortest code; `heapq`, `deque`, `Counter`, `bisect`, `@cache`; big ints | recursion limit; min-only heap; slower (rarely matters) |
 | TypeScript | your daily language; `Map` / `Set`; types document intent | no heap, deque or sorted map; default string sort; 53-bit integers |
+| JavaScript | TypeScript without the annotations: less to type, runs on every OA platform | the same traps as TypeScript, and no compiler to catch a wrong argument |
 | Java | `PriorityQueue`, `ArrayDeque`, `TreeMap` built in | verbose; boxing in collections |
 | C++ | STL `priority_queue`, `set`, `map`; fastest | verbose; undefined behavior on bugs |
 | Go | simple, fast | `container/heap` needs an interface implementation |
 
-Some OA platforms and editors run JavaScript but not TypeScript: be ready to drop the types.
+Some OA platforms and editors run JavaScript but not TypeScript. The JavaScript tabs on these sheets are the
+TypeScript with the types removed, so either one carries over.
 
 ## Gotchas
 
-### TypeScript
+### TypeScript / JavaScript
 
 | Gotcha | Trap | Do instead |
 | :----- | :--- | :--------- |
@@ -168,9 +170,9 @@ Some OA platforms and editors run JavaScript but not TypeScript: be ready to dro
 
 ### Safe idioms
 
-The traps above, done right in both languages.
+The traps above, done right in each language.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -214,6 +216,47 @@ The traps above, done right in both languages.
     // pair keys: arrays compare by reference, so encode
     const key = (r: number, c: number): string =>
       `${r},${c}`;
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // numbers: always pass a comparator
+    const asc = (xs) => [...xs].sort((a, b) => a - b);
+
+    // m × n grid: a fresh row per index, never fill([])
+    const grid = (m, n) =>
+      Array.from({ length: m }, () => new Array(n).fill(0));
+
+    // Python-style floor division and modulo
+    const floorDiv = (a, b) => Math.floor(a / b);
+    const mod = (a, n) => ((a % n) + n) % n;
+
+    // BFS queue without O(n) shift(): array + head index
+    function bfs(adj, start) {
+      const seen = new Set([start]);
+      const q = [start];
+      for (let head = 0; head < q.length; head++) {
+        for (const v of adj[q[head]]) {
+          if (!seen.has(v)) {
+            seen.add(v);
+            q.push(v);
+          }
+        }
+      }
+      return q; // visit order
+    }
+
+    // counting: Map keeps number keys as numbers
+    function counts(xs) {
+      const c = new Map();
+      for (const x of xs) c.set(x, (c.get(x) ?? 0) + 1);
+      return c;
+    }
+
+    // pair keys: arrays compare by reference, so encode
+    const key = (r, c) => `${r},${c}`;
     ```
 
   </Tab>
@@ -264,7 +307,7 @@ All O(1) except `asc` O(n log n), `grid` O(mn), `bfs` O(V + E) and `counts` O(n)
 Write the signature first, then a tiny harness you can run (or trace) at the end: the given example, then
 edge cases. In an editor that runs code, this is your test step.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -281,6 +324,35 @@ edge cases. In an editor that runs code, this is your test step.
 
     type Case = [nums: number[], target: number, want: number[]];
     const cases: Case[] = [
+      [[2, 7, 11, 15], 9, [0, 1]], // given example
+      [[3, 3], 6, [0, 1]], // duplicates
+      [[-1, -2, -3], -5, [1, 2]], // negatives
+      [[1, 2], 7, []], // no answer
+      [[], 0, []], // empty
+    ];
+    for (const [nums, target, want] of cases) {
+      const got = twoSum(nums, target);
+      const ok = JSON.stringify(got) === JSON.stringify(want);
+      console.log(ok ? "ok  " : "FAIL", nums, target, got);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Two Sum: indexes of the two values adding to target
+    function twoSum(nums, target) {
+      const seen = new Map(); // value → index
+      for (let i = 0; i < nums.length; i++) {
+        const j = seen.get(target - nums[i]);
+        if (j !== undefined) return [j, i];
+        seen.set(nums[i], i);
+      }
+      return [];
+    }
+
+    const cases = [
       [[2, 7, 11, 15], 9, [0, 1]], // given example
       [[3, 3], 6, [0, 1]], // duplicates
       [[-1, -2, -3], -5, [1, 2]], // negatives

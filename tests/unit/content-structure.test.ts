@@ -551,10 +551,14 @@ describe("every reference sheet", () => {
   }
 });
 
-/** Every DS&A code block pairs TypeScript with Python in one synced, remembered tab group. */
-const DSA_TABS = '<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">';
+/** Every DS&A code block shows TypeScript, JavaScript and Python in one synced, remembered tab group. */
+const DSA_TABS = '<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">';
 
-/** DS&A sheets that are mostly code, and the fewest TypeScript/Python tab groups each must have. */
+/** TypeScript-only syntax that must not survive into a JavaScript tab. */
+const TS_ONLY =
+  /:\s*(?:number|string|boolean|void|unknown|any|never|bigint)\b|<T\b[^>]*>|^\s*(?:export\s+)?(?:interface|type)\s+\w+|\b(?:private|protected|public|readonly)\s+\w|\bas\s+const\b|\bsatisfies\b|[\w)\]]!(?=[.;,)\]\s])/m;
+
+/** DS&A sheets that are mostly code, and the fewest tab groups each must have. */
 const DSA_MIN_TABS: Readonly<Record<string, number>> = {
   "big-o": 3,
   "linear-structures": 5,
@@ -568,25 +572,43 @@ const DSA_MIN_TABS: Readonly<Record<string, number>> = {
   "system-design-interviews": 0,
 };
 
+/** The code inside each fence of one language in a block. */
+function fences(block: string, lang: string): string[] {
+  return [...block.matchAll(new RegExp("```" + lang + "\\b[^\\n]*\\n([\\s\\S]*?)```", "g"))].map(
+    (m) => m[1] ?? "",
+  );
+}
+
 describe("content/dsa code tabs", () => {
   for (const [slug, min] of Object.entries(DSA_MIN_TABS)) {
     /** The sheet's `<Tabs …>` opening lines, trimmed. */
     const tabGroups = (body: string) =>
       [...body.matchAll(/^\s*<Tabs\b[^\n]*$/gm)].map((m) => m[0].trim());
+    /** Every `<Tabs>…</Tabs>` block in the sheet. */
+    const blocksOf = (body: string) =>
+      [...body.matchAll(/<Tabs\b[\s\S]*?<\/Tabs>/g)].map((m) => m[0]);
 
-    it(`dsa/${slug} uses only TypeScript/Python tabs synced by "dsa-lang"`, () => {
+    it(`dsa/${slug} uses only TypeScript/JavaScript/Python tabs synced by "dsa-lang"`, () => {
       const groups = tabGroups(readSheetBody({ topic: "dsa", slug }));
       expect(groups.filter((g) => g !== DSA_TABS)).toEqual([]);
     });
 
-    it(`dsa/${slug} has at least ${min} TypeScript/Python tab groups, two tabs each`, () => {
+    it(`dsa/${slug} has at least ${min} tab groups, each ts → js → py`, () => {
       const body = readSheetBody({ topic: "dsa", slug });
       expect(tabGroups(body).length).toBeGreaterThanOrEqual(min);
-      const blocks = [...body.matchAll(/<Tabs\b[\s\S]*?<\/Tabs>/g)].map((m) => m[0]);
-      for (const block of blocks) {
-        expect(block.match(/<Tab>/g)?.length).toBe(2);
-        expect(block).toMatch(/```ts\b[\s\S]*```py(?:thon)?\b/);
+      for (const block of blocksOf(body)) {
+        expect(block.match(/<Tab>/g)?.length).toBe(3);
+        expect(block).toMatch(/```ts\b[\s\S]*```js\b[\s\S]*```py(?:thon)?\b/);
       }
+    });
+
+    it(`dsa/${slug} has no TypeScript-only syntax in its JavaScript tabs`, () => {
+      const body = readSheetBody({ topic: "dsa", slug });
+      const leaks = blocksOf(body)
+        .flatMap((block) => fences(block, "js"))
+        .flatMap((code) => code.split("\n").filter((line) => TS_ONLY.test(line)))
+        .map((line) => line.trim());
+      expect(leaks).toEqual([]);
     });
   }
 

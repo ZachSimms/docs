@@ -5,7 +5,7 @@ order: 5
 ---
 
 Traversals, grids, components, cycles, topological order, shortest paths and minimum spanning trees, in
-TypeScript and Python. [Representations](/dsa/trees-graphs/#graph-representations) (adjacency list vs matrix),
+TypeScript, JavaScript and Python. [Representations](/dsa/trees-graphs/#graph-representations) (adjacency list vs matrix),
 the typed [`MinHeap<T>`](/dsa/trees-graphs/#heaps) and [union-find](/dsa/trees-graphs/#union-find) are on
 Trees & graphs; the code here assumes that `MinHeap` (comparator constructor, `push`,
 `pop`, `peek`, `size`). Recursion and memoized search are on [Recursion & DP](/dsa/recursion-dp/).
@@ -42,7 +42,7 @@ Nodes are `0..n-1` and the graph is an adjacency list: `adj[u]` holds the neighb
 store `[v, w]` pairs. When nodes are strings, map them to indices first, or use a `Map<string, string[]>` /
 `defaultdict(list)`.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -57,6 +57,20 @@ store `[v, w]` pairs. When nodes are strings, map them to indices first, or use 
         { length: n },
         () => [],
       );
+      for (const [u, v] of edges) {
+        adj[u].push(v);
+        if (!directed) adj[v].push(u);
+      }
+      return adj;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function buildAdj(n, edges, directed = false) {
+      const adj = Array.from({ length: n }, () => []);
       for (const [u, v] of edges) {
         adj[u].push(v);
         if (!directed) adj[v].push(u);
@@ -95,13 +109,35 @@ reaches a node is along a shortest path. It needs a FIFO queue.
 
 <Diagram src="/images/diagrams/dsa-bfs-dfs.svg" label="The same six-node graph searched from A. BFS visits A, B, C, D, E, F level by level; DFS visits A, B, D, E, F, C, going deep through E and F before reaching C." caption="Same graph, same start: BFS numbers nodes by distance, DFS by depth-first path." />
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     // Edges from src to each node; -1 if unreachable
     function bfs(adj: number[][], src: number): number[] {
       const dist = new Array<number>(adj.length).fill(-1);
+      dist[src] = 0;
+      const queue = [src];
+      // head pointer: queue.shift() is O(n) per call
+      for (let head = 0; head < queue.length; head++) {
+        const u = queue[head];
+        for (const v of adj[u]) {
+          if (dist[v] !== -1) continue; // seen
+          dist[v] = dist[u] + 1;
+          queue.push(v);
+        }
+      }
+      return dist;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Edges from src to each node; -1 if unreachable
+    function bfs(adj, src) {
+      const dist = new Array(adj.length).fill(-1);
       dist[src] = 0;
       const queue = [src];
       // head pointer: queue.shift() is O(n) per call
@@ -157,7 +193,7 @@ $O(V + E)$ time, $O(V)$ space.
 Depth-first search follows one path as far as it goes, then backtracks. Use it for reachability, components,
 cycle detection, topological order and backtracking; **not** for shortest paths.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -182,6 +218,43 @@ cycle detection, topological order and backtracking; **not** for shortest paths.
       const stack = [src];
       while (stack.length > 0) {
         const u = stack.pop()!;
+        if (seen.has(u)) continue; // pushed twice
+        seen.add(u);
+        order.push(u);
+        // reversed, so the first neighbor pops first
+        for (const v of adj[u].toReversed()) {
+          if (!seen.has(v)) stack.push(v);
+        }
+      }
+      return order;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function dfs(adj, src) {
+      const seen = new Set();
+      const order = [];
+      const visit = (u) => {
+        seen.add(u);
+        order.push(u); // preorder
+        for (const v of adj[u]) {
+          if (!seen.has(v)) visit(v);
+        }
+      };
+      visit(src);
+      return order;
+    }
+
+    // Same order, explicit stack: no recursion limit
+    function dfsIter(adj, src) {
+      const seen = new Set();
+      const order = [];
+      const stack = [src];
+      while (stack.length > 0) {
+        const u = stack.pop();
         if (seen.has(u)) continue; // pushed twice
         seen.add(u);
         order.push(u);
@@ -256,7 +329,7 @@ adjacency list: generate neighbors on the fly.
 "Number of Islands": count groups of 4-connected `"1"` cells. Each new unvisited land cell starts a flood fill
 that marks its whole island.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -276,6 +349,54 @@ that marks its whole island.
         const stack: Cell[] = [[r, c]];
         while (stack.length > 0) {
           const [y, x] = stack.pop()!;
+          for (const [dy, dx] of DIRS4) {
+            if (!isNewLand(y + dy, x + dx)) continue;
+            seen[y + dy][x + dx] = true;
+            stack.push([y + dy, x + dx]);
+          }
+        }
+      };
+
+      let count = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (!isNewLand(r, c)) continue;
+          count++;
+          flood(r, c);
+        }
+      }
+      return count;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const DIRS4 = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    function numIslands(grid) {
+      const rows = grid.length;
+      const cols = grid[0]?.length ?? 0;
+      const seen = grid.map((row) => row.map(() => false));
+      const isNewLand = (r, c) =>
+        r >= 0 &&
+        r < rows &&
+        c >= 0 &&
+        c < cols &&
+        grid[r][c] === "1" &&
+        !seen[r][c];
+
+      const flood = (r, c) => {
+        seen[r][c] = true;
+        const stack = [[r, c]];
+        while (stack.length > 0) {
+          const [y, x] = stack.pop();
           for (const [dy, dx] of DIRS4) {
             if (!isNewLand(y + dy, x + dx)) continue;
             seen[y + dy][x + dx] = true;
@@ -348,7 +469,7 @@ is allowed.
 
 Undirected cycle check with a parent pointer:
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -361,6 +482,31 @@ Undirected cycle check with a parent pointer:
         const stack: [number, number][] = [[s, -1]];
         while (stack.length > 0) {
           const [u, parent] = stack.pop()!;
+          for (const v of adj[u]) {
+            if (v === parent) continue; // the edge we came by
+            if (seen[v]) return true; // a second way to v
+            seen[v] = true;
+            stack.push([v, u]);
+          }
+        }
+      }
+      return false;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Simple undirected graph: no self-loops or repeats
+    function hasCycle(adj) {
+      const seen = new Array(adj.length).fill(false);
+      for (let s = 0; s < adj.length; s++) {
+        if (seen[s]) continue;
+        seen[s] = true;
+        const stack = [[s, -1]];
+        while (stack.length > 0) {
+          const [u, parent] = stack.pop();
           for (const v of adj[u]) {
             if (v === parent) continue; // the edge we came by
             if (seen[v]) return true; // a second way to v
@@ -415,7 +561,7 @@ course prerequisites, spreadsheet recalculation. It exists exactly when the grap
 | Cycle signal | fewer than $V$ nodes come out | an edge to a gray (in-progress) node |
 | Extras | a min-heap instead of the queue gives the smallest order lexicographically; levels give "parallel semesters" | same colors detect directed cycles |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -424,6 +570,28 @@ course prerequisites, spreadsheet recalculation. It exists exactly when the grap
       const indeg = new Array<number>(adj.length).fill(0);
       for (const vs of adj) for (const v of vs) indeg[v]++;
       const queue: number[] = [];
+      indeg.forEach((d, u) => {
+        if (d === 0) queue.push(u);
+      });
+      for (let head = 0; head < queue.length; head++) {
+        for (const v of adj[queue[head]]) {
+          indeg[v]--;
+          if (indeg[v] === 0) queue.push(v);
+        }
+      }
+      return queue.length === adj.length ? queue : null;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Kahn: order, or null if a cycle leaves nodes behind
+    function topoKahn(adj) {
+      const indeg = new Array(adj.length).fill(0);
+      for (const vs of adj) for (const v of vs) indeg[v]++;
+      const queue = [];
       indeg.forEach((d, u) => {
         if (d === 0) queue.push(u);
       });
@@ -464,7 +632,7 @@ course prerequisites, spreadsheet recalculation. It exists exactly when the grap
   </Tab>
 </Tabs>
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -477,6 +645,35 @@ course prerequisites, spreadsheet recalculation. It exists exactly when the grap
       const color = new Array<number>(adj.length).fill(WHITE);
       const post: number[] = [];
       const visit = (u: number): boolean => {
+        color[u] = GRAY;
+        for (const v of adj[u]) {
+          if (color[v] === GRAY) return false; // back edge
+          if (color[v] === WHITE && !visit(v)) return false;
+        }
+        color[u] = BLACK;
+        post.push(u);
+        return true;
+      };
+      for (let u = 0; u < adj.length; u++) {
+        if (color[u] === WHITE && !visit(u)) return null;
+      }
+      return post.reverse();
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const WHITE = 0; // not visited
+    const GRAY = 1; // on the current DFS path
+    const BLACK = 2; // finished
+
+    // Reverse postorder, or null on a directed cycle
+    function topoDfs(adj) {
+      const color = new Array(adj.length).fill(WHITE);
+      const post = [];
+      const visit = (u) => {
         color[u] = GRAY;
         for (const v of adj[u]) {
           if (color[v] === GRAY) return false; // back edge
@@ -532,7 +729,7 @@ Single-source shortest paths with **non-negative** weights. Pop the closest unfi
 finalize it, relax its edges. JavaScript has no heap: this uses the `MinHeap<T>` from
 [Trees & graphs](/dsa/trees-graphs/#heaps).
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -550,6 +747,31 @@ finalize it, relax its edges. JavaScript has no heap: this uses the `MinHeap<T>`
       heap.push([0, src]);
       while (heap.size > 0) {
         const [d, u] = heap.pop()!;
+        if (d > dist[u]) continue; // stale entry
+        for (const [v, w] of adj[u]) {
+          if (d + w < dist[v]) {
+            dist[v] = d + w;
+            heap.push([dist[v], v]);
+          }
+        }
+      }
+      return dist;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // adj[u] = [v, weight][], weights >= 0
+    function dijkstra(adj, src) {
+      const dist = new Array(adj.length).fill(Infinity);
+      dist[src] = 0;
+      // entries [distance, node], closest first
+      const heap = new MinHeap((a, b) => a[0] - b[0]);
+      heap.push([0, src]);
+      while (heap.size > 0) {
+        const [d, u] = heap.pop();
         if (d > dist[u]) continue; // stale entry
         for (const [v, w] of adj[u]) {
           if (d + w < dist[v]) {
@@ -613,7 +835,7 @@ skip stale ones on pop ("lazy deletion").
 | DAG relaxation | any weights, no cycles | relax edges in topological order; negate weights for the longest path | $O(V + E)$ |
 | Floyd-Warshall | all pairs, negatives | allow intermediate nodes `0..k` one at a time; `k` must be the outer loop | $O(V^3)$ |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -626,6 +848,33 @@ skip stale ones on pop ("lazy deletion").
       src: number,
     ): number[] | null {
       const dist = new Array<number>(n).fill(Infinity);
+      dist[src] = 0;
+      for (let round = 0; round < n - 1; round++) {
+        let changed = false;
+        for (const [u, v, w] of edges) {
+          if (dist[u] + w < dist[v]) {
+            dist[v] = dist[u] + w;
+            changed = true;
+          }
+        }
+        if (!changed) break; // settled early
+      }
+      for (const [u, v, w] of edges) {
+        if (dist[u] + w < dist[v]) return null;
+      }
+      return dist;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // [u, v, w]
+
+    // null if a negative cycle is reachable from src
+    function bellmanFord(n, edges, src) {
+      const dist = new Array(n).fill(Infinity);
       dist[src] = 0;
       for (let round = 0; round < n - 1; round++) {
         let changed = false;
@@ -675,12 +924,32 @@ skip stale ones on pop ("lazy deletion").
   </Tab>
 </Tabs>
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     // d: n×n, Infinity if no edge, 0 on the diagonal
     function floydWarshall(d0: number[][]): number[][] {
+      const d = d0.map((row) => row.slice());
+      const n = d.length;
+      for (let k = 0; k < n; k++) {
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            const viaK = d[i][k] + d[k][j];
+            if (viaK < d[i][j]) d[i][j] = viaK;
+          }
+        }
+      }
+      return d; // d[i][i] < 0: i is on a negative cycle
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // d: n×n, Infinity if no edge, 0 on the diagonal
+    function floydWarshall(d0) {
       const d = d0.map((row) => row.slice());
       const n = d.length;
       for (let k = 0; k < n; k++) {
@@ -732,7 +1001,7 @@ no cycles). Both algorithms are greedy: the lightest edge crossing any cut is sa
 Kruskal inlines a minimal union-find (path halving, no size tracking); the full `UnionFind` with union by size
 is on [Trees & graphs](/dsa/trees-graphs/#union-find).
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -744,6 +1013,36 @@ is on [Trees & graphs](/dsa/trees-graphs/#union-find).
     ): number | null {
       const parent = Array.from({ length: n }, (_, i) => i);
       const find = (x: number): number => {
+        while (parent[x] !== x) {
+          parent[x] = parent[parent[x]]; // path halving
+          x = parent[x];
+        }
+        return x;
+      };
+      let total = 0;
+      let used = 0;
+      const byWeight = edges.toSorted((a, b) => a[2] - b[2]);
+      for (const [u, v, w] of byWeight) {
+        const ru = find(u);
+        const rv = find(v);
+        if (ru === rv) continue; // would close a cycle
+        parent[ru] = rv;
+        total += w;
+        used++;
+      }
+      return used === n - 1 ? total : null;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // edges [u, v, w]; total MST weight, or null if the
+    // graph is disconnected
+    function kruskal(n, edges) {
+      const parent = Array.from({ length: n }, (_, i) => i);
+      const find = (x) => {
         while (parent[x] !== x) {
           parent[x] = parent[parent[x]]; // path halving
           x = parent[x];
@@ -796,7 +1095,7 @@ is on [Trees & graphs](/dsa/trees-graphs/#union-find).
   </Tab>
 </Tabs>
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -811,6 +1110,30 @@ is on [Trees & graphs](/dsa/trees-graphs/#union-find).
       let total = 0;
       while (heap.size > 0) {
         const [w, u] = heap.pop()!;
+        if (inTree[u]) continue; // stale entry
+        inTree[u] = true;
+        total += w;
+        for (const [v, wv] of adj[u]) {
+          if (!inTree[v]) heap.push([wv, v]);
+        }
+      }
+      return total;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // adj[u] = [v, w][] (undirected); MST weight from 0
+    function prim(adj) {
+      const inTree = new Array(adj.length).fill(false);
+      // entries [edge weight, node]
+      const heap = new MinHeap((a, b) => a[0] - b[0]);
+      heap.push([0, 0]);
+      let total = 0;
+      while (heap.size > 0) {
+        const [w, u] = heap.pop();
         if (inTree[u]) continue; // stale entry
         inTree[u] = true;
         total += w;
@@ -858,7 +1181,7 @@ $E \approx V^2$.
 BFS over cells; `dist` doubles as the visited mark. "Shortest Path in Binary Matrix" (8 directions, `0` is
 open, count cells on the path). $O(n^2)$ time and space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -878,6 +1201,47 @@ open, count cells on the path). $O(n^2)$ time and space.
       const dist = grid.map((row) => row.map(() => 0));
       dist[0][0] = 1; // 0 means unvisited
       const queue: Cell[] = [[0, 0]];
+      for (let head = 0; head < queue.length; head++) {
+        const [r, c] = queue[head];
+        if (r === n - 1 && c === n - 1) return dist[r][c];
+        for (const [dr, dc] of DIRS8) {
+          const y = r + dr;
+          const x = c + dc;
+          if (y < 0 || y >= n || x < 0 || x >= n) continue;
+          if (grid[y][x] !== 0 || dist[y][x] !== 0) continue;
+          dist[y][x] = dist[r][c] + 1;
+          queue.push([y, x]);
+        }
+      }
+      return -1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const DIRS8 = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ];
+
+    // Cells on the shortest path from top-left to
+    // bottom-right of an n×n grid, or -1
+    function shortestPathGrid(grid) {
+      const n = grid.length;
+      if (grid[0][0] !== 0 || grid[n - 1][n - 1] !== 0) {
+        return -1;
+      }
+      const dist = grid.map((row) => row.map(() => 0));
+      dist[0][0] = 1; // 0 means unvisited
+      const queue = [[0, 0]];
       for (let head = 0; head < queue.length; head++) {
         const [r, c] = queue[head];
         if (r === n - 1 && c === n - 1) return dist[r][c];
@@ -941,7 +1305,7 @@ If moves have different costs, switch to Dijkstra over cells; if the state inclu
 Start the queue with **every** source at distance 0; BFS then gives each cell its distance to the nearest
 source. Process level by level to count minutes. $O(RC)$. Same idea: "Walls and Gates", "01 Matrix".
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -965,6 +1329,54 @@ source. Process level by level to count minutes. $O(RC)$. Same idea: "Walls and 
       let minutes = 0;
       while (level.length > 0 && fresh > 0) {
         const next: Cell[] = [];
+        for (const [r, c] of level) {
+          for (const [dr, dc] of DIRS4) {
+            const y = r + dr;
+            const x = c + dc;
+            if (y < 0 || y >= rows || x < 0 || x >= cols) {
+              continue;
+            }
+            if (g[y][x] !== 1) continue;
+            g[y][x] = 2;
+            fresh--;
+            next.push([y, x]);
+          }
+        }
+        level = next;
+        minutes++;
+      }
+      return fresh === 0 ? minutes : -1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const DIRS4 = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    // 2 = rotten, 1 = fresh, 0 = empty. Minutes until no
+    // fresh orange is left, or -1 if one never rots.
+    function orangesRotting(grid) {
+      const g = grid.map((row) => row.slice());
+      const rows = g.length;
+      const cols = g[0]?.length ?? 0;
+      let level = [];
+      let fresh = 0;
+      g.forEach((row, r) =>
+        row.forEach((v, c) => {
+          if (v === 2) level.push([r, c]);
+          if (v === 1) fresh++;
+        }),
+      );
+      let minutes = 0;
+      while (level.length > 0 && fresh > 0) {
+        const next = [];
         for (const [r, c] of level) {
           for (const [dr, dc] of DIRS4) {
             const y = r + dr;
@@ -1032,7 +1444,7 @@ Prerequisite pairs `[course, before]` are edges `before → course`. "Course Sch
 topological order exists; "Course Schedule II" asks for one. Reuses `buildAdj` and `topoKahn` from above.
 $O(V + E)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1050,6 +1462,22 @@ $O(V + E)$.
       n: number,
       prereqs: [number, number][],
     ): boolean => findOrder(n, prereqs).length === n;
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function findOrder(n, prereqs) {
+      const edges = prereqs.map(([course, before]) => [
+        before,
+        course,
+      ]);
+      return topoKahn(buildAdj(n, edges, true)) ?? [];
+    }
+
+    const canFinish = (n, prereqs) =>
+      findOrder(n, prereqs).length === n;
     ```
 
   </Tab>
@@ -1076,12 +1504,37 @@ $O(V + E)$.
 Color each component with BFS, alternating 0 and 1; an edge between equal colors means an odd cycle, so no
 two-coloring exists ("Is Graph Bipartite?", "Possible Bipartition"). $O(V + E)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function isBipartite(adj: number[][]): boolean {
       const color = new Array<number>(adj.length).fill(-1);
+      for (let s = 0; s < adj.length; s++) {
+        if (color[s] !== -1) continue;
+        color[s] = 0;
+        const queue = [s];
+        for (let head = 0; head < queue.length; head++) {
+          const u = queue[head];
+          for (const v of adj[u]) {
+            if (color[v] === color[u]) return false;
+            if (color[v] === -1) {
+              color[v] = 1 - color[u];
+              queue.push(v);
+            }
+          }
+        }
+      }
+      return true;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function isBipartite(adj) {
+      const color = new Array(adj.length).fill(-1);
       for (let s = 0; s < adj.length; s++) {
         if (color[s] !== -1) continue;
         color[s] = 0;
@@ -1133,7 +1586,7 @@ two-coloring exists ("Is Graph Bipartite?", "Possible Bipartition"). $O(V + E)$.
 BFS with a `parent` array, then walk back from the target and reverse. Works the same after Dijkstra.
 $O(V + E)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1159,6 +1612,33 @@ $O(V + E)$.
       }
       if (!seen[t]) return [];
       const path: number[] = [];
+      for (let v = t; v !== -1; v = parent[v]) path.push(v);
+      return path.reverse();
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Nodes from s to t inclusive; [] if unreachable
+    function shortestPath(adj, s, t) {
+      const parent = new Array(adj.length).fill(-1);
+      const seen = new Array(adj.length).fill(false);
+      seen[s] = true;
+      const queue = [s];
+      for (let head = 0; head < queue.length; head++) {
+        const u = queue[head];
+        if (u === t) break;
+        for (const v of adj[u]) {
+          if (seen[v]) continue;
+          seen[v] = true;
+          parent[v] = u;
+          queue.push(v);
+        }
+      }
+      if (!seen[t]) return [];
+      const path = [];
       for (let v = t; v !== -1; v = parent[v]) path.push(v);
       return path.reverse();
     }
@@ -1205,7 +1685,7 @@ $O(V + E)$.
 A signal leaves node `k` along weighted directed edges; how long until every node has it? That is the largest
 Dijkstra distance, or -1 if some node is unreachable. Reuses `dijkstra` from above. $O((V + E) \log V)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1219,6 +1699,20 @@ Dijkstra distance, or -1 if some node is unreachable. Reuses `dijkstra` from abo
         { length: n + 1 },
         () => [],
       );
+      for (const [u, v, w] of times) adj[u].push([v, w]);
+      const dist = dijkstra(adj, k).slice(1); // drop node 0
+      const worst = Math.max(...dist);
+      return worst === Infinity ? -1 : worst;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // times: [from, to, ms], nodes numbered 1..n
+    function networkDelay(times, n, k) {
+      const adj = Array.from({ length: n + 1 }, () => []);
       for (const [u, v, w] of times) adj[u].push([v, w]);
       const dist = dijkstra(adj, k).slice(1); // drop node 0
       const worst = Math.max(...dist);

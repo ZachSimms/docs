@@ -5,7 +5,7 @@ order: 7
 ---
 
 The recurring shapes behind most interview problems: how to spot each one from the prompt, a template in
-TypeScript and Python, its cost and the classic problems that use it. Structures are in
+TypeScript, JavaScript and Python, its cost and the classic problems that use it. Structures are in
 [Linear structures](/dsa/linear-structures/) and [Trees & graphs](/dsa/trees-graphs/) (including the
 `MinHeap` used below), binary search in [Sorting & searching](/dsa/sorting-searching/), BFS and friends in
 [Graph algorithms](/dsa/graph-algorithms/), backtracking and DP in [Recursion & DP](/dsa/recursion-dp/). How
@@ -56,7 +56,7 @@ item goes.
 
 <Diagram src="/images/diagrams/dsa-two-pointers.svg" label="Sorted array 1 3 4 6 8 11 with target 10: lo at the left end, hi at the right end; 1 + 11 = 12 is too big so hi moves left; 1 + 8 = 9 is too small so lo moves right; 3 + 8 = 11 too big, hi moves left; 3 + 6 = 9, lo moves right; 4 + 6 = 10 found" caption="Opposite ends on a sorted array: too big moves hi left, too small moves lo right." />
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -77,6 +77,36 @@ item goes.
 
     // same direction: fast reads, slow is the write index
     function dedupe(xs: number[]): number {
+      let slow = 0;
+      for (let fast = 0; fast < xs.length; fast++) {
+        if (fast === 0 || xs[fast] !== xs[fast - 1]) {
+          xs[slow++] = xs[fast];
+        }
+      }
+      return slow; // xs[0..slow) holds the unique values
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // opposite ends: indexes of a pair summing to t
+    function pairSum(xs, t) {
+      let lo = 0;
+      let hi = xs.length - 1;
+      while (lo < hi) {
+        const s = xs[lo] + xs[hi];
+        if (s === t) return [lo, hi];
+        if (s < t)
+          lo++; // too small: raise the low side
+        else hi--; // too big: lower the high side
+      }
+      return null;
+    }
+
+    // same direction: fast reads, slow is the write index
+    function dedupe(xs) {
       let slow = 0;
       for (let fast = 0; fast < xs.length; fast++) {
         if (fast === 0 || xs[fast] !== xs[fast - 1]) {
@@ -153,7 +183,7 @@ for r in 0 .. n-1:
 | exactly k | | `atMost(k) - atMost(k - 1)` |
 | fixed size k | never; drop `xs[r - k]` as `xs[r]` enters | once `r ≥ k - 1` |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -180,6 +210,41 @@ for r in 0 .. n-1:
         while (count.get(c)! > 1) { // invalid: shrink
           const d = s[l++];
           count.set(d, count.get(d)! - 1);
+        }
+        best = Math.max(best, r - l + 1); // valid here
+      }
+      return best;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // fixed size k (k ≤ n): add the new item, drop the old
+    function maxSumK(xs, k) {
+      let sum = 0;
+      for (let i = 0; i < k; i++) sum += xs[i];
+      let best = sum;
+      for (let r = k; r < xs.length; r++) {
+        sum += xs[r] - xs[r - k];
+        best = Math.max(best, sum);
+      }
+      return best;
+    }
+
+    // variable: longest substring without repeats
+    function longestUnique(s) {
+      const count = new Map();
+      let best = 0;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const c = s[r];
+        count.set(c, (count.get(c) ?? 0) + 1);
+        while (count.get(c) > 1) {
+          // invalid: shrink
+          const d = s[l++];
+          count.set(d, count.get(d) - 1);
         }
         best = Math.max(best, r - l + 1); // valid here
       }
@@ -242,7 +307,7 @@ xs[l..r) sums to k  ⇔  pre[r] - pre[l] = k
                     ⇔  pre[r] - k was seen before
 ```
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -256,6 +321,31 @@ xs[l..r) sums to k  ⇔  pre[r] - pre[l] = k
     // Subarray Sum Equals K: count, negatives allowed
     function subarraySum(xs: number[], k: number): number {
       const seen = new Map<number, number>([[0, 1]]);
+      let sum = 0;
+      let count = 0;
+      for (const x of xs) {
+        sum += x;
+        count += seen.get(sum - k) ?? 0;
+        seen.set(sum, (seen.get(sum) ?? 0) + 1);
+      }
+      return count;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // pre[i] = sum of xs[0..i)
+    function prefix(xs) {
+      const pre = [0];
+      for (const x of xs) pre.push(pre.at(-1) + x);
+      return pre;
+    }
+
+    // Subarray Sum Equals K: count, negatives allowed
+    function subarraySum(xs, k) {
+      const seen = new Map([[0, 1]]);
       let sum = 0;
       let count = 0;
       for (const x of xs) {
@@ -308,7 +398,7 @@ A stack whose values stay sorted (decreasing for "next greater"). Each new item 
 and each pop is an answer: the popped index just found its next greater element. A **deque** version keeps
 the window maximum at the front.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -334,6 +424,42 @@ the window maximum at the front.
       const out: number[] = [];
       for (let i = 0; i < xs.length; i++) {
         while (dq.length > head && xs[dq.at(-1)!] <= xs[i]) {
+          dq.pop();
+        }
+        dq.push(i);
+        if (dq[head] <= i - k) head++; // left the window
+        if (i >= k - 1) out.push(xs[dq[head]]);
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Daily Temperatures: days until a warmer day
+    function dailyTemps(ts) {
+      const ans = new Array(ts.length).fill(0);
+      const stack = []; // indexes, temps falling
+      ts.forEach((t, i) => {
+        while (stack.length && ts[stack.at(-1)] < t) {
+          const j = stack.pop();
+          ans[j] = i - j; // i is j's next warmer day
+        }
+        stack.push(i);
+      });
+      return ans;
+    }
+
+    // Sliding Window Maximum. JS has no deque: an array
+    // plus a head index gives O(1) pops at both ends
+    function windowMax(xs, k) {
+      const dq = []; // indexes, values falling
+      let head = 0; // dq[head..] is the live deque
+      const out = [];
+      for (let i = 0; i < xs.length; i++) {
+        while (dq.length > head && xs[dq.at(-1)] <= xs[i]) {
           dq.pop();
         }
         dq.push(i);
@@ -396,7 +522,7 @@ Rain Water, Sliding Window Maximum, Remove K Digits.
 Two pointers on a linked list (or any `next` function), one moving two steps per turn. In a cycle the fast
 one gains one node per turn, so they meet; on a straight list, fast hits the end when slow is halfway.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -440,6 +566,53 @@ one gains one node per turn, so they meet; on a straight list, fast hits the end
       let fast: Link = head;
       while (fast && fast.next) {
         slow = slow.next!;
+        fast = fast.next.next;
+      }
+      return slow;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function hasCycle(head) {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow.next;
+        fast = fast.next.next;
+        if (slow === fast) return true;
+      }
+      return false;
+    }
+
+    // Floyd: after they meet, restart one at the head;
+    // stepping both by one, they meet at the cycle start
+    function cycleStart(head) {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow.next;
+        fast = fast.next.next;
+        if (slow === fast) {
+          let p = head;
+          while (p !== slow) {
+            p = p.next;
+            slow = slow.next;
+          }
+          return p;
+        }
+      }
+      return null;
+    }
+
+    // middle node (the second one for even lengths)
+    function middle(head) {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow.next;
         fast = fast.next.next;
       }
       return slow;
@@ -508,7 +681,7 @@ Sort by start, then sweep once, comparing each interval with the last one kept. 
 `[c, d]` overlap when `a ≤ d` and `c ≤ b` (use `<` if touching ends don't count). For "how many at once",
 keep a **min-heap of end times**: its top is the room that frees up first.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -549,6 +722,52 @@ keep a **min-heap of end times**: its top is the room that frees up first.
       for (const [s, e] of sorted) {
         // earliest-ending meeting is over: reuse its room
         if (ends.size > 0 && ends.peek()! <= s) ends.pop();
+        ends.push(e);
+      }
+      return ends.size;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function merge(xs) {
+      const sorted = [...xs].sort((a, b) => a[0] - b[0]);
+      const out = [];
+      for (const [s, e] of sorted) {
+        const last = out.at(-1);
+        if (last && s <= last[1]) {
+          last[1] = Math.max(last[1], e); // overlap: extend
+        } else {
+          out.push([s, e]);
+        }
+      }
+      return out;
+    }
+
+    // Insert Interval: xs is sorted and non-overlapping
+    function insert(xs, add) {
+      const out = [];
+      let [s, e] = add;
+      let i = 0;
+      while (i < xs.length && xs[i][1] < s) out.push(xs[i++]);
+      while (i < xs.length && xs[i][0] <= e) {
+        // overlaps
+        s = Math.min(s, xs[i][0]);
+        e = Math.max(e, xs[i][1]);
+        i++;
+      }
+      return [...out, [s, e], ...xs.slice(i)];
+    }
+
+    // Meeting Rooms II: the most meetings at once
+    function minRooms(xs) {
+      const sorted = [...xs].sort((a, b) => a[0] - b[0]);
+      const ends = new MinHeap((a, b) => a - b);
+      for (const [s, e] of sorted) {
+        // earliest-ending meeting is over: reuse its room
+        if (ends.size > 0 && ends.peek() <= s) ends.pop();
         ends.push(e);
       }
       return ends.size;
@@ -618,7 +837,7 @@ A heap answers "best k so far" in O(log k) per item. For the k **largest**, keep
 the smallest of the k best sits on top, ready to be evicted. For k sorted lists, a heap of each list's
 current head yields the global order.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -645,6 +864,41 @@ current head yields the global order.
       const out: number[] = [];
       while (heap.size > 0) {
         const [v, i, j] = heap.pop()!;
+        out.push(v);
+        if (j + 1 < lists[i].length) {
+          heap.push([lists[i][j + 1], i, j + 1]);
+        }
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // k largest, largest first
+    function topK(xs, k) {
+      const heap = new MinHeap((a, b) => a - b);
+      for (const x of xs) {
+        heap.push(x);
+        if (heap.size > k) heap.pop(); // drop the smallest
+      }
+      const out = [];
+      while (heap.size > 0) out.push(heap.pop());
+      return out.reverse();
+    }
+
+    // merge k sorted arrays; entry = [value, list, index]
+
+    function mergeK(lists) {
+      const heap = new MinHeap((a, b) => a[0] - b[0]);
+      lists.forEach((xs, i) => {
+        if (xs.length) heap.push([xs[0], i, 0]);
+      });
+      const out = [];
+      while (heap.size > 0) {
+        const [v, i, j] = heap.pop();
         out.push(v);
         if (j + 1 < lists[i].length) {
           heap.push([lists[i][j + 1], i, j + 1]);
@@ -706,7 +960,7 @@ When values are in `1..n` (or `0..n`) and the array has n slots, the array can b
 swap each value to index `v - 1`, or flip the sign at `|v| - 1` to mark "seen". O(n) time, O(1) extra space,
 but it rewrites the input.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -717,6 +971,31 @@ but it rewrites the input.
         // swap xs[i] home until it's home or out of range
         while (xs[i] >= 1 && xs[i] <= n
             && xs[xs[i] - 1] !== xs[i]) {
+          const j = xs[i] - 1;
+          [xs[i], xs[j]] = [xs[j], xs[i]];
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        if (xs[i] !== i + 1) return i + 1;
+      }
+      return n + 1;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // First Missing Positive (reorders xs in place)
+    function firstMissingPositive(xs) {
+      const n = xs.length;
+      for (let i = 0; i < n; i++) {
+        // swap xs[i] home until it's home or out of range
+        while (
+          xs[i] >= 1 &&
+          xs[i] <= n &&
+          xs[xs[i] - 1] !== xs[i]
+        ) {
           const j = xs[i] - 1;
           [xs[i], xs[j]] = [xs[j], xs[i]];
         }
@@ -769,7 +1048,7 @@ in an Array (negate `xs[|v| - 1]`; already negative means seen), First Missing P
 | `popcount(a ^ b)` | Hamming distance | Hamming Distance |
 | `x >> 1`, `x << 1` | halve (floor), double | Counting Bits: `bits[i] = bits[i >> 1] + (i & 1)` |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -789,6 +1068,33 @@ in an Array (negate `xs[|v| - 1]`; already negative means seen), First Missing P
     // all subsets via masks 0 .. 2^n - 1 (n ≤ 30 in JS)
     function subsets<T>(items: T[]): T[][] {
       const out: T[][] = [];
+      for (let m = 0; m < 1 << items.length; m++) {
+        out.push(items.filter((_, i) => (m >> i) & 1));
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Single Number: every other value appears twice
+    function single(xs) {
+      return xs.reduce((acc, x) => acc ^ x, 0);
+    }
+
+    // Kernighan: one iteration per set bit; works on the
+    // 32-bit pattern, so negatives count 32-bit style
+    function popcount(x) {
+      let n = 0;
+      for (let v = x; v !== 0; v &= v - 1) n++;
+      return n;
+    }
+
+    // all subsets via masks 0 .. 2^n - 1 (n ≤ 30 in JS)
+    function subsets(items) {
+      const out = [];
       for (let m = 0; m < 1 << items.length; m++) {
         out.push(items.filter((_, i) => (m >> i) & 1));
       }
@@ -861,7 +1167,7 @@ When no signal jumps out, walk this list and ask "does this make the repeated wo
 The **shortest**-window template: record and shrink while the window is valid. `missing` counts
 characters of `t` not yet covered, so validity is O(1) to check.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -882,6 +1188,38 @@ characters of `t` not yet covered, so validity is O(1) to check.
             bestLen = r - l + 1;
           }
           const m = need.get(s[l])! + 1;
+          need.set(s[l++], m);
+          if (m > 0) missing++;
+        }
+      }
+      return bestLen > s.length
+        ? ""
+        : s.slice(bestL, bestL + bestLen);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function minWindow(s, t) {
+      const need = new Map();
+      for (const c of t) need.set(c, (need.get(c) ?? 0) + 1);
+      let missing = t.length; // chars of t still uncovered
+      let bestL = 0;
+      let bestLen = s.length + 1;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const n = need.get(s[r]) ?? 0;
+        if (n > 0) missing--;
+        need.set(s[r], n - 1); // negative = surplus
+        while (missing === 0) {
+          // valid: record, shrink
+          if (r - l + 1 < bestLen) {
+            bestL = l;
+            bestLen = r - l + 1;
+          }
+          const m = need.get(s[l]) + 1;
           need.set(s[l++], m);
           if (m > 0) missing++;
         }
@@ -931,7 +1269,7 @@ letter ≤ k`. `maxFreq` never has to decrease: a stale (too high) value only le
 current length, and the window grows only when some letter beats the old `maxFreq`, which is exactly when a
 longer answer exists.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -946,6 +1284,30 @@ longer answer exists.
         maxFreq = Math.max(maxFreq, n);
         while (r - l + 1 - maxFreq > k) { // invalid
           count.set(s[l], count.get(s[l])! - 1);
+          l++;
+        }
+        best = Math.max(best, r - l + 1);
+      }
+      return best;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function charReplacement(s, k) {
+      const count = new Map();
+      let maxFreq = 0; // top count seen in any window
+      let best = 0;
+      let l = 0;
+      for (let r = 0; r < s.length; r++) {
+        const n = (count.get(s[r]) ?? 0) + 1;
+        count.set(s[r], n);
+        maxFreq = Math.max(maxFreq, n);
+        while (r - l + 1 - maxFreq > k) {
+          // invalid
+          count.set(s[l], count.get(s[l]) - 1);
           l++;
         }
         best = Math.max(best, r - l + 1);
@@ -983,13 +1345,39 @@ O(n) time, O(alphabet) space.
 Fix the smallest element, run opposite-ends two pointers on the rest, and skip equal neighbors so each
 triple appears once.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function threeSum(xs: number[]): number[][] {
       const a = [...xs].sort((x, y) => x - y);
       const out: number[][] = [];
+      for (let i = 0; i < a.length - 2; i++) {
+        if (a[i] > 0) break; // three positives can't sum to 0
+        if (i > 0 && a[i] === a[i - 1]) continue; // dup
+        let lo = i + 1;
+        let hi = a.length - 1;
+        while (lo < hi) {
+          const s = a[i] + a[lo] + a[hi];
+          if (s < 0) lo++;
+          else if (s > 0) hi--;
+          else {
+            out.push([a[i], a[lo++], a[hi--]]);
+            while (lo < hi && a[lo] === a[lo - 1]) lo++;
+          }
+        }
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function threeSum(xs) {
+      const a = [...xs].sort((x, y) => x - y);
+      const out = [];
       for (let i = 0; i < a.length - 2; i++) {
         if (a[i] > 0) break; // three positives can't sum to 0
         if (i > 0 && a[i] === a[i - 1]) continue; // dup
@@ -1045,13 +1433,34 @@ O(n²) time, O(n) for the sorted copy. 4Sum adds one more fixed loop: O(n³).
 
 Prefix products from the left, then multiply by suffix products from the right, without division.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function productExceptSelf(xs: number[]): number[] {
       const n = xs.length;
       const out = new Array<number>(n).fill(1);
+      let pre = 1;
+      for (let i = 0; i < n; i++) {
+        out[i] = pre; // product of everything left of i
+        pre *= xs[i];
+      }
+      let suf = 1;
+      for (let i = n - 1; i >= 0; i--) {
+        out[i] *= suf; // times everything right of i
+        suf *= xs[i];
+      }
+      return out;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function productExceptSelf(xs) {
+      const n = xs.length;
+      const out = new Array(n).fill(1);
       let pre = 1;
       for (let i = 0; i < n; i++) {
         out[i] = pre; // product of everything left of i
@@ -1094,7 +1503,7 @@ O(n) time, O(1) extra space besides the output.
 Counts are between 1 and n, so bucket values by count and read buckets from the top: O(n), beating the
 O(n log k) heap.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -1108,6 +1517,27 @@ O(n log k) heap.
       );
       for (const [x, f] of freq) buckets[f].push(x);
       const out: number[] = [];
+      for (let f = xs.length; f > 0 && out.length < k; f--) {
+        out.push(...buckets[f]);
+      }
+      return out.slice(0, k);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function topKFrequent(xs, k) {
+      const freq = new Map();
+      for (const x of xs) freq.set(x, (freq.get(x) ?? 0) + 1);
+      // buckets[f] = values seen exactly f times
+      const buckets = Array.from(
+        { length: xs.length + 1 },
+        () => [],
+      );
+      for (const [x, f] of freq) buckets[f].push(x);
+      const out = [];
       for (let f = xs.length; f > 0 && out.length < k; f--) {
         out.push(...buckets[f]);
       }

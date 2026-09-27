@@ -5,7 +5,7 @@ order: 2
 ---
 
 The linear structures every interview problem is built from: arrays and dynamic arrays, strings, hash
-maps and sets, linked lists, stacks, queues and deques, each with its costs in TypeScript and Python.
+maps and sets, linked lists, stacks, queues and deques, each with its costs in TypeScript, JavaScript and Python.
 Cost notation is in [Big-O](/dsa/big-o/); trees, heaps and graphs are in
 [Trees & graphs](/dsa/trees-graphs/); the techniques that use these structures (two pointers, sliding
 window, monotonic stack) are in [Problem patterns](/dsa/problem-patterns/).
@@ -34,7 +34,7 @@ appends $O(1)$ amortized
 Fixed-size numeric arrays: `Int32Array` / `Float64Array` in JS (typed arrays, contiguous, no holes);
 `array.array` or NumPy in Python.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -55,6 +55,31 @@ Fixed-size numeric arrays: `Int32Array` / `Float64Array` in JS (typed arrays, co
     function grid(r: number, c: number): number[][] {
       return Array.from({ length: r }, () =>
         new Array<number>(c).fill(0));
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Two pointers: O(n) time, O(1) extra space
+    function reverseInPlace(xs) {
+      for (let i = 0, j = xs.length - 1; i < j; i++, j--)
+        [xs[i], xs[j]] = [xs[j], xs[i]];
+    }
+
+    // Prefix sums: O(n) to build, then O(1) per range sum
+    function prefixSums(xs) {
+      const pre = [0];
+      for (const x of xs) pre.push(pre[pre.length - 1] + x);
+      return pre; // sum of xs[i..j) = pre[j] - pre[i]
+    }
+
+    // r × c grid: a new row array for every row
+    function grid(r, c) {
+      return Array.from({ length: r }, () =>
+        new Array(c).fill(0),
+      );
     }
     ```
 
@@ -90,7 +115,7 @@ the prefix sums in one call.
 
 ## Strings
 
-Strings are **immutable** in both languages: every "change" builds a new string, so edits in a loop
+Strings are **immutable** in all three languages: every "change" builds a new string, so edits in a loop
 cost $O(n)$ each. Convert to an array of characters, edit, then join once.
 
 | Task | TypeScript | Python |
@@ -111,7 +136,7 @@ cost $O(n)$ each. Convert to an array of characters, edit, then join once.
 is usually fast because engines defer the copy (ropes); in Python it is only fast by a CPython
 optimization, so use `"".join` in both to be safe.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -136,6 +161,35 @@ optimization, so use `"".join` in both to be safe.
     }
 
     function reverseWords(s: string): string {
+      return s.trim().split(/\s+/).reverse().join(" ");
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // 26-slot counts: lighter than a Map for a–z input
+    function letterCounts(s) {
+      const counts = new Array(26).fill(0);
+      for (let i = 0; i < s.length; i++)
+        counts[s.charCodeAt(i) - 97]++;
+      return counts;
+    }
+
+    // Build pieces in an array, join once: O(n)
+    function runLength(s) {
+      const parts = [];
+      for (let i = 0; i < s.length;) {
+        let j = i;
+        while (j < s.length && s[j] === s[i]) j++;
+        parts.push(`${s[i]}${j - i}`);
+        i = j;
+      }
+      return parts.join("");
+    }
+
+    function reverseWords(s) {
       return s.trim().split(/\s+/).reverse().join(" ");
     }
     ```
@@ -216,7 +270,7 @@ optimization, so use `"".join` in both to be safe.
 | Composite key | encode: `` `${r},${c}` `` or nested maps | same | `tuple`: `(r, c)` hashes by value |
 | Custom class | identity only | | `@dataclass(frozen=True)`, or `__eq__` + `__hash__` |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -230,6 +284,23 @@ optimization, so use `"".join` in both to be safe.
     const a = [1, 2];
     const byRef = new Map<number[], string>([[a, "x"]]);
     const same = byRef.get(a);      // "x"
+    const other = byRef.get([1, 2]); // undefined
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Composite key: encode to a string (or a number)
+    const key = (r, c) => `${r},${c}`;
+    const seen = new Set();
+    seen.add(key(1, 2));
+    const hasCell = seen.has(key(1, 2)); // true
+
+    // Objects are keys by identity, not by value
+    const a = [1, 2];
+    const byRef = new Map([[a, "x"]]);
+    const same = byRef.get(a); // "x"
     const other = byRef.get([1, 2]); // undefined
     ```
 
@@ -276,7 +347,7 @@ optimization, so use `"".join` in both to be safe.
 | `d.setdefault(k, [])` | `m.get(k)`, and `m.set(k, [])` if missing |
 | `OrderedDict` | `Map` (always insertion-ordered) |
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -293,6 +364,34 @@ optimization, so use `"".join` in both to be safe.
       key: (x: T) => K,
     ): Map<K, T[]> {
       const m = new Map<K, T[]>();
+      for (const x of xs) {
+        const k = key(x);
+        const group = m.get(k);
+        if (group) group.push(x);
+        else m.set(k, [x]);
+      }
+      return m;
+    }
+
+    const c = counts("banana"); // a→3, b→1, n→2
+    const top2 = [...c].sort((p, q) => q[1] - p[1]).slice(0, 2);
+    const byLen = groupBy(["hi", "yo", "hey"], (w) => w.length);
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Counter
+    function counts(xs) {
+      const m = new Map();
+      for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
+      return m;
+    }
+
+    // defaultdict(list)
+    function groupBy(xs, key) {
+      const m = new Map();
       for (const x of xs) {
         const k = key(x);
         const group = m.get(k);
@@ -344,7 +443,7 @@ Interview uses: reverse (all or part), merge sorted lists, find the middle or a 
 pointers, remove the $k$-th from the end, and the doubly linked list inside an LRU cache. In real code,
 arrays nearly always win on speed (cache locality).
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -375,6 +474,46 @@ arrays nearly always win on speed (cache locality).
     // O(n) time, O(1) space: flip every next pointer
     function reverse<T>(head: Link<T>): Link<T> {
       let prev: Link<T> = null;
+      let cur = head;
+      while (cur) {
+        const next = cur.next;
+        cur.next = prev;
+        prev = cur;
+        cur = next;
+      }
+      return prev;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class ListNode {
+      val;
+      next;
+      constructor(val, next = null) {
+        this.val = val;
+        this.next = next;
+      }
+    }
+
+    function fromArray(xs) {
+      let head = null;
+      for (let i = xs.length - 1; i >= 0; i--)
+        head = new ListNode(xs[i], head);
+      return head;
+    }
+
+    function toArray(head) {
+      const out = [];
+      for (let n = head; n; n = n.next) out.push(n.val);
+      return out;
+    }
+
+    // O(n) time, O(1) space: flip every next pointer
+    function reverse(head) {
+      let prev = null;
       let cur = head;
       while (cur) {
         const next = cur.next;
@@ -433,7 +572,7 @@ A **dummy** (sentinel) node before the real head removes the "is the result list
 **Fast and slow** pointers (fast moves two steps per slow step) find the middle and detect cycles in
 $O(n)$ time and $O(1)$ space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -475,6 +614,52 @@ $O(n)$ time and $O(1)$ space.
       let fast = head;
       while (fast && fast.next) {
         slow = slow!.next;
+        fast = fast.next.next;
+        if (slow === fast) return true;
+      }
+      return false;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Merge two sorted lists: O(n + m) time, O(1) space
+    function merge(a, b) {
+      const dummy = new ListNode(0);
+      let tail = dummy;
+      while (a && b) {
+        if (a.val <= b.val) {
+          tail.next = a;
+          a = a.next;
+        } else {
+          tail.next = b;
+          b = b.next;
+        }
+        tail = tail.next;
+      }
+      tail.next = a ?? b;
+      return dummy.next;
+    }
+
+    // Middle node (the second one if the length is even)
+    function middle(head) {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow.next;
+        fast = fast.next.next;
+      }
+      return slow;
+    }
+
+    // Floyd's cycle check
+    function hasCycle(head) {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow.next;
         fast = fast.next.next;
         if (slow === fast) return true;
       }
@@ -538,7 +723,7 @@ Stacks show up for: matching brackets, undo, evaluating expressions, iterative D
 element" (a **monotonic** stack, see [Problem patterns](/dsa/problem-patterns/)), and replacing
 recursion that would overflow the call stack.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -564,6 +749,36 @@ recursion that would overflow the call stack.
 
       min(): number | undefined {
         return this.mins.at(-1);
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    // Stack with O(1) min: store the running minimum too
+    class MinStack {
+      #items = [];
+      #mins = []; // mins[i] = min(items[..i])
+
+      push(x) {
+        this.#items.push(x);
+        const m = this.#mins.at(-1);
+        this.#mins.push(m === undefined ? x : Math.min(m, x));
+      }
+
+      pop() {
+        this.#mins.pop();
+        return this.#items.pop();
+      }
+
+      top() {
+        return this.#items.at(-1);
+      }
+
+      min() {
+        return this.#mins.at(-1);
       }
     }
     ```
@@ -622,7 +837,7 @@ First in, first out. A **deque** (double-ended queue) pushes and pops at both en
 JavaScript has **no built-in deque or queue**: `shift()` is $O(n)$. This ring buffer keeps items in a
 circular array with a moving `head`, doubling when full.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -703,6 +918,85 @@ circular array with a moving `head`, doubling when full.
   </Tab>
   <Tab>
 
+    ```js
+    export class Deque {
+      #buf;
+      #head = 0; // index of the front item
+      #size = 0;
+
+      constructor(capacity = 16) {
+        this.#buf = new Array(capacity);
+      }
+
+      get length() {
+        return this.#size;
+      }
+
+      // physical slot of logical index i
+      #slot(i) {
+        return (this.#head + i) % this.#buf.length;
+      }
+
+      get(i) {
+        return i >= 0 && i < this.#size
+          ? this.#buf[this.#slot(i)]
+          : undefined;
+      }
+
+      pushBack(x) {
+        if (this.#size === this.#buf.length) this.#grow();
+        this.#buf[this.#slot(this.#size)] = x;
+        this.#size++;
+      }
+
+      pushFront(x) {
+        if (this.#size === this.#buf.length) this.#grow();
+        this.#head = this.#slot(this.#buf.length - 1);
+        this.#buf[this.#head] = x;
+        this.#size++;
+      }
+
+      popFront() {
+        if (this.#size === 0) return undefined;
+        const x = this.#buf[this.#head];
+        this.#buf[this.#head] = undefined; // allow GC
+        this.#head = this.#slot(1);
+        this.#size--;
+        return x;
+      }
+
+      popBack() {
+        if (this.#size === 0) return undefined;
+        const i = this.#slot(this.#size - 1);
+        const x = this.#buf[i];
+        this.#buf[i] = undefined;
+        this.#size--;
+        return x;
+      }
+
+      peekFront() {
+        return this.get(0);
+      }
+
+      peekBack() {
+        return this.get(this.#size - 1);
+      }
+
+      #grow() {
+        const next = new Array(
+          Math.max(1, this.#buf.length * 2),
+        );
+        for (let i = 0; i < this.#size; i++)
+          next[i] = this.#buf[this.#slot(i)];
+        this.#buf = next;
+        this.#head = 0;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
     ```py
     from collections import deque
 
@@ -752,7 +1046,7 @@ index is just as fast and simpler.
 Use when asked for a fixed-size cache that evicts the least recently used key ("LRU Cache"). `Map` and
 `OrderedDict` both remember insertion order, so "most recent" is simply "last". $O(1)$ per operation.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -779,6 +1073,38 @@ Use when asked for a fixed-size cache that evicts the least recently used key ("
           // first key in iteration order = least recent
           const oldest = this.map.keys().next().value!;
           this.map.delete(oldest);
+        }
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class LRUCache {
+      #map = new Map();
+      #capacity;
+
+      constructor(capacity) {
+        this.#capacity = capacity;
+      }
+
+      get(key) {
+        if (!this.#map.has(key)) return undefined;
+        const v = this.#map.get(key);
+        this.#map.delete(key); // re-insert as most recent
+        this.#map.set(key, v);
+        return v;
+      }
+
+      put(key, value) {
+        this.#map.delete(key);
+        this.#map.set(key, value);
+        if (this.#map.size > this.#capacity) {
+          // first key in iteration order = least recent
+          const oldest = this.#map.keys().next().value;
+          this.#map.delete(oldest);
         }
       }
     }
@@ -818,7 +1144,7 @@ a doubly linked list with dummy head and tail; `get` unlinks the node and re-add
 Use to rank items by count ("Top K Frequent Elements"). Bucket by frequency for $O(n)$ time and space;
 sorting the counts is $O(n \log n)$, a size-$k$ heap $O(n \log k)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -830,6 +1156,26 @@ sorting the counts is $O(n \log n)$, a size-$k$ heap $O(n \log k)$.
         { length: xs.length + 1 }, () => []);
       for (const [x, f] of count) bucket[f].push(x);
       const out: number[] = [];
+      for (let f = xs.length; f > 0 && out.length < k; f--)
+        out.push(...bucket[f]);
+      return out.slice(0, k);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function topKFrequent(xs, k) {
+      const count = new Map();
+      for (const x of xs) count.set(x, (count.get(x) ?? 0) + 1);
+      // bucket[f] = values seen exactly f times
+      const bucket = Array.from(
+        { length: xs.length + 1 },
+        () => [],
+      );
+      for (const [x, f] of count) bucket[f].push(x);
+      const out = [];
       for (let f = xs.length; f > 0 && out.length < k; f--)
         out.push(...bucket[f]);
       return out.slice(0, k);
@@ -865,7 +1211,7 @@ sorting the counts is $O(n \log n)$, a size-$k$ heap $O(n \log k)$.
 Use for "Valid Parentheses" and any nesting check: push openers, and each closer must match the top.
 $O(n)$ time, $O(n)$ space.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -877,6 +1223,27 @@ $O(n)$ time, $O(n)$ space.
 
     function isBalanced(s: string): boolean {
       const stack: string[] = [];
+      for (const ch of s) {
+        if ("([{".includes(ch)) stack.push(ch);
+        else if (OPEN.has(ch) && stack.pop() !== OPEN.get(ch))
+          return false;
+      }
+      return stack.length === 0;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    const OPEN = new Map([
+      [")", "("],
+      ["]", "["],
+      ["}", "{"],
+    ]);
+
+    function isBalanced(s) {
+      const stack = [];
       for (const ch of s) {
         if ("([{".includes(ch)) stack.push(ch);
         else if (OPEN.has(ch) && stack.pop() !== OPEN.get(ch))
@@ -910,12 +1277,28 @@ $O(n)$ time, $O(n)$ space.
 Use when items are equal "up to rearrangement" ("Group Anagrams"): hash each item to a canonical key.
 Sorted-letters key: $O(n \cdot L \log L)$; a 26-count key: $O(n \cdot L)$.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
     function groupAnagrams(words: string[]): string[][] {
       const groups = new Map<string, string[]>();
+      for (const w of words) {
+        const key = [...w].sort().join(""); // canonical form
+        const g = groups.get(key);
+        if (g) g.push(w);
+        else groups.set(key, [w]);
+      }
+      return [...groups.values()];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    function groupAnagrams(words) {
+      const groups = new Map();
       for (const w of words) {
         const key = [...w].sort().join(""); // canonical form
         const g = groups.get(key);
@@ -946,7 +1329,7 @@ Sorted-letters key: $O(n \cdot L \log L)$; a 26-count key: $O(n \cdot L)$.
 Use when asked to build a queue from stacks ("Implement Queue using Stacks"). Each item moves from
 `inbox` to `outbox` once, so every operation is $O(1)$ amortized.
 
-<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+<Tabs items={["TypeScript", "JavaScript", "Python"]} persist="dsa-lang">
   <Tab>
 
     ```ts
@@ -968,6 +1351,32 @@ Use when asked to build a queue from stacks ("Implement Queue using Stacks"). Ea
 
       get length(): number {
         return this.inbox.length + this.outbox.length;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```js
+    class TwoStackQueue {
+      #inbox = [];
+      #outbox = [];
+
+      push(x) {
+        this.#inbox.push(x);
+      }
+
+      pop() {
+        if (this.#outbox.length === 0) {
+          while (this.#inbox.length > 0)
+            this.#outbox.push(this.#inbox.pop());
+        }
+        return this.#outbox.pop();
+      }
+
+      get length() {
+        return this.#inbox.length + this.#outbox.length;
       }
     }
     ```

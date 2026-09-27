@@ -1294,6 +1294,32 @@ test.describe("DS&A and 3D graphics", () => {
     ).toHaveAttribute("aria-selected", "true");
   });
 
+  test("DS&A code comes in TypeScript, JavaScript and Python, and JavaScript is remembered too", async ({
+    page,
+  }) => {
+    await page.goto("/dsa/sorting-searching/");
+    await hydrated(page);
+    const lists = page.getByRole("tablist");
+    await expect(lists.first().getByRole("tab")).toHaveText(["TypeScript", "JavaScript", "Python"]);
+
+    await lists.first().getByRole("tab", { name: "JavaScript" }).click();
+    for (const list of await lists.all()) {
+      await expect(list.getByRole("tab", { name: "JavaScript" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    }
+    await expect(
+      page.locator("main [role=tabpanel]:visible code[data-language=js]").first(),
+    ).toBeVisible();
+
+    await page.goto("/dsa/graph-algorithms/");
+    await hydrated(page);
+    await expect(
+      page.getByRole("tablist").first().getByRole("tab", { name: "JavaScript" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
   test("3D graphics has its four directories in order and draws its concepts", async ({ page }) => {
     await page.goto("/3d/");
     const hrefs = await page
