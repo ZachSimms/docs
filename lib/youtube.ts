@@ -50,10 +50,23 @@ export function parseYouTubeProps(input: unknown): YouTubeProps {
  *
  * @param id - A valid video id.
  * @param start - Optional start time in whole seconds; `0` is omitted.
+ * @param autoplay - Start playing at once (the reader already pressed play on the poster).
  * @returns e.g. `https://www.youtube-nocookie.com/embed/<id>?start=90`.
  */
-export function youtubeEmbedUrl(id: string, start?: number): string {
-  return `${EMBED_BASE}${id}${start ? `?start=${start}` : ""}`;
+export function youtubeEmbedUrl(id: string, start?: number, autoplay = false): string {
+  const query = [start ? `start=${start}` : "", autoplay ? "autoplay=1" : ""].filter(Boolean);
+  return `${EMBED_BASE}${id}${query.length > 0 ? `?${query.join("&")}` : ""}`;
+}
+
+/**
+ * The video's thumbnail, shown until the reader presses play. `hqdefault` exists
+ * for every video (4:3 with bars, which `object-fit: cover` crops away at 16:9).
+ *
+ * @param id - A valid video id.
+ * @returns e.g. `https://i.ytimg.com/vi/<id>/hqdefault.jpg`.
+ */
+export function youtubeThumbnailUrl(id: string): string {
+  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 }
 
 /**

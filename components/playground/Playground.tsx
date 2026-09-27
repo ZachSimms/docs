@@ -53,7 +53,7 @@ import { Splitter } from "./Splitter";
 import { SymbolRow } from "./SymbolRow";
 import { Tour } from "./Tour";
 import { usePlaygroundRun } from "./usePlaygroundRun";
-import { useProjects } from "./useProjects";
+import { SAVE_DEBOUNCE_MS, useProjects } from "./useProjects";
 import { useIntellisense } from "./intellisense/useIntellisense";
 import { WebPreview } from "./WebPreview";
 
@@ -110,10 +110,37 @@ export function Playground() {
     setPrefs((current) => ({ ...current, ...change }));
   }, []);
 
-  // Persist preferences whenever they change (outside the state updater, which must stay pure).
+  // Persist preferences (outside the state updater, which must stay pure), debounced: a splitter
+  // drag changes them on every pointer move. Saved at once when the page goes away or unmounts.
+  const latestPrefs = useRef(prefs);
+  const prefsDirty = useRef(false);
   useEffect(() => {
-    savePrefs(prefs);
+    if (latestPrefs.current === prefs) return; // the first render: nothing changed yet
+    latestPrefs.current = prefs;
+    prefsDirty.current = true;
+    const handle = setTimeout(() => {
+      prefsDirty.current = false;
+      savePrefs(prefs);
+    }, SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
   }, [prefs]);
+  useEffect(() => {
+    const flush = () => {
+      if (!prefsDirty.current) return;
+      prefsDirty.current = false;
+      savePrefs(latestPrefs.current);
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+    };
+  }, []);
 
   const setSize = useCallback(
     (part: LayoutPart) => (size: number) =>

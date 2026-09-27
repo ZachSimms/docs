@@ -28,7 +28,6 @@ import { newRunToken, type FrameMessage } from "@/lib/playground/runtime/protoco
 import { buildRunnerSrcDoc } from "@/lib/playground/runtime/sandbox";
 import { runCpp, runRust } from "@/lib/playground/runners/remote";
 import type { RunEvent } from "@/lib/playground/runners/types";
-import { transpile } from "@/lib/playground/transpile";
 import { useSandboxFrame } from "./useSandboxFrame";
 
 /** Pinned Pyodide build on jsDelivr (only ever loaded inside the sandbox). */
@@ -117,9 +116,49 @@ export function usePlaygroundRun(): PlaygroundRun {
   /** Bumped by every Run and Stop: a late timeout from an earlier run must not touch a newer one. */
   const generation = useRef(0);
 
-  const emit = useCallback((stream: Stream, text: string) => {
-    setOutput((current) => appendOutput(current, stream, replaceModuleUrls(text, urls.current)));
+  /**
+   * Output waiting to be shown. A program printing in a loop sends thousands of
+   * messages a second; applying each one re-rendered the whole playground, so
+   * they are appended in one state update per frame instead.
+   */
+  const queued = useRef<[Stream, string][]>([]);
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flush = useCallback(() => {
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = null;
+    const items = queued.current;
+    if (items.length === 0) return;
+    queued.current = [];
+    setOutput((current) =>
+      items.reduce((out, [stream, text]) => appendOutput(out, stream, text), current),
+    );
   }, []);
+
+  /** Replace the output (a new run, Clear): anything still queued belonged to the old one. */
+  const resetOutput = useCallback(() => {
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = null;
+    queued.current = [];
+    setOutput(EMPTY_OUTPUT);
+  }, []);
+
+  const emit = useCallback(
+    (stream: Stream, text: string) => {
+      queued.current.push([stream, replaceModuleUrls(text, urls.current)]);
+      // A timer, not requestAnimationFrame: it still fires (throttled) in a background tab.
+      if (queued.current.length >= 1000) flush();
+      else flushTimer.current ??= setTimeout(flush, 16);
+    },
+    [flush],
+  );
+
+  useEffect(
+    () => () => {
+      if (flushTimer.current) clearTimeout(flushTimer.current);
+    },
+    [],
+  );
 
   const clearTimer = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -230,7 +269,7 @@ export function usePlaygroundRun(): PlaygroundRun {
       token.current = runToken;
       started.current = performance.now();
       urls.current = new Map();
-      setOutput(EMPTY_OUTPUT);
+      resetOutput();
       setPhase("running");
       setStatus("running…");
 
@@ -264,7 +303,9 @@ export function usePlaygroundRun(): PlaygroundRun {
         const server = spec.runner === "bun";
         activeFrame.current = "runner";
         setWantRunner(true);
-        linkModules(project.files, project.entry, transpile)
+        // Sucrase loads with the first JS/TS run, not with the playground.
+        import("@/lib/playground/transpile")
+          .then(({ transpile }) => linkModules(project.files, project.entry, transpile))
           .then(async (linked) => {
             if (token.current !== runToken) return;
             urls.current = linked.urls;
@@ -368,7 +409,7 @@ export function usePlaygroundRun(): PlaygroundRun {
           fail(error);
         });
     },
-    [armLimit, emit, finish, runner, godot],
+    [armLimit, emit, finish, resetOutput, runner, godot],
   );
 
   /**
@@ -391,9 +432,9 @@ export function usePlaygroundRun(): PlaygroundRun {
   }, [emit, finish, runner, godot]);
 
   const clear = useCallback(() => {
-    setOutput(EMPTY_OUTPUT);
+    resetOutput();
     if (!token.current) setStatus("");
-  }, []);
+  }, [resetOutput]);
 
   const appendExternal = useCallback((stream: Stream, text: string) => emit(stream, text), [emit]);
 

@@ -1,8 +1,13 @@
 /** Unit tests for `lib/youtube.ts` and the `<YouTube>` embed. */
 import { describe, expect, it } from "bun:test";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { YouTube } from "@/components/YouTube";
-import { parseYouTubeProps, youtubeEmbedUrl, youtubeWatchUrl } from "@/lib/youtube";
+import {
+  parseYouTubeProps,
+  youtubeEmbedUrl,
+  youtubeThumbnailUrl,
+  youtubeWatchUrl,
+} from "@/lib/youtube";
 
 const ID = "dQw4w9WgXcQ";
 
@@ -32,6 +37,13 @@ describe("youtube urls", () => {
     expect(youtubeEmbedUrl(ID)).toBe(`https://www.youtube-nocookie.com/embed/${ID}`);
     expect(youtubeEmbedUrl(ID, 0)).toBe(`https://www.youtube-nocookie.com/embed/${ID}`);
     expect(youtubeEmbedUrl(ID, 90)).toBe(`https://www.youtube-nocookie.com/embed/${ID}?start=90`);
+    expect(youtubeEmbedUrl(ID, 0, true)).toBe(
+      `https://www.youtube-nocookie.com/embed/${ID}?autoplay=1`,
+    );
+    expect(youtubeEmbedUrl(ID, 90, true)).toBe(
+      `https://www.youtube-nocookie.com/embed/${ID}?start=90&autoplay=1`,
+    );
+    expect(youtubeThumbnailUrl(ID)).toBe(`https://i.ytimg.com/vi/${ID}/hqdefault.jpg`);
   });
 
   it("links to the watch page, with an optional timestamp", () => {
@@ -41,16 +53,29 @@ describe("youtube urls", () => {
 });
 
 describe("<YouTube>", () => {
-  it("renders a lazy, titled iframe and a caption linking to the watch page", () => {
+  it("shows a thumbnail link until play is pressed, then the titled, autoplaying player", () => {
     const { container } = render(
       <YouTube id={ID} title="A-skips drill" channel="Coach" start={30} />,
     );
+    // Nothing from YouTube's player loads with the page.
+    expect(container.querySelector("iframe")).toBeNull();
+    const poster = container.querySelector("figure.video .video-frame a.video-poster")!;
+    expect(poster.getAttribute("href")).toBe(youtubeWatchUrl(ID, 30));
+    expect(poster.getAttribute("aria-label")).toBe("Play video: A-skips drill");
+    expect(poster.getAttribute("rel")).toBe("noopener noreferrer");
+    const thumb = poster.querySelector("img")!;
+    expect(thumb.getAttribute("src")).toBe(youtubeThumbnailUrl(ID));
+    expect(thumb.getAttribute("loading")).toBe("lazy");
+    expect(thumb.getAttribute("referrerpolicy")).toBe("no-referrer");
+
+    fireEvent.click(poster);
     const iframe = container.querySelector("figure.video .video-frame iframe");
-    expect(iframe?.getAttribute("src")).toBe(youtubeEmbedUrl(ID, 30));
+    expect(iframe?.getAttribute("src")).toBe(youtubeEmbedUrl(ID, 30, true));
     expect(iframe?.getAttribute("title")).toBe("YouTube video: A-skips drill");
-    expect(iframe?.getAttribute("loading")).toBe("lazy");
+    expect(iframe?.getAttribute("allow")).toContain("autoplay");
     expect(iframe?.getAttribute("referrerpolicy")).toBe("strict-origin-when-cross-origin");
     expect(iframe?.hasAttribute("allowfullscreen")).toBe(true);
+    expect(document.activeElement).toBe(iframe);
     const link = container.querySelector("figcaption a");
     expect(link?.getAttribute("href")).toBe(youtubeWatchUrl(ID, 30));
     expect(link?.getAttribute("target")).toBe("_blank");

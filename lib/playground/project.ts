@@ -135,10 +135,14 @@ function creationError(project: Project, path: string): string | null {
 
 /** Check the file-count and size limits for a candidate set of files. */
 function limitError(files: Readonly<Record<string, string>>): string | null {
-  if (Object.keys(files).length > PROJECT_LIMITS.maxFiles) {
+  const texts = Object.values(files);
+  if (texts.length > PROJECT_LIMITS.maxFiles) {
     return `A project holds at most ${PROJECT_LIMITS.maxFiles} files.`;
   }
-  if (totalBytes(files) > PROJECT_LIMITS.maxBytes) {
+  // Checked on every keystroke. A UTF-16 code unit is at most 3 UTF-8 bytes, so a project whose
+  // length ×3 fits can't be over the limit: only encode (and allocate) when it might be.
+  const units = texts.reduce((sum, text) => sum + text.length, 0);
+  if (units * 3 > PROJECT_LIMITS.maxBytes && totalBytes(files) > PROJECT_LIMITS.maxBytes) {
     return `A project holds at most ${PROJECT_LIMITS.maxBytes / 1024} KB of code.`;
   }
   return null;

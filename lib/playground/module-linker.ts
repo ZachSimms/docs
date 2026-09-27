@@ -160,8 +160,15 @@ export default ${JSON.stringify(css)};
 /** Extension of a path, lower-case, without the dot. */
 const extOf = (path: string) => path.slice(path.lastIndexOf(".") + 1).toLowerCase();
 
+/** Rewrites linked JavaScript once more (the web preview's loop guards); identity by default. */
+export type Instrument = (code: string) => string;
+
 /** A linker bound to one project: links files on demand and remembers their URLs. */
-function createLinker(files: Readonly<Record<string, string>>, transpile: Transpile) {
+function createLinker(
+  files: Readonly<Record<string, string>>,
+  transpile: Transpile,
+  instrument: Instrument = (code) => code,
+) {
   const urls = new Map<string, string>();
   const stack: string[] = [];
   const deps = readDependencies(files);
@@ -217,7 +224,7 @@ function createLinker(files: Readonly<Record<string, string>>, transpile: Transp
     } else {
       stack.push(path);
       try {
-        url = toDataUrl(rewrite(transpileOrThrow(path, text), path));
+        url = toDataUrl(instrument(rewrite(transpileOrThrow(path, text), path)));
       } finally {
         stack.pop();
       }
@@ -299,6 +306,7 @@ const isExternal = (ref: string) => /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(ref);
  * @param files - The project's files.
  * @param htmlPath - The HTML entry file.
  * @param transpile - TS/JSX compiler for script files.
+ * @param instrument - Applied to every script's JavaScript (files and inline) after linking.
  * @returns The HTML to show in the preview, and the linked module URLs.
  * @throws {LinkError} When the page references a file that isn't in the project.
  */
@@ -306,9 +314,10 @@ export async function linkWebDocument(
   files: Readonly<Record<string, string>>,
   htmlPath: string,
   transpile: Transpile,
+  instrument: Instrument = (code) => code,
 ): Promise<{ html: string; urls: ReadonlyMap<string, string> }> {
   await init();
-  const linker = createLinker(files, transpile);
+  const linker = createLinker(files, transpile, instrument);
 
   /** The project path an HTML reference names, or `null` for an external URL. */
   const local = (ref: string): string | null => {
@@ -329,16 +338,23 @@ export async function linkWebDocument(
     /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
     (whole, attrText: string, body: string) => {
       const attrs = attributesOf(attrText);
-      const isModule = attrs.get("type")?.toLowerCase() === "module";
+      const type = attrs.get("type")?.trim().toLowerCase() ?? "";
+      const isModule = type === "module";
+      // JSON, import maps and templates are data, not code.
+      const isClassic = type === "" || /^(?:text|application)\/(?:java|ecma)script$/.test(type);
       const src = attrs.get("src");
       if (src !== undefined) {
         const path = local(src);
         if (path === null) return whole;
-        const url = isModule ? linker.visit(path) : toDataUrl(transpile(path, files[path] ?? ""));
+        const url = isModule
+          ? linker.visit(path)
+          : toDataUrl(instrument(transpile(path, files[path] ?? "")));
         return setAttribute(whole.slice(0, whole.indexOf(">") + 1), "src", url) + "</script>";
       }
-      if (!isModule) return whole;
-      return `<script${attrText}>${linker.rewrite(body, htmlPath)}</script>`;
+      if (isModule)
+        return `<script${attrText}>${instrument(linker.rewrite(body, htmlPath))}</script>`;
+      if (isClassic) return `<script${attrText}>${instrument(body)}</script>`;
+      return whole;
     },
   );
 

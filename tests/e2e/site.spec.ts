@@ -22,8 +22,8 @@ async function effectsFlushed(page: Page) {
   );
 }
 
-/** YouTube player hosts; embeds get a stub page so the suite never hits the network for video. */
-const YOUTUBE = /^https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\//;
+/** YouTube player and thumbnail hosts: stubbed so the suite never hits the network for video. */
+const YOUTUBE = /^https:\/\/(?:(?:www\.)?youtube(?:-nocookie)?\.com|i\.ytimg\.com)\//;
 
 test.beforeEach(async ({ context }) => {
   await context.route(YOUTUBE, (route) => route.fulfill({ body: "stub" }));
@@ -459,6 +459,8 @@ test.describe("mdx showcase", () => {
     page,
   }) => {
     await page.goto("/math/math-fundamentals/");
+    // The toggle's icon (and so its box) is only final once hydrated: measure after that.
+    await hydrated(page);
     const pinned = page.locator(".back-rail a");
     await expect(pinned).toHaveText("../");
     await expect(pinned).toHaveAttribute("href", "/math/");
@@ -1178,14 +1180,21 @@ test.describe("fitness", () => {
     );
   });
 
-  test("videos embed lazily at 16:9 inside the column, with a watch link", async ({ page }) => {
+  test("videos load on play at 16:9 inside the column, with a watch link", async ({ page }) => {
     await page.goto("/fitness/recovery-mobility/running-warmup-drills/");
     const video = page.locator("main figure.video").first();
-    const iframe = video.locator("iframe");
-    await expect(iframe).toHaveAttribute("src", /^https:\/\/www\.youtube-nocookie\.com\/embed\//);
-    await expect(iframe).toHaveAttribute("loading", "lazy");
-    await expect(iframe).toHaveAttribute("title", /^YouTube video: /);
+    await expect(page.locator("main figure.video iframe")).toHaveCount(0);
     await video.scrollIntoViewIfNeeded();
+    const poster = await video.locator(".video-frame").boundingBox();
+    expect(Math.abs((poster?.width ?? 0) / (poster?.height ?? 1) - 16 / 9)).toBeLessThan(0.05);
+    await video.getByRole("link", { name: /^Play video: / }).click();
+    const iframe = video.locator("iframe");
+    await expect(iframe).toHaveAttribute(
+      "src",
+      /^https:\/\/www\.youtube-nocookie\.com\/embed\/[\w-]{11}\?(?:start=\d+&)?autoplay=1$/,
+    );
+    await expect(iframe).toHaveAttribute("title", /^YouTube video: /);
+    await expect(page).toHaveURL(/running-warmup-drills\/$/);
     const frame = await video.locator(".video-frame").boundingBox();
     const main = await page.locator("main").boundingBox();
     expect(frame && main).toBeTruthy();

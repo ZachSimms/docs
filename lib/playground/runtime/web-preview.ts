@@ -11,6 +11,45 @@
 
 import { formatConsoleArgs } from "./format";
 
+/** The global the preview's loop guards call (see `loop-guard.ts`); returns `true` or throws. */
+export const LOOP_GUARD = "__playgroundLoopGuard";
+
+/** How long one task may loop without yielding before the guard throws. */
+export const LOOP_LIMIT_MS = 1000;
+
+/**
+ * The loop guard, serialized into the preview (so it must be self-contained).
+ * Only every 64th call reads the clock. The first read of a busy stretch arms a
+ * zero-delay timer that disarms it; that timer can only run once the page
+ * yields, so if the clock passes the limit while still armed, the current task
+ * (or an unbroken chain of microtasks) has been looping the whole time.
+ *
+ * @param limitMs - {@link LOOP_LIMIT_MS}.
+ * @returns The function to install as {@link LOOP_GUARD}.
+ */
+export function createLoopGuard(limitMs: number): () => true {
+  let calls = 0;
+  let busySince = 0;
+  let armed = false;
+  return () => {
+    if ((++calls & 63) !== 0) return true;
+    const now = performance.now();
+    if (!armed) {
+      armed = true;
+      busySince = now;
+      setTimeout(() => {
+        armed = false;
+      }, 0);
+    } else if (now - busySince > limitMs) {
+      throw new RangeError(
+        `Stopped a loop that ran for over ${limitMs / 1000} s without letting the page ` +
+          "update (an infinite loop?). Loops that need longer can await between steps.",
+      );
+    }
+    return true;
+  };
+}
+
 /**
  * Runs first inside the preview: forwards console output and errors to the
  * parent. Serialized with `toString()`, so it must be self-contained.
@@ -50,7 +89,8 @@ const safeScript = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
  */
 export function buildPreviewSrcDoc(html: string, token: string): string {
   const shim = `<script>${safeScript(
-    `(${previewShim.toString()})(${JSON.stringify(token)}, ${formatConsoleArgs.toString()});`,
+    `(${previewShim.toString()})(${JSON.stringify(token)}, ${formatConsoleArgs.toString()});` +
+      `globalThis[${JSON.stringify(LOOP_GUARD)}] = (${createLoopGuard.toString()})(${LOOP_LIMIT_MS});`,
   )}</script>`;
   const head = /<head\b[^>]*>/i.exec(html);
   if (head)

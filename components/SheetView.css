@@ -1,0 +1,29 @@
+/*
+ * KaTeX's stylesheet and the site's adjustments to it, loaded by <SheetView> (only
+ * sheets render math) rather than by the root layout, and after KaTeX so these win.
+ */
+
+/* KaTeX: display math gets the page rhythm and scrolls sideways if wide; colors follow the theme. */
+.katex-display {
+  margin: 0 0 var(--lh);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.16666em 0;
+}
+
+.katex {
+  font-size: 1.15em;
+}
+
+/* Table rows that carry math (fractions, roots) need more vertical room,
+   and math inside a cell is sized closer to the surrounding monospace text. */
+tr:has(.katex) td,
+tr:has(.katex) th {
+  padding-top: 0.35em;
+  padding-bottom: 0.35em;
+}
+
+td .katex,
+th .katex {
+  font-size: 1.05em;
+}

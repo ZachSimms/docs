@@ -75,6 +75,29 @@ test.describe("playground: running code", () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test("an endless loop typed into the web preview is stopped, and the page stays usable", async ({
+    page,
+  }) => {
+    await openPlayground(page, "web");
+    const preview = page.frameLocator(".pg-preview-frame");
+    await expect(preview.getByRole("button", { name: "B" })).toBeVisible();
+    await page
+      .getByRole("button", { name: "util.js", exact: true })
+      .or(page.locator('[role="treeitem"][data-path="js/util.js"]'))
+      .first()
+      .click();
+    await setCode(page, "while (true) {}\nexport const label = (el) => el.textContent;");
+    await expect(output(page)).toContainText("Stopped a loop that ran for over 1 s", {
+      timeout: 10_000,
+    });
+    // Still responsive: the next edit previews as usual.
+    await setCode(page, "export const label = (el) => `Pressed ${el.textContent}`;");
+    await expect(async () => {
+      await preview.getByRole("button", { name: "C" }).click();
+      await expect(preview.locator("#out")).toHaveText("Pressed C", { timeout: 500 });
+    }).toPass({ timeout: 5000 });
+  });
+
   test("C++ builds with CMake on Compiler Explorer, and falls back to Wandbox", async ({
     page,
   }) => {
