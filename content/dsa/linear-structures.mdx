@@ -1,0 +1,1011 @@
+---
+title: Arrays, hashing, lists, stacks & queues
+date: 2026-09-27
+order: 2
+---
+
+The linear structures every interview problem is built from: arrays and dynamic arrays, strings, hash
+maps and sets, linked lists, stacks, queues and deques, each with its costs in TypeScript and Python.
+Cost notation is in [Big-O](/dsa/big-o/); trees, heaps and graphs are in
+[Trees & graphs](/dsa/trees-graphs/); the techniques that use these structures (two pointers, sliding
+window, monotonic stack) are in [Problem patterns](/dsa/problem-patterns/).
+
+## Arrays & dynamic arrays
+
+An array stores items in one contiguous block, so item `i` is at `base + i × size`: indexing is
+$O(1)$ and scans are cache-friendly. A **dynamic array** (JS `Array`, Python `list`) over-allocates
+and grows its buffer by a constant factor when full (V8 about 1.5×, CPython about 1.125×), making
+appends $O(1)$ amortized
+([why](/dsa/big-o/#amortized-analysis)).
+
+<Diagram src="/images/diagrams/dsa-array-vs-list.svg" label="An array as six adjacent cells with addresses 1000 to 1040 and indexes 0 to 5, above a linked list of four nodes scattered in memory, each holding a value and a next pointer to the following node, ending in null" caption="Arrays jump to any index; lists walk pointers but splice in O(1)" />
+
+| Operation | Cost | TS | Python |
+| :-------- | :--- | :- | :----- |
+| Read / write index `i` | $O(1)$ | `xs[i]`, `xs.at(-1)` | `xs[i]`, `xs[-1]` |
+| Append / pop at the end | $O(1)$ amortized | `push`, `pop` | `append`, `pop()` |
+| Insert / delete at `i` | $O(n - i)$ | `splice(i, 0, x)`, `splice(i, 1)` | `insert(i, x)`, `del xs[i]` |
+| Insert / delete at the front | $O(n)$ | `unshift`, `shift` | `insert(0, x)`, `pop(0)` |
+| Search, unsorted | $O(n)$ | `indexOf`, `includes` | `index`, `in` |
+| Search, sorted | $O(\log n)$ | hand-written binary search | `bisect_left` |
+| Copy a range of $k$ | $O(k)$ | `slice(a, b)` | `xs[a:b]` |
+| Sort | $O(n \log n)$ | `sort((a, b) => a - b)` | `sort()`, `sorted()` |
+
+Fixed-size numeric arrays: `Int32Array` / `Float64Array` in JS (typed arrays, contiguous, no holes);
+`array.array` or NumPy in Python.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Two pointers: O(n) time, O(1) extra space
+    function reverseInPlace<T>(xs: T[]): void {
+      for (let i = 0, j = xs.length - 1; i < j; i++, j--)
+        [xs[i], xs[j]] = [xs[j], xs[i]];
+    }
+
+    // Prefix sums: O(n) to build, then O(1) per range sum
+    function prefixSums(xs: number[]): number[] {
+      const pre = [0];
+      for (const x of xs) pre.push(pre[pre.length - 1] + x);
+      return pre; // sum of xs[i..j) = pre[j] - pre[i]
+    }
+
+    // r × c grid: a new row array for every row
+    function grid(r: number, c: number): number[][] {
+      return Array.from({ length: r }, () =>
+        new Array<number>(c).fill(0));
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Two pointers: O(n) time, O(1) extra space
+    def reverse_in_place[T](xs: list[T]) -> None:
+        i, j = 0, len(xs) - 1
+        while i < j:
+            xs[i], xs[j] = xs[j], xs[i]
+            i, j = i + 1, j - 1
+
+    # Prefix sums: O(n) to build, then O(1) per range sum
+    def prefix_sums(xs: list[int]) -> list[int]:
+        pre = [0]
+        for x in xs:
+            pre.append(pre[-1] + x)
+        return pre  # sum of xs[i:j] = pre[j] - pre[i]
+
+    # r × c grid: a new row list for every row
+    def grid(r: int, c: int) -> list[list[int]]:
+        return [[0] * c for _ in range(r)]
+    ```
+
+  </Tab>
+</Tabs>
+
+Grid trap: `Array(r).fill(new Array(c).fill(0))` and `[[0] * c] * r` put the **same** row object in
+every slot, so writing one cell writes a whole column. `itertools.accumulate(xs, initial=0)` builds
+the prefix sums in one call.
+
+## Strings
+
+Strings are **immutable** in both languages: every "change" builds a new string, so edits in a loop
+cost $O(n)$ each. Convert to an array of characters, edit, then join once.
+
+| Task | TypeScript | Python |
+| :--- | :--------- | :----- |
+| Char at `i` | `s[i]`, `s.charAt(i)` | `s[i]` |
+| Char code ↔ char | `s.charCodeAt(i)`, `String.fromCharCode(c)` | `ord(ch)`, `chr(c)` |
+| Letter index 0–25 | `s.charCodeAt(i) - 97` | `ord(ch) - ord("a")` |
+| Mutable copy | `[...s]` or `s.split("")` | `list(s)` |
+| Build from pieces | `parts.push(p)`, then `parts.join("")` | `parts.append(p)`, then `"".join(parts)` |
+| Substring test | `s.includes(t)` | `t in s` |
+| Reverse | `[...s].reverse().join("")` | `s[::-1]` |
+| Sorted letters (anagram key) | `[...s].sort().join("")` | `"".join(sorted(s))` |
+| Split on whitespace | `s.trim().split(/\s+/)` | `s.split()` |
+| Is letter / digit | `/[a-z]/i.test(ch)`, `/\d/.test(ch)` | `ch.isalpha()`, `ch.isdigit()` |
+| Length | UTF-16 code units (emoji count 2) | code points |
+
+`s[0] = "x"` is a compile error in TS (read-only index) and a `TypeError` in Python. In JS, `+=` in a loop
+is usually fast because engines defer the copy (ropes); in Python it is only fast by a CPython
+optimization, so use `"".join` in both to be safe.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // 26-slot counts: lighter than a Map for a–z input
+    function letterCounts(s: string): number[] {
+      const counts = new Array<number>(26).fill(0);
+      for (let i = 0; i < s.length; i++)
+        counts[s.charCodeAt(i) - 97]++;
+      return counts;
+    }
+
+    // Build pieces in an array, join once: O(n)
+    function runLength(s: string): string {
+      const parts: string[] = [];
+      for (let i = 0; i < s.length; ) {
+        let j = i;
+        while (j < s.length && s[j] === s[i]) j++;
+        parts.push(`${s[i]}${j - i}`);
+        i = j;
+      }
+      return parts.join("");
+    }
+
+    function reverseWords(s: string): string {
+      return s.trim().split(/\s+/).reverse().join(" ");
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # 26-slot counts: lighter than a dict for a–z input
+    def letter_counts(s: str) -> list[int]:
+        counts = [0] * 26
+        for ch in s:
+            counts[ord(ch) - ord("a")] += 1
+        return counts
+
+    # Build pieces in a list, join once: O(n)
+    def run_length(s: str) -> str:
+        parts: list[str] = []
+        i = 0
+        while i < len(s):
+            j = i
+            while j < len(s) and s[j] == s[i]:
+                j += 1
+            parts.append(f"{s[i]}{j - i}")
+            i = j
+        return "".join(parts)
+
+    def reverse_words(s: str) -> str:
+        return " ".join(reversed(s.split()))
+    ```
+
+  </Tab>
+</Tabs>
+
+## Hash maps & sets
+
+| Operation | Average | Worst | TS `Map` / `Set` | Python `dict` / `set` |
+| :-------- | :------ | :---- | :--------------- | :-------------------- |
+| Insert / update | $O(1)$ | $O(n)$ | `m.set(k, v)`, `s.add(x)` | `d[k] = v`, `s.add(x)` |
+| Lookup | $O(1)$ | $O(n)$ | `m.get(k)`, `m.has(k)`, `s.has(x)` | `d[k]`, `d.get(k)`, `k in d` |
+| Delete | $O(1)$ | $O(n)$ | `m.delete(k)` | `del d[k]`, `d.pop(k)`, `s.discard(x)` |
+| Size | $O(1)$ | | `m.size` | `len(d)` |
+| Iterate | $O(n)$ | | insertion order | insertion order (dict); arbitrary (set) |
+| Union / intersection | $O(n + m)$ / $O(\min)$ | | `a.union(b)`, `a.intersection(b)` (ES2025) or loops | `a \| b`, `a & b` |
+
+### How hashing works
+
+```text
+ key "cat" ─ hash() ─► 7304 ─ mod 8 ─► bucket 0
+
+ bucket 0: ("cat", 3) ─► ("tac", 1)   collision: 2 keys
+ bucket 1: empty                       share one bucket
+ bucket 2: ("dog", 5)
+ …
+ load factor = items / buckets; past a threshold the
+ table doubles and every key is re-hashed:
+ O(n) once, O(1) amortized
+```
+
+| Idea | Detail |
+| :--- | :----- |
+| Hash function | maps a key to an integer; equal keys **must** hash equal |
+| Bucket index | `hash mod capacity` (or a bit mask when capacity is a power of 2) |
+| Collision: chaining | each bucket holds a small list; lookup scans it |
+| Collision: open addressing | probe other slots until an empty one (CPython `dict` does this) |
+| Resizing | grow when the load factor passes a threshold (about 2/3 in CPython); amortized $O(1)$ |
+| Worst case | every key in one bucket: $O(n)$; Python randomizes `str` hashes per process to prevent crafted collisions |
+| Key cost | hashing a string of length $L$ is $O(L)$ |
+
+### What can be a key
+
+| Key | JS `Map` / `Set` | JS plain object | Python `dict` / `set` |
+| :-- | :--------------- | :-------------- | :-------------------- |
+| `1` vs `"1"` | two keys | one key (`"1"`) | two keys |
+| `1` vs `1.0` vs `true` / `True` | `1` and `1.0` one key (same number); `true` separate | `1`, `1.0` → `"1"`; `true` → `"true"` | **one key**: `1 == 1.0 == True` hash equal |
+| `NaN`, `-0` / `+0` | `NaN` matches `NaN`; `-0` is `+0` (SameValueZero) | `"NaN"`, `"0"` | `nan` only matches itself by identity |
+| Object / array | by **identity**: a new `[1, 2]` is a different key | coerced to `"[object Object]"` or `"1,2"` | `list`, `dict`, `set`: `TypeError`, unhashable |
+| Composite key | encode: `` `${r},${c}` `` or nested maps | same | `tuple`: `(r, c)` hashes by value |
+| Custom class | identity only | | `@dataclass(frozen=True)`, or `__eq__` + `__hash__` |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Composite key: encode to a string (or a number)
+    const key = (r: number, c: number): string => `${r},${c}`;
+    const seen = new Set<string>();
+    seen.add(key(1, 2));
+    const hasCell = seen.has(key(1, 2)); // true
+
+    // Objects are keys by identity, not by value
+    const a = [1, 2];
+    const byRef = new Map<number[], string>([[a, "x"]]);
+    const same = byRef.get(a);      // "x"
+    const other = byRef.get([1, 2]); // undefined
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from dataclasses import dataclass
+
+    # Composite key: a tuple hashes by value
+    seen: set[tuple[int, int]] = set()
+    seen.add((1, 2))
+    has_cell = (1, 2) in seen  # True
+
+    # Mutable containers can't be keys
+    try:
+        bad = {[1, 2]: "x"}
+    except TypeError as e:
+        err = str(e)  # ...unhashable type: 'list'
+
+    @dataclass(frozen=True)  # adds __eq__ and __hash__
+    class Cell:
+        r: int
+        c: int
+
+    found = {Cell(1, 2): "x"}[Cell(1, 2)]  # "x"
+    ```
+
+  </Tab>
+</Tabs>
+
+### Counter, defaultdict & TS equivalents
+
+| Python | TypeScript equivalent |
+| :----- | :-------------------- |
+| `Counter(xs)` | `counts(xs)` below |
+| `c[k]` (0 when missing) | `m.get(k) ?? 0` |
+| `c.most_common(k)` | sort `[...m]` by count, `slice(0, k)` |
+| `c1 == c2` (same multiset) | same `size` and every `get` equal |
+| `c1 - c2`, `c1 + c2`, `c1 & c2` | loop over entries |
+| `defaultdict(list)` | `groupBy` below, or `Map.groupBy(xs, fn)` (ES2024) |
+| `defaultdict(int)` | `m.set(k, (m.get(k) ?? 0) + 1)` |
+| `d.get(k, default)` | `m.get(k) ?? fallback` |
+| `d.setdefault(k, [])` | `m.get(k)`, and `m.set(k, [])` if missing |
+| `OrderedDict` | `Map` (always insertion-ordered) |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Counter
+    function counts<T>(xs: Iterable<T>): Map<T, number> {
+      const m = new Map<T, number>();
+      for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
+      return m;
+    }
+
+    // defaultdict(list)
+    function groupBy<T, K>(
+      xs: Iterable<T>,
+      key: (x: T) => K,
+    ): Map<K, T[]> {
+      const m = new Map<K, T[]>();
+      for (const x of xs) {
+        const k = key(x);
+        const group = m.get(k);
+        if (group) group.push(x);
+        else m.set(k, [x]);
+      }
+      return m;
+    }
+
+    const c = counts("banana"); // a→3, b→1, n→2
+    const top2 = [...c].sort((p, q) => q[1] - p[1]).slice(0, 2);
+    const byLen = groupBy(["hi", "yo", "hey"], (w) => w.length);
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter, defaultdict
+
+    c = Counter("banana")   # a→3, b→1, n→2
+    top2 = c.most_common(2)  # [("a", 3), ("n", 2)]
+    missing = c["z"]         # 0, no KeyError
+
+    by_len: defaultdict[int, list[str]] = defaultdict(list)
+    for w in ["hi", "yo", "hey"]:
+        by_len[len(w)].append(w)
+    ```
+
+  </Tab>
+</Tabs>
+
+## Linked lists
+
+Nodes live anywhere in memory and point to the next one (and, in a doubly linked list, the previous one).
+No indexing, but splicing at a node you already hold is $O(1)$.
+
+| Operation | Singly | Doubly | Array, for comparison |
+| :-------- | :----- | :----- | :-------------------- |
+| Access $i$-th | $O(i)$ | $O(i)$ | $O(1)$ |
+| Insert / delete at head | $O(1)$ | $O(1)$ | $O(n)$ |
+| Insert / delete at tail | $O(1)$ with a tail pointer / $O(n)$ delete | $O(1)$ | $O(1)$ amortized |
+| Insert after a known node | $O(1)$ | $O(1)$ | $O(n)$ |
+| Delete a known node | $O(n)$ (need the previous one) | $O(1)$ | $O(n)$ |
+| Search | $O(n)$ | $O(n)$ | $O(n)$ |
+| Extra memory per item | 1 pointer | 2 pointers | none |
+
+Interview uses: reverse (all or part), merge sorted lists, find the middle or a cycle with fast and slow
+pointers, remove the $k$-th from the end, and the doubly linked list inside an LRU cache. In real code,
+arrays nearly always win on speed (cache locality).
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Link<T> = ListNode<T> | null;
+
+    class ListNode<T> {
+      val: T;
+      next: Link<T>;
+      constructor(val: T, next: Link<T> = null) {
+        this.val = val;
+        this.next = next;
+      }
+    }
+
+    function fromArray<T>(xs: T[]): Link<T> {
+      let head: Link<T> = null;
+      for (let i = xs.length - 1; i >= 0; i--)
+        head = new ListNode(xs[i], head);
+      return head;
+    }
+
+    function toArray<T>(head: Link<T>): T[] {
+      const out: T[] = [];
+      for (let n = head; n; n = n.next) out.push(n.val);
+      return out;
+    }
+
+    // O(n) time, O(1) space: flip every next pointer
+    function reverse<T>(head: Link<T>): Link<T> {
+      let prev: Link<T> = null;
+      let cur = head;
+      while (cur) {
+        const next = cur.next;
+        cur.next = prev;
+        prev = cur;
+        cur = next;
+      }
+      return prev;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from __future__ import annotations
+    from dataclasses import dataclass
+
+    @dataclass
+    class ListNode[T]:
+        val: T
+        next: ListNode[T] | None = None
+
+    type Link[T] = ListNode[T] | None
+
+    def from_array[T](xs: list[T]) -> Link[T]:
+        head: Link[T] = None
+        for x in reversed(xs):
+            head = ListNode(x, head)
+        return head
+
+    def to_array[T](head: Link[T]) -> list[T]:
+        out: list[T] = []
+        while head:
+            out.append(head.val)
+            head = head.next
+        return out
+
+    # O(n) time, O(1) space: flip every next pointer
+    def reverse[T](head: Link[T]) -> Link[T]:
+        prev: Link[T] = None
+        cur = head
+        while cur:
+            nxt = cur.next
+            cur.next = prev
+            prev, cur = cur, nxt
+        return prev
+    ```
+
+  </Tab>
+</Tabs>
+
+### Dummy head & fast/slow pointers
+
+A **dummy** (sentinel) node before the real head removes the "is the result list empty?" special case.
+**Fast and slow** pointers (fast moves two steps per slow step) find the middle and detect cycles in
+$O(n)$ time and $O(1)$ space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Merge two sorted lists: O(n + m) time, O(1) space
+    function merge(
+      a: Link<number>,
+      b: Link<number>,
+    ): Link<number> {
+      const dummy = new ListNode(0);
+      let tail = dummy;
+      while (a && b) {
+        if (a.val <= b.val) {
+          tail.next = a;
+          a = a.next;
+        } else {
+          tail.next = b;
+          b = b.next;
+        }
+        tail = tail.next;
+      }
+      tail.next = a ?? b;
+      return dummy.next;
+    }
+
+    // Middle node (the second one if the length is even)
+    function middle<T>(head: ListNode<T>): ListNode<T> {
+      let slow = head;
+      let fast: Link<T> = head;
+      while (fast && fast.next) {
+        slow = slow.next!;
+        fast = fast.next.next;
+      }
+      return slow;
+    }
+
+    // Floyd's cycle check
+    function hasCycle<T>(head: Link<T>): boolean {
+      let slow = head;
+      let fast = head;
+      while (fast && fast.next) {
+        slow = slow!.next;
+        fast = fast.next.next;
+        if (slow === fast) return true;
+      }
+      return false;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Merge two sorted lists: O(n + m) time, O(1) space
+    def merge(a: Link[int], b: Link[int]) -> Link[int]:
+        dummy = ListNode(0)
+        tail = dummy
+        while a and b:
+            if a.val <= b.val:
+                tail.next, a = a, a.next
+            else:
+                tail.next, b = b, b.next
+            tail = tail.next
+        tail.next = a or b
+        return dummy.next
+
+    # Middle node (the second one if the length is even)
+    def middle[T](head: ListNode[T]) -> ListNode[T]:
+        slow, fast = head, head
+        while fast and fast.next:
+            slow = slow.next
+            fast = fast.next.next
+        return slow
+
+    # Floyd's cycle check
+    def has_cycle[T](head: Link[T]) -> bool:
+        slow = fast = head
+        while fast and fast.next:
+            slow = slow.next if slow else None
+            fast = fast.next.next
+            if slow is fast:
+                return True
+        return False
+    ```
+
+  </Tab>
+</Tabs>
+
+## Stacks
+
+Last in, first out. Both languages use the dynamic array: push and pop at the **end** are $O(1)$.
+
+<Diagram src="/images/diagrams/dsa-stack-queue.svg" label="A stack drawn as a vertical column with D on top, where push and pop both happen, next to a queue drawn as a horizontal row A to D, dequeued at the front on the left and enqueued at the back on the right" caption="Stacks work at one end; queues take in at the back and give out at the front" />
+
+| Operation | Cost | TS (`xs: T[]`) | Python (`xs: list`) |
+| :-------- | :--- | :------------- | :------------------ |
+| Push | $O(1)$ amortized | `xs.push(x)` | `xs.append(x)` |
+| Pop | $O(1)$ | `xs.pop()` (`undefined` if empty) | `xs.pop()` (`IndexError` if empty) |
+| Peek | $O(1)$ | `xs.at(-1)` | `xs[-1]` |
+| Empty? | $O(1)$ | `xs.length === 0` | `not xs` |
+
+Stacks show up for: matching brackets, undo, evaluating expressions, iterative DFS, "next greater
+element" (a **monotonic** stack, see [Problem patterns](/dsa/problem-patterns/)), and replacing
+recursion that would overflow the call stack.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Stack with O(1) min: store the running minimum too
+    class MinStack {
+      private items: number[] = [];
+      private mins: number[] = []; // mins[i] = min(items[..i])
+
+      push(x: number): void {
+        this.items.push(x);
+        const m = this.mins.at(-1);
+        this.mins.push(m === undefined ? x : Math.min(m, x));
+      }
+
+      pop(): number | undefined {
+        this.mins.pop();
+        return this.items.pop();
+      }
+
+      top(): number | undefined {
+        return this.items.at(-1);
+      }
+
+      min(): number | undefined {
+        return this.mins.at(-1);
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # Stack with O(1) min: store the running minimum too
+    class MinStack:
+        def __init__(self) -> None:
+            self.items: list[int] = []
+            self.mins: list[int] = []  # running minimums
+
+        def push(self, x: int) -> None:
+            self.items.append(x)
+            m = self.mins[-1] if self.mins else x
+            self.mins.append(min(m, x))
+
+        def pop(self) -> int | None:
+            if not self.items:
+                return None
+            self.mins.pop()
+            return self.items.pop()
+
+        def top(self) -> int | None:
+            return self.items[-1] if self.items else None
+
+        def min(self) -> int | None:
+            return self.mins[-1] if self.mins else None
+    ```
+
+  </Tab>
+</Tabs>
+
+## Queues & deques
+
+First in, first out. A **deque** (double-ended queue) pushes and pops at both ends in $O(1)$.
+
+| Need | TypeScript | Python |
+| :--- | :--------- | :----- |
+| Queue, simple | array + head index (never `shift()`) | `collections.deque`: `append` / `popleft` |
+| Queue / deque, general | the `Deque<T>` ring buffer below | `collections.deque` |
+| Bounded "last k items" | ring buffer that overwrites | `deque(maxlen=k)` |
+| Priority queue | a heap: [`MinHeap<T>`](/dsa/trees-graphs/#heaps) | `heapq` |
+| Thread-safe queue | not applicable (single thread) | `queue.Queue` (locks; slower, not for algorithms) |
+
+| Operation | `Deque<T>` below | `collections.deque` |
+| :-------- | :--------------- | :------------------ |
+| Push back / front | `pushBack`, `pushFront`: $O(1)$ amortized | `append`, `appendleft`: $O(1)$ |
+| Pop back / front | `popBack`, `popFront`: $O(1)$ | `pop`, `popleft`: $O(1)$ |
+| Peek | `peekFront`, `peekBack` | `d[0]`, `d[-1]` |
+| Index `i` | `get(i)`: $O(1)$ | `d[i]`: $O(n)$ toward the middle |
+| Length | `length` | `len(d)` |
+
+JavaScript has **no built-in deque or queue**: `shift()` is $O(n)$. This ring buffer keeps items in a
+circular array with a moving `head`, doubling when full.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    export class Deque<T> {
+      private buf: (T | undefined)[];
+      private head = 0; // index of the front item
+      private size = 0;
+
+      constructor(capacity = 16) {
+        this.buf = new Array<T | undefined>(capacity);
+      }
+
+      get length(): number {
+        return this.size;
+      }
+
+      // physical slot of logical index i
+      private slot(i: number): number {
+        return (this.head + i) % this.buf.length;
+      }
+
+      get(i: number): T | undefined {
+        return i >= 0 && i < this.size
+          ? this.buf[this.slot(i)]
+          : undefined;
+      }
+
+      pushBack(x: T): void {
+        if (this.size === this.buf.length) this.grow();
+        this.buf[this.slot(this.size)] = x;
+        this.size++;
+      }
+
+      pushFront(x: T): void {
+        if (this.size === this.buf.length) this.grow();
+        this.head = this.slot(this.buf.length - 1);
+        this.buf[this.head] = x;
+        this.size++;
+      }
+
+      popFront(): T | undefined {
+        if (this.size === 0) return undefined;
+        const x = this.buf[this.head];
+        this.buf[this.head] = undefined; // allow GC
+        this.head = this.slot(1);
+        this.size--;
+        return x;
+      }
+
+      popBack(): T | undefined {
+        if (this.size === 0) return undefined;
+        const i = this.slot(this.size - 1);
+        const x = this.buf[i];
+        this.buf[i] = undefined;
+        this.size--;
+        return x;
+      }
+
+      peekFront(): T | undefined {
+        return this.get(0);
+      }
+
+      peekBack(): T | undefined {
+        return this.get(this.size - 1);
+      }
+
+      private grow(): void {
+        const next = new Array<T | undefined>(
+          Math.max(1, this.buf.length * 2));
+        for (let i = 0; i < this.size; i++)
+          next[i] = this.buf[this.slot(i)];
+        this.buf = next;
+        this.head = 0;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import deque
+
+    # Built in: same operations, all O(1) at the ends
+    d: deque[int] = deque()
+    d.append(1)       # pushBack
+    d.appendleft(0)   # pushFront
+    d.append(2)       # d = deque([0, 1, 2])
+    front = d[0]      # peekFront → 0
+    back = d[-1]      # peekBack → 2
+    first = d.popleft()  # popFront → 0
+    last = d.pop()       # popBack → 2
+
+    # Bounded: old items fall off the other end
+    recent: deque[int] = deque(maxlen=3)
+    for x in range(5):
+        recent.append(x)  # ends as deque([2, 3, 4])
+    ```
+
+  </Tab>
+</Tabs>
+
+Use it as a queue with `pushBack` + `popFront`, a stack with `pushBack` + `popBack`, or a sliding-window
+monotonic deque with all four. For a BFS where the queue is only appended to, an array plus a `head`
+index is just as fast and simpler.
+
+## Choosing a structure
+
+| You need | Use | Cost |
+| :------- | :-- | :--- |
+| Index by position, append | dynamic array | $O(1)$ |
+| "Have I seen x?" | `Set` / `set` | $O(1)$ average |
+| Value by key, counts, groups | `Map` / `dict`, `Counter`, `defaultdict` | $O(1)$ average |
+| Keys in insertion order, move to end | `Map` / `OrderedDict` | $O(1)$ |
+| Last in, first out | array as a stack | $O(1)$ |
+| First in, first out | deque (or array + head index) | $O(1)$ |
+| Both ends | deque | $O(1)$ |
+| Smallest / largest repeatedly | heap ([Trees & graphs](/dsa/trees-graphs/#heaps)) | $O(\log n)$ |
+| Sorted order with inserts | balanced BST, or sorted list + `bisect` | $O(\log n)$ / $O(n)$ insert |
+| Prefix lookups | trie ([Trees & graphs](/dsa/trees-graphs/#tries)) | $O(L)$ |
+| Range sums, static | prefix-sum array | $O(1)$ per query |
+| O(1) removal of a known item in order | doubly linked list + hash map | $O(1)$ |
+
+## Recipes
+
+### LRU cache
+Use when asked for a fixed-size cache that evicts the least recently used key ("LRU Cache"). `Map` and
+`OrderedDict` both remember insertion order, so "most recent" is simply "last". $O(1)$ per operation.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    class LRUCache<K, V> {
+      private readonly map = new Map<K, V>();
+      private readonly capacity: number;
+
+      constructor(capacity: number) {
+        this.capacity = capacity;
+      }
+
+      get(key: K): V | undefined {
+        if (!this.map.has(key)) return undefined;
+        const v = this.map.get(key)!;
+        this.map.delete(key); // re-insert as most recent
+        this.map.set(key, v);
+        return v;
+      }
+
+      put(key: K, value: V): void {
+        this.map.delete(key);
+        this.map.set(key, value);
+        if (this.map.size > this.capacity) {
+          // first key in iteration order = least recent
+          const oldest = this.map.keys().next().value!;
+          this.map.delete(oldest);
+        }
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import OrderedDict
+
+    class LRUCache[K, V]:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = capacity
+            self.map: OrderedDict[K, V] = OrderedDict()
+
+        def get(self, key: K) -> V | None:
+            if key not in self.map:
+                return None
+            self.map.move_to_end(key)  # most recent
+            return self.map[key]
+
+        def put(self, key: K, value: V) -> None:
+            self.map[key] = value
+            self.map.move_to_end(key)
+            if len(self.map) > self.capacity:
+                self.map.popitem(last=False)  # least recent
+    ```
+
+  </Tab>
+</Tabs>
+
+If the interviewer forbids ordered maps, build the same thing by hand: a hash map from key to node, plus
+a doubly linked list with dummy head and tail; `get` unlinks the node and re-adds it at the tail.
+
+### Top k frequent
+Use to rank items by count ("Top K Frequent Elements"). Bucket by frequency for $O(n)$ time and space;
+sorting the counts is $O(n \log n)$, a size-$k$ heap $O(n \log k)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function topKFrequent(xs: number[], k: number): number[] {
+      const count = new Map<number, number>();
+      for (const x of xs) count.set(x, (count.get(x) ?? 0) + 1);
+      // bucket[f] = values seen exactly f times
+      const bucket: number[][] = Array.from(
+        { length: xs.length + 1 }, () => []);
+      for (const [x, f] of count) bucket[f].push(x);
+      const out: number[] = [];
+      for (let f = xs.length; f > 0 && out.length < k; f--)
+        out.push(...bucket[f]);
+      return out.slice(0, k);
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import Counter
+
+    def top_k_frequent(xs: list[int], k: int) -> list[int]:
+        count = Counter(xs)
+        # bucket[f] = values seen exactly f times
+        n = len(xs)
+        bucket: list[list[int]] = [[] for _ in range(n + 1)]
+        for x, f in count.items():
+            bucket[f].append(x)
+        out: list[int] = []
+        for f in range(n, 0, -1):
+            out.extend(bucket[f])
+            if len(out) >= k:
+                break
+        return out[:k]
+        # O(n log k): [x for x, _ in count.most_common(k)]
+    ```
+
+  </Tab>
+</Tabs>
+
+### Balanced brackets
+Use for "Valid Parentheses" and any nesting check: push openers, and each closer must match the top.
+$O(n)$ time, $O(n)$ space.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    const OPEN = new Map([
+      [")", "("],
+      ["]", "["],
+      ["}", "{"],
+    ]);
+
+    function isBalanced(s: string): boolean {
+      const stack: string[] = [];
+      for (const ch of s) {
+        if ("([{".includes(ch)) stack.push(ch);
+        else if (OPEN.has(ch) && stack.pop() !== OPEN.get(ch))
+          return false;
+      }
+      return stack.length === 0;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    OPEN = {")": "(", "]": "[", "}": "{"}
+
+    def is_balanced(s: str) -> bool:
+        stack: list[str] = []
+        for ch in s:
+            if ch in "([{":
+                stack.append(ch)
+            elif ch in OPEN:
+                if not stack or stack.pop() != OPEN[ch]:
+                    return False
+        return not stack
+    ```
+
+  </Tab>
+</Tabs>
+
+### Group anagrams
+Use when items are equal "up to rearrangement" ("Group Anagrams"): hash each item to a canonical key.
+Sorted-letters key: $O(n \cdot L \log L)$; a 26-count key: $O(n \cdot L)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    function groupAnagrams(words: string[]): string[][] {
+      const groups = new Map<string, string[]>();
+      for (const w of words) {
+        const key = [...w].sort().join(""); // canonical form
+        const g = groups.get(key);
+        if (g) g.push(w);
+        else groups.set(key, [w]);
+      }
+      return [...groups.values()];
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import defaultdict
+
+    def group_anagrams(words: list[str]) -> list[list[str]]:
+        groups: defaultdict[str, list[str]] = defaultdict(list)
+        for w in words:
+            groups["".join(sorted(w))].append(w)  # canonical
+        return list(groups.values())
+    ```
+
+  </Tab>
+</Tabs>
+
+### Queue from two stacks
+Use when asked to build a queue from stacks ("Implement Queue using Stacks"). Each item moves from
+`inbox` to `outbox` once, so every operation is $O(1)$ amortized.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    class TwoStackQueue<T> {
+      private inbox: T[] = [];
+      private outbox: T[] = [];
+
+      push(x: T): void {
+        this.inbox.push(x);
+      }
+
+      pop(): T | undefined {
+        if (this.outbox.length === 0) {
+          while (this.inbox.length > 0)
+            this.outbox.push(this.inbox.pop()!);
+        }
+        return this.outbox.pop();
+      }
+
+      get length(): number {
+        return this.inbox.length + this.outbox.length;
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    class TwoStackQueue[T]:
+        def __init__(self) -> None:
+            self.inbox: list[T] = []
+            self.outbox: list[T] = []
+
+        def push(self, x: T) -> None:
+            self.inbox.append(x)
+
+        def pop(self) -> T | None:
+            if not self.outbox:
+                while self.inbox:
+                    self.outbox.append(self.inbox.pop())
+            return self.outbox.pop() if self.outbox else None
+
+        def __len__(self) -> int:
+            return len(self.inbox) + len(self.outbox)
+    ```
+
+  </Tab>
+</Tabs>
+
+## References
+
+- [MDN: Array](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array): methods, mutating vs copying, holes
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) and [Set](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set): SameValueZero keys, insertion order, Map vs object
+- [MDN: String](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String): immutability, UTF-16 code units
+- [Python docs: collections](https://docs.python.org/3/library/collections.html): `deque`, `Counter`, `defaultdict`, `OrderedDict`
+- [Python docs: dict and set types](https://docs.python.org/3/library/stdtypes.html#mapping-types-dict): hashability, views, set operators
+- [Python wiki: TimeComplexity](https://wiki.python.org/moin/TimeComplexity): CPython costs for list, deque, dict, set
+- *Introduction to Algorithms* (CLRS): elementary data structures and hash tables chapters
+- [NeetCode roadmap](https://neetcode.io/roadmap): arrays & hashing, stack and linked list problem sets
+- [Tech Interview Handbook: hash table](https://www.techinterviewhandbook.org/algorithms/hash-table/) and [linked list](https://www.techinterviewhandbook.org/algorithms/linked-list/): corner cases and techniques
+- Sibling sheets: [Array methods](/typescript/language/array-methods/), [Python std library](/python/language/std-library/)

@@ -1,0 +1,715 @@
+---
+title: Big-O notation
+date: 2026-09-27
+order: 1
+---
+
+How to read, derive and state time and space complexity: the notation, growth rates, rules for
+simplifying, loops, recursion trees, the master theorem, amortized cost, what built-ins cost in
+TypeScript and Python, and which complexity an input size demands. The structures themselves are in
+[Arrays, hashing & lists](/dsa/linear-structures/) and [Trees & graphs](/dsa/trees-graphs/); logs are
+refreshed in [Math fundamentals](/math/math-fundamentals/#19-logarithms).
+
+## What Big-O means
+
+Big-O describes how cost **grows** with input size $n$, ignoring machine speed and constant factors.
+Formally, $f(n) = O(g(n))$ if some $c$ and $n_0$ give $f(n) \le c \cdot g(n)$ for every $n \ge n_0$.
+
+| Notation | Bound | Reads as | Example |
+| :------- | :---- | :------- | :------ |
+| $O(g)$ | upper | grows no faster than $g$ | insertion sort is $O(n^2)$ |
+| $\Omega(g)$ | lower | grows at least as fast as $g$ | any comparison sort is $\Omega(n \log n)$ in the worst case |
+| $\Theta(g)$ | tight | both $O(g)$ and $\Omega(g)$ | merge sort is $\Theta(n \log n)$ |
+| $o(g)$, $\omega(g)$ | strict | strictly slower / faster | $n = o(n^2)$ |
+
+In interviews "Big-O" means the tightest upper bound you can justify: say $O(n)$ for a single pass, not
+$O(n^2)$, even though both are technically true.
+
+| Case | Meaning | Example: quicksort | Example: hash lookup |
+| :--- | :------ | :----------------- | :------------------- |
+| Best | cheapest input of size $n$ | $O(n \log n)$ | $O(1)$ |
+| Average | expected over inputs (or random choices) | $O(n \log n)$ | $O(1)$ |
+| Worst | most expensive input | $O(n^2)$, sorted input with a bad pivot | $O(n)$, every key collides |
+| Amortized | worst-case **total** over a sequence, divided by its length | | dynamic array `push`: $O(1)$ |
+
+Best, average and worst are *which input*; $O$, $\Omega$, $\Theta$ are *which bound*. They are
+independent: "worst case $\Theta(n^2)$" is a valid statement.
+
+Why constants drop: $3n$ and $100n$ both double when $n$ doubles, and for large enough $n$ any
+$c \cdot n$ beats any $n^2$. Constants still matter in practice (a cache-friendly array scan beats a
+pointer-chasing list scan of the same $O(n)$), so mention them when comparing two solutions of the same class.
+
+## Growth rates
+
+<Graphs>
+<Graph small title="slow growers" curves={[{ fn: "identity", a: 0, k: 1, label: "O(1)" }, { fn: "log2", label: "O(log n)" }, { fn: "identity", label: "O(n)" }, { fn: "nlogn", label: "O(n log n)" }]} domain={[0, 16]} range={[0, 70]} />
+<Graph small title="fast growers" curves={[{ fn: "identity", label: "O(n)" }, { fn: "nlogn", label: "O(n log n)" }, { fn: "square", label: "O(n²)" }, { fn: "pow2", label: "O(2ⁿ)" }]} domain={[0, 10]} range={[0, 100]} />
+</Graphs>
+
+| Class | Name | n = 10 | n = 10³ | n = 10⁶ | Typical source |
+| :---- | :--- | :----- | :------ | :------ | :------------- |
+| $O(1)$ | constant | 1 | 1 | 1 | index, hash lookup, push |
+| $O(\log n)$ | logarithmic | 3 | 10 | 20 | binary search, balanced tree, heap op |
+| $O(n)$ | linear | 10 | 10³ | 10⁶ | one pass, two pointers |
+| $O(n \log n)$ | linearithmic | 33 | 10⁴ | 2 × 10⁷ | sorting, divide and conquer |
+| $O(n^2)$ | quadratic | 100 | 10⁶ | 10¹² | all pairs, nested loops |
+| $O(n^3)$ | cubic | 10³ | 10⁹ | 10¹⁸ | triple loops, Floyd–Warshall |
+| $O(2^n)$ | exponential | 1 024 | ≈ 10³⁰¹ | never | all subsets |
+| $O(n!)$ | factorial | 3.6 × 10⁶ | never | never | all permutations |
+
+Logs grow so slowly that $\log_2 n \le 64$ for any $n$ that fits in memory. The base of a log never
+matters in Big-O: $\log_a n = \log_b n / \log_b a$, a constant factor.
+
+## Simplification rules
+
+| Rule | Example | Result |
+| :--- | :------ | :----- |
+| Drop constant factors | $5n + 3$ | $O(n)$ |
+| Drop lower-order terms | $n^2 + 100n + \log n$ | $O(n^2)$ |
+| Sequential steps **add** | sort, then one pass | $O(n \log n + n) = O(n \log n)$ |
+| Nested steps **multiply** | a loop of $n$ doing $O(\log n)$ work | $O(n \log n)$ |
+| Different inputs, different variables | loop over `a`, then over `b` | $O(a + b)$, not $O(n)$ |
+| Nested over different inputs | for each of `a`, scan `b` | $O(a \cdot b)$ |
+| Log base is irrelevant | $\log_2 n$, $\log_{10} n$ | $O(\log n)$ |
+| Exponent base **is** relevant | $2^n$ vs $3^n$ | different classes |
+| Logs of polynomials | $\log(n^3) = 3 \log n$ | $O(\log n)$ |
+| Stirling | $\log(n!)$ | $\Theta(n \log n)$ |
+| Output size counts | return all $n^2$ pairs | at least $O(n^2)$ |
+| String length counts | hash or compare strings of length $L$ | $O(L)$ each, not $O(1)$ |
+
+Name every variable you use: "$O(n \cdot L)$ where $n$ is the word count and $L$ the longest word",
+"$O(V + E)$ for a graph", "$O(r \cdot c)$ for a grid".
+
+## Analyzing loops
+
+Count how many times the innermost statement runs, as a function of the input.
+
+| Loop shape | Iterations | Cost |
+| :--------- | :--------- | :--- |
+| `i` from 0 to n | $n$ | $O(n)$ |
+| `i` from 0 to n, `j` from `i + 1` to n | $n(n-1)/2$ | $O(n^2)$ |
+| `i *= 2` or `n /= 2` each step | $\log_2 n$ | $O(\log n)$ |
+| `i` to n, inner `j *= 2` to n | $n \log n$ | $O(n \log n)$ |
+| while `i * i ≤ n` | $\sqrt{n}$ | $O(\sqrt{n})$ |
+| `i` to n, inner `j += i` to n | $n/1 + n/2 + \dots \approx n \ln n$ | $O(n \log n)$ (harmonic series) |
+| two loops one after the other | $n + m$ | $O(n + m)$ |
+| two pointers moving toward each other | at most $n$ moves in total | $O(n)$ |
+| sliding window: right moves $n$ times, left at most $n$ | $2n$ | $O(n)$, though it looks nested |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // O(n): one pass
+    function total(xs: number[]): number {
+      let s = 0;
+      for (const x of xs) s += x;
+      return s;
+    }
+
+    // O(n²): every pair, n(n−1)/2 iterations
+    function pairsSumTo(xs: number[], t: number): number {
+      let count = 0;
+      for (let i = 0; i < xs.length; i++)
+        for (let j = i + 1; j < xs.length; j++)
+          if (xs[i] + xs[j] === t) count++;
+      return count;
+    }
+
+    // O(log n): n halves every step
+    function halvings(n: number): number {
+      let steps = 0;
+      for (; n > 1; n = Math.floor(n / 2)) steps++;
+      return steps;
+    }
+
+    // O(n log n): n outer steps × log n inner steps
+    function nLogN(n: number): number {
+      let ops = 0;
+      for (let i = 0; i < n; i++)
+        for (let j = 1; j < n; j *= 2) ops++;
+      return ops;
+    }
+
+    // O(a · b): two inputs, two variables
+    function common(xs: string[], ys: string[]): number {
+      let hits = 0;
+      for (const x of xs)
+        for (const y of ys) if (x === y) hits++;
+      return hits;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # O(n): one pass
+    def total(xs: list[int]) -> int:
+        s = 0
+        for x in xs:
+            s += x
+        return s
+
+    # O(n²): every pair, n(n−1)/2 iterations
+    def pairs_sum_to(xs: list[int], t: int) -> int:
+        count = 0
+        for i in range(len(xs)):
+            for j in range(i + 1, len(xs)):
+                if xs[i] + xs[j] == t:
+                    count += 1
+        return count
+
+    # O(log n): n halves every step
+    def halvings(n: int) -> int:
+        steps = 0
+        while n > 1:
+            n //= 2
+            steps += 1
+        return steps
+
+    # O(n log n): n outer steps × log n inner steps
+    def n_log_n(n: int) -> int:
+        ops = 0
+        for _ in range(n):
+            j = 1
+            while j < n:
+                j *= 2
+                ops += 1
+        return ops
+
+    # O(a · b): two inputs, two variables
+    def common(xs: list[str], ys: list[str]) -> int:
+        return sum(1 for x in xs for y in ys if x == y)
+    ```
+
+  </Tab>
+</Tabs>
+
+## Recursion trees
+
+Cost of a recursive function = sum over every call of the work done **in** that call. Draw the tree:
+branching factor $b$ (calls per call), depth $d$, work per node. With $O(1)$ work per node the
+total is the node count, about $b^d$.
+
+```text
+ merge sort: T(n) = 2T(n/2) + O(n)
+
+ level        calls   size each   work per level
+   0             1        n             n
+   1             2       n/2            n
+   2             4       n/4            n
+   …             …        …             …
+ log₂ n          n        1             n
+                                  total n · log n
+
+ naive fib: T(n) = T(n−1) + T(n−2) + O(1)
+ branching 2, depth n  →  at most 2ⁿ calls (really ≈ 1.618ⁿ)
+```
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // O(2ⁿ) time, O(n) stack: two calls, depth n
+    function fib(n: number): number {
+      return n < 2 ? n : fib(n - 1) + fib(n - 2);
+    }
+
+    // O(n) time and space: each n computed once
+    const memo = new Map<number, number>();
+    function fibMemo(n: number): number {
+      if (n < 2) return n;
+      const hit = memo.get(n);
+      if (hit !== undefined) return hit;
+      const v = fibMemo(n - 1) + fibMemo(n - 2);
+      memo.set(n, v);
+      return v;
+    }
+
+    // O(log n): T(n) = T(n/2) + O(1)
+    function power(x: number, n: number): number {
+      if (n === 0) return 1;
+      const half = power(x, Math.floor(n / 2));
+      return n % 2 === 0 ? half * half : half * half * x;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from functools import cache
+
+    # O(2ⁿ) time, O(n) stack: two calls, depth n
+    def fib(n: int) -> int:
+        return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+    # O(n) time and space: each n computed once
+    @cache
+    def fib_memo(n: int) -> int:
+        if n < 2:
+            return n
+        return fib_memo(n - 1) + fib_memo(n - 2)
+
+    # O(log n): T(n) = T(n/2) + O(1)
+    def power(x: float, n: int) -> float:
+        if n == 0:
+            return 1
+        half = power(x, n // 2)
+        return half * half if n % 2 == 0 else half * half * x
+    ```
+
+  </Tab>
+</Tabs>
+
+Memoization turns "calls in the tree" into "distinct arguments × work per argument": that is the whole
+idea behind [dynamic programming](/dsa/recursion-dp/).
+
+## Master theorem
+
+For divide and conquer, $T(n) = a\,T(n/b) + O(n^d)$ with $a \ge 1$ subproblems of size $n/b$ and
+$O(n^d)$ work to split and combine. Compare $d$ with $\log_b a$:
+
+| Case | Condition | Result | Where the work is |
+| :--- | :-------- | :----- | :---------------- |
+| 1 | $d < \log_b a$ | $O(n^{\log_b a})$ | the leaves (many small calls) |
+| 2 | $d = \log_b a$ | $O(n^d \log n)$ | spread evenly over $\log n$ levels |
+| 3 | $d > \log_b a$ | $O(n^d)$ | the root (the combine step) |
+
+| Recurrence | Result | Algorithm |
+| :--------- | :----- | :-------- |
+| $T(n) = T(n/2) + O(1)$ | $O(\log n)$ | binary search |
+| $T(n) = T(n/2) + O(n)$ | $O(n)$ | quickselect (average), halving work |
+| $T(n) = 2T(n/2) + O(1)$ | $O(n)$ | tree traversal, recursive max |
+| $T(n) = 2T(n/2) + O(n)$ | $O(n \log n)$ | merge sort, quicksort (average) |
+| $T(n) = 2T(n/2) + O(n \log n)$ | $O(n \log^2 n)$ | naive closest-pair |
+| $T(n) = 3T(n/2) + O(n)$ | $O(n^{1.585})$ | Karatsuba multiplication |
+| $T(n) = 4T(n/2) + O(n)$ | $O(n^2)$ | naive divide-and-conquer multiply |
+| $T(n) = 7T(n/2) + O(n^2)$ | $O(n^{2.81})$ | Strassen matrix multiply |
+| $T(n) = T(n-1) + O(1)$ | $O(n)$ | linear recursion (not master form) |
+| $T(n) = T(n-1) + O(n)$ | $O(n^2)$ | selection sort, quicksort worst case |
+| $T(n) = 2T(n-1) + O(1)$ | $O(2^n)$ | Towers of Hanoi, naive subsets |
+| $T(n) = n \cdot T(n-1)$ | $O(n!)$ | all permutations |
+
+The $n \log^2 n$ row is outside the simple three cases (it is the extended case 2). Subtract-and-conquer
+recurrences ($n - 1$) don't fit the theorem: unroll them or draw the tree.
+
+## Amortized analysis
+
+Amortized cost = total cost of $m$ operations ÷ $m$, in the **worst case** over the sequence. No
+randomness involved (unlike average case). A dynamic array that doubles when full copies
+$1 + 2 + 4 + \dots + n/2 < n$ elements over $n$ pushes, so each push is $O(1)$ amortized even though one
+push costs $O(n)$.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    class DynArray {
+      private buf = new Float64Array(1);
+      private n = 0;
+      copies = 0; // total element moves, for analysis
+
+      push(x: number): void {
+        if (this.n === this.buf.length) {
+          const next = new Float64Array(this.n * 2);
+          for (let i = 0; i < this.n; i++) next[i] = this.buf[i];
+          this.copies += this.n;
+          this.buf = next;
+        }
+        this.buf[this.n++] = x;
+      }
+
+      get length(): number {
+        return this.n;
+      }
+    }
+    // n pushes: copies = 1 + 2 + 4 + … < 2n → O(1) each
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    class DynArray:
+        def __init__(self) -> None:
+            self.buf: list[float] = [0.0]
+            self.n = 0
+            self.copies = 0  # total element moves
+
+        def push(self, x: float) -> None:
+            if self.n == len(self.buf):
+                nxt = [0.0] * (2 * self.n)
+                for i in range(self.n):
+                    nxt[i] = self.buf[i]
+                self.copies += self.n
+                self.buf = nxt
+            self.buf[self.n] = x
+            self.n += 1
+
+        def __len__(self) -> int:
+            return self.n
+
+    # n pushes: copies = 1 + 2 + 4 + … < 2n → O(1) each
+    ```
+
+  </Tab>
+</Tabs>
+
+| Growth policy | Amortized push | Notes |
+| :------------ | :------------- | :---- |
+| × 2 | $O(1)$ | up to half the buffer unused |
+| × 1.5 or × 1.125 | $O(1)$ | any factor above 1 works; smaller wastes less memory, copies more often |
+| + k (constant) | $O(n)$ | total $O(n^2)$: the classic mistake |
+
+Engines are implementation details, not spec: V8 grows arrays by about 1.5×, CPython lists by about
+1.125×. Other amortized-$O(1)$ patterns: hash table resizing, a queue made of two stacks, a monotonic
+stack (each element pushed and popped once), a sliding window (each index enters and leaves once).
+Union-find with both optimizations is $O(\alpha(n))$ amortized, effectively constant
+(see [union-find](/dsa/trees-graphs/#union-find)).
+
+## Space complexity
+
+Usually quoted as **auxiliary** space: memory beyond the input (and often beyond the output). Say which
+one you mean.
+
+| Source of memory | Cost |
+| :--------------- | :--- |
+| A few variables or pointers | $O(1)$ |
+| Hash map / set of seen items | $O(n)$ |
+| Copy: `xs.slice()`, `[...xs]`, `xs[a:b]`, `list(xs)` | $O(k)$ for $k$ copied items |
+| Recursion of depth $d$ | $O(d)$ call stack, even with no other data |
+| Balanced recursion (merge sort, balanced tree) | $O(\log n)$ stack |
+| Skewed recursion (linked list, degenerate tree) | $O(n)$ stack |
+| Memo table over $k$ states | $O(k)$ |
+| BFS queue | $O(\text{widest level})$, up to $O(V)$ |
+| 2-D DP table | $O(r \cdot c)$, often reducible to one row $O(c)$ |
+| Generator / iterator instead of a list | $O(1)$ instead of $O(n)$ |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // O(n) time, O(n) stack: one frame per element
+    function sumRec(xs: number[], i = 0): number {
+      return i === xs.length ? 0 : xs[i] + sumRec(xs, i + 1);
+    }
+
+    // O(n) time, O(1) extra space
+    function sumIter(xs: number[]): number {
+      let s = 0;
+      for (const x of xs) s += x;
+      return s;
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    # O(n) time, O(n) stack: one frame per element
+    def sum_rec(xs: list[int], i: int = 0) -> int:
+        return 0 if i == len(xs) else xs[i] + sum_rec(xs, i + 1)
+
+    # O(n) time, O(1) extra space
+    def sum_iter(xs: list[int]) -> int:
+        s = 0
+        for x in xs:
+            s += x
+        return s
+    ```
+
+  </Tab>
+</Tabs>
+
+Stack limits are real: CPython stops at `sys.getrecursionlimit()` (1 000 by default) with
+`RecursionError`; V8 throws `RangeError` somewhere around 10⁴ frames (JavaScriptCore allows more;
+frame-size dependent). CPython and V8 never eliminate tail calls (only JavaScriptCore, in Safari and Bun, does), so
+portable recursion deeper than a few thousand levels must become a loop with an explicit stack.
+
+## Built-ins: TypeScript / JavaScript
+
+MDN and the spec rarely state complexity. The costs below are what V8, SpiderMonkey and JavaScriptCore
+typically deliver; "spec" marks what is actually guaranteed.
+
+| Operation | Typical cost | Notes |
+| :-------- | :----------- | :---- |
+| `xs[i]`, `xs[i] = v`, `xs.length` | $O(1)$ | dense arrays are contiguous; holes or mixed types may fall back to slower storage |
+| `push`, `pop` | $O(1)$ amortized | the end of the array |
+| `shift`, `unshift` | $O(n)$ | re-index every element; some engines optimize small cases, don't rely on it |
+| `splice(i, k, ...items)` | $O(n)$ | moves everything after `i` |
+| `includes`, `indexOf`, `find`, `findIndex` | $O(n)$ | linear scan |
+| `slice(a, b)`, `[...xs]`, `concat` | $O(b - a)$, $O(n)$, $O(n + m)$ | new array (shallow copy) |
+| `map`, `filter`, `reduce`, `forEach` | $O(n)$ × cost of the callback | |
+| `reverse`, `fill` | $O(n)$ | in place |
+| `sort`, `toSorted` | $O(n \log n)$ | spec: **stable** since ES2019; complexity unspecified (V8 uses TimSort); default compares as **strings** |
+| `Array.from`, `Object.keys`, `Object.entries` | $O(n)$ | builds a new array every call |
+| `Map` / `Set`: `get`, `set`, `has`, `add`, `delete` | $O(1)$ average | spec: sublinear on average; engines use hash tables |
+| `map.size`, `set.size` | $O(1)$ | |
+| Iterating a `Map` / `Set` | $O(n)$ | insertion order (spec) |
+| `str[i]`, `str.length` | $O(1)$ | UTF-16 code units |
+| `a + b`, `+=` | $O(n + m)$ worst | strings are **immutable** (spec); V8 defers the copy with ropes, so `+=` in a loop is usually fine but not guaranteed |
+| `slice`, `substring` | $O(k)$ | new string |
+| `includes`, `indexOf` (substring) | $O(n \cdot m)$ worst, usually near $O(n)$ | engine-dependent search |
+| `split`, `join`, `replaceAll` | $O(n)$ | |
+| `JSON.stringify`, `structuredClone` | $O(\text{size})$ | deep walks |
+
+## Built-ins: Python
+
+From the Python wiki TimeComplexity page (CPython); $k$ is the size of the argument or slice.
+
+| Operation | Average | Worst / notes |
+| :-------- | :------ | :------------ |
+| `list`: `xs[i]`, `xs[i] = v`, `len(xs)` | $O(1)$ | |
+| `list`: `append`, `pop()` | $O(1)$ | amortized |
+| `list`: `pop(0)`, `insert(0, x)`, `del xs[i]` | $O(n)$ | shifts the tail |
+| `list`: `x in xs`, `index`, `count`, `remove`, `min`, `max` | $O(n)$ | linear scan |
+| `list`: `xs[a:b]` | $O(k)$ | copies; `xs[:]` is $O(n)$ |
+| `list`: `extend`, `+=` | $O(k)$ | `xs + ys` builds a new $O(n + k)$ list |
+| `list`: `sort`, `sorted` | $O(n \log n)$ | stable (Timsort family) |
+| `dict`: `d[k]`, `d[k] = v`, `k in d`, `del d[k]` | $O(1)$ | $O(n)$ worst with collisions |
+| `dict`: iteration, `copy` | $O(n)$ | insertion order (3.7+) |
+| `set`: `x in s`, `add`, `remove` | $O(1)$ | $O(n)$ worst |
+| `set`: `s \| t` | $O(len(s) + len(t))$ | |
+| `set`: `s & t` | $O(\min(len(s), len(t)))$ | |
+| `set`: `s - t` | $O(len(s))$ | |
+| `deque`: `append`, `appendleft`, `pop`, `popleft` | $O(1)$ | |
+| `deque`: `d[i]` | $O(1)$ at the ends | $O(n)$ in the middle (docs) |
+| `deque`: `rotate(k)`, `extend` | $O(k)$ | |
+| `heapq`: `heappush`, `heappop`, `heapreplace` | $O(\log n)$ | |
+| `heapq`: `heapify` | $O(n)$ | linear, not $n \log n$ |
+| `heapq`: `nlargest(k, xs)`, `nsmallest` | $O(n \log k)$ | |
+| `bisect`: `bisect_left` | $O(\log n)$ | `insort` is $O(n)$ because of the insert |
+| `str`: `s[i]`, `len(s)` | $O(1)$ | |
+| `str`: `s + t`, `s[a:b]` | $O(n + m)$, $O(k)$ | immutable: always a new string |
+| `str`: `"".join(parts)` | $O(\text{total length})$ | the right way to build strings |
+| `str`: `sub in s`, `find`, `replace`, `split` | $O(n)$ typical | |
+| `sum`, `any`, `all`, `zip`, `enumerate` | $O(n)$ | `zip`/`enumerate` are lazy |
+
+Hashing a `str` or `tuple` key costs $O(L)$ in its length (strings cache their hash after the first time).
+
+## Input size → target complexity
+
+Budget: roughly 10⁸ simple operations per second for compiled or JIT-compiled code (C++, Java, JS),
+about 10⁷ for CPython, and judges usually allow 1–2 seconds.
+
+| Max n | Target | Typical technique |
+| :---- | :----- | :---------------- |
+| ≤ 10 | $O(n!)$ | permutations, brute force |
+| ≤ 20 | $O(2^n)$, $O(2^n \cdot n)$ | subsets, bitmask DP, backtracking |
+| ≤ 100 | $O(n^4)$ | several nested loops |
+| ≤ 500 | $O(n^3)$ | interval DP, Floyd–Warshall |
+| ≤ 5 000 | $O(n^2)$ | 2-D DP, all pairs |
+| ≤ 10⁵ – 10⁶ | $O(n \log n)$ | sorting, heaps, binary search, segment trees |
+| ≤ 10⁸ | $O(n)$ | one pass, hashing, two pointers, prefix sums |
+| above 10⁸ | $O(\log n)$ or $O(1)$ | math, binary search on the answer |
+
+In interviews the constraint is often unstated: ask for it, or assume the brute force is too slow and
+aim one class better.
+
+## Common mistakes
+
+| Looks like | Really is | Fix |
+| :--------- | :-------- | :-- |
+| `if x in some_list` inside a loop | $O(n \cdot m)$ | build a `set` once |
+| `xs.includes(x)` in a `filter` | $O(n \cdot m)$ | `new Set(xs).has(x)` |
+| `queue.shift()` / `queue.pop(0)` in BFS | $O(n^2)$ total | head index, ring buffer, `collections.deque` |
+| `s += ch` in a Python loop | up to $O(n^2)$ | append to a list, then `"".join` |
+| `[...acc, x]` or `{ ...acc, [k]: v }` in `reduce` | $O(n^2)$ | `push` / assign in a plain loop |
+| `f(xs[1:])` / `f(xs.slice(1))` in recursion | $O(n^2)$ time and space | pass an index |
+| `sorted()` / `.sort()` inside a loop | $O(n \cdot n \log n)$ | sort once, or use a heap |
+| `Object.keys(o).length` in a loop | $O(n)$ per call | keep a counter or use `Map.size` |
+| `min(xs)` / `Math.max(...xs)` every iteration | $O(n)$ per call | track the running min, or a heap |
+| hashing long strings or tuples as keys | $O(L)$ per lookup | count $L$ in the bound |
+| `str.split` / `list(s)` to "just look" | $O(n)$ copy | index directly |
+| forgetting the output | printing all subsets is $O(2^n \cdot n)$ | include output size |
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    // Slow: includes() scans bad for every x: O(n·m)
+    function keepSlow(xs: string[], bad: string[]): string[] {
+      return xs.filter((x) => !bad.includes(x));
+    }
+    // Fast: one Set, O(1) average lookups: O(n + m)
+    function keepFast(xs: string[], bad: string[]): string[] {
+      const ban = new Set(bad);
+      return xs.filter((x) => !ban.has(x));
+    }
+
+    // Slow: shift() moves every element: O(n²) total
+    function drainSlow(q: number[]): number {
+      let s = 0;
+      while (q.length > 0) s += q.shift()!;
+      return s;
+    }
+    // Fast: advance a head index: O(n)
+    function drainFast(q: number[]): number {
+      let s = 0;
+      for (let h = 0; h < q.length; h++) s += q[h];
+      return s;
+    }
+
+    // Slow: the spread copies the accumulator: O(n²)
+    const squaresSlow = (xs: number[]): number[] =>
+      xs.reduce<number[]>((acc, x) => [...acc, x * x], []);
+    // Fast: push into one array: O(n)
+    const squaresFast = (xs: number[]): number[] => {
+      const out: number[] = [];
+      for (const x of xs) out.push(x * x);
+      return out;
+    };
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections import deque
+
+    # Slow: `in` scans bad for every x: O(n·m)
+    def keep_slow(xs: list[str], bad: list[str]) -> list[str]:
+        return [x for x in xs if x not in bad]
+
+    # Fast: one set, O(1) average lookups: O(n + m)
+    def keep_fast(xs: list[str], bad: list[str]) -> list[str]:
+        ban = set(bad)
+        return [x for x in xs if x not in ban]
+
+    # Slow: pop(0) moves every element: O(n²) total
+    def drain_slow(q: list[int]) -> int:
+        s = 0
+        while q:
+            s += q.pop(0)
+        return s
+
+    # Fast: deque.popleft() is O(1): O(n)
+    def drain_fast(q: deque[int]) -> int:
+        s = 0
+        while q:
+            s += q.popleft()
+        return s
+
+    # Slow: acc + [...] copies the accumulator: O(n²)
+    def squares_slow(xs: list[int]) -> list[int]:
+        acc: list[int] = []
+        for x in xs:
+            acc = acc + [x * x]
+        return acc
+
+    # Fast: append in place (or a comprehension): O(n)
+    def squares_fast(xs: list[int]) -> list[int]:
+        return [x * x for x in xs]
+    ```
+
+  </Tab>
+</Tabs>
+
+## Recipes
+
+### Spot the complexity
+Use on any solution before stating its cost.
+
+1. Name the inputs and their sizes ($n$, $m$, $V$, $E$, $L$).
+2. Find the loops: nested over the same input multiplies, sequential adds.
+3. Look inside each loop for hidden scans: `in list`, `includes`, `indexOf`, `slice`, `shift`,
+   `pop(0)`, `sorted`, `min`, string `+`, spread.
+4. For recursion: branching factor, depth, work per call; memoized = states × work per state.
+5. Check for amortized patterns (each element pushed or popped once) before calling a nested loop $O(n^2)$.
+6. Add the sort if there is one: $O(n \log n)$ usually dominates a linear pass.
+7. Space: extra structures + recursion depth + copies; say whether the output counts.
+
+### Estimate if it will pass
+Use before coding, from the constraints.
+
+1. Plug the maximum $n$ into your complexity: $n = 10^5$ with $O(n^2)$ is $10^{10}$ operations.
+2. Compare with the budget: about $10^8$ per second (JS, Java, C++), $10^7$ (Python).
+3. Within 10× of the budget: fine. 10–100× over: optimize constants or pick a better class. More:
+   pick a better class.
+4. Use the [input-size table](#input-size--target-complexity) backwards: the constraint often tells you
+   which algorithm is expected.
+
+### Measure growth by doubling
+Use when you can't tell from the code: time $f(n)$ and $f(2n)$. A ratio near 2 is linear, near 2.1–2.2
+is $n \log n$, near 4 is quadratic, near 8 cubic.
+
+<Tabs items={["TypeScript", "Python"]} persist="dsa-lang">
+  <Tab>
+
+    ```ts
+    type Fn = (n: number) => unknown;
+
+    function timeIt(f: Fn, n: number): number {
+      const t0 = performance.now();
+      f(n);
+      return performance.now() - t0;
+    }
+
+    function growth(f: Fn, n = 1 << 10): number[] {
+      const ratios: number[] = [];
+      for (let k = 0; k < 4; k++, n *= 2)
+        ratios.push(timeIt(f, 2 * n) / timeIt(f, n));
+      return ratios; // ≈2 linear, ≈4 quadratic
+    }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    from collections.abc import Callable
+    from time import perf_counter
+
+    type Fn = Callable[[int], object]
+
+    def time_it(f: Fn, n: int) -> float:
+        t0 = perf_counter()
+        f(n)
+        return perf_counter() - t0
+
+    def growth(f: Fn, n: int = 1 << 10) -> list[float]:
+        ratios: list[float] = []
+        for _ in range(4):
+            ratios.append(time_it(f, 2 * n) / time_it(f, n))
+            n *= 2
+        return ratios  # ≈2 linear, ≈4 quadratic
+    ```
+
+  </Tab>
+</Tabs>
+
+Warm up JIT engines first (run once and discard) and use sizes large enough for runs of 10 ms or more.
+
+### State it in an interview
+Use when you finish a solution: one sentence each for time and space, with the dominant step named.
+
+```text
+"Time is O(n log n): sorting dominates; the scan after it
+ is O(n). Space is O(n) for the hash map; the recursion is
+ only O(log n) deep. n is the number of intervals."
+```
+
+Then offer the trade-off: "with a heap this becomes $O(n \log k)$ time and $O(k)$ space".
+
+### Prove an amortized bound
+Use when a nested loop looks quadratic but isn't (monotonic stack, sliding window, two pointers).
+
+1. Pick one element and follow it: how many times can it be pushed, popped, entered, left?
+2. If each element is touched a constant number of times, the total is $O(n)$, whatever the loop nesting.
+3. Or charge each expensive operation to the cheap ones that caused it (a doubling copy is paid for
+   by the pushes since the previous copy).
+
+## References
+
+- [MDN: Array](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array): methods and which ones mutate
+- [MDN: Array.prototype.sort](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort): stability guarantee, complexity left to the engine
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) and [Set](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set): the "sublinear on average" requirement, key equality
+- [MDN: String](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String): immutability, UTF-16 indexing
+- [Python wiki: TimeComplexity](https://wiki.python.org/moin/TimeComplexity): list, deque, set and dict costs in CPython
+- [Python docs: heapq](https://docs.python.org/3/library/heapq.html) and [collections.deque](https://docs.python.org/3/library/collections.html#collections.deque): heap and deque guarantees
+- [Python docs: common sequence operations](https://docs.python.org/3/library/stdtypes.html#common-sequence-operations): why repeated string concatenation is quadratic
+- *Introduction to Algorithms* (CLRS), chapters 3–4 (asymptotic notation, recurrences, master theorem) and the amortized analysis chapter
+- [Tech Interview Handbook: algorithms cheatsheets](https://www.techinterviewhandbook.org/algorithms/study-cheatsheet/): complexity expectations per topic
+- [Big-O Cheat Sheet](https://www.bigocheatsheet.com/): one-page table of structure and sort costs

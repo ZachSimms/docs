@@ -1,0 +1,345 @@
+---
+title: Blender to Godot
+date: 2026-09-27
+order: 2
+---
+
+Getting Blender 5.x models, levels and characters into Godot 4.7: the three import routes, the Import dock and
+Advanced Import Settings, name-suffix hints for collision and navigation, materials, animations and
+retargeting, and how to edit an imported scene without losing work on reimport. Godot itself is covered in
+[Nodes, scenes & signals](/game-dev/godot/nodes-scenes/) and
+[Resources, saving & export](/game-dev/godot/resources-saving-export/); the Blender prep that applies to
+every engine is in [Blender to the web](/3d/export/web-threejs/#before-you-export).
+
+## Three routes in
+
+| Route | How it works | Pros | Cons |
+| :---- | :----------- | :--- | :--- |
+| `.blend` in the project | Godot runs Blender in the background, exports glTF, then imports that | save in Blender, alt-tab, done; no exported copies in Git | every teammate and CI machine needs Blender; not in the Android or web editor; slower imports |
+| `.glb` / `.gltf` | you export glTF 2.0 from Blender, drop it in the project | the recommended format; no Blender on other machines; reproducible | one extra export step per change |
+| `.fbx` | imported with the built-in ufbx library (default since Godot 4.3) | assets from other tools and stores | Blender's FBX output is less faithful than its glTF; FBX2glTF (an external converter) is legacy |
+
+| Situation | Pick |
+| :-------- | :--- |
+| Solo, iterating fast | `.blend` |
+| Team with artists and programmers, or CI builds | `.glb`, exported by the artist or a Blender script |
+| Asset store or Mixamo downloads | `.fbx` or `.glb` as shipped; re-export through Blender if it misbehaves |
+| Web or Android editor | `.glb` only |
+
+`.blend` setup: install an official Blender from blender.org (not Flatpak or a distro package), then Editor >
+Editor Settings > FileSystem > Import > Blender > Blender Path. Godot needs Blender 3.0 or later. To keep
+`.blend` files in the project without importing them, turn off FileSystem > Import > Blender > Enabled in the
+advanced Project Settings.
+
+```text
+ scene.blend ─(Blender exports glTF)─┐
+ scene.glb / scene.gltf ─────────────┼─► glTF importer
+ scene.fbx ─(ufbx)───────────────────┘        │
+                                              ▼
+   Import dock · Advanced Import Settings · name suffixes
+   · import script (EditorScenePostImport)
+                                              │
+                                              ▼
+   .godot/imported/scene.glb-<hash>.scn   (a PackedScene)
+                                              │  instance it, or
+                                              ▼  New Inherited Scene
+   level.tscn / player.tscn
+```
+
+The source file is never modified. Import settings live in `scene.glb.import` next to it (commit that file;
+`.godot/` is regenerated).
+
+## Prepare in Blender
+
+The general checklist (apply transforms, meters, Principled BSDF, bake procedurals, name everything) is in
+[Before you export](/3d/export/web-threejs/#before-you-export). Godot-specific points:
+
+| Do | Why |
+| :- | :-- |
+| Exporter Data > Compression **off**; don't run web optimizers on files for Godot | Godot 4.7 refuses `KHR_draco_mesh_compression`, `EXT_meshopt_compression` and `KHR_mesh_quantization`; it compresses meshes itself on import |
+| Triangulate (Triangulate modifier + Apply Modifiers) | Godot can triangulate n-gons, but the result can differ from Blender's |
+| Apply transforms on meshes **and** armatures | unapplied scale breaks skinning, collision shapes and retargeting |
+| Front of characters toward Blender -Y | becomes +Z in Godot, the model-front convention (`Vector3.MODEL_FRONT`) |
+| Turn on Backface Culling in each material (Settings panel) | otherwise Godot imports cull mode Disabled and draws both sides |
+| With shape keys: exporter Data > Armature > Export Deformation Bones Only on | non-deforming bones cause wrong shading on meshes with shape keys |
+| Reset the rig to its rest pose before exporting | the imported bind pose comes from it |
+| Add name suffixes (`-col`, `-navmesh`, `-loop`) | see [Name-suffix import hints](#name-suffix-import-hints) |
+| Leave lights out, or name them `-noimp` | engines render lights differently; light the scene in Godot |
+
+## Import dock
+
+Select the file in the FileSystem dock, open the Import tab, change options, press **Reimport**.
+
+| Option | Use |
+| :----- | :-- |
+| Import As | Scene (default) or Animation Library (animations only, shared by several characters) |
+| Root Type | the root node's class: `Node3D`, or a body such as `CharacterBody3D` or `RigidBody3D` |
+| Root Name | cosmetic; instances take the file name |
+| Apply Root Scale / Root Scale | fix a unit mismatch (0.01 for centimeter files) without touching the source |
+| Meshes > Ensure Tangents | generate tangents if the file has none (needed for normal maps) |
+| Meshes > Generate LODs | automatic lower-detail meshes for distance; turn off for small or always-close meshes |
+| Meshes > Create Shadow Meshes | welded copies for faster shadow rendering |
+| Meshes > Light Baking | Static Lightmaps generates UV2 (a second, non-overlapping UV map) for `LightmapGI` |
+| Skins > Use Named Skins | bind by bone name (leave on for Blender rigs) |
+| Animation > Import, FPS, Trimming | FPS is the bake rate; 30 is usually enough |
+| Materials > Extract | Keep Internal, Extract Once (edit the `.tres`), or Extract and Overwrite |
+| Import Script > Path | an `EditorScenePostImport` script run after every import |
+| glTF > Embedded Texture Handling | Extract Textures (separate images you can tune) or embed as Basis Universal |
+| Nodes > Use Name Suffixes / Use Node Type Suffixes | turn off to ignore the hints below |
+| Blender-only: Nodes > Visible, Active Collection Only, Modifiers | what Godot asks Blender to export (`.blend` route) |
+| Blender-only: Materials > Export Materials | Export, Placeholder, or Named Placeholder |
+
+## Advanced Import Settings
+
+Double-click the file (or Import dock > Advanced…) for a preview and per-object options.
+
+| Select | Options |
+| :----- | :------ |
+| A node | Skip Import; Generate > Physics (Body Type Static, Dynamic or Area; Shape Type Trimesh, primitives, convex decomposition); Generate > NavMesh (Mesh + NavMesh, NavMesh Only); Generate > Occluder |
+| A mesh | Save to File (`.res` for `MeshInstance3D` or `MultiMeshInstance3D` use); Generate > Shadow Meshes, Lightmap UV, LODs (per-mesh overrides) |
+| A material | Use External plus a path: swap in your own `.tres` or shader material |
+| Actions… (top left) | Extract Materials, Set Animation Save Paths, Set Mesh Save Paths |
+| An animation | Loop Mode (None, Linear, Pingpong); Save to File (keep custom tracks across reimports); Slices (cut one `default` timeline into named clips) |
+| The `Skeleton3D` | Retarget > Bone Map (see [Animations](#animations)) |
+| The `AnimationPlayer` | optimizer settings; leave on unless an animation looks broken |
+
+Physics Shape Type rule of thumb: Trimesh for static level geometry, primitives (box, capsule, sphere) for
+anything that moves, convex decomposition only for large irregular dynamic objects.
+
+## Name-suffix import hints
+
+Suffixes on **object** names in Blender tell Godot what to build. They work with `-`, `$` or `_` as the
+separator, are case-insensitive, and are removed from the imported node name (`Floor-col` → `Floor`).
+
+| Suffix | On | Result |
+| :----- | :- | :----- |
+| `-noimp` | any node or animation | removed at import (helpers, reference images) |
+| `-col` | mesh | mesh stays, plus a `StaticBody3D` with a trimesh (concave) shape of the same geometry |
+| `-convcol` | mesh | same, with a convex shape (faster; fills in hollows) |
+| `-colonly` | mesh | the mesh becomes only a `StaticBody3D` with a trimesh shape; not rendered |
+| `-convcolonly` | mesh | collision only, convex decomposition |
+| `-occ` | mesh | mesh stays, plus an occluder for occlusion culling |
+| `-occonly` | mesh | converted to an occluder only |
+| `-navmesh` | mesh | converted to a navigation mesh (`NavigationRegion3D`); the visible mesh is removed |
+| `-rigid` | mesh | imported as a `RigidBody3D` |
+| `-vehicle` | mesh | imported as a child of a `VehicleBody3D` |
+| `-wheel` | mesh | imported as a child of a `VehicleWheel3D` |
+| `loop` / `cycle` | animation (action) name, start or end | animation imported with looping on; no hyphen needed, but only a `-loop` / `_loop` ending is stripped from the name |
+| `-alpha` | material | transparency mode Alpha |
+| `-vcol` | material | vertex colors used as albedo, sRGB |
+
+- `-colonly` with Blender **empties** (box, sphere, single arrow draw types) only works in Collada files; for
+  glTF use low-poly meshes with `-colonly` or `-convcolonly`.
+- Import dock > Nodes > Use Node Type Suffixes off disables the body/shape/navmesh hints but keeps `-noimp`,
+  `-loop` and `-vcol`. Use Name Suffixes off disables them all (the glTF importer still reads `-loop`).
+- Same result without renaming: the Advanced Import Settings per-node options.
+
+## Materials
+
+The glTF importer builds a `StandardMaterial3D` per material:
+
+| Blender Principled BSDF | glTF | `StandardMaterial3D` |
+| :---------------------- | :--- | :------------------- |
+| Base Color (+ image) | base color | Albedo color / texture |
+| Metallic, Roughness (packed image: roughness in G, metallic in B) | metallicRoughness | Metallic and Roughness textures, reading channels Blue and Green |
+| Normal Map node | normal texture | Normal Map enabled |
+| Ambient occlusion (baked image) | occlusion | AO texture, Red channel |
+| Emission Color / Strength | emissive (+ emissive_strength) | Emission enabled |
+| Alpha | alpha mode | Transparency: Alpha, Alpha Scissor or Disabled |
+| Backface Culling off | `doubleSided` | Cull Mode Disabled |
+| Coat, Sheen, Transmission, IOR… | `KHR_materials_*` | not imported: set Clearcoat, Rim or Refraction on an extracted material |
+
+- ORM: one texture with AO in red, roughness in green, metallic in blue. `ORMMaterial3D` reads that layout
+  directly; bake or pack textures this way to save samplers.
+- Edit materials in Godot: Import dock > Materials > Extract (or Advanced Import Settings > Actions > Extract
+  Materials) writes one `.tres` per material. Reimports don't overwrite them; renaming the material in Blender
+  breaks the link (reassign it under Use External).
+- For shaders, set a `ShaderMaterial` through Use External on that material
+  ([Godot shaders](/game-dev/godot/shaders/#materials)).
+- Textures: extracted images get their own import settings (VRAM compression, mipmaps, normal-map
+  detection); see [texture compression per platform](/game-dev/godot/resources-saving-export/#export-presets--templates).
+
+Watch for which Principled BSDF inputs survive the trip and how the textures show up in Godot's material.
+
+<YouTube id="PIpCl6TYnC0" title="GLTF IS AMAZING! How to Export your Materials From Blender To Godot Properly!" channel="FinePointCGI" />
+
+## Animations
+
+| Blender | Godot |
+| :------ | :---- |
+| Action (active or stashed in the NLA) | an `Animation` in the scene's `AnimationPlayer`, in its default library |
+| Action name `Run-loop` or `Run_loop` | `Run`, looping |
+| Action name `loop_Run` | `loop_Run`, looping (a leading token isn't stripped) |
+| Several armatures or objects animated | one `AnimationPlayer` with tracks on each node path |
+| Shape key animation | blend shape tracks |
+| Timeline with several moves in one action | Advanced Import Settings > Slices (needs a single animation named `default`) |
+
+- Looping: `-loop` suffix, or Advanced Import Settings > the animation > Loop Mode. Editing the imported
+  animation in the editor is lost on reimport unless you save it to a file first.
+- Animation Library import: set Import As to Animation Library on an animations-only `.glb`, then add that
+  library to any `AnimationPlayer` (`add_animation_library("moves", lib)`).
+- Retargeting (one set of animations on several humanoid rigs): select the `Skeleton3D` in Advanced Import
+  Settings > Retarget > Bone Map > new `BoneMap` with a `SkeletonProfileHumanoid`; auto-mapping works best
+  with plain English bone names (`Hips`, `LeftUpperLeg`). Then Remove Tracks, Rest Fixer (Overwrite Axis, Fix
+  Silhouette for A-pose rigs) and Bone Renamer options make the animations shareable.
+- Root motion: set `root_motion_track` on the `AnimationPlayer` or `AnimationTree` to the root bone track
+  (for example `%GeneralSkeleton:Root` after retargeting) and move the body with `get_root_motion_position()` each physics frame.
+- State machines and blending: [AnimationTree](/game-dev/godot/ui-animation-audio/#animationtree).
+  Rigging concepts: [Animation & rigging](/3d/fundamentals/animation-rigging/); Blender actions and NLA:
+  [Blender animation](/3d/blender/animation/).
+
+## Collision, navigation & occlusion
+
+| Need | Blender side | Godot side |
+| :--- | :----------- | :--------- |
+| Walls and floors of a level | low-poly copy of the walkable surfaces named `Level-colonly` | `StaticBody3D` + trimesh, invisible |
+| Props that stay put | the prop itself named `Crate-convcol`, or a box mesh `Crate_box-colonly` | `StaticBody3D` + convex or trimesh |
+| Physics props | the mesh named `Barrel-rigid`; add shapes in the inherited scene | `RigidBody3D`; prefer primitive shapes |
+| Player or NPC | nothing (collision comes from code) | `CharacterBody3D` with a `CapsuleShape3D` |
+| Navigation | a simplified floor mesh named `Floor-navmesh` | `NavigationRegion3D`; or bake one in Godot from the level |
+| Occlusion culling | big blockers (walls) as simple boxes named `Wall-occonly` | occluder; enable Rendering > Occlusion Culling in Project Settings |
+
+Primitive shapes are fastest and most stable; trimesh shapes only collide correctly as static bodies. Bodies,
+layers and masks: [Input & physics](/game-dev/godot/input-physics/#collision-shapes).
+
+## Editing imported scenes
+
+An imported `.glb` or `.blend` is read-only in Godot: edits to it are thrown away on reimport. Four ways to
+customize it:
+
+| Way | How | Survives reimport | Use for |
+| :-- | :-- | :---------------- | :------ |
+| Fix it in Blender | edit, save, re-export | yes (it is the source) | geometry, names, UVs, most things |
+| Import options | Import dock, Advanced Import Settings, suffixes | yes (stored in `.import`) | collision, LODs, materials, loops |
+| Inherited scene | Scene > New Inherited Scene, or open the file and choose New Inherited | added nodes and changed properties, yes; overrides on renamed or deleted nodes are lost | scripts, extra nodes (lights, areas, sounds), property tweaks |
+| Instance + Editable Children | place the model in a scene, right-click > Editable Children | fragile: changes live in the parent scene | quick one-off tweaks |
+| Import script | `EditorScenePostImport` | yes, it reruns every import | repeatable fixes across many files |
+
+A good default for game objects: `player.tscn` with a `CharacterBody3D` root, collision shape and script, and
+the imported model instanced as a child. Swap the model file without touching gameplay.
+
+## Axes & scale
+
+| | Blender | glTF / Godot |
+| :- | :------ | :----------- |
+| Up | +Z | +Y |
+| Model front | -Y | +Z (`Vector3.MODEL_FRONT`) |
+| Camera forward | | -Z |
+| Units | meters (Unit Scale 1.0) | meters |
+| Handedness | right-handed | right-handed |
+
+The glTF exporter's +Y Up option does the conversion; don't rotate models by hand. When turning a model to face
+a target, pass `use_model_front = true` to `look_at()`. A model imported at 100× or 0.01× size means unapplied
+scale or a non-1 Unit Scale in Blender, or an FBX in centimeters (use Root Scale).
+
+## From GDScript
+
+Instance an imported model and play one of its clips:
+
+```gdscript
+extends Node3D
+
+const CRATE := preload("res://models/crate.glb")
+
+func _ready() -> void:
+    var obj := CRATE.instantiate() as Node3D
+    obj.position = Vector3(0, 0, -3)
+    add_child(obj)
+    var ap: AnimationPlayer = obj.get_node("AnimationPlayer")
+    ap.animation_finished.connect(_on_done)
+    ap.play("Bob")
+
+func _on_done(clip: StringName) -> void:
+    print("finished ", clip)
+```
+
+A `.glb` loads as a `PackedScene`, just like a `.tscn`
+([Instancing scenes](/game-dev/godot/nodes-scenes/#instancing-scenes)). Clip names are Blender's action names
+without the `-loop` suffix.
+
+## Common problems
+
+| Symptom | Likely cause | Fix |
+| :------ | :----------- | :-- |
+| "required extension 'KHR_draco_mesh_compression' is not supported" | the `.glb` was Draco- or Meshopt-compressed | export again with Compression off; keep a separate optimized copy for the web |
+| `.blend` not imported, or error on open | Blender path not set, Blender missing, or a Flatpak/Snap build | set Editor Settings > FileSystem > Import > Blender > Blender Path to an official build |
+| Works for you, fails for a teammate or CI | `.blend` route needs Blender everywhere | commit `.glb` exports instead |
+| Edits vanished after reimport | the imported scene itself was edited | use an inherited scene, extracted materials, or import options |
+| Material flat or wrong | procedural nodes; non-Principled shader | bake to images; Principled BSDF + Image Texture |
+| Both sides of every face drawn | Backface Culling off in Blender | enable it per material and re-export, or set Cull Mode on the extracted material |
+| Dark streaks on a model with shape keys | non-deforming bones exported | exporter Export Deformation Bones Only on |
+| Normal map looks inverted or seamy | missing tangents; wrong channel | export Tangents or Ensure Tangents; Blender's normal maps are OpenGL (+Y), which Godot also uses |
+| Animation plays once | not flagged to loop | `-loop` suffix or Loop Mode in Advanced Import Settings |
+| Skinned mesh stretched or exploding | unapplied transforms on armature or mesh, or scaled bones in rest pose | apply transforms, re-bind, re-export |
+| Collision missing | suffix typo, suffixes disabled, or used on an empty in glTF | check the node tree in the Advanced dialog |
+| Model 100× too big or small | unit mismatch | apply scale in Blender; Root Scale for FBX in cm |
+| Model faces away from the camera | front was +Y in Blender | rotate 180° in Blender and apply |
+| Imported lights far too bright or dim | unit conversion between engines | delete them (`-noimp`) and light in Godot |
+| Imports slow | huge meshes with LOD and shadow-mesh generation | turn those off for that file |
+| Retargeted animation twists limbs | bone rolls differ from the profile | Rest Fixer > Overwrite Axis; check the Bone Map for red entries |
+
+## Recipes
+
+### Blocked-out level with collision
+Use to walk around a Blender blockout in minutes.
+
+1. Model the level; for each walkable or blocking part add a low-poly copy named `<name>-colonly`.
+2. Big walls: duplicate as boxes named `<name>-occonly` if the level is large.
+3. Floor copy named `Floor-navmesh` if NPCs need to walk.
+4. Export `level.glb` into `res://levels/`.
+5. Instance it in `main.tscn`, drop in a `CharacterBody3D` player, run.
+
+### Post-import script
+Use to apply the same fixes to every import: groups, collision layers, material swaps.
+
+```gdscript
+@tool
+extends EditorScenePostImport
+
+# Runs after every (re)import of the scene it is set on.
+func _post_import(scene: Node) -> Object:
+    for n in scene.find_children("*", "MeshInstance3D"):
+        n.add_to_group("props", true)  # true: saved
+    for n in scene.find_children("*", "StaticBody3D"):
+        (n as StaticBody3D).collision_layer = 1 << 1
+    return scene
+```
+
+Set it under Import dock > Import Script > Path, then Reimport. The returned node is what gets saved.
+
+### Edit materials in Godot
+Use when a material needs Godot-only features (triplanar, rim, a shader).
+
+1. Import dock > Materials > Extract: Extract Once; set a folder (`res://materials/`); Reimport.
+2. Edit the generated `.tres` files; they now override the embedded ones.
+3. Re-exports from Blender keep your edits as long as the material names stay the same.
+
+### Shared animations for several characters
+Use when several humanoids share one set of moves.
+
+1. Export the moves as an animations-only `anims.glb` (armature plus actions, no mesh needed).
+2. Import As: Animation Library; in Advanced Import Settings on its `Skeleton3D`, set a Bone Map with
+   `SkeletonProfileHumanoid`, and enable the Remove Tracks options.
+3. On each character file, set the same Bone Map profile so their skeletons are renamed the same way.
+4. Add the library to each character's `AnimationPlayer`, drive it with an `AnimationTree`.
+
+### .glb exports for a team
+Use when not everyone has Blender, or CI builds the game.
+
+- Keep `.blend` sources outside `res://`, or in a folder with an empty `.gdignore` file.
+- Export with a script so settings never drift (the command-line recipe in
+  [Blender to the web](/3d/export/web-threejs/#export-from-the-command-line); drop the WebP option).
+- Commit the `.glb` and its `.import` file; CI runs `godot --headless --path . --import`
+  ([Command line](/game-dev/godot/resources-saving-export/#command-line)).
+
+## References
+
+- [Godot docs: Available 3D formats](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/available_formats.html): glTF, `.blend`, FBX (ufbx), OBJ, DAE
+- [Godot docs: Model export considerations](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/model_export_considerations.html): axes, triangulation, rest pose
+- [Godot docs: Import configuration](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/import_configuration.html): Import dock, import scripts, animation libraries, scene inheritance
+- [Godot docs: Advanced Import Settings](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/advanced_import_settings.html): per-node physics, navmesh, occluders, material extraction
+- [Godot docs: Node type customization using name suffixes](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/node_type_customization.html): the suffix list
+- [Godot docs: Retargeting 3D skeletons](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/retargeting_3d_skeletons.html): Bone Map, SkeletonProfileHumanoid, rest fixer
+- [Godot class reference: ResourceImporterScene](https://docs.godotengine.org/en/stable/classes/class_resourceimporterscene.html): every import option by name
+- [Blender Manual: glTF 2.0](https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html): the exporter Godot runs for `.blend` files
+- [Khronos glTF-Blender-IO](https://github.com/KhronosGroup/glTF-Blender-IO): exporter issues and changelog
