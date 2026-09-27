@@ -1330,6 +1330,33 @@ ul.dated li > a {
   margin-bottom: 0;
 }
 
+/* Resume skills: a label column, then the chips. */
+.skills {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr);
+  gap: 0.5em 1ch;
+  align-items: baseline;
+}
+
+.skills .chips {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .skills {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* A long role or company takes the line; its dates move under it rather than squeezing it. */
+  .entry-head {
+    flex-wrap: wrap;
+  }
+
+  .entry-head > :first-child {
+    flex: 1 1 auto;
+  }
+}
+
 /* A link drawn as a boxed button (the resume's PDF). */
 a.button {
   background: var(--pre-bg);

@@ -41,7 +41,7 @@ export default function HomePage() {
       <HomeKeys
         notes={{
           p: PROFILE.projectsNote,
-          r: job ? `${job.company} since ${job.start}` : "",
+          r: job ? `${job.shortName ?? job.company} since ${job.start}` : "",
           b: posts[0] ? `latest: ${posts[0].title}` : "no posts yet",
           g: `${TOPICS.length} topics`,
         }}

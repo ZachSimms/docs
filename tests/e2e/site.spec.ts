@@ -1914,17 +1914,31 @@ test.describe("split layout", () => {
 
   test("projects and resume list the projects; the resume has its sections", async ({ page }) => {
     await page.goto("/projects/");
-    await expect(page.locator("main .project-card h3 a")).toHaveText(["Zach's Docs", "Playground"]);
+    await expect(page.locator("main .project-card h3")).toHaveText([
+      /^Zach's Docs/,
+      /^Playground/,
+      "3D Algorithm Visualizer",
+    ]);
     await expect(page.locator("main .project-card").first()).toContainText(
       /\d+ cheatsheets across 21 topics/,
     );
     await page.goto("/resume/");
     await expect(page.locator("main h2")).toHaveText([
+      "Education",
       "Experience",
       "Projects",
-      "Education",
+      "University activities",
       "Skills",
     ]);
+    await expect(page.locator("main")).toContainText(
+      "Science Applications International Corporation",
+    );
+    await expect(page.locator("main")).not.toContainText("[");
+    const pdf = page.getByRole("link", { name: "Download PDF" });
+    await expect(pdf).toHaveAttribute("href", "/docs/ZachSimms_Resume_Updated.pdf");
+    const response = await page.request.get("/docs/ZachSimms_Resume_Updated.pdf");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("application/pdf");
   });
 
   test("phones get the sections as one line above the page, without the tree", async ({ page }) => {

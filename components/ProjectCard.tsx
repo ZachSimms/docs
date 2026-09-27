@@ -11,10 +11,14 @@ export function ProjectCard({ project }: { project: Project }) {
   return (
     <article className="card project-card">
       <h3 className="card-head">
-        <DottedLink href={project.href} prefetch={false}>
-          {project.name}
-        </DottedLink>
-        <span className="dim">{project.year}</span>
+        {project.href ? (
+          <DottedLink href={project.href} prefetch={false}>
+            {project.name}
+          </DottedLink>
+        ) : (
+          <span>{project.name}</span>
+        )}
+        {project.year && <span className="dim">{project.year}</span>}
       </h3>
       <p>{project.description}</p>
       <p className="chips">

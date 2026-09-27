@@ -1,9 +1,9 @@
 /**
  * @file Everything personal the Home, Projects and Resume pages show, in one place.
  *
- * Strings in `[square brackets]` are placeholders still to be written: the pages
- * render them as they are, so they are easy to spot on the site. Replace them here;
- * no page needs to change. A resume section with no entries is not rendered.
+ * The resume below is transcribed from `public/docs/ZachSimms_Resume_Updated.pdf`
+ * (linked from `/resume/`); keep the two in step. A resume section with no entries
+ * is not rendered, so a page never shows an empty heading.
  */
 
 import { listAllSheets } from "./content";
@@ -16,14 +16,14 @@ export const PROFILE = {
   name: "Zach",
   /** Home page heading; the resume prints it too. */
   fullName: "Zach Simms",
-  /** The role the resume is aimed at. */
-  role: "Lead engineer",
-  location: "[City]",
+  /** Current role, printed under the name on the resume. */
+  role: "Software Engineer",
   /** Home page introduction: two or three sentences. */
   bio: "Lead engineer at SAIC. AI systems and open-source tooling for a U.S. defense program. I write things down here.",
   /** One line about the projects, beside Projects on the home page. */
   projectsNote: "agents, dev tools, game servers",
   github: "https://github.com/ZachSimms",
+  linkedin: "https://www.linkedin.com/in/zachsimms97",
   /** Optional `mailto:` target; leave undefined to show no email link. */
   email: undefined as string | undefined,
 } as const;
@@ -31,11 +31,11 @@ export const PROFILE = {
 /** One project card. */
 export interface Project {
   readonly name: string;
-  /** Where the name links: the project itself (an internal page or a live URL). */
-  readonly href: string;
+  /** Where the name links (an internal page or a live URL); none renders plain text. */
+  readonly href?: string;
   readonly description: string;
   readonly stack: readonly string[];
-  readonly year: string;
+  readonly year?: string;
   /** Source repository, if public. */
   readonly source?: string;
 }
@@ -52,8 +52,8 @@ export function docsStats(): DocsStats {
 }
 
 /**
- * Every project, newest first. The docs description is built from live counts,
- * so it never goes stale as sheets are added.
+ * Every project: this site's two, then those on the resume. The docs description is
+ * built from live counts, so it never goes stale as sheets are added.
  */
 export function listProjects(): Project[] {
   const { sheets, topics } = docsStats();
@@ -75,6 +75,7 @@ export function listProjects(): Project[] {
       year: "2026",
       source: "https://github.com/ZachSimms/docs",
     },
+    ...RESUME.projects,
   ];
 }
 
@@ -82,49 +83,125 @@ export function listProjects(): Project[] {
 export interface Job {
   readonly role: string;
   readonly company: string;
-  /** E.g. `"2024"`. */
+  /** How the home page names the company, when shorter than `company`. */
+  readonly shortName?: string;
+  /** E.g. `"Oct 2024"`. */
   readonly start: string;
-  /** E.g. `"2026"`, or `"now"`. */
+  /** E.g. `"May 2024"`, or `"Present"`. */
   readonly end: string;
   readonly points: readonly string[];
 }
 
-/** One school or course on the resume. */
+/** A degree on the resume. */
 export interface Education {
-  readonly title: string;
   readonly school: string;
-  readonly year: string;
+  readonly degree: string;
+  /** Graduation, e.g. `"May 2024"`. */
+  readonly date: string;
+  readonly note?: string;
 }
 
-/** The resume page's content. Projects come from {@link listProjects}. */
+/** A role outside work (clubs, student government). */
+export interface Involvement {
+  readonly name: string;
+  readonly role: string;
+  readonly start: string;
+  readonly end: string;
+  readonly summary: string;
+}
+
+/** The resume page's content, in the PDF's order. */
 export const RESUME = {
-  /** Two sentences under the heading. */
-  summary:
-    "[Two lines of summary: what you do, the size of problems you have handled, what you want next.]",
-  /** Path of a PDF under `public/` (e.g. `/resume.pdf`); undefined hides the download link. */
-  pdf: undefined as string | undefined,
+  /** The PDF under `public/`, linked as "Download PDF". */
+  pdf: "/docs/ZachSimms_Resume_Updated.pdf",
+  education: [
+    {
+      school: "University of Nebraska Omaha",
+      degree: "B.S. in Computer Science",
+      date: "May 2024",
+      note: "GPA: 3.6",
+    },
+  ] satisfies readonly Education[] as readonly Education[],
   jobs: [
     {
       role: "Software Engineer",
-      company: "SAIC",
+      company: "Science Applications International Corporation (SAIC)",
+      shortName: "SAIC",
       start: "Oct 2024",
-      end: "now",
+      end: "Present",
       points: [
-        "[What you shipped, with a number.]",
-        "[Scope: team size, users, scale, money.]",
-        "[A decision you owned and how it turned out.]",
+        "Designed and shipped a TypeScript agentic SDK against the DoD’s OpenAI-compatible inference API, implementing a prompt-based tool-calling protocol to work around the platform’s lack of native function calling, plus multi-agent orchestration, human-in-the-loop approval checkpoints, and a CLI coding agent.",
+        "Replatformed 2 locally hosted Rancher Kubernetes Engine 2 (RKE2) applications into AWS GovCloud, re-architecting NFS file I/O onto S3 object storage and converting synchronous workflows to SQS/SNS event-driven processing with no loss of data integrity or functionality.",
+        "Led UI modernization of a TypeScript/React application serving 20,000 personnel across the US Department of War (DoW).",
+        "Transitioned legacy pages to be editable by user with role-based access control (RBAC) using Keycloak OpenID Connect (OIDC) authentication.",
+        "Containerized services with Kubernetes and Helm and ensuring monitoring with Splunk.",
+        "Hand picked from outside the agency to be 1 of 10 alpha testers for the DoW Catalyst Forge (AI development platform) run by the Army CDAIO based on contributions to the GenAI development collaboration forum.",
       ],
     },
     {
-      role: "[Role]",
-      company: "[Company]",
-      start: "[yyyy]",
-      end: "[yyyy]",
-      points: ["[What you shipped, with a number.]", "[Scope: team size, users, scale, money.]"],
+      role: "Software Engineering Intern",
+      company: "Kiewit",
+      start: "Summer 2023",
+      end: "Summer 2023",
+      points: [
+        "Built the 2nd version of Kiewit’s internal news app in React, TypeScript, Redux Toolkit, and Ionic, implementing authentication, news feed, and article detail pages.",
+        "Owned features end-to-end from sprint planning through demo, collaborating with design, QA, PM, and business analyst stakeholders while writing unit tests to achieve 80%+ code coverage.",
+      ],
     },
-  ] satisfies readonly Job[],
-  education: [
-    { title: "[Degree]", school: "[School]", year: "[yyyy]" },
-  ] satisfies readonly Education[],
-  skills: ["[Python]", "[TypeScript]", "[C++]", "[Docker]", "[Linux]"] as readonly string[],
+    {
+      role: "Recitation Instructor & Peer Tutor",
+      company: "UNO College of IS&T",
+      start: "Jan 2022",
+      end: "May 2024",
+      points: [
+        "Led recitation sessions for Intro to Computer Science 1, reinforcing lecture material for 12 students per section.",
+        "Provided one-on-one tutoring across 4 semesters, adapting explanations to individual learning gaps in all undergrad Comp Sci topics.",
+      ],
+    },
+  ] satisfies readonly Job[] as readonly Job[],
+  /** Projects from the resume (the site's own come first in {@link listProjects}). */
+  projects: [
+    {
+      name: "3D Algorithm Visualizer",
+      description:
+        "Built an interactive React/Three.js application rendering real-time 3D visualizations of pathfinding algorithms (A*, BFS/DFS), letting users set start/end nodes and place obstacles to compare algorithm behavior live.",
+      stack: ["React", "Three.js"],
+    },
+  ] satisfies readonly Project[] as readonly Project[],
+  activities: [
+    {
+      name: "MavLabs",
+      role: "Founder & President",
+      start: "Apr 2022",
+      end: "May 2023",
+      summary:
+        "Founded and grew a student engineering club to 60+ members, recruiting and managing 3 officers while launching 4 collaborative technical projects.",
+    },
+    {
+      name: "UNO Student Government",
+      role: "Senator",
+      start: "Aug 2022",
+      end: "May 2023",
+      summary:
+        "Sole elected senator representing the College of IS&T student body; drove Outreach Committee initiatives to increase student legislative participation.",
+    },
+  ] satisfies readonly Involvement[] as readonly Involvement[],
+  skills: {
+    tools: [
+      "Cursor",
+      "Claude Code",
+      "Greptile",
+      "AWS",
+      "Kubernetes",
+      "Helm",
+      "Docker",
+      "Splunk",
+      "Neon",
+      "Atlassian Suite (Jira, Confluence)",
+      "Git",
+      "Reactjs",
+      "Tailwind CSS",
+    ],
+    languages: ["Python", "JavaScript", "TypeScript", "C"],
+  } as { readonly tools: readonly string[]; readonly languages: readonly string[] },
 } as const;

@@ -3,6 +3,7 @@
  * the left navigation (`SiteNav`), breadcrumbs, and the grid menus (`TopicCards`,
  * `TopicIndex`) built on `useMenu`.
  */
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -52,17 +53,28 @@ describe("profile", () => {
     );
   });
 
-  it("links every project and gives it a stack and a year", () => {
-    for (const project of listProjects()) {
-      expect(project.href).toMatch(/^\/|^https:\/\//);
+  it("links the site's projects, gives each project a stack, and adds the resume's", () => {
+    const projects = listProjects();
+    for (const project of projects) {
+      if (project.href) expect(project.href).toMatch(/^\/|^https:\/\//);
+      if (project.year) expect(project.year).toMatch(/^\d{4}$/);
       expect(project.stack.length).toBeGreaterThan(0);
-      expect(project.year).toMatch(/^\d{4}$/);
     }
+    expect(projects.map((p) => p.name)).toEqual([
+      "Zach's Docs",
+      "Playground",
+      "3D Algorithm Visualizer",
+    ]);
   });
 
-  it("points GitHub at the repository owner and hides the PDF link until one is set", () => {
+  it("points GitHub at the repository owner and the resume at its PDF in public/", () => {
     expect(PROFILE.github).toBe("https://github.com/ZachSimms");
-    expect(RESUME.pdf).toBeUndefined();
+    expect(RESUME.pdf).toBe("/docs/ZachSimms_Resume_Updated.pdf");
+    expect(existsSync(path.join(process.cwd(), "public", RESUME.pdf))).toBe(true);
+  });
+
+  it("has no placeholders left in the resume", () => {
+    expect(JSON.stringify({ PROFILE, RESUME })).not.toMatch(/\[[A-Za-z][^\]]*\]/);
   });
 });
 
