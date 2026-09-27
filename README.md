@@ -5,9 +5,12 @@ A Next.js 16 personal site styled after [williamjansson.com](https://williamjans
 under `/docs/`. Plain monospace, every page prerendered at build time; the only client-side code is
 search, the theme toggle, the keyboard navigation and the table-of-contents tracking.
 
-Every page but the playground uses the split layout: the site's sections on the left (with the docs'
-topic tree unfolded down to the page being read), the page on the right. Below 900px the sections
-become one line of links above the page and the tree is left out; breadcrumbs and `../` remain.
+The home page is one 90ch column: name, introduction, an activity grid (commits to this repository,
+sheets and posts per day over the last 44 weeks), and the sections with their keys (`p` projects,
+`r` resume, `b` blog, `g` docs). Every other page but the playground uses the split layout: the site's
+sections on the left (with the docs' topic tree unfolded down to the page being read), the page on
+the right. Below 900px the sections become one line of links above the page and the tree is left out;
+breadcrumbs and `../` remain.
 
 ## Requirements
 
@@ -76,8 +79,9 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
 
 ## Home, projects, resume and blog
 
-Everything personal lives in `lib/profile.ts`: name, bio, GitHub (and optional email), the projects
-(shown on the home page when `featured`, and all of them on `/projects/` and the resume), and the resume
+Everything personal lives in `lib/profile.ts`: name, bio, the note beside Projects on the home page,
+GitHub (and optional email), the projects
+(on `/projects/` and the resume), and the resume
 (summary, jobs, education, skills, and an optional PDF under `public/`). Strings in `[square brackets]`
 are placeholders still to be written; a resume section with no entries is not rendered.
 
@@ -109,6 +113,11 @@ not kebab-case fails the build.
   themes, switched by CSS). Add a language after the opening fence: ` ```python `.
 - **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
   with MathML alongside for screen readers. No client JavaScript.
+- **Zen mode**: on a sheet or a post, `zen` beside `../` (or `z`) hides the navigation, breadcrumbs
+  and footer and puts the table of contents on the left, from 900px up. It is remembered in
+  `localStorage` and restored before first paint.
+- **Activity grid** (home): counted at build time from `git log` (left out when the clone is shallow),
+  the sheets' frontmatter dates and the posts' dates; it ends on the day of the last build.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.
@@ -149,6 +158,8 @@ Available in every sheet without an import. All are rendered in the site's own i
 | --- | ----- | ---- |
 | `⌘K` / `/` | anywhere | open search |
 | `d` | anywhere | toggle light/dark theme |
+| `z` | sheets and posts | zen mode: only the sheet, with its contents on the left |
+| `p` `r` `b` `g` | home | open Projects, Resume, Blog, Docs |
 | `Esc` / `←` / `h` | any page but home | go up a level (`../`); `Esc` closes search first; the parent list highlights the row you left |
 | `↑` `↓` / `j` `k` | list pages | move the `>` highlight (hover works too); on a topic page it runs through every directory's sheets, and on `/docs/` through the topic cards |
 | `Enter` / `→` / `l` | list pages | open the highlighted row: into a topic, a directory or a sheet |
@@ -165,7 +176,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 | Route                    | Content                                                                  |
 | ------------------------ | ------------------------------------------------------------------------ |
-| `/`                      | introduction, featured projects, latest posts, recently added sheets     |
+| `/`                      | introduction, activity grid, sections with their keys                    |
 | `/projects/`             | every project as a card                                                  |
 | `/blog/`                 | the latest post as an excerpt, then every post by year                   |
 | `/blog/<slug>/`          | one post                                                                 |

@@ -54,6 +54,7 @@ export function SheetView({
         title={title}
         footer={back}
         pinFooterLink
+        zen
         section={section}
         docs={docs}
         crumbs={crumbs}

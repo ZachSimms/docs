@@ -13,6 +13,7 @@ import { DottedLink } from "./DottedLink";
 import { ParentLink } from "./ParentLink";
 import { SearchLink } from "./SearchLink";
 import { SiteNav, type DocsLocation } from "./SiteNav";
+import { ZenToggle } from "./ZenToggle";
 
 /** The primary footer link: usually `../`. */
 export interface FooterLink {
@@ -51,6 +52,15 @@ interface PageProps {
   crumbs?: readonly Crumb[];
   /** Shown on the heading's line, right-aligned (a date, a download link). */
   titleAside?: ReactNode;
+  /** Offer zen mode (sheets and posts): a `zen` switch beside the pinned `../`. */
+  zen?: boolean;
+  /**
+   * `"split"` (default): the navigation beside the page. `"solo"`: the original single
+   * 90ch column with no navigation, a plain heading and the `-` separator (the home page).
+   */
+  layout?: "split" | "solo";
+  /** Right-aligned on the footer's line. */
+  footerAside?: ReactNode;
   /** Page body, placed after the heading. */
   children: ReactNode;
 }
@@ -91,27 +101,41 @@ export function Page({
   docs,
   crumbs,
   titleAside,
+  zen = false,
+  layout = "split",
+  footerAside,
   children,
 }: PageProps) {
+  const solo = layout === "solo";
   return (
     <>
       {pinFooterLink && (
         <div className="back-rail">
-          <ParentLink href={footer.href} label={footer.label} ariaLabel={footer.ariaLabel} />
+          <span className="back-rail-links">
+            <ParentLink href={footer.href} label={footer.label} ariaLabel={footer.ariaLabel} />
+            {zen && <ZenToggle />}
+          </span>
         </div>
       )}
-      <div className="split">
-        <SiteNav section={section} docs={docs} />
+      <div className={solo ? "solo" : "split"} data-zen-able={zen ? "" : undefined}>
+        {!solo && <SiteNav section={section} docs={docs} />}
         <div className="split-main">
           <main>
             {crumbs && crumbs.length > 0 && <Crumbs crumbs={crumbs} />}
-            <div className="page-head">
-              <h1>{title}</h1>
-              {titleAside}
-            </div>
+            {solo ? (
+              <>
+                <h1>{title}</h1>
+                <p>-</p>
+              </>
+            ) : (
+              <div className="page-head">
+                <h1>{title}</h1>
+                {titleAside}
+              </div>
+            )}
             {children}
           </main>
-          <footer>
+          <footer className={footerAside ? "footer-split" : undefined}>
             <p>
               <DottedLink href={footer.href} ariaLabel={footer.ariaLabel}>
                 {footer.label}
@@ -127,6 +151,7 @@ export function Page({
               )}
               <SearchLink />
             </p>
+            {footerAside}
           </footer>
         </div>
       </div>

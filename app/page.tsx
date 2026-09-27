@@ -1,77 +1,51 @@
 /**
- * @file Home page (`/`): the introduction, featured projects, the latest posts (when
- * there are any) and the most recently added sheets.
+ * @file Home page (`/`): a single column without the side navigation. The name, the
+ * introduction, the activity grid (commits, sheets and posts per day), the sections
+ * with their shortcut keys, and a footer with the theme hint.
+ *
+ * Prerendered at build time, so the grid ends on the day of the last build.
  */
-import { BreakablePath } from "@/components/BreakablePath";
-import { DottedLink } from "@/components/DottedLink";
+import { ActivityGrid } from "@/components/ActivityGrid";
+import { HomeKeys } from "@/components/HomeKeys";
 import { Page } from "@/components/Page";
-import { ProjectCard } from "@/components/ProjectCard";
-import { recentSheets, sheetHref } from "@/lib/content";
-import { listPosts, postHref } from "@/lib/posts";
-import { PROFILE, docsStats, listProjects } from "@/lib/profile";
-import { docPath } from "@/lib/search-rank";
-import { SITE_TITLE } from "@/lib/site";
-
-/** How many posts and sheets each list shows. */
-const RECENT = 3;
+import { ThemeHint } from "@/components/ThemeHint";
+import { buildActivity, gitCommitDates } from "@/lib/activity";
+import { listAllSheets } from "@/lib/content";
+import { formatDate } from "@/lib/format";
+import { listPosts } from "@/lib/posts";
+import { PROFILE, RESUME } from "@/lib/profile";
+import { TOPICS } from "@/lib/topics";
 
 /** Home page. */
 export default function HomePage() {
-  const projects = listProjects().filter((project) => project.featured);
-  const posts = listPosts().slice(0, RECENT);
-  const { sheets } = docsStats();
+  const posts = listPosts();
+  const activity = buildActivity({
+    today: formatDate(new Date()),
+    commits: gitCommitDates(),
+    sheets: listAllSheets().map((sheet) => sheet.date),
+    posts: posts.map((post) => post.date),
+  });
+  const job = RESUME.jobs[0];
 
   return (
     <Page
-      title={SITE_TITLE}
+      title={PROFILE.fullName}
       footer={{ href: "/info/", label: "Info" }}
       secondaryFooter={{ href: "/playground/", label: "Playground" }}
       section="home"
+      layout="solo"
+      footerAside={<ThemeHint />}
     >
       <p>{PROFILE.bio}</p>
-      <section className="block">
-        <h2>Selected projects</h2>
-        <div className="card-grid">
-          {projects.map((project) => (
-            <ProjectCard key={project.name} project={project} />
-          ))}
-        </div>
-      </section>
-      {posts.length > 0 && (
-        <section className="block">
-          <h2>Recent writing</h2>
-          <ul className="dated">
-            {posts.map((post) => (
-              <li key={post.slug}>
-                <span className="dim">{post.date}</span>
-                <DottedLink href={postHref(post)}>{post.title}</DottedLink>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <DottedLink href="/blog/">All posts</DottedLink>
-          </p>
-        </section>
-      )}
-      <section className="block">
-        <h2>Recently added to the docs</h2>
-        <ul className="dated">
-          {recentSheets(RECENT).map((sheet) => {
-            const href = sheetHref(sheet);
-            return (
-              <li key={href}>
-                <span className="dim">{sheet.date}</span>
-                <DottedLink href={href} prefetch={false}>
-                  <BreakablePath label={docPath({ url: href })} />
-                </DottedLink>
-              </li>
-            );
-          })}
-        </ul>
-        <p>
-          <DottedLink href="/docs/">All {sheets} sheets</DottedLink>
-        </p>
-      </section>
+      <ActivityGrid activity={activity} />
+      <HomeKeys
+        notes={{
+          p: PROFILE.projectsNote,
+          r: job ? `${job.company} since ${job.start}` : "",
+          b: posts[0] ? `latest: ${posts[0].title}` : "no posts yet",
+          g: `${TOPICS.length} topics`,
+        }}
+      />
     </Page>
   );
 }

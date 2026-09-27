@@ -43,34 +43,32 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("introduces the site, marks Home in the sections and links the docs", async ({ page }) => {
+  test("is one column: name, introduction, activity, sections with their keys", async ({
+    page,
+  }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach Simms");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-weight", "400");
+    await expect(page.locator("main > p").nth(0)).toHaveText("-");
+    await expect(page.locator("main > p").nth(1)).toContainText("Lead engineer at SAIC.");
+    // No side navigation on the home page; the content column is the original 90ch.
+    await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    const sections = page
-      .getByRole("navigation", { name: "Sections" })
-      .locator(".nav-sections > li > a");
-    await expect(sections).toHaveText([
-      "Home",
-      "Projects",
-      "Blog",
-      "Resume",
-      "Docs",
-      "Playground",
-      "Info",
-    ]);
-    await expect(sections.first()).toHaveAttribute("aria-current", "page");
-    await expect(page.locator(".nav-sections .nav-num").first()).toHaveText("07.");
+    const grid = page.getByRole("img", { name: /^Last 44 weeks: / });
+    await expect(grid).toBeVisible();
+    expect(await grid.locator(".activity-cell").count()).toBeGreaterThan(43 * 7);
+    await expect(page.locator(".activity-months span").first()).toBeVisible();
 
-    await expect(page.getByRole("heading", { name: "Selected projects" })).toBeVisible();
-    await expect(page.locator("main .project-card")).toHaveCount(2);
-    await expect(page.locator("main a", { hasText: /^All \d+ sheets$/ })).toHaveAttribute(
-      "href",
-      "/docs/",
-    );
+    const rows = page.locator(".home-keys p");
+    await expect(rows.locator("kbd")).toHaveText(["p", "r", "b", "g"]);
+    await expect(rows.locator("a")).toHaveText(["Projects", "Resume", "Blog", "Docs"]);
+    await expect(rows.nth(1)).toContainText("SAIC since Oct 2024");
+    await expect(rows.nth(3)).toContainText("21 topics");
+
     await expect(page.locator("footer a").first()).toHaveAttribute("href", "/info/");
     await expect(page.locator("footer a").first()).toHaveText("Info");
+    await expect(page.locator("footer .theme-hint")).toHaveText("press d for dark");
 
     const search = page.locator("footer").getByRole("button", { name: /search/i });
     await expect(search).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -848,7 +846,7 @@ test.describe("keyboard", () => {
     await backTo("/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach Simms");
   });
 
   test("list pages are menus: arrows and j/k move a > highlight, Enter opens, hover follows", async ({
@@ -1962,5 +1960,59 @@ test.describe("split layout", () => {
     await expect(frame.getByRole("heading", { level: 1 })).toHaveText("FastAPI");
     await expect(frame.locator(".site-nav")).toBeHidden();
     await expect(frame.locator(".crumbs")).toBeHidden();
+  });
+});
+
+test.describe("home keys and zen mode", () => {
+  test("p, r, b and g open the sections from the home page", async ({ page }) => {
+    for (const [key, url] of [
+      ["p", /\/projects\/$/],
+      ["r", /\/resume\/$/],
+      ["b", /\/blog\/$/],
+      ["g", /\/docs\/$/],
+    ] as const) {
+      await page.goto("/");
+      await hydrated(page);
+      await effectsFlushed(page);
+      await page.keyboard.press(key);
+      await expect(page).toHaveURL(url);
+    }
+  });
+
+  test("zen mode leaves only the sheet, with its contents on the left, and is remembered", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.goto("/python/fastapi/");
+    await hydrated(page);
+    const zen = page.getByRole("button", { name: "zen" });
+    await expect(zen).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".site-nav")).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Contents" })).toBeHidden();
+
+    await page.keyboard.press("z");
+    await expect(zen).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".site-nav")).toBeHidden();
+    await expect(page.locator(".crumbs")).toBeHidden();
+    await expect(page.locator("footer")).toBeHidden();
+    const toc = page.getByRole("navigation", { name: "Contents" });
+    await expect(toc).toBeVisible();
+    const [tocBox, mainBox] = await Promise.all([
+      toc.boundingBox(),
+      page.locator("main").boundingBox(),
+    ]);
+    expect(tocBox!.x + tocBox!.width).toBeLessThan(mainBox!.x);
+
+    // Remembered across pages; the home page has no zen switch and keeps its layout.
+    await page.goto("/typescript/language/objects/");
+    await expect(page.locator(".site-nav")).toBeHidden();
+    await page.goto("/python/");
+    await expect(page.locator(".site-nav")).toBeVisible();
+
+    await page.goto("/python/fastapi/");
+    await hydrated(page);
+    await page.getByRole("button", { name: "zen" }).click();
+    await expect(page.locator(".site-nav")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("zen"))).toBeNull();
   });
 });

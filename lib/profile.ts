@@ -12,15 +12,17 @@ import { TOPICS } from "./topics";
 
 /** Who the site is about. */
 export const PROFILE = {
-  /** Home page heading and the start of every `<title>`. */
+  /** The start of every `<title>`. */
   name: "Zach",
-  /** Full name, as the resume prints it. */
-  fullName: "Zach [Surname]",
+  /** Home page heading; the resume prints it too. */
+  fullName: "Zach Simms",
   /** The role the resume is aimed at. */
-  role: "[target role]",
+  role: "Lead engineer",
   location: "[City]",
   /** Home page introduction: two or three sentences. */
-  bio: "[Two or three lines of bio: what you do, what you are learning, what you want to be asked about.]",
+  bio: "Lead engineer at SAIC. AI systems and open-source tooling for a U.S. defense program. I write things down here.",
+  /** One line about the projects, beside Projects on the home page. */
+  projectsNote: "agents, dev tools, game servers",
   github: "https://github.com/ZachSimms",
   /** Optional `mailto:` target; leave undefined to show no email link. */
   email: undefined as string | undefined,
@@ -36,8 +38,6 @@ export interface Project {
   readonly year: string;
   /** Source repository, if public. */
   readonly source?: string;
-  /** Shown on the home page as well as on `/projects/`. */
-  readonly featured?: boolean;
 }
 
 /** Counts shown wherever the docs are described. */
@@ -65,7 +65,6 @@ export function listProjects(): Project[] {
       stack: ["Next.js 16", "React 19", "MDX", "KaTeX", "Shiki", "Bun"],
       year: "2026",
       source: "https://github.com/ZachSimms/docs",
-      featured: true,
     },
     {
       name: "Playground",
@@ -75,7 +74,6 @@ export function listProjects(): Project[] {
       stack: ["CodeMirror 6", "Pyodide", "basedpyright", "Compiler Explorer", "Godot 4 web"],
       year: "2026",
       source: "https://github.com/ZachSimms/docs",
-      featured: true,
     },
   ];
 }
@@ -107,9 +105,9 @@ export const RESUME = {
   pdf: undefined as string | undefined,
   jobs: [
     {
-      role: "[Role]",
-      company: "[Company]",
-      start: "[yyyy]",
+      role: "Lead engineer",
+      company: "SAIC",
+      start: "Oct 2024",
       end: "now",
       points: [
         "[What you shipped, with a number.]",

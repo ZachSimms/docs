@@ -1,6 +1,6 @@
 /**
  * @file One project as a boxed card: name, description, stack chips, links and year.
- * Used on the home page (featured projects) and on `/projects/`.
+ * Used on `/projects/`.
  */
 
 import type { Project } from "@/lib/profile";
