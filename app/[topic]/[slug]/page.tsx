@@ -91,6 +91,13 @@ async function GroupPage({ group }: { group: Group }) {
       title={group.title}
       footer={{ href: `/${group.topic}/`, label: "../", ariaLabel: "Back to topic" }}
       pinFooterLink
+      section="docs"
+      docs={{ topic: group.topic, group: group.slug }}
+      crumbs={[
+        { label: "docs", href: "/docs/" },
+        { label: group.topic, href: `/${group.topic}/` },
+        { label: group.slug },
+      ]}
     >
       <Intro />
       <NumberedList items={items} />
@@ -117,6 +124,12 @@ export default async function SlugPage({ params }: SlugParams) {
       date={meta.date}
       back={{ href: `/${topic}/`, label: "../", ariaLabel: "Back to topic" }}
       toc={extractToc(readSheetBody(meta))}
+      docs={{ topic, sheet: slug }}
+      crumbs={[
+        { label: "docs", href: "/docs/" },
+        { label: topic, href: `/${topic}/` },
+        { label: slug },
+      ]}
     >
       <Sheet />
     </SheetView>

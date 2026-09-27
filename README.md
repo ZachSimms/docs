@@ -1,9 +1,13 @@
-# Zach — references & cheatsheets
+# Zach — projects, writing, resume, references & cheatsheets
 
-A Next.js 16 site styled after [williamjansson.com](https://williamjansson.com/) (see
-[Credits](#credits)), serving references and cheatsheets instead of blog posts. Plain monospace,
-every page prerendered at build time; the only client-side code is search, the theme toggle, the
-keyboard navigation and the table-of-contents tracking.
+A Next.js 16 personal site styled after [williamjansson.com](https://williamjansson.com/) (see
+[Credits](#credits)): a home page, projects, a blog, a resume, and the references and cheatsheets
+under `/docs/`. Plain monospace, every page prerendered at build time; the only client-side code is
+search, the theme toggle, the keyboard navigation and the table-of-contents tracking.
+
+Every page but the playground uses the split layout: the site's sections on the left (with the docs'
+topic tree unfolded down to the page being read), the page on the right. Below 900px the sections
+become one line of links above the page and the tree is left out; breadcrumbs and `../` remain.
 
 ## Requirements
 
@@ -70,6 +74,29 @@ component, highlighted code in any language, aligned tables, images, `<details>`
 and build-time JavaScript expressions (`export const meta = …` then `{meta.updated}`).
 Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` folder.
 
+## Home, projects, resume and blog
+
+Everything personal lives in `lib/profile.ts`: name, bio, GitHub (and optional email), the projects
+(shown on the home page when `featured`, and all of them on `/projects/` and the resume), and the resume
+(summary, jobs, education, skills, and an optional PDF under `public/`). Strings in `[square brackets]`
+are placeholders still to be written; a resume section with no entries is not rendered.
+
+Blog posts are `posts/<slug>.mdx`, published at `/blog/<slug>/` and listed newest first on `/blog/` and
+the home page:
+
+```mdx
+---
+title: A post
+date: 2026-09-27
+summary: One or two sentences for the excerpt.   # optional
+tags: [notes]                                    # optional
+---
+```
+
+A post renders like a sheet (same components, code, math and table of contents). `_`-prefixed files are
+drafts and never published; `posts/_example.mdx` is a template. Invalid frontmatter or a file name that is
+not kebab-case fails the build.
+
 ## Features
 
 - **Dark mode**: follows the OS preference. The moon / sun button at the top, on the right edge of the content column, overrides it
@@ -82,9 +109,10 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
   themes, switched by CSS). Add a language after the opening fence: ` ```python `.
 - **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
   with MathML alongside for screen readers. No client JavaScript.
-- **Table of contents**: on wide viewports every sheet with two or more `##`/`###` headings gets a
-  contents list in the right margin; the section on screen is underlined solid.
-- **Playground** (`/playground/`, linked from the home footer): a browser IDE for C++, Rust, Python,
+- **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
+  gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
+  same list opens from `≡` in the top bar.
+- **Playground** (`/playground/`, in the section list): a browser IDE for C++, Rust, Python,
   JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, GDScript and Markdown. Each
   is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
   intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets or the official docs
@@ -122,8 +150,8 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `⌘K` / `/` | anywhere | open search |
 | `d` | anywhere | toggle light/dark theme |
 | `Esc` / `←` / `h` | any page but home | go up a level (`../`); `Esc` closes search first; the parent list highlights the row you left |
-| `↑` `↓` / `j` `k` | list pages | move the `>` highlight (hover works too) |
-| `Enter` / `→` / `l` | list pages | open the highlighted row: into a directory or a sheet |
+| `↑` `↓` / `j` `k` | list pages | move the `>` highlight (hover works too); on a topic page it runs through every directory's sheets, and on `/docs/` through the topic cards |
+| `Enter` / `→` / `l` | list pages | open the highlighted row: into a topic, a directory or a sheet |
 | double-tap left edge | touch, any page but home | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables) |
 | double-tap right edge | touch, list pages | same as `→`: open the highlighted row; nothing if no row is highlighted |
 | `⌘↵` / `Ctrl+↵` | playground editor | run the project |
@@ -135,26 +163,37 @@ Available in every sheet without an import. All are rendered in the site's own i
 
 ## Site map
 
-| Route                    | Content                                                      |
-| ------------------------ | ------------------------------------------------------------ |
-| `/`                      | the twenty-one topics, numbered, plus `v` to all sheets      |
-| `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug` |
-| `/<topic>/`              | that topic's directories and sheets                          |
-| `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                 |
-| `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                 |
-| `/info/`                 | about                                                        |
-| `/playground/`           | the in-browser IDE                                           |
+| Route                    | Content                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `/`                      | introduction, featured projects, latest posts, recently added sheets     |
+| `/projects/`             | every project as a card                                                  |
+| `/blog/`                 | the latest post as an excerpt, then every post by year                   |
+| `/blog/<slug>/`          | one post                                                                 |
+| `/resume/`               | experience, projects, education, skills                                  |
+| `/docs/`                 | the twenty-one topics as cards (number, sheet count), recently added     |
+| `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug`             |
+| `/<topic>/`              | that topic's directories, each unfolded with its sheets, and loose sheets |
+| `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                             |
+| `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                             |
+| `/info/`                 | about                                                                    |
+| `/playground/`           | the in-browser IDE                                                       |
+
+Sheet URLs did not move when the site gained its other sections: the topic list moved from `/` to
+`/docs/`, and `../` from a topic now leads there.
 
 The topic at `/math/` used to live at `/maths/`; old links redirect (`next.config.ts`).
 
 ## Layout
 
 - `app/` routes and `globals.css` (the original's CSS, reproduced verbatim plus table/blockquote rules)
-- `components/` `Page` (shell), `NumberedList`, `DottedLink` (the `<a><i>…</i></a>` link idiom)
-- `lib/` topics, content loader (`gray-matter` + Zod), formatting helpers
-- `content/` the MDX cheatsheets
-- Client components: `SearchPalette.tsx`, `SearchLink.tsx`, `ThemeToggle.tsx`, `NumberedList.tsx` (list pages as
-  keyboard/mouse menus), `ParentLink.tsx` (pinned `../`, Esc/←/h), `Toc.tsx`, `Tabs.tsx`
+- `components/` `Page` (the split shell: `SiteNav` on the left, breadcrumbs, heading, body, footer),
+  `NumberedList`, `DottedLink` (the `<a><i>…</i></a>` link idiom), `ProjectCard`
+- `lib/` topics, sections (`lib/sections.ts`), content loader (`gray-matter` + Zod), posts loader
+  (`lib/posts.ts`), profile and resume data (`lib/profile.ts`), formatting helpers
+- `content/` the MDX cheatsheets; `posts/` the MDX blog posts
+- Client components: `SearchPalette.tsx`, `SearchLink.tsx`, `ThemeToggle.tsx`, `useMenu.ts` (the keyboard/mouse
+  menu behind `NumberedList.tsx`, `TopicCards.tsx` and `TopicIndex.tsx`), `ParentLink.tsx` (pinned `../`,
+  Esc/←/h), `NavScroller.tsx` (keeps the current page visible in the navigation), `Toc.tsx`, `Tabs.tsx`
 - `components/FileTree.tsx` + `lib/file-tree.ts` + `lib/remark-file-tree.ts` (```` ```tree ```` fences)
 - `components/Swatches.tsx` + `lib/color.ts` (color chips), `components/Demo.tsx` + `lib/remark-demo.ts`
   (```` ```html demo ```` fences), `components/Diagram.tsx` + `lib/diagram.ts` (SVGs in `public/images/diagrams/`)

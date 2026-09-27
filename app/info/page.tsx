@@ -7,7 +7,6 @@ import { Fragment } from "react";
 import { DottedLink } from "@/components/DottedLink";
 import { Page } from "@/components/Page";
 import { SHORTCUT_LIST } from "@/lib/keys";
-import { SITE_TITLE } from "@/lib/site";
 
 /** Page title, rendered through the layout's `%s - Zach` template. */
 export const metadata: Metadata = { title: "Info" };
@@ -19,9 +18,10 @@ const KEY_WIDTH = 8;
 export default function InfoPage() {
   return (
     <Page
-      title={SITE_TITLE}
+      title="Info"
       footer={{ href: "/", label: "../", ariaLabel: "Back to home" }}
       pinFooterLink
+      section="info"
     >
       <p>
         My personal reference hub.

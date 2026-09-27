@@ -22,6 +22,19 @@ async function effectsFlushed(page: Page) {
   );
 }
 
+/**
+ * A topic page's own entries in order: its directories' heading links and its loose
+ * sheets, without the sheets unfolded under each directory.
+ */
+function topicEntries(page: Page) {
+  return page.locator("main nav[data-menu] :is(.topic-folders h2 a, .topic-loose > a)");
+}
+
+/** The topic cards' names on `/docs/`, in order. */
+function topicCards(page: Page) {
+  return page.locator("main nav[data-menu] .card-head i");
+}
+
 /** YouTube player and thumbnail hosts: stubbed so the suite never hits the network for video. */
 const YOUTUBE = /^https:\/\/(?:(?:www\.)?youtube(?:-nocookie)?\.com|i\.ytimg\.com)\//;
 
@@ -30,40 +43,72 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("lists the twenty-one topics, the v link and the Info footer", async ({ page }) => {
+  test("introduces the site, marks Home in the sections and links the docs", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(SITE_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
 
-    const nav = page.locator("main nav");
-    await expect(nav.locator("a")).toHaveCount(21);
-    await expect(nav.locator("span").first()).toHaveText("21.");
-    await expect(nav.locator("span").last()).toHaveText("01.");
-    await expect(nav.locator("a").first()).toHaveText("Math");
-    await expect(nav.locator("a").last()).toHaveText("Design");
+    const sections = page
+      .getByRole("navigation", { name: "Sections" })
+      .locator(".nav-sections > li > a");
+    await expect(sections).toHaveText([
+      "Home",
+      "Projects",
+      "Blog",
+      "Resume",
+      "Docs",
+      "Playground",
+      "Info",
+    ]);
+    await expect(sections.first()).toHaveAttribute("aria-current", "page");
+    await expect(page.locator(".nav-sections .nav-num").first()).toHaveText("07.");
 
-    await expect(page.locator("p.v a")).toHaveAttribute("href", "/sheets/");
+    await expect(page.getByRole("heading", { name: "Selected projects" })).toBeVisible();
+    await expect(page.locator("main .project-card")).toHaveCount(2);
+    await expect(page.locator("main a", { hasText: /^All \d+ sheets$/ })).toHaveAttribute(
+      "href",
+      "/docs/",
+    );
     await expect(page.locator("footer a").first()).toHaveAttribute("href", "/info/");
     await expect(page.locator("footer a").first()).toHaveText("Info");
 
-    const search = page.getByRole("button", { name: /search/i });
+    const search = page.locator("footer").getByRole("button", { name: /search/i });
     await expect(search).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(search).toHaveCSS("border-top-width", "0px");
     await expect(search.locator("i")).toHaveCSS("border-bottom-style", "dotted");
   });
 
+  test("the docs index lists the twenty-one topics as cards and links every sheet", async ({
+    page,
+  }) => {
+    await page.goto("/docs/");
+    await expect(page).toHaveTitle(`Docs - ${SITE_TITLE}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Docs");
+    await expect(topicCards(page)).toHaveCount(21);
+    await expect(topicCards(page).first()).toHaveText("Math");
+    await expect(topicCards(page).last()).toHaveText("Design");
+    await expect(page.locator("main nav[data-menu] .card-head .dim").first()).toHaveText("21");
+    await expect(page.locator("main nav[data-menu] .card-head .dim").last()).toHaveText("01");
+    await expect(page.locator("main a", { hasText: /^All \d+ sheets$/ })).toHaveAttribute(
+      "href",
+      "/sheets/",
+    );
+    await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/");
+  });
+
   test("uses the original's visual system", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/docs/");
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     expect(bodyBg).toBe("rgb(242, 242, 242)");
 
-    const link = page.locator("main nav a i").first();
+    const link = topicCards(page).first();
     await expect(link).toHaveCSS("border-bottom-style", "dotted");
     await expect(link).toHaveCSS("border-bottom-width", "1px");
 
     const font = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
     expect(font).toBe("monospace");
 
+    // Beside the navigation, the content column is 72ch (104ch grid minus 24ch + 8ch).
     const mainWidth = await page.locator("main").evaluate((el) => el.getBoundingClientRect().width);
     const chWidth = await page.evaluate(() => {
       const probe = document.createElement("span");
@@ -73,30 +118,33 @@ test.describe("home", () => {
       probe.remove();
       return w;
     });
-    expect(mainWidth).toBeLessThanOrEqual(64 * chWidth + 1);
+    expect(mainWidth).toBeLessThanOrEqual(72 * chWidth + 1);
   });
 });
 
 test.describe("navigation", () => {
-  test("topic page lists its sheets and ../ returns home", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: "Physics" }).click();
+  test("topic page lists its sheets and ../ returns to the docs", async ({ page }) => {
+    await page.goto("/docs/");
+    await page.locator("main nav[data-menu] a", { hasText: "Physics" }).click();
     await expect(page).toHaveURL(/\/physics\/$/);
     await expect(page).toHaveTitle(`Physics - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Physics");
-    await expect(page.locator("main nav a")).toHaveCount(3); // two sheets + the overview
-    await expect(page.locator("main nav span").first()).toHaveText("00.");
+    await expect(topicEntries(page)).toHaveCount(3); // two sheets + the overview
+    await expect(page.locator("main nav[data-menu] span").first()).toHaveText("00.");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveText("docs / physics");
 
     await page.locator("footer a", { hasText: "../" }).click();
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SITE_TITLE);
+    await expect(page).toHaveURL(/\/docs\/$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Docs");
   });
 
   test("sheet page renders MDX in house style and ../ returns to its topic", async ({ page }) => {
     await page.goto("/databases/postgres/");
     await expect(page).toHaveTitle(`PostgreSQL - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("PostgreSQL");
-    await expect(page.locator("main > p").first()).toHaveText("-");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveText(
+      "docs / databases / postgres",
+    );
 
     expect(await page.locator("main pre").count()).toBeGreaterThan(1);
     await expect(page.locator("main pre").first()).toHaveCSS(
@@ -114,7 +162,7 @@ test.describe("navigation", () => {
   test("/sheets/ lists every sheet as NN. topic/slug", async ({ page }) => {
     await page.goto("/sheets/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cheatsheets");
-    const links = page.locator("main nav a");
+    const links = page.locator("main nav[data-menu] a");
     const count = await links.count();
     expect(count).toBeGreaterThanOrEqual(9);
     await expect(links.first()).toHaveText(/^[a-z0-9-]+(\/[a-z0-9-]+){1,2}$/);
@@ -122,11 +170,11 @@ test.describe("navigation", () => {
       "href",
       "/typescript/backend/websockets/",
     );
-    await expect(page.locator("main nav span").first()).toHaveText("00.");
-    await expect(page.locator("main nav span").last()).toHaveText(
+    await expect(page.locator("main nav[data-menu] span").first()).toHaveText("00.");
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText(
       `${String(count - 1).padStart(2, "0")}.`,
     );
-    await expect(page.locator("footer a").first()).toHaveAttribute("href", "/");
+    await expect(page.locator("footer a").first()).toHaveAttribute("href", "/docs/");
   });
 
   test("info page links back with ../", async ({ page }) => {
@@ -194,7 +242,10 @@ test.describe("search palette", () => {
     page,
   }) => {
     await page.goto("/info/");
-    await page.getByRole("button", { name: /search/i }).click();
+    await page
+      .locator("footer")
+      .getByRole("button", { name: /search/i })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Search" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveCSS("background-color", "rgb(242, 242, 242)");
@@ -430,7 +481,7 @@ test.describe("mdx showcase", () => {
   }) => {
     await page.goto("/math/math-fundamentals/");
     await expect(page.locator("main h2").first()).toHaveCSS("font-weight", "700");
-    await expect(page.locator("main h1")).toHaveCSS("font-weight", "400");
+    await expect(page.locator("main h1")).toHaveCSS("font-weight", "700");
 
     const toc = page.getByRole("navigation", { name: "Contents" });
     await expect(toc).toBeVisible();
@@ -480,7 +531,7 @@ test.describe("mdx showcase", () => {
 
     await pinned.click();
     await expect(page).toHaveURL(/\/math\/$/);
-    await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/");
+    await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/docs/");
 
     await page.goto("/");
     await expect(page.locator(".back-rail")).toHaveCount(0);
@@ -560,12 +611,12 @@ test.describe("mdx showcase", () => {
   test("the Math topic exists and is listed first", async ({ page }) => {
     await page.goto("/math/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Math");
-    await expect(page.locator("main nav a")).toHaveCount(5);
+    await expect(topicEntries(page)).toHaveCount(5);
     // Frontmatter `order` puts the fundamentals first; numbering runs 00. from the top.
-    await expect(page.locator("main nav a").first()).toHaveText("Math fundamentals");
-    await expect(page.locator("main nav span").first()).toHaveText("00.");
-    await expect(page.locator("main nav span").last()).toHaveText("04.");
-    await page.getByRole("link", { name: "Math fundamentals" }).click();
+    await expect(topicEntries(page).first()).toHaveText("Math fundamentals");
+    await expect(page.locator("main nav[data-menu] span").first()).toHaveText("00.");
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("04.");
+    await topicEntries(page).first().click();
     await expect(page).toHaveURL(/\/math\/math-fundamentals\/$/);
     const display = page.locator("main .katex-display");
     expect(await display.count()).toBeGreaterThanOrEqual(4);
@@ -580,11 +631,11 @@ test.describe("mdx showcase", () => {
 
 test.describe("typescript topic and directories", () => {
   test("the topic lists its nine directories, then its loose sheet", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: "TypeScript" }).click();
+    await page.goto("/docs/");
+    await page.locator("main nav[data-menu] a", { hasText: "TypeScript" }).click();
     await expect(page).toHaveURL(/\/typescript\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("TypeScript");
-    const links = page.locator("main nav a");
+    const links = topicEntries(page);
     await expect(links).toHaveText([
       "Language/",
       "Design & architecture/",
@@ -599,7 +650,11 @@ test.describe("typescript topic and directories", () => {
     ]);
     await expect(links.nth(1)).toHaveAttribute("href", "/typescript/design-architecture/");
     await expect(links.nth(7)).toHaveAttribute("href", "/typescript/three-js/");
-    await expect(page.locator("main nav span").last()).toHaveText("09.");
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("09.");
+    // Every directory is unfolded: its sheets are listed under its heading.
+    await expect(
+      page.locator(".topic-folder", { has: page.locator('h2 a[href="/typescript/language/"]') }),
+    ).toContainText("Array methods");
   });
 
   test("a directory page shows its intro and sheets; ../ returns to the topic", async ({
@@ -608,8 +663,8 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/typescript/language/");
     await expect(page).toHaveTitle(`Language - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Language");
-    await expect(page.locator("main > p").nth(1)).toContainText("type system");
-    const links = page.locator("main nav a");
+    await expect(page.locator("main > p").first()).toContainText("type system");
+    const links = page.locator("main nav[data-menu] a");
     await expect(links).toHaveCount(6);
     await expect(links.first()).toHaveText("Fundamentals");
     await expect(links.first()).toHaveAttribute("href", "/typescript/language/fundamentals/");
@@ -624,7 +679,7 @@ test.describe("typescript topic and directories", () => {
   }) => {
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.goto("/typescript/language/");
-    await page.getByRole("link", { name: "Array methods" }).click();
+    await page.locator("main nav[data-menu]").getByRole("link", { name: "Array methods" }).click();
     await expect(page).toHaveURL(/\/typescript\/language\/array-methods\/$/);
     await expect(page).toHaveTitle(`Array methods - ${SITE_TITLE}`);
     expect(await page.locator("main h2").count()).toBeGreaterThanOrEqual(6);
@@ -644,7 +699,7 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"]):not([href$="/overview/"])',
+        'main nav[data-menu] a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
     expect(hrefs).toHaveLength(158);
@@ -676,8 +731,8 @@ test.describe("typescript topic and directories", () => {
 
 test.describe("new topics", () => {
   test("databases and infrastructure are listed after TypeScript", async ({ page }) => {
-    await page.goto("/");
-    const links = page.locator("main nav a");
+    await page.goto("/docs/");
+    const links = topicCards(page);
     await expect(links.nth(3)).toHaveText("Fitness");
     await expect(links.nth(4)).toHaveText("Economics");
     await expect(links.nth(10)).toHaveText("DS&A");
@@ -685,7 +740,7 @@ test.describe("new topics", () => {
     await expect(links.nth(12)).toHaveText("Databases");
     await expect(links.nth(13)).toHaveText("Infrastructure");
     await page.goto("/infrastructure/");
-    await expect(page.locator("main nav a")).toHaveText([
+    await expect(topicEntries(page)).toHaveText([
       "Linux/",
       "Containers/",
       "Kubernetes/",
@@ -699,18 +754,18 @@ test.describe("new topics", () => {
   test("game dev sits after C++ and holds the Godot and game design directories", async ({
     page,
   }) => {
-    await page.goto("/");
-    const links = page.locator("main nav a");
+    await page.goto("/docs/");
+    const links = topicCards(page);
     await expect(links.nth(15)).toHaveText("C++");
     await expect(links.nth(16)).toHaveText("3D graphics");
     await expect(links.nth(17)).toHaveText("Game dev");
     await links.nth(17).click();
     await expect(page).toHaveURL(/\/game-dev\/$/);
-    await expect(page.locator("main nav a")).toHaveText(["Godot/", "Game design/"]);
+    await expect(topicEntries(page)).toHaveText(["Godot/", "Game design/"]);
     await page.goto("/game-dev/design/");
-    await expect(page.locator("main nav a")).toHaveText(["Open-world design"]);
+    await expect(page.locator("main nav[data-menu] a")).toHaveText(["Open-world design"]);
     await page.goto("/game-dev/godot/");
-    await expect(page.locator("main nav a")).toHaveText([
+    await expect(page.locator("main nav[data-menu] a")).toHaveText([
       "GDScript",
       "Nodes, scenes & signals",
       "Input & physics",
@@ -723,7 +778,7 @@ test.describe("new topics", () => {
 
   test("the design showcase is titled Demo", async ({ page }) => {
     await page.goto("/design/");
-    await expect(page.locator("main nav a").last()).toHaveText("Demo");
+    await expect(topicEntries(page).last()).toHaveText("Demo");
     await page.goto("/design/overview/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Demo");
   });
@@ -787,6 +842,9 @@ test.describe("keyboard", () => {
     await backTo("/typescript/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/typescript\/$/);
+    await backTo("/docs/");
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\/docs\/$/);
     await backTo("/");
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/$/);
@@ -796,27 +854,61 @@ test.describe("keyboard", () => {
   test("list pages are menus: arrows and j/k move a > highlight, Enter opens, hover follows", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/typescript/language/");
     await hydrated(page);
-    const nav = page.locator("main nav");
+    const nav = page.locator("main nav[data-menu]");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("j");
     const active = nav.locator("a[data-active]");
-    await expect(active).toHaveText("Physics");
+    await expect(active).toHaveText("Objects");
     const marker = await nav
       .locator("span[data-active]")
       .evaluate((el) => getComputedStyle(el, "::before").content);
     expect(marker).toBe('">"');
     await expect(active.locator("i")).toHaveCSS("border-bottom-style", "solid");
 
-    await nav.getByRole("link", { name: "Biology" }).hover();
+    await nav.getByRole("link", { name: "String methods" }).hover();
     await page.mouse.move(5, 5); // leaving the row keeps its highlight
-    await nav.getByRole("link", { name: "Biology" }).hover();
-    await expect(active).toHaveText("Biology");
+    await nav.getByRole("link", { name: "String methods" }).hover();
+    await expect(active).toHaveText("String methods");
     await page.keyboard.press("k");
-    await expect(active).toHaveText("Physics");
+    await expect(active).toHaveText("Array methods");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/typescript\/language\/array-methods\/$/);
+  });
+
+  test("the topic cards on /docs/ are a menu, and coming back highlights the topic left", async ({
+    page,
+  }) => {
+    await page.goto("/docs/");
+    await hydrated(page);
+    const active = page.locator("main nav[data-menu] a[data-active]");
+    await page.keyboard.press("ArrowDown");
+    await expect(active.locator(".card-head i")).toHaveText("Math");
+    await page.keyboard.press("j");
+    await expect(active.locator(".card-head i")).toHaveText("Physics");
+    await expect(active).toHaveCSS("border-top-color", "rgb(0, 0, 0)");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/physics\/$/);
+    await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/docs/");
+    await effectsFlushed(page);
+    await page.keyboard.press("ArrowLeft");
+    await expect(page).toHaveURL(/\/docs\/$/);
+    await expect(active.locator(".card-head i")).toHaveText("Physics");
+  });
+
+  test("a topic's menu runs through its directories' sheets without opening them", async ({
+    page,
+  }) => {
+    await page.goto("/python/");
+    await hydrated(page);
+    const active = page.locator("main nav[data-menu] a[data-active]");
+    await page.keyboard.press("ArrowDown");
+    await expect(active).toHaveText("Language/");
+    await page.keyboard.press("j");
+    await expect(active).toHaveText("Fundamentals");
+    await page.keyboard.press("ArrowRight");
+    await expect(page).toHaveURL(/\/python\/language\/fundamentals\/$/);
   });
 });
 
@@ -853,7 +945,7 @@ test.describe("arrow keys move in and out of levels", () => {
     await page.keyboard.press("ArrowLeft");
     await expect(page).toHaveURL(/\/typescript\/$/);
     await expect(active).toHaveText("Language/");
-    await backTo("/");
+    await backTo("/docs/");
     await page.keyboard.press("ArrowRight");
     await expect(page).toHaveURL(/\/typescript\/language\/$/);
   });
@@ -901,13 +993,13 @@ test.describe("table of contents fit", () => {
   test("the rail is either fully inside the viewport or hidden", async ({ page }) => {
     await page.goto("/typescript/language/oop/");
     const toc = page.getByRole("navigation", { name: "Contents" });
-    for (const width of [1240, 1300, 1600]) {
+    for (const width of [1280, 1300, 1600]) {
       await page.setViewportSize({ width, height: 800 });
       await expect(toc).toBeVisible();
       const box = await toc.boundingBox();
       expect(box!.x + box!.width, `width ${width}`).toBeLessThanOrEqual(width);
     }
-    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.setViewportSize({ width: 1279, height: 800 });
     await expect(toc).toBeHidden();
   });
 
@@ -1137,9 +1229,9 @@ test.describe("visuals", () => {
 test.describe("python, physics and ml-ai", () => {
   test("python lists its directories, FastAPI, then the overview", async ({ page }) => {
     await page.goto("/python/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toEqual([
       "/python/language/",
       "/python/engineering/",
@@ -1155,7 +1247,7 @@ test.describe("python, physics and ml-ai", () => {
       ["ml-ai", "/ml-ai/scikit-learn/"],
     ] as const) {
       await page.goto(`/${topic}/`);
-      const links = page.locator("main nav a");
+      const links = topicEntries(page);
       await expect(links.first()).toHaveAttribute("href", first);
       await expect(links.last()).toHaveAttribute("href", `/${topic}/overview/`);
     }
@@ -1165,9 +1257,9 @@ test.describe("python, physics and ml-ai", () => {
 test.describe("fitness", () => {
   test("the topic lists its three directories in order", async ({ page }) => {
     await page.goto("/fitness/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toEqual([
       "/fitness/training/",
       "/fitness/nutrition/",
@@ -1178,7 +1270,7 @@ test.describe("fitness", () => {
   test("a directory intro carries the not-medical-advice note", async ({ page }) => {
     await page.goto("/fitness/nutrition/");
     await expect(page.locator("main aside.note")).toContainText("not medical advice");
-    await expect(page.locator("main nav a").first()).toHaveAttribute(
+    await expect(page.locator("main nav[data-menu] a").first()).toHaveAttribute(
       "href",
       "/fitness/nutrition/nutrition-hydration/",
     );
@@ -1223,9 +1315,9 @@ test.describe("fitness", () => {
 test.describe("economics and C++", () => {
   test("economics lists microeconomics then macroeconomics", async ({ page }) => {
     await page.goto("/economics/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toEqual(["/economics/microeconomics/", "/economics/macroeconomics/"]);
   });
 
@@ -1243,9 +1335,9 @@ test.describe("economics and C++", () => {
 
   test("C++ has the fundamentals sheet and no coming-soon overview", async ({ page }) => {
     await page.goto("/cpp/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toEqual(["/cpp/fundamentals/"]);
     const response = await page.goto("/cpp/overview/");
     expect(response?.status()).toBe(404);
@@ -1258,9 +1350,9 @@ test.describe("economics and C++", () => {
 test.describe("DS&A and 3D graphics", () => {
   test("DS&A lists its ten sheets, Big-O first and system design last", async ({ page }) => {
     await page.goto("/dsa/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toHaveLength(10);
     expect(hrefs[0]).toBe("/dsa/big-o/");
     expect(hrefs.at(-1)).toBe("/dsa/system-design-interviews/");
@@ -1296,9 +1388,9 @@ test.describe("DS&A and 3D graphics", () => {
 
   test("3D graphics has its four directories in order and draws its concepts", async ({ page }) => {
     await page.goto("/3d/");
-    const hrefs = await page
-      .locator("main nav a")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const hrefs = await topicEntries(page).evaluateAll((els) =>
+      els.map((el) => el.getAttribute("href")),
+    );
     expect(hrefs).toEqual([
       "/3d/fundamentals/",
       "/3d/blender/",
@@ -1314,8 +1406,8 @@ test.describe("DS&A and 3D graphics", () => {
 
 test.describe("finance, thinking, leadership, startups and writing", () => {
   test("the four new topics sit between Economics and ML/AI", async ({ page }) => {
-    await page.goto("/");
-    const links = page.locator("main nav a");
+    await page.goto("/docs/");
+    const links = topicCards(page);
     await expect(links.nth(4)).toHaveText("Economics");
     await expect(links.nth(5)).toHaveText("Finance");
     await expect(links.nth(6)).toHaveText("Thinking");
@@ -1336,16 +1428,16 @@ test.describe("finance, thinking, leadership, startups and writing", () => {
       ["/design/", ["Principles/", "HTML/", "CSS/", "Demo"]],
     ] as const) {
       await page.goto(url);
-      await expect(page.locator("main nav a")).toHaveText([...entries]);
+      await expect(topicEntries(page)).toHaveText([...entries]);
     }
     await page.goto("/finance/");
-    await expect(page.locator("main nav a")).toHaveText(["Personal finance/", "Business finance/"]);
+    await expect(topicEntries(page)).toHaveText(["Personal finance/", "Business finance/"]);
     await page.goto("/finance/business/");
-    await expect(page.locator("main nav a")).toHaveCount(5);
+    await expect(page.locator("main nav[data-menu] a")).toHaveCount(5);
     await page.goto("/leadership/");
-    await expect(page.locator("main nav a")).toHaveCount(6);
+    await expect(topicEntries(page)).toHaveCount(6);
     await page.goto("/startups/idea-to-mvp/");
-    await expect(page.locator("main nav a").first()).toHaveText("Playbook");
+    await expect(page.locator("main nav[data-menu] a").first()).toHaveText("Playbook");
   });
 
   test("writing no longer has a coming-soon overview", async ({ page }) => {
@@ -1416,13 +1508,24 @@ for (const size of SIZES) {
       test.setTimeout(300_000);
       await page.goto("/sheets/");
       const all = await page
-        .locator("main nav a")
+        .locator("main nav[data-menu] a")
         .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
       // Every page on the two extreme sizes; the heavy ones elsewhere.
       const full = size.width === 360 || size.width === 768;
       const urls = full
-        ? ["/", "/typescript/", "/typescript/language/", "/info/", "/sheets/", ...all]
-        : ["/", "/info/", ...HEAVY_SHEETS];
+        ? [
+            "/",
+            "/docs/",
+            "/projects/",
+            "/resume/",
+            "/blog/",
+            "/typescript/",
+            "/typescript/language/",
+            "/info/",
+            "/sheets/",
+            ...all,
+          ]
+        : ["/", "/docs/", "/resume/", "/info/", ...HEAVY_SHEETS];
       for (const url of urls) {
         await page.goto(url);
         const [scroll, client] = await page.evaluate(() => [
@@ -1741,5 +1844,97 @@ test.describe("links in lists", () => {
       );
       expect(shifted, url).toEqual([]);
     }
+  });
+});
+
+test.describe("split layout", () => {
+  test("a sheet unfolds the docs tree down to itself and marks it", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto("/typescript/language/array-methods/");
+    const nav = page.getByRole("complementary", { name: "Site" });
+    await expect(nav).toBeVisible();
+    const current = nav.locator('a[aria-current="page"]');
+    await expect(current).toHaveText("Array methods");
+    await expect(current).toHaveCSS("font-weight", "700");
+    // Its parents are bold too, but only the page itself gets the `>`.
+    await expect(nav.locator('li[data-mark="path"] > a')).toHaveText([
+      "Docs",
+      "TypeScript",
+      "Language/",
+    ]);
+    await expect(nav.locator("li[data-mark]")).toHaveCount(4);
+    // Other topics stay folded.
+    await expect(nav.locator('a[href="/python/language/"]')).toHaveCount(0);
+    const [aside, main] = await Promise.all([
+      nav.boundingBox(),
+      page.locator("main").boundingBox(),
+    ]);
+    expect(aside!.x + aside!.width).toBeLessThan(main!.x);
+  });
+
+  test("outside the docs the tree is folded and the section is marked", async ({ page }) => {
+    for (const [url, label] of [
+      ["/projects/", "Projects"],
+      ["/resume/", "Resume"],
+      ["/blog/", "Blog"],
+      ["/info/", "Info"],
+    ] as const) {
+      await page.goto(url);
+      const nav = page.getByRole("complementary", { name: "Site" });
+      await expect(nav.locator('a[aria-current="page"]')).toHaveText(label);
+      await expect(nav.locator(".nav-tree")).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(label);
+      await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/");
+    }
+  });
+
+  test("projects and resume list the projects; the resume has its sections", async ({ page }) => {
+    await page.goto("/projects/");
+    await expect(page.locator("main .project-card h3 a")).toHaveText(["Zach's Docs", "Playground"]);
+    await expect(page.locator("main .project-card").first()).toContainText(
+      /\d+ cheatsheets across 21 topics/,
+    );
+    await page.goto("/resume/");
+    await expect(page.locator("main h2")).toHaveText([
+      "Experience",
+      "Projects",
+      "Education",
+      "Skills",
+    ]);
+  });
+
+  test("phones get the sections as one line above the page, without the tree", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/python/fastapi/");
+    const sections = page.locator(".nav-sections > li > a");
+    await expect(sections.first()).toBeVisible();
+    await expect(page.locator(".nav-tree")).toBeHidden();
+    // Each section link stays on one line.
+    for (const link of await sections.all()) {
+      const lines = await link.evaluate((el) => el.getClientRects().length);
+      expect(lines).toBe(1);
+    }
+    const [nav, heading] = await Promise.all([
+      page.locator(".nav-sections").boundingBox(),
+      page.getByRole("heading", { level: 1 }).boundingBox(),
+    ]);
+    expect(heading!.y - (nav!.y + nav!.height)).toBeLessThan(120);
+  });
+
+  test("framed in the playground's reference panel, a sheet shows without the navigation", async ({
+    page,
+  }) => {
+    await page.goto("/info/");
+    await page.evaluate(() => {
+      const frame = document.createElement("iframe");
+      frame.src = "/python/fastapi/";
+      frame.style.width = "1200px";
+      frame.style.height = "800px";
+      document.body.append(frame);
+    });
+    const frame = page.frameLocator("iframe");
+    await expect(frame.getByRole("heading", { level: 1 })).toHaveText("FastAPI");
+    await expect(frame.locator(".site-nav")).toBeHidden();
+    await expect(frame.locator(".crumbs")).toBeHidden();
   });
 });

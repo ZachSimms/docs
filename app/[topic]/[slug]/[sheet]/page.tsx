@@ -72,6 +72,13 @@ export default async function GroupSheetPage({ params }: GroupSheetParams) {
       date={meta.date}
       back={{ href: groupHref({ topic, slug }), label: "../", ariaLabel: "Back to directory" }}
       toc={extractToc(readSheetBody(meta))}
+      docs={{ topic, group: slug, sheet }}
+      crumbs={[
+        { label: "docs", href: "/docs/" },
+        { label: topic, href: `/${topic}/` },
+        { label: slug, href: groupHref({ topic, slug }) },
+        { label: sheet },
+      ]}
     >
       <Sheet />
     </SheetView>

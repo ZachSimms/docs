@@ -43,7 +43,7 @@ const MENU_PANEL_ID = "toc-menu-panel";
 /** Body attribute set while the menu is open; `isOverlayOpen` reads it. */
 const MENU_OPEN_ATTRIBUTE = "data-toc-open";
 /** Where the rail replaces the menu; must match the `.toc-menu` media query in globals.css. */
-const WIDE_QUERY = "(min-width: 1240px)";
+const WIDE_QUERY = "(min-width: 1280px)";
 
 /** Window events that mean the reader is scrolling on purpose, which ends a pin. */
 const READER_SCROLL_EVENTS = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
