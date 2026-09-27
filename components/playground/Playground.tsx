@@ -280,6 +280,9 @@ export function Playground() {
   const indent = modeForPath(project.open) === "gdscript" ? "\t" : "  ";
   const showTree = !prefs.zen && (prefs.treeOpen || pane === "files");
   const showRefs = refsOpen || pane === "refs";
+  // Once opened, the panel stays mounted (hidden when not shown) so its sheet, search and docs survive.
+  const [refsMounted, setRefsMounted] = useState(false);
+  if (showRefs && !refsMounted) setRefsMounted(true);
   const welcome =
     prefs.welcomed || runState.output.chunks.length > 0 ? null : (
       <div className="pg-welcome" role="note">
@@ -535,8 +538,9 @@ export function Playground() {
           </div>
         </div>
 
-        {showRefs && (
+        {refsMounted && (
           <ReferencePanel
+            hidden={!showRefs}
             language={language}
             suggestions={spec.refs}
             width={prefs.layout.refs}

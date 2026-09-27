@@ -61,6 +61,59 @@ test.describe("playground on a phone", () => {
     }).toPass({ timeout: 20_000 });
   });
 
+  test("Refs keeps the open sheet across pane switches", async ({ page }) => {
+    await openPlayground(page, "react");
+    await page.getByRole("tab", { name: "Refs" }).click();
+    await page.getByRole("listbox", { name: "Sheets" }).getByRole("option").first().click();
+    const frame = page.locator(".pg-refs-frame");
+    const src = await frame.getAttribute("src");
+    expect(src).toMatch(/^\//);
+    await page.getByRole("tab", { name: "Files" }).click();
+    await expect(frame).toBeHidden();
+    await page.getByRole("tab", { name: "Code" }).click();
+    await page.getByRole("tab", { name: "Refs" }).click();
+    await expect(frame).toBeVisible();
+    await expect(frame).toHaveAttribute("src", src!);
+  });
+
+  test("zen mode: the bar sits above the code, and the editor fills the pane", async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem(
+          "playground:v1:prefs",
+          JSON.stringify({ language: "react", welcomed: true, zen: true }),
+        );
+      } catch {
+        // frames without storage
+      }
+    });
+    await page.goto("/playground/");
+    const bar = (await page.getByRole("toolbar", { name: "Zen mode" }).boundingBox())!;
+    const line = (await page.locator(".cm-line").first().boundingBox())!;
+    expect(line.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    const editor = (await page.locator(".pg-code").boundingBox())!;
+    const tabs = (await page.locator(".pg-panes").boundingBox())!;
+    expect(tabs.y - (editor.y + editor.height)).toBeLessThan(8);
+  });
+
+  test("the credit line has room above the tab bar, even on a short screen", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 560 });
+    await openPlayground(page, "react");
+    await page.getByRole("tab", { name: "Output" }).click();
+    // The console scrolls when it's short (here the first-visit card is in it too): the credit is reachable,
+    // and once scrolled to it sits above the tab bar, where it is what's on screen (nothing covers it).
+    const credit = page.locator(".pg-credit");
+    await credit.scrollIntoViewIfNeeded();
+    const box = (await credit.boundingBox())!;
+    const tabs = (await page.locator(".pg-panes").boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(tabs.y + 0.5);
+    const onTop = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x!, y!)?.closest(".pg-credit") !== null,
+      [box.x + 10, box.y + box.height / 2],
+    );
+    expect(onTop).toBe(true);
+  });
+
   test("touch targets are at least 44px", async ({ page }) => {
     await openPlayground(page, "typescript");
     const targets = [

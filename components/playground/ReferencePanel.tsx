@@ -49,6 +49,8 @@ interface ReferencePanelProps {
   requestedDoc?: (DocRequest & { n: number }) | null;
   /** The requested docs page is on screen (the playground then forgets the request). */
   onDocShown?(): void;
+  /** Not on screen right now: hidden, but kept mounted so the open sheet and search survive. */
+  hidden?: boolean;
 }
 
 /** Render the panel. */
@@ -61,6 +63,7 @@ export function ReferencePanel({
   requested,
   requestedDoc = null,
   onDocShown,
+  hidden = false,
 }: ReferencePanelProps) {
   const [query, setQuery] = useState("");
   const [docs, setDocs] = useState<SearchDoc[] | null>(null);
@@ -133,7 +136,7 @@ export function ReferencePanel({
   };
 
   return (
-    <aside className="pg-refs" aria-label="Reference sheets">
+    <aside className="pg-refs" aria-label="Reference sheets" hidden={hidden}>
       <Splitter part="refs" edge="left" size={width} onSize={onWidth} />
       <div className="pg-bar">
         <span>Refs</span>
