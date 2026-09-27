@@ -183,6 +183,18 @@ test.describe("playground: reference panel", () => {
     await expect(sheet.locator("html")).toHaveAttribute("data-theme", "dark");
   });
 
+  test("closing and reopening Refs returns to the open sheet", async ({ page }) => {
+    await openPlayground(page, "python");
+    await page.getByRole("button", { name: /Refs/ }).click();
+    await page.getByRole("listbox", { name: "Sheets" }).getByRole("option").first().click();
+    const src = await page.locator(".pg-refs-frame").getAttribute("src");
+    await page.getByRole("button", { name: "Close reference panel" }).click();
+    await expect(page.locator(".pg-refs-frame")).toBeHidden();
+    await page.getByRole("button", { name: /Refs/ }).click();
+    await expect(page.locator(".pg-refs-frame")).toHaveAttribute("src", src!);
+    await expect(page.locator(".pg-refs-frame")).toBeVisible();
+  });
+
   test("⌘K opens the chosen sheet in the panel instead of leaving the code", async ({ page }) => {
     await openPlayground(page, "gdscript");
     await page.locator(".cm-content").click();

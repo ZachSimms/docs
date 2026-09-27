@@ -303,6 +303,18 @@ describe("ReferencePanel", () => {
     expect(screen.getByRole("link", { name: /new tab/ })).toHaveAttribute("target", "_blank");
   });
 
+  it("keeps the open sheet while hidden (another pane on a phone, or closed)", () => {
+    const { container, rerender } = render(
+      <ReferencePanel {...props} requested={{ url: "/cpp/fundamentals/", n: 1 }} />,
+    );
+    expect(screen.getByTitle("Reference: /cpp/fundamentals/")).toBeInTheDocument();
+    rerender(<ReferencePanel {...props} requested={{ url: "/cpp/fundamentals/", n: 1 }} hidden />);
+    expect(container.querySelector("aside")).toHaveAttribute("hidden");
+    rerender(<ReferencePanel {...props} requested={{ url: "/cpp/fundamentals/", n: 1 }} />);
+    expect(container.querySelector("aside")).not.toHaveAttribute("hidden");
+    expect(screen.getByTitle("Reference: /cpp/fundamentals/")).toBeInTheDocument();
+  });
+
   it("opens a sheet requested from ⌘K, and resizes from the keyboard", () => {
     const widths: number[] = [];
     const { rerender } = render(<ReferencePanel {...props} onWidth={(w) => widths.push(w)} />);

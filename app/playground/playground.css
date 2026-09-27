@@ -442,6 +442,11 @@ body:has(.playground) .theme-toggle-rail {
 
 /* ---- Reference panel ---- */
 
+/* Kept mounted while closed (see Playground); beats every `display` rule below. */
+.playground .pg-refs[hidden] {
+  display: none !important;
+}
+
 .pg-refs {
   position: relative;
   width: var(--pg-refs, 420px);
@@ -756,6 +761,28 @@ body:has(.playground) .theme-toggle-rail {
 /* ---- Phones: one pane at a time ---- */
 
 @media (max-width: 767px) {
+  /* Panes never paint over the tab bar below them. */
+  .pg-main {
+    overflow: hidden;
+  }
+
+  /* A short console (the preview takes most of the Output pane) scrolls as a whole: the output keeps
+     a few lines of its own, and the credit follows it with room above the tab bar, instead of
+     squeezing both against the tabs. */
+  .pg-console {
+    overflow-y: auto;
+  }
+
+  .playground pre.pg-output {
+    flex: 1 0 auto;
+    min-height: 4.5em;
+    max-height: 60vh;
+  }
+
+  .pg-credit {
+    padding-bottom: 0.75em;
+  }
+
   .pg-toolbar {
     padding: 0.35em 3em 0.35em 0.75em;
     gap: 0.25em 1.25ch;
@@ -821,7 +848,8 @@ body:has(.playground) .theme-toggle-rail {
 
   .playground:is([data-runner="web"], [data-runner="godot"]) .pg-out {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+    /* The console keeps room for its bar, a few lines and the credit; the preview gives way. */
+    grid-template-rows: minmax(0, 3fr) minmax(13rem, 2fr);
   }
 
   .playground[data-runner="godot"] .pg-out {
@@ -860,10 +888,10 @@ body:has(.playground) .theme-toggle-rail {
 
 /* ---- Zen mode: only the editor, output and Refs ---- */
 
-/* A thin top strip holds the zen bar and the theme toggle, so neither covers the panes. */
+/* The zen bar is the first row (in place of the toolbar), so it never covers the editor, however
+   tall its buttons are (44px on touch screens). */
 .playground[data-zen="on"] {
-  grid-template-rows: minmax(0, 1fr) auto;
-  padding-top: 2.4em;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .playground[data-zen="on"] :is(.pg-files, .pg-tabs) {
@@ -879,11 +907,11 @@ body:has(.playground) .theme-toggle-rail {
 }
 
 .pg-zenbar {
-  position: fixed;
-  top: 0.35em;
-  right: 3.5em;
-  z-index: 6;
+  justify-self: end;
+  /* Clears the site's fixed theme toggle on the right. */
+  margin: 0.2em 3.5em 0.2em 0;
   display: flex;
+  align-items: center;
   gap: 1.5ch;
   padding: 0.15em 1ch;
   background: var(--bg);
@@ -1048,13 +1076,18 @@ body:has(.playground) .theme-toggle-rail {
 }
 
 @media (max-width: 767px) {
-  /* Zen on phones: the toolbar extras go, the tab bar stays. */
+  /* Zen on phones: the zen bar's row, the pane, and the tab bar (which stays). */
   .playground[data-zen="on"] {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* One pane at a time, so the editor (or the output) fills it, without the zen split's output row. */
+  .playground[data-zen="on"]:is([data-pane="code"], [data-pane="output"]) .pg-work {
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .pg-zenbar {
-    right: 3em;
+    margin-right: 3em;
   }
 
   /* The tour card becomes a bottom sheet above the tab bar. */
@@ -1176,7 +1209,8 @@ body:has(.playground) .theme-toggle-rail {
 @media (max-width: 767px) {
   .playground[data-runner="bun"] .pg-out {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+    /* The console keeps room for its bar, a few lines and the credit; the preview gives way. */
+    grid-template-rows: minmax(0, 3fr) minmax(13rem, 2fr);
   }
 
   .pg-http {
