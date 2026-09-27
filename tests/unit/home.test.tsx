@@ -12,8 +12,6 @@ const { ZenToggle, setZen } = await import("@/components/ZenToggle");
 const { SkyFigure, skyCaption } = await import("@/components/SkyFigure");
 const { ZEN_ATTRIBUTE, ZEN_INIT_SCRIPT, ZEN_STORAGE_KEY } = await import("@/lib/theme");
 
-const notes = { p: "agents", r: "SAIC since Oct 2024", b: "no posts yet", g: "21 topics" };
-
 beforeEach(() => {
   pushed.length = 0;
   localStorage.clear();
@@ -24,15 +22,10 @@ beforeEach(() => {
 afterEach(() => document.body.removeAttribute("data-search-open"));
 
 describe("HomeKeys", () => {
-  it("lists each section with its key, link and note", () => {
-    const { container } = render(<HomeKeys notes={notes} />);
+  it("lists each section with its key and link, and nothing more", () => {
+    const { container } = render(<HomeKeys />);
     const rows = [...container.querySelectorAll(".home-keys p")].map((p) => p.textContent);
-    expect(rows).toEqual([
-      "pProjectsagents",
-      "rResumeSAIC since Oct 2024",
-      "bBlogno posts yet",
-      "gDocs21 topics",
-    ]);
+    expect(rows).toEqual(["pProjects", "rResume", "bBlog", "gDocs"]);
     expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/docs/");
     expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("aria-keyshortcuts", "g");
   });
@@ -40,7 +33,7 @@ describe("HomeKeys", () => {
   it("opens a section on its key, but not in text fields, with modifiers or over search", () => {
     render(
       <>
-        <HomeKeys notes={notes} />
+        <HomeKeys />
         <input aria-label="field" />
       </>,
     );

@@ -21,8 +21,6 @@ export const PROFILE = {
   role: "Software Engineer",
   /** Home page introduction: two or three sentences. */
   bio: "Just another builder 👋",
-  /** One line about the projects, beside Projects on the home page. */
-  projectsNote: "agents, dev tools, game servers",
   github: "https://github.com/ZachSimms",
   linkedin: "https://www.linkedin.com/in/zachsimms97",
   /** Shown as an Email link in the navigation and on the resume; undefined hides it. */
@@ -84,8 +82,6 @@ export function listProjects(): Project[] {
 export interface Job {
   readonly role: string;
   readonly company: string;
-  /** How the home page names the company, when shorter than `company`. */
-  readonly shortName?: string;
   /** E.g. `"Oct 2024"`. */
   readonly start: string;
   /** E.g. `"May 2024"`, or `"Present"`. */
@@ -127,7 +123,6 @@ export const RESUME = {
     {
       role: "Software Engineer",
       company: "Science Applications International Corporation (SAIC)",
-      shortName: "SAIC",
       start: "Oct 2024",
       end: "Present",
       points: [

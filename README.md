@@ -78,7 +78,7 @@ Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` f
 
 ## Home, projects, resume and blog
 
-Everything personal lives in `lib/profile.ts`: name, bio, the note beside Projects on the home page,
+Everything personal lives in `lib/profile.ts`: name, bio,
 GitHub (and optional email), the projects
 (on `/projects/` and the resume), and the resume
 (summary, jobs, education, skills, and an optional PDF under `public/`). Strings in `[square brackets]`

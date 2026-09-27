@@ -1,5 +1,5 @@
 /**
- * @file The home page's section list: a key, the section's link and a line about it.
+ * @file The home page's section list: a key and the section's link on each line.
  * Pressing the key (`p`, `r`, `b`, `g`) opens the section.
  *
  * Client component: the keys are listened for on the window, except in text fields,
@@ -13,13 +13,8 @@ import { useEffect } from "react";
 import { HOME_KEYS, isOverlayOpen, isPlainKey } from "@/lib/keys";
 import { DottedLink } from "./DottedLink";
 
-/** Props for {@link HomeKeys}: a short note per section, by its key. */
-interface HomeKeysProps {
-  readonly notes: Readonly<Record<(typeof HOME_KEYS)[number]["key"], string>>;
-}
-
-/** Render `<nav>` with one `key  Section  note` row per section. */
-export function HomeKeys({ notes }: HomeKeysProps) {
+/** Render `<nav>` with one `key  Section` row per section. */
+export function HomeKeys() {
   const router = useRouter();
 
   useEffect(() => {
@@ -42,7 +37,6 @@ export function HomeKeys({ notes }: HomeKeysProps) {
           <DottedLink href={href} aria-keyshortcuts={key}>
             {label}
           </DottedLink>
-          <span className="dim">{notes[key]}</span>
         </p>
       ))}
     </nav>

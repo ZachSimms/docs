@@ -19,8 +19,8 @@ import { moonBits, moonPhase, nextSeasonEvent, sunBits } from "@/lib/sky";
 
 /** Size of one dither cell, in CSS pixels. */
 const CELL = 3;
-/** Cells across (and down) the drawing. */
-const CELLS = 54;
+/** Cells across (and down) the drawing: 252 CSS pixels. */
+const CELLS = 84;
 
 /** `rgb(r, g, b)` / `rgba(…)` to channels; black when unparsable. */
 function channels(color: string): [number, number, number] {

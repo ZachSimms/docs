@@ -94,8 +94,7 @@ test.describe("home", () => {
     const rows = page.locator(".home-keys p");
     await expect(rows.locator("kbd")).toHaveText(["p", "r", "b", "g"]);
     await expect(rows.locator("a")).toHaveText(["Projects", "Resume", "Blog", "Docs"]);
-    await expect(rows.nth(1)).toContainText("SAIC since Oct 2024");
-    await expect(rows.nth(3)).toContainText("21 topics");
+    await expect(rows).toHaveText(["pProjects", "rResume", "bBlog", "gDocs"]);
 
     await expect(page.locator("footer a").first()).toHaveAttribute("href", "/info/");
     await expect(page.locator("footer a").first()).toHaveText("Info");
