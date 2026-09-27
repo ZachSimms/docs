@@ -65,6 +65,12 @@ describe("profile", () => {
       "Playground",
       "3D Algorithm Visualizer",
     ]);
+    for (const project of projects) {
+      if (project.source) expect(project.source).toMatch(/^https:\/\/github\.com\/ZachSimms\//);
+    }
+    expect(projects.find((p) => p.name === "3D Algorithm Visualizer")?.source).toBe(
+      "https://github.com/ZachSimms/Pathfinding-Algorithm-Visualizer",
+    );
   });
 
   it("points GitHub at the repository owner and any resume PDF at a file in public/", () => {

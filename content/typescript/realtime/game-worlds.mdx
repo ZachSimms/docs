@@ -1,0 +1,909 @@
+---
+title: Multiplayer game worlds
+date: 2026-09-27
+order: 6
+---
+
+Netcode for realtime browser games: the authoritative server loop, the messages it trades, the client tricks that
+hide latency (prediction, reconciliation, interpolation, lag compensation), and the transports and frameworks that
+carry it. Rooms, envelopes and trust basics are in [Realtime fundamentals](/typescript/realtime/fundamentals/), the
+socket itself in [WebSockets](/typescript/backend/websockets/). Drawing the world: [Three.js](/typescript/three-js/);
+engines: [Game dev](/game-dev/).
+
+## Network models
+
+| Model                       | How it works                                                                                   | Feel                                           | Cheating                                   | Fits                                        |
+| :-------------------------- | :--------------------------------------------------------------------------------------------- | :--------------------------------------------- | :----------------------------------------- | :------------------------------------------ |
+| Authoritative server        | clients send inputs; the server simulates and broadcasts state                                 | own moves instant (predicted); others ≈ 100 ms late | hard: the server decides                 | action, .io and ranked games: the web default |
+| Client-authoritative relay  | each client simulates itself and broadcasts its position; the server forwards                  | instant                                        | trivial (teleports, speed hacks)           | co-op toys, prototypes                      |
+| Deterministic lockstep      | peers exchange only inputs for tick N; everyone steps once all inputs for N arrive              | everyone waits for the slowest peer (input delay) | desyncs; every client knows everything  | RTS with thousands of units, turn-based     |
+| Rollback (GGPO-style)       | lockstep that doesn't wait: guess missing remote inputs, and on arrival rewind and re-simulate | local input instant; remote players can pop    | as lockstep                                | fighting games, 1v1 sports, platformers     |
+
+- **Tick**: one fixed simulation step. **Authority**: the side whose state is the truth. **Determinism**: same start
+  + same inputs → bit-identical result. Lockstep and rollback need it; `Math.sin` and friends are
+  implementation-approximated in JavaScript, so run one engine version everywhere or use fixed-point math.
+- The rest of this sheet is the authoritative model, which also underlies [Colyseus](#frameworks) and most `.io`
+  games. Who may decide what: [Realtime fundamentals: Authority & trust](/typescript/realtime/fundamentals/#authority--trust).
+
+## The authoritative loop
+
+```text
+every tick (33.3 ms at 30 Hz)
+  1. take inputs     queued per player since the last tick, already validated
+  2. simulate        step(state, input) with a FIXED dt, never the frame time
+  3. record          positions per tick (lag compensation history)
+  4. every Nth tick  send each client a snapshot: what it may see + ack of its last input
+```
+
+| Rate                   | What                                  | Typical                         | Notes                                                    |
+| :--------------------- | :------------------------------------ | :------------------------------ | :------------------------------------------------------- |
+| Tick rate              | server simulation steps per second    | 20–60 Hz (Source engine: 66)    | fixed `dt`; costs CPU per room                           |
+| Send (snapshot) rate   | snapshots per second to each client   | 10–30 Hz (Source default: 20)   | bandwidth = rate × snapshot bytes × players              |
+| Input (command) rate   | input messages per second per client  | = tick rate (Source: 30)        | one input per tick keeps prediction exact                |
+| Render rate            | client frames per second              | display refresh, 60–120+ Hz     | independent: interpolate between states                  |
+
+The step is a pure function, imported by the server and the client (the big win of TypeScript on both sides):
+
+```ts title="sim.ts"
+export type Vec = { x: number; y: number };
+export type Input = { seq: number; dx: number; dy: number };
+
+export const TICK_HZ = 30;
+export const DT = 1 / TICK_HZ; // seconds per tick
+const SPEED = 6; // units per second
+
+// shared by server and client: same input → same result
+export function step(p: Vec, i: Input): Vec {
+  const len = Math.hypot(i.dx, i.dy) || 1;
+  return {
+    x: p.x + (i.dx / len) * SPEED * DT,
+    y: p.y + (i.dy / len) * SPEED * DT,
+  };
+}
+```
+
+The world owns a queue per player and consumes at most one input per tick:
+
+```ts title="world.ts"
+import { step, type Input, type Vec } from "./sim";
+
+type Player = {
+  eid: number; // small numeric id for the wire
+  pos: Vec;
+  queue: Input[]; // received, not yet simulated
+  ack: number; // last seq simulated
+};
+const MAX_QUEUE = 8; // ≈ 250 ms of inputs at 30 Hz
+
+export function createWorld() {
+  const players = new Map<string, Player>();
+  let tick = 0;
+  let nextEid = 1;
+  return {
+    join(id: string): number {
+      const eid = nextEid++;
+      const pos = { x: 0, y: 0 };
+      players.set(id, { eid, pos, queue: [], ack: 0 });
+      return eid; // tell the client which entity is theirs
+    },
+    leave: (id: string) => players.delete(id),
+    // from the socket: validated, then queued (not applied)
+    input(id: string, i: Input) {
+      const p = players.get(id);
+      if (!p) return;
+      const last = p.queue.at(-1)?.seq ?? p.ack;
+      if (i.seq <= last) return; // duplicate or stale
+      if (p.queue.length >= MAX_QUEUE) return; // flooding
+      players.set(id, { ...p, queue: [...p.queue, i] });
+    },
+    // one fixed tick: at most one input per player
+    update() {
+      tick += 1;
+      for (const [id, p] of players) {
+        const [next, ...rest] = p.queue;
+        if (!next) continue; // no input: stand still
+        const pos = step(p.pos, next);
+        const ack = next.seq;
+        players.set(id, { ...p, pos, queue: rest, ack });
+      }
+    },
+    snapshotFor(id: string) {
+      const ents = [...players.values()].map((p) => ({
+        id: p.eid,
+        ...p.pos,
+      }));
+      return { tick, ack: players.get(id)?.ack ?? 0, ents };
+    },
+  };
+}
+```
+
+- Timers jitter (a 33 ms `setInterval` fires late, and GC pauses), so accumulate real time and run whole steps; cap
+  the catch-up so a long stall doesn't cause a "spiral of death" (Fiedler, *Fix Your Timestep*).
+- One input per tick matches what the client predicted. Draining the whole queue in one tick is simpler but makes
+  a player with a lag spike move in bursts.
+- Measured with Bun: 29 ticks and 14 broadcasts in one second.
+
+```ts title="loop.ts"
+import { TICK_HZ } from "./sim";
+
+const TICK_MS = 1000 / TICK_HZ;
+const SEND_EVERY = 2; // 30 Hz sim, 15 Hz snapshots
+
+// fixed-step accumulator: timers jitter, the sim must not
+export function runLoop(
+  update: () => void,
+  broadcast: () => void,
+) {
+  let last = performance.now();
+  let acc = 0;
+  let tick = 0;
+  const timer = setInterval(() => {
+    const now = performance.now();
+    acc += Math.min(now - last, 250); // cap catch-up
+    last = now;
+    while (acc >= TICK_MS) {
+      update();
+      acc -= TICK_MS;
+      tick += 1;
+      if (tick % SEND_EVERY === 0) broadcast();
+    }
+  }, TICK_MS / 2);
+  return () => clearInterval(timer);
+}
+```
+
+## Input messages
+
+```ts title="protocol.ts"
+// client → server, one per client tick
+export type InputMsg = {
+  t: "input";
+  seq: number; // +1 every client tick, never reused
+  dx: -1 | 0 | 1; // intent, never a position
+  dy: -1 | 0 | 1;
+  fire: boolean;
+};
+
+// server → each client, every send tick
+export type SnapshotMsg = {
+  t: "snap";
+  tick: number; // server tick of this state
+  ack: number; // last seq applied for this client
+  ents: { id: number; x: number; y: number }[];
+};
+```
+
+| Field or rule              | Why                                                                                          |
+| :------------------------- | :------------------------------------------------------------------------------------------- |
+| intent (`dx`, `fire`)      | the server computes results; a client can't claim a position, a hit or a score               |
+| `seq`                      | orders and dedupes inputs; the server echoes the last one it applied as `ack`                |
+| `ack` in every snapshot    | tells the client which predicted inputs are settled ([reconciliation](#client-side-prediction--reconciliation)) |
+| render time (optional)     | when the shooter saw the world, for [lag compensation](#lag-compensation)                    |
+| stale `seq` dropped        | `seq ≤` last seen is a duplicate or a replay                                                 |
+| queue cap                  | a client can't bank inputs and burst them (speed hack)                                       |
+| repeated inputs            | over unreliable transports, send the last 3 inputs per packet ([recipe](#redundant-inputs-over-an-unreliable-channel)) |
+
+## Snapshots & encoding
+
+| Kind              | Content                                              | Pros                                | Cons                                          |
+| :---------------- | :--------------------------------------------------- | :---------------------------------- | :-------------------------------------------- |
+| Full snapshot     | every entity the client may see, every send          | stateless, any loss is healed next time | largest                                   |
+| Delta snapshot    | changes since the last snapshot the client acked     | small                               | per-client baseline on the server; needs acks |
+| Reliable events   | discrete facts: "door opened", kills, chat           | exact                               | need ordering and retransmits                 |
+
+- **Quantize** before sending: position as an `int16` of 1/100 units (±327 units), an angle as 1 byte (256 steps
+  ≈ 1.4°), a health bar as `uint8`. Clients render quantized values, so the server should simulate on the same
+  precision or accept tiny mispredictions.
+- **Binary** beats JSON by 4–5× here: no key names, no decimal text. Measured for 50 entities:
+
+| Encoding                     | 50 entities | At 20 Hz                |
+| :--------------------------- | ----------: | :---------------------- |
+| JSON, raw floats             |     1,815 B | 36 KB/s per client      |
+| JSON, 2 decimals             |     1,436 B | 29 KB/s per client      |
+| `DataView`, int16 positions  |       311 B | 6.2 KB/s per client     |
+
+- One entity: 66 B of JSON against 17 B of binary.
+
+- Every WebSocket message adds 2–14 bytes of framing plus TCP/IP headers; send one snapshot per tick, not one
+  message per entity.
+- `DataView` is big-endian by default; set `ws.binaryType = "arraybuffer"` on the client.
+- Middle ground: MessagePack. [Colyseus](#frameworks) schema does delta + binary for you.
+
+```ts title="codec.ts"
+type Ent = { id: number; x: number; y: number };
+const SNAP = 1; // message type byte
+const SCALE = 100; // 0.01-unit precision, ±327 units
+
+// 1 type + 4 tick + 4 ack + 2 count, then 6 per entity
+export function encodeSnap(
+  tick: number,
+  ack: number,
+  ents: Ent[],
+): ArrayBuffer {
+  const buf = new ArrayBuffer(11 + ents.length * 6);
+  const v = new DataView(buf);
+  v.setUint8(0, SNAP);
+  v.setUint32(1, tick);
+  v.setUint32(5, ack);
+  v.setUint16(9, ents.length);
+  ents.forEach((e, n) => {
+    const o = 11 + n * 6;
+    v.setUint16(o, e.id);
+    v.setInt16(o + 2, Math.round(e.x * SCALE));
+    v.setInt16(o + 4, Math.round(e.y * SCALE));
+  });
+  return buf;
+}
+
+export function decodeSnap(buf: ArrayBuffer) {
+  const v = new DataView(buf);
+  if (v.getUint8(0) !== SNAP) throw new Error("not a snap");
+  const count = v.getUint16(9);
+  if (buf.byteLength !== 11 + count * 6) {
+    throw new Error("bad length"); // never trust sizes
+  }
+  const ents = Array.from({ length: count }, (_, n) => {
+    const o = 11 + n * 6;
+    return {
+      id: v.getUint16(o),
+      x: v.getInt16(o + 2) / SCALE,
+      y: v.getInt16(o + 4) / SCALE,
+    };
+  });
+  return { tick: v.getUint32(1), ack: v.getUint32(5), ents };
+}
+```
+
+## Client-side prediction & reconciliation
+
+<Diagram src="/images/diagrams/rt-prediction.svg" label="Timeline with a client lane on top and a server lane below. The client predicts and sends inputs 1 to 6, one per tick. Inputs 1 to 3 reach the server, which applies them and sends a snapshot with the state after input 3 and ack 3; inputs 4 to 6 are still in flight. When the snapshot arrives, the client drops inputs 1 to 3, resets to the server state, and replays 4, 5 and 6 on top. The pending list goes from 1 to 6 down to 4, 5, 6. Footer: if the server disagrees, the replay starts from its answer." caption="Predict every input now; on each snapshot, rewind to the server's state and replay what it hasn't seen yet" />
+
+```ts title="predict.ts"
+import { step, type Input, type Vec } from "./sim";
+
+export function createPredictor(start: Vec) {
+  let seq = 0;
+  let pending: Input[] = []; // sent, not yet acked
+  let pos = start;
+  return {
+    get pos() {
+      return pos;
+    },
+    get pending() {
+      return pending.length;
+    },
+    // every client tick: apply now, then send
+    input(dx: number, dy: number): Input {
+      const i = { seq: ++seq, dx, dy };
+      pending = [...pending, i];
+      pos = step(pos, i);
+      return i; // → socket
+    },
+    // every snapshot: rewind to the server, replay the rest
+    reconcile(server: Vec, ack: number) {
+      pending = pending.filter((i) => i.seq > ack);
+      pos = pending.reduce(step, server);
+    },
+  };
+}
+```
+
+- Predict **only your own entity** (and maybe your own projectiles); everyone else is [interpolated](#entity-interpolation).
+- Replayed inputs = RTT × input rate: 150 ms at 30 Hz is 4–5 steps per snapshot, cheap for simple movement.
+- When the server disagrees (you ran into another player), the replay moves you. Hide small jumps with a
+  [decaying offset](#hide-small-corrections).
+- Tested: 5 predicted inputs, snapshot acks 3, replay of 4–5 lands on the same position; a server correction to
+  `x = 0` at ack 3 leaves exactly 2 steps of movement.
+- Colyseus 0.18 ships this: `room.input()` + `Predict.get(room).reconciler(entity, { input, step })`.
+
+## Entity interpolation
+
+<Diagram src="/images/diagrams/rt-interpolation.svg" label="A time axis with snapshots at 0, 50, 100, 150 and 200 milliseconds; the one at 150 is lost. The now line sits just after 200, and the render time line 100 ms earlier, between 100 and 200. The two snapshots around render time, 100 and 200, are highlighted, and the remote player is drawn between them. Notes: the delay is two send intervals, so one lost packet is bridged; an empty buffer means hold or extrapolate briefly." caption="Remote players are drawn about 100 ms in the past, between two snapshots already received" />
+
+```ts title="interp.ts"
+type Sample = { t: number; x: number; y: number };
+const DELAY_MS = 100; // ≥ 2 snapshot intervals at 20 Hz
+
+// one buffer per remote entity; t = server time in ms
+export function createInterp(max = 30) {
+  let buf: Sample[] = [];
+  return {
+    push(s: Sample) {
+      buf = [...buf, s].slice(-max);
+    },
+    at(serverNow: number): Sample | undefined {
+      const t = serverNow - DELAY_MS; // render the past
+      const i = buf.findIndex((s) => s.t > t);
+      if (i === -1) return buf.at(-1); // starved: hold
+      if (i === 0) return buf[0]; // too early
+      const a = buf[i - 1]!;
+      const b = buf[i]!;
+      const k = (t - a.t) / (b.t - a.t);
+      return {
+        t,
+        x: a.x + (b.x - a.x) * k,
+        y: a.y + (b.y - a.y) * k,
+      };
+    },
+  };
+}
+```
+
+- Delay ≥ 2 send intervals so a single lost snapshot is bridged. Source's rule: interpolation period =
+  `max(cl_interp, cl_interp_ratio / cl_updaterate)`, which is 100 ms by default.
+- Stamp snapshots with server time (or tick × dt) and read them with [the synced clock](#clock-sync), not arrival
+  time: arrival jitter would show as stutter.
+- Starved buffer (packet loss burst): hold the last position, or extrapolate along the last velocity for at most
+  ~250 ms (dead reckoning), then freeze.
+- Angles: interpolate along the shortest arc (wrap at ±180°).
+
+## Lag compensation
+
+The shooter aimed at where they *saw* the target, 100+ ms in the past. The server rewinds the other players to
+that moment, tests the hit, and applies the result now.
+
+```text
+command execution time = server time − packet latency − client interpolation delay   (Valve)
+```
+
+```ts title="history.ts"
+type Pos = { x: number; y: number };
+type Frame = { t: number; pos: Map<number, Pos> };
+const MAX_REWIND_MS = 250; // cap: limits "shot behind cover"
+
+// server: record every tick, rewind for hit tests
+export function createHistory(keepMs = 1000) {
+  let frames: Frame[] = [];
+  return {
+    record(t: number, pos: Map<number, Pos>) {
+      frames = [...frames, { t, pos }].filter(
+        (f) => f.t >= t - keepMs,
+      );
+    },
+    // world as the shooter saw it at their render time
+    seenAt(renderT: number, now: number) {
+      const t = Math.max(renderT, now - MAX_REWIND_MS);
+      return frames.findLast((f) => f.t <= t)?.pos;
+    },
+  };
+}
+```
+
+- Record positions every tick; keep ≈ 1 s (Source's `sv_maxunlag` default is 1 s).
+- Cap the rewind (250 ms above): past the cap, high-ping players must lead their shots. Without a cap, a faked
+  lag spike gives free hits.
+- Cost: the victim is sometimes "shot behind cover". It favors the shooter by design.
+- Colyseus 0.18: `this.allowRewindState({ maxRewindMs })`, `rewind.attachAll(...)` and
+  `rewind.lastSeenBy(sessionId)`.
+
+## Clock sync
+
+```ts title="clock.ts"
+type Sample = { rtt: number; offset: number };
+
+// client sends { t: "ping", c: performance.now() }
+// server answers { t: "pong", c, s: its own clock }
+export function createClock(keep = 8) {
+  let samples: Sample[] = [];
+  const best = () =>
+    samples.reduce<Sample | undefined>(
+      (a, b) => (!a || b.rtt < a.rtt ? b : a),
+      undefined,
+    );
+  return {
+    pong(c: number, s: number, now = performance.now()) {
+      const rtt = now - c;
+      const offset = s + rtt / 2 - now; // server - local
+      samples = [...samples, { rtt, offset }].slice(-keep);
+    },
+    // the lowest-RTT sample has the least queuing error
+    get offset() {
+      return best()?.offset ?? 0;
+    },
+    get rtt() {
+      return best()?.rtt ?? 0;
+    },
+    serverNow(now = performance.now()) {
+      return now + (best()?.offset ?? 0);
+    },
+  };
+}
+```
+
+- Offset = server time + RTT/2 − local time: assumes symmetric paths, so keep the **lowest-RTT** sample (least
+  queuing). Ping every 1–2 s; RTT (round-trip time) also feeds the ping display.
+- Use `performance.now()` (monotonic); `Date.now()` jumps when the OS adjusts the clock.
+- Tested: a 40 ms sample with offset 1,000 beats a 200 ms sample with a skewed offset.
+- Colyseus: `room.ping((ms) => …)` measures RTT.
+
+## Interest management
+
+Send each client only what it may see: bandwidth grows with players², and anything sent can be read by a cheat.
+
+| Technique               | How                                                            | Good for                               |
+| :---------------------- | :------------------------------------------------------------- | :------------------------------------- |
+| Grid / AOI cells        | bucket entities into cells ≈ view radius; send the 3×3 around a player | open worlds, `.io` games (AOI: area of interest) |
+| Distance priority       | near or fast entities every snapshot, far ones every Nth       | large counts under a byte budget       |
+| Visibility              | server line-of-sight test before sending                       | shooters (defeats wallhacks)           |
+| Rooms / shards          | split the world into separate rooms or instances               | lobbies, MMO zones                     |
+
+```ts title="aoi.ts"
+type Ent = { id: number; x: number; y: number };
+const CELL = 50; // ≈ view radius
+
+const cellOf = (x: number, y: number) =>
+  `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`;
+
+// rebuild once per tick: O(n)
+export function buildGrid(ents: Ent[]) {
+  const grid = new Map<string, Ent[]>();
+  for (const e of ents) {
+    const k = cellOf(e.x, e.y);
+    grid.set(k, [...(grid.get(k) ?? []), e]);
+  }
+  return grid;
+}
+
+// the 3×3 cells around a player: what they may see
+export function nearby(
+  grid: Map<string, Ent[]>,
+  x: number,
+  y: number,
+): Ent[] {
+  const cx = Math.floor(x / CELL);
+  const cy = Math.floor(y / CELL);
+  return [-1, 0, 1].flatMap((dx) =>
+    [-1, 0, 1].flatMap(
+      (dy) => grid.get(`${cx + dx},${cy + dy}`) ?? [],
+    ),
+  );
+}
+```
+
+- Hysteresis: add at radius r, remove at r + margin, or entities flicker at the border.
+- Colyseus: `StateView` plus `.view()` fields filter the synced state per client.
+
+## Anti-cheat
+
+- **Never trust client state.** Positions, hits, scores, inventory and timers live on the server; the client sends
+  intent.
+- **Validate every input** with a schema, then clamp to physics: speed, fire rate, cooldowns, reach.
+- **Rate limit**: about one input per tick; drop or kick above that (Colyseus `maxMessagesPerSecond`). Token bucket:
+  [WebSockets: Security](/typescript/backend/websockets/#security).
+- **Decide hits on the server** with capped rewind.
+- **Hide information**: [interest management](#interest-management); don't send enemy positions behind walls.
+- **Obfuscation is not security**: the client bundle and the protocol are public.
+- **Log and flag** statistical outliers (accuracy, reaction time) for review rather than auto-banning.
+- Identity comes from the connection, never a message field:
+  [Authority & trust](/typescript/realtime/fundamentals/#authority--trust).
+
+```ts title="validate.ts"
+import { z } from "zod";
+
+const Dir = z.union([
+  z.literal(-1),
+  z.literal(0),
+  z.literal(1),
+]);
+export const InputMsg = z.object({
+  t: z.literal("input"),
+  seq: z.number().int().nonnegative(),
+  dx: Dir,
+  dy: Dir,
+  fire: z.boolean(),
+});
+
+// a hit claim is checked, never believed
+export function canHit(
+  shooter: { x: number; y: number; lastShot: number },
+  target: { x: number; y: number }, // rewound position
+  now: number,
+): boolean {
+  const RANGE = 30;
+  const COOLDOWN_MS = 250;
+  const d = Math.hypot(
+    target.x - shooter.x,
+    target.y - shooter.y,
+  );
+  return d <= RANGE && now - shooter.lastShot >= COOLDOWN_MS;
+}
+```
+
+## Transports
+
+| Transport                  | Delivery                                           | Head-of-line blocking                          | Browsers                                   | Server side                                  |
+| :------------------------- | :------------------------------------------------- | :--------------------------------------------- | :----------------------------------------- | :------------------------------------------- |
+| WebSocket                  | reliable, ordered (TCP)                            | yes: one lost packet stalls all later data for ≥ 1 RTT | everywhere                          | anything: `Bun.serve`, `ws`, Colyseus        |
+| WebRTC data channel        | `ordered: false, maxRetransmits: 0` ≈ UDP (SCTP over DTLS) | no                                     | everywhere                                 | a WebRTC peer on the server (geckos.io, node-datachannel) + ICE; or P2P |
+| WebTransport datagrams     | unreliable, unordered (QUIC); reliable streams too | no (streams are independent)                   | Baseline 2026: Chrome 97, Firefox 114, Safari 26.4 | an HTTP/3 server; Colyseus `@colyseus/h3-transport` (experimental) |
+
+- Start with WebSocket: it's enough for turn-based, casual and co-op games. Move the per-tick state to an unreliable
+  channel when loss spikes (mobile, Wi-Fi) start to hurt.
+- **Head-of-line blocking** (HOL): TCP delivers in order, so a lost snapshot delays the newer ones behind it, which
+  are the only ones you want.
+- WebTransport sending differs per browser: `datagrams.writable` is deprecated and missing in Safari;
+  `createWritable()` is in Firefox 155+ and Safari 26.4+ but not Chrome. Feature-detect (below).
+- Keep datagrams under `maxDatagramSize`: QUIC only guarantees 1,200-byte packets, minus headers; larger ones are
+  dropped.
+- `ReadableStream` async iteration (`for await`) only arrived in Safari 27: use a reader loop.
+- WebRTC setup (signaling, STUN/TURN): [WebRTC](/typescript/web-apis/webrtc/).
+
+```ts title="transports.ts"
+// WebRTC: unordered, no retransmits ≈ UDP
+export function stateChannel(pc: RTCPeerConnection) {
+  const ch = pc.createDataChannel("state", {
+    ordered: false,
+    maxRetransmits: 0,
+  });
+  ch.binaryType = "arraybuffer";
+  return ch;
+}
+
+// WebTransport: QUIC datagrams (HTTPS, HTTP/3 server)
+export async function datagrams(url: string) {
+  const wt = new WebTransport(url);
+  await wt.ready;
+  const dg = wt.datagrams;
+  // Firefox/Safari: createWritable(); Chrome: .writable
+  type Dg = { createWritable?: () => WritableStream };
+  const make = (dg as Dg).createWritable;
+  const w = make ? make.call(dg) : dg.writable;
+  const out = w.getWriter();
+  const reader = dg.readable.getReader();
+  return {
+    max: dg.maxDatagramSize, // bytes; larger ones drop
+    send: (b: Uint8Array) => out.write(b),
+    async *receive() {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        yield value as Uint8Array;
+      }
+    },
+  };
+}
+```
+
+## Frameworks
+
+| Option                        | Version (Sept 2026)                                   | Model                                                                  | Transport                                         | Notes                                                        |
+| :---------------------------- | :---------------------------------------------------- | :--------------------------------------------------------------------- | :------------------------------------------------ | :----------------------------------------------------------- |
+| Colyseus                      | 0.18: server `colyseus`, client `@colyseus/sdk`        | rooms + matchmaking; schema state synced as binary deltas             | WebSocket (Node, Bun); WebTransport experimental  | 0.18 adds fixed timestep, input buffers, prediction, rewind; `colyseus.js` is the old client (stops at 0.16) |
+| geckos.io                     | 3.1                                                   | Socket.IO-like events over WebRTC data channels                        | WebRTC (node-datachannel); UDP ports must be open | Node, ESM only; the netcode is yours                         |
+| Durable Objects               | Workers runtime                                       | one object per match: single-threaded, a natural authority             | WebSocket                                         | a `setInterval` loop blocks hibernation, so the match bills duration; [Durable Objects](/typescript/realtime/durable-objects/) |
+| Godot high-level multiplayer  | 4.7                                                   | `@rpc("any_peer" \| "authority", …)`, `set_multiplayer_authority`, MultiplayerSpawner / MultiplayerSynchronizer | ENet (UDP); web exports: WebSocket or WebRTC only | same ideas (authority, reliable vs unreliable channels) in an engine; [Godot](/game-dev/godot/) |
+
+### Colyseus room
+
+State is a schema shared by server and client; mutating it on the server is all it takes to sync.
+
+```ts title="schema.ts"
+// shared by server and client
+import { schema, t } from "@colyseus/schema";
+import type { SchemaType } from "@colyseus/schema";
+
+export const Player = schema(
+  {
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+  },
+  "Player",
+);
+export const State = schema(
+  { players: t.map(Player) },
+  "State",
+);
+export type State = SchemaType<typeof State>;
+```
+
+```ts title="arena.ts"
+import {
+  Room,
+  defineRoom,
+  defineServer,
+  validate,
+  type Client,
+} from "colyseus";
+import { z } from "zod";
+import { Player, State } from "./schema";
+
+const Move = z.object({
+  dx: z.number().min(-1).max(1),
+  dy: z.number().min(-1).max(1),
+});
+type Move = z.infer<typeof Move>;
+
+export class Arena extends Room<{ state: State }> {
+  override maxClients = 16;
+  override maxMessagesPerSecond = 60; // then kicked
+  override state = new State();
+  moves = new Map<string, Move>();
+
+  override messages = {
+    // invalid payloads never reach the handler
+    move: validate(Move, (client: Client, m: Move) => {
+      this.moves.set(client.sessionId, m);
+    }),
+  };
+
+  override onCreate() {
+    this.patchRate = 50; // state patches at 20 Hz
+    // variable step: ms = measured time since last tick
+    this.setTimestep((ms) => this.tick(ms / 1000), 33);
+  }
+
+  tick(dt: number) {
+    for (const [id, m] of this.moves) {
+      const p = this.state.players.get(id);
+      if (!p) continue;
+      p.x += m.dx * 6 * dt; // schema records the delta
+      p.y += m.dy * 6 * dt;
+    }
+  }
+
+  override onJoin(client: Client) {
+    this.state.players.set(client.sessionId, new Player());
+  }
+
+  override onLeave(client: Client) {
+    this.state.players.delete(client.sessionId);
+    this.moves.delete(client.sessionId);
+  }
+}
+
+export const server = defineServer({
+  rooms: { arena: defineRoom(Arena) },
+});
+// await server.listen(2567);
+```
+
+```ts title="client.ts"
+import { Client, Callbacks } from "@colyseus/sdk";
+import type { State } from "./schema";
+
+const client = new Client("http://localhost:2567");
+const room = await client.joinOrCreate<State>("arena");
+const $ = Callbacks.get(room);
+
+$.onAdd("players", (player, sessionId) => {
+  // draw a sprite; then follow every patch
+  $.onChange(player, () => {
+    // interpolate toward player.x / player.y
+  });
+});
+$.onRemove("players", (_player, sessionId) => {
+  // remove the sprite
+});
+
+room.send("move", { dx: 1, dy: 0 });
+```
+
+- Start it with `await server.listen(2567)`; `bun arena.ts` works with the default WebSocket transport (tested).
+- A payload that fails `validate()` gets the sender **disconnected** (close code 4002), not just ignored.
+- Fields without `.default(…)` start `undefined`: `p.x += …` then gives `NaN`.
+- Pass the state type to `joinOrCreate<State>()` or the callbacks are untyped.
+- Test with lag: `server.simulateLatency(150)` or `COLYSEUS_LATENCY=150` (round trip, ms).
+
+## Recipes
+
+### Bun room server with binary snapshots
+
+When you want the loop, the queue and the codec above without a framework; one process, one room.
+
+```ts
+import { createWorld } from "./world";
+import { runLoop } from "./loop";
+import { encodeSnap } from "./codec";
+import { InputMsg } from "./validate";
+
+type Data = { id: string };
+const parse = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return undefined; // fails the schema below
+  }
+};
+const world = createWorld();
+const sockets = new Map<string, Bun.ServerWebSocket<Data>>();
+
+export const server = Bun.serve({
+  port: 3001,
+  fetch(req, server) {
+    const id = crypto.randomUUID(); // real app: session
+    if (server.upgrade(req, { data: { id } })) return;
+    return new Response("Upgrade required", { status: 426 });
+  },
+  websocket: {
+    data: {} as Data,
+    open(ws) {
+      sockets.set(ws.data.id, ws);
+      const eid = world.join(ws.data.id);
+      ws.send(JSON.stringify({ t: "welcome", eid }));
+    },
+    message(ws, raw) {
+      const msg = InputMsg.safeParse(parse(String(raw)));
+      if (!msg.success) return ws.close(1008, "bad input");
+      world.input(ws.data.id, msg.data);
+    },
+    close(ws) {
+      sockets.delete(ws.data.id);
+      world.leave(ws.data.id);
+    },
+  },
+});
+
+// per-client snapshot: each one carries its own ack
+export const stop = runLoop(world.update, () => {
+  for (const [id, ws] of sockets) {
+    const s = world.snapshotFor(id);
+    ws.send(encodeSnap(s.tick, s.ack, s.ents));
+  }
+});
+```
+
+Tested with two sockets: 15 inputs at 30 Hz give `ack = 15` and `x = 3.0`; an out-of-range `dx` closes with `1008`.
+
+### Render loop: predicted self, interpolated others
+
+When wiring the client: fixed-rate input, snapshots in, `requestAnimationFrame` out.
+
+```ts
+import { createPredictor } from "./predict";
+import { createInterp } from "./interp";
+import { createClock } from "./clock";
+import { decodeSnap } from "./codec";
+import { DT } from "./sim";
+
+declare const ws: WebSocket; // binaryType = "arraybuffer"
+declare const myId: number;
+declare function keys(): { dx: number; dy: number };
+declare function draw(id: number, x: number, y: number):
+  void;
+
+const me = createPredictor({ x: 0, y: 0 });
+const clock = createClock(); // fed by ping/pong
+type Interp = ReturnType<typeof createInterp>;
+const others = new Map<number, Interp>();
+
+ws.addEventListener("message", (e) => {
+  const snap = decodeSnap(e.data as ArrayBuffer);
+  const t = snap.tick * DT * 1000; // server ms
+  for (const ent of snap.ents) {
+    if (ent.id === myId) me.reconcile(ent, snap.ack);
+    else {
+      const buf = others.get(ent.id) ?? createInterp();
+      others.set(ent.id, buf);
+      buf.push({ t, x: ent.x, y: ent.y });
+    }
+  }
+});
+
+// fixed-rate input, same rate as the server tick
+setInterval(() => {
+  const { dx, dy } = keys();
+  const i = me.input(dx, dy);
+  ws.send(JSON.stringify({ t: "input", ...i, fire: false }));
+}, DT * 1000);
+
+// render at display rate: own = predicted, others = past
+function frame() {
+  draw(myId, me.pos.x, me.pos.y);
+  const now = clock.serverNow();
+  for (const [id, buf] of others) {
+    const p = buf.at(now);
+    if (p) draw(id, p.x, p.y);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+```
+
+### Hide small corrections
+
+When reconciliation makes your own player twitch: draw at the simulated position plus an offset that decays.
+
+```ts
+type Vec = { x: number; y: number };
+
+// hide small reconciliation snaps: draw at sim + offset,
+// and let the offset decay to zero over ~100 ms
+export function createSmoother(halfLifeMs = 35) {
+  let offset: Vec = { x: 0, y: 0 };
+  return {
+    // call with positions before and after reconcile()
+    corrected(before: Vec, after: Vec) {
+      offset = {
+        x: offset.x + before.x - after.x,
+        y: offset.y + before.y - after.y,
+      };
+      if (Math.hypot(offset.x, offset.y) > 3) {
+        offset = { x: 0, y: 0 }; // too far: just snap
+      }
+    },
+    // every frame: position to draw
+    draw(sim: Vec, frameMs: number): Vec {
+      const k = Math.pow(0.5, frameMs / halfLifeMs);
+      offset = { x: offset.x * k, y: offset.y * k };
+      return { x: sim.x + offset.x, y: sim.y + offset.y };
+    },
+  };
+}
+```
+
+### Redundant inputs over an unreliable channel
+
+When inputs travel as datagrams: each packet repeats the last few, and the server's `seq` check drops copies.
+
+```ts
+import type { Input } from "./sim";
+
+// unreliable channel: resend the last 3 inputs in every
+// packet so one lost packet loses nothing
+export function inputPacker(copies = 3) {
+  let recent: Input[] = [];
+  return (next: Input): Input[] => {
+    recent = [...recent, next].slice(-copies);
+    return recent; // → datagram
+  };
+}
+
+// server side: the seq check in world.input() already
+// drops the copies it has seen
+```
+
+Tested: with the packet carrying input 3 lost, the next packet's copy still gets `ack` to 5.
+
+### Simulate lag and loss locally
+
+When localhost's 0 ms hides every netcode bug: wrap the send on either side.
+
+```ts
+// wrap any send() to test with bad networks locally
+export function laggy<T>(
+  deliver: (msg: T) => void,
+  { ms = 100, jitter = 30, loss = 0.02 } = {},
+) {
+  return (msg: T) => {
+    if (Math.random() < loss) return; // dropped
+    const delay = ms + (Math.random() * 2 - 1) * jitter;
+    setTimeout(() => deliver(msg), Math.max(0, delay));
+  };
+}
+```
+
+```ts
+const sendToServer = laggy((m: string) => ws.send(m), {
+  ms: 75, // one way; RTT ≈ 150 ms
+  jitter: 20,
+  loss: 0.05,
+});
+```
+
+## References
+
+- [MDN: WebTransport](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport),
+  [WebTransportDatagramDuplexStream](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportDatagramDuplexStream),
+  [RTCDataChannel](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel),
+  [DataView](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView): APIs and
+  browser support
+- [Colyseus docs](https://docs.colyseus.io/): rooms, schema, and the 0.18 netcode section (input, prediction, lag
+  compensation)
+- [Cloudflare: WebSockets in Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/websockets/):
+  what blocks hibernation
+- [Godot: High-level multiplayer](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html)
+- [geckos.io](https://github.com/geckosio/geckos.io): UDP-like client/server over WebRTC for Node
+- Gabriel Gambetta, *Fast-Paced Multiplayer*:
+  [I: Client-server architecture](https://www.gabrielgambetta.com/client-server-game-architecture.html),
+  [II: Prediction and reconciliation](https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html),
+  [III: Entity interpolation](https://www.gabrielgambetta.com/entity-interpolation.html),
+  [IV: Lag compensation](https://www.gabrielgambetta.com/lag-compensation.html),
+  [live demo](https://www.gabrielgambetta.com/client-side-prediction-live-demo.html): the clearest introduction
+- [Valve: Source Multiplayer Networking](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking): tick,
+  update and command rates, interpolation, lag compensation in a shipped engine
+- Glenn Fiedler (Gaffer On Games): [Fix Your Timestep](https://gafferongames.com/post/fix_your_timestep/),
+  [Deterministic Lockstep](https://gafferongames.com/post/deterministic_lockstep/),
+  [Snapshot Interpolation](https://gafferongames.com/post/snapshot_interpolation/),
+  [Snapshot Compression](https://gafferongames.com/post/snapshot_compression/),
+  [State Synchronization](https://gafferongames.com/post/state_synchronization/)

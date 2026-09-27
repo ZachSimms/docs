@@ -1,0 +1,267 @@
+---
+title: Sim basics
+date: 2026-09-27
+order: 1
+---
+
+The parts of Microsoft Flight Simulator 2024 that every aircraft sheet assumes: editions, flight planning in the
+EFB, the ATC window, checklists, assists, keys, views, weather, failures and the avionics manuals. The aircraft are
+the [Cessna 172 (G1000)](/aviation/msfs-2024/cessna-172/), [172 Classic](/aviation/msfs-2024/cessna-172-classic/),
+[Cirrus SR22](/aviation/msfs-2024/cirrus-sr22/), [Vision Jet](/aviation/msfs-2024/vision-jet/) and
+[Citation Longitude](/aviation/msfs-2024/longitude/). Radio phraseology is in
+[ATC comms](/aviation/atc-comms/fundamentals/). State of the sim: Sim Update 6 (1.8.14.0, 13 August 2026).
+
+## Editions and aircraft
+
+Each edition contains the one before it. Aviator adds the 30 paid aircraft released for MSFS 2020.
+
+| Edition | Aircraft | Aircraft covered here |
+| :--- | :--- | :--- |
+| Standard | 70 | Cessna 172 Skyhawk (G1000), Cirrus Vision Jet SF50 (built by FlightFX) |
+| Deluxe | 80 | + Cessna 172 Skyhawk "Classic" (steam gauges) |
+| Premium Deluxe | 95 | + Cirrus SR22T (listed as "Cirrus SR22"), Cessna Citation Longitude |
+| Aviator | 125 | everything above + MSFS 2020 paid DLC aircraft |
+
+- Standard owners can buy the Classic separately in the Marketplace, where it's listed as "Cessna 172 Skyhawk
+  (SP)" (reported).
+- Some aircraft come in **variants** (avionics, floats, skis). Pick them from the aircraft selection screen's
+  configure option.
+
+## Flight planning: EFB and SimBrief
+
+The **EFB** (electronic flight bag) is the in-sim tablet. Open it with `Tab` or the toolbar icon. Its apps include
+the Flight Planner, weight and balance, charts, airport info and checklists.
+
+| Task | Where |
+| :--- | :--- |
+| build a route | EFB → Flight Planner: departure, arrival, runway, SID/STAR (departure and arrival procedures), approach |
+| load it into the aircraft | Route page → **SEND** → **SEND TO AVIONICS** |
+| load it and file it with in-sim ATC | **SEND** → **SEND TO AVIONICS AND ATC** (or **SEND TO ATC** only) |
+| pull the aircraft's route back into the EFB | **OPEN** (folder icon) → **REQUEST FROM AVIONICS** |
+| a plan built on the web | build at planner.flightsimulator.com, then **OPEN** → **LOAD FROM WEB** |
+| fuel and payload | EFB weight and balance; SU5 added warnings when planned fuel is short |
+
+**SimBrief** (Navigraph's free flight planner) produces an **OFP** (operational flight plan: route, fuel, weights).
+
+| Step | Action |
+| :--- | :--- |
+| 1 | Open the **SimBrief Dispatch** app in the EFB, or plan at simbrief.com. |
+| 2 | Sign in with SimBrief or the linked Navigraph account. No Pilot ID is needed in the default EFB. |
+| 3 | Generate or pick the latest OFP. Imports fetch the last *finished* OFP, not one still being edited. |
+| 4 | Send it to the Flight Planner or avionics (button labels vary), then check the route on the aircraft's FPL page. |
+| fallback | Copy SimBrief's route string, paste it at planner.flightsimulator.com, save, then **LOAD FROM WEB**. |
+
+- An OFP in the EFB is not a route in the avionics. Always confirm on the FPL page.
+- Some third-party aircraft have their own EFB and want a SimBrief username or Pilot ID.
+- **Navigraph Charts** in the EFB needs a paid Navigraph subscription. SimBrief is free.
+
+## ATC window
+
+In-sim ATC is a menu. Open the ATC panel from the toolbar or with `\`. Pick a numbered option and your pilot
+voice reads it out, then the controller replies. SU5 lets you queue a message while the frequency is busy.
+
+| Menu gives you | Real-world equivalent | Sheet |
+| :--- | :--- | :--- |
+| ATIS and ground requests, taxi clearance | ATIS, ground, readbacks | [fundamentals](/aviation/atc-comms/fundamentals/) |
+| tower calls, pattern entry, landing clearance | towered VFR | [vfr-towered](/aviation/atc-comms/vfr-towered/) |
+| CTAF (self-announce) calls at uncontrolled fields | untowered VFR | [vfr-untowered](/aviation/atc-comms/vfr-untowered/) |
+| IFR clearance, departure check-in | clearance delivery, departure | [ifr-departure](/aviation/atc-comms/ifr-departure/) |
+| altitude changes, STAR (arrival route), approach | center, approach | [ifr-enroute-arrival](/aviation/atc-comms/ifr-enroute-arrival/) |
+| "declare emergency" | Mayday, Pan-Pan, 7700 | [emergencies-lost-comms](/aviation/atc-comms/emergencies-lost-comms/) |
+
+- Tune the frequency the menu asks for on your COM radio. SU6 made tuning with cockpit knobs update the panel.
+- For real phraseology, use online ATC networks (VATSIM, free; PilotEdge, paid) and read your own calls from the
+  ATC comms sheets.
+
+## Checklists and copilot
+
+| Feature | How it works |
+| :--- | :--- |
+| checklist panel | pages of checkpoints per flight phase. Most items tick themselves when the cockpit state matches. Manual items need **Tick item**. |
+| highlight | the camera swings to the switch or gauge and outlines it in blue |
+| **Auto-complete item** / page | the copilot does the item or the whole page for you |
+| copilot (Flight Assistant, toolbar) | can take radios or checklist actions. Each job is a separate switch. |
+
+- Built-in checklists are simplified sim flows. The aircraft sheets here follow the POH order.
+- Auto-complete doesn't teach anything. Use it only to recover a flight, not to learn the flows.
+
+## Assists to turn off as you learn
+
+Assistance options (Options → Assistance) come in groups (piloting, aircraft systems, navigation aids, user
+experience) and presets (All Assists up to the most realistic). Menu names shift between builds. The order below
+goes from easy to hard.
+
+| Assist | What it hides | Turn off when |
+| :--- | :--- | :--- |
+| AI piloting, assisted takeoff/landing | the whole flight | first flight done |
+| auto-rudder | P-factor and crosswind rudder work | you have pedals or a twist stick |
+| unlimited fuel | fuel planning | you plan fuel in the EFB |
+| auto-mixture | leaning, rich/lean engine behavior | you've read the aircraft's cruise section |
+| gyro drift compensation | DG (directional gyro) drift | flying the [172 Classic](/aviation/msfs-2024/cessna-172-classic/) |
+| taxi ribbon, flight/landing path | reading signs and charts | you can read an airport diagram |
+| landmark, city and airport markers | map reading | VFR navigation practice |
+| crash damage, engine stress damage (turn **on**) | consequences | you want over-speed and over-temp to matter |
+| checklist auto-complete, copilot radios | flows and phraseology | once you've learned the flows |
+
+Also set the flight model to **Modern** (not Legacy) in the options.
+
+## Key bindings
+
+Defaults for the **2024 keyboard preset**. Options → Controls → keyboard lets you switch to the old "Keyboard 2020"
+presets (general and airplane) or search any command.
+
+| Action | Key | Action | Key |
+| :--- | :--- | :--- | :--- |
+| brakes (hold) | `Space` | parking brake | `Ctrl+Space` |
+| flaps extend one step | `B` | flaps retract one step | `V` |
+| landing gear | `/` | auto-start engine | `Ctrl+E` |
+| throttle up / down | `R` / `F` | engine auto-stop | `Ctrl+Shift+E` |
+| mixture richer / full lean[^keys] | `Y` / `Ctrl+H` | trim nose up / down[^keys] | `K` / `I` |
+| autopilot master | `Ctrl+1` | AP altitude hold | `Ctrl+F2` |
+| AP heading hold | `Ctrl+F5` | AP approach hold | `Ctrl+F3` |
+| set altimeter to local setting[^keys] | `,` | ATC panel | `\` |
+| EFB | `Tab` | active pause | `P` |
+| menu (pauses) | `Esc` | pushback | `Alt+P` |
+| cockpit ↔ external view | `Backspace` | drone camera | `Shift+X` |
+| smart camera | `Ctrl+B` | sim rate | `Alt+R` |
+
+Bind these yourself if you have hardware: throttle, mixture and prop axes; trim wheel or buttons; toe brakes; push
+to talk if you fly online.
+
+## Cameras and views
+
+| Want | Do |
+| :--- | :--- |
+| look around | right mouse button + drag (or a head tracker) |
+| zoom | mouse wheel |
+| move the head (translate) | `Shift` + `W` `A` `S` `D`; `Shift+Q` / `Shift+E` for up and down[^keys] |
+| reset view | `Shift+Space`[^keys] |
+| outside view | `Backspace`; `Shift+X` for the free drone |
+| walkaround | 2024 starts Free Flight with an exterior walkaround. SU6 added an option to skip it. |
+
+## Weather, time and traffic
+
+| Setting | Where | Tip |
+| :--- | :--- | :--- |
+| live weather or a preset | Weather toolbar panel (also sets date and time) | learn in a calm preset, then go live |
+| custom wind and cloud layers | Weather panel → custom | practice a 10 kt crosswind; the 172's maximum demonstrated crosswind is 15 kt |
+| live traffic vs AI traffic | Options → traffic (names vary by build) | live traffic makes the ATC frequency realistic but slower |
+| time of day | Weather panel | dusk shows how much the panel lighting helps |
+
+## Failures
+
+- Career mode and **wear and tear** create failures on their own. **Engine stress failure** (under assistance) lets
+  over-speed or over-temperature break the engine.
+- Free Flight has no scripted-failure menu that we could confirm for this build. Third-party tools (for example
+  FailControl) add random failures.
+- The honest way to practice: cause the failure with the aircraft's own controls. Pull mixture to cutoff for an
+  engine failure, switch the alternator off for an electrical failure. Each sheet's Emergencies section lists the
+  flow.
+
+## Avionics manuals
+
+The sim's avionics are built by Working Title (Microsoft's avionics studio). They follow the real Garmin units
+closely, so the real pilot's guides are the best manuals. Working Title's own docs are for aircraft developers.
+
+| Avionics | Aircraft here | Pilot manual | Sim docs |
+| :--- | :--- | :--- | :--- |
+| G1000 NXi | [172](/aviation/msfs-2024/cessna-172/), [SR22](/aviation/msfs-2024/cirrus-sr22/) (Perspective+) | [Garmin G1000 NXi Cockpit Reference Guide, Cessna Nav III](https://static.garmin.com/pumac/190-02178-03_a.pdf) | [G1000 package](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/g1000/overview/) |
+| G3000 | [Vision Jet](/aviation/msfs-2024/vision-jet/) (Perspective Touch+) | Cirrus/Garmin guide for the SF50 | [G3000/G5000 package](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/g3000/overview/) |
+| G5000 | [Longitude](/aviation/msfs-2024/longitude/) | [Garmin support: G5000, Citation Longitude](https://support.garmin.com/en-US/?productID=711114) | same package as the G3000 |
+| GNS 430/530 | [172 Classic](/aviation/msfs-2024/cessna-172-classic/) | Garmin GNS 530W/430W pilot's guides | [GNS package](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/gns/overview/) |
+| Avidyne IFD540/550 | 172 Classic IFD variants (SU5) | Avidyne IFD pilot guide | [IFD package](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/ifd/overview/) |
+
+## PFD and MFD glossary
+
+| Term | Meaning |
+| :--- | :--- |
+| PFD | primary flight display: attitude, airspeed tape, altitude tape, HSI |
+| MFD | multi-function display: moving map, engine data, flight plan |
+| HSI | horizontal situation indicator: compass rose with the course needle |
+| CDI | course deviation indicator; the **CDI** key picks its source (GPS, NAV1, NAV2) |
+| OBS | omni-bearing selector: set a course to or from a point by hand |
+| softkeys | the row of buttons under a Garmin display; their labels change per page |
+| FMS knob | the concentric knob that moves the cursor and enters data |
+| FPL | flight plan page |
+| PROC | procedures key: load departure, arrival and approach |
+| D→ (Direct-to) | fly straight to a waypoint |
+| NRST | nearest airports, VORs and frequencies |
+| bug | a movable marker: heading bug, altitude bug, speed bug |
+| AP / FD | autopilot / flight director (the magenta command bars) |
+| HDG, NAV, APR | follow the heading bug, the CDI course, the approach course |
+| ALT, VS, FLC | hold altitude, hold vertical speed, hold airspeed by pitch (flight level change) |
+| VNAV (VNV) | vertical navigation along the flight plan's altitude constraints |
+| GS / GP | glideslope (ILS) / glidepath (GPS approach) |
+| LPV | a GPS approach with vertical guidance down to about ILS minimums |
+| XPDR, IDENT | transponder, and the button that highlights you on ATC's radar |
+| BARO | altimeter setting, inches of mercury (inHg) in the US |
+
+## Performance tips
+
+| Tip | Why |
+| :--- | :--- |
+| aim for a steady frame rate (around 30 fps is fine for GA) | stutters hurt flying more than lower detail |
+| lower the global rendering quality preset first, then fine-tune | it moves the most settings at once |
+| use the upscaler or lower render resolution before cutting terrain detail | cheaper than losing scenery |
+| turn off character voices, UI sounds and music | less noise, clearer ATC audio |
+| turn off tooltips once you know the cockpit | fewer pop-ups over the instruments |
+
+## Recipes
+
+### First session setup
+The one-time pass before your first real flight.
+1. Controls: bind throttle, mixture, trim, brakes and push to talk. Choose the 2024 or 2020 key preset and stick with it.
+2. Assists: start from a middle preset. Turn off AI piloting, keep the taxi ribbon for now.
+3. Flight model: Modern.
+4. Weather: clear skies preset, daytime.
+5. Aircraft: [172 G1000](/aviation/msfs-2024/cessna-172/), cold and dark at a towered airport.
+
+### SimBrief to the avionics
+Plan a real route with fuel numbers.
+1. Generate an OFP (SimBrief Dispatch app or simbrief.com).
+2. EFB → SimBrief Dispatch → load the latest OFP → use its send/import button to push it to the Flight Planner
+   (labels vary by version).
+3. Flight Planner → **SEND** → **SEND TO AVIONICS AND ATC**.
+4. Aircraft FPL page: check the departure, the waypoints, and that there are no discontinuities (gaps in the route).
+5. Set fuel and payload from the OFP in weight and balance.
+
+### Fly a flight with in-sim ATC
+1. Plan and **SEND TO AVIONICS AND ATC**.
+2. Tune ATIS (find it on the NRST or airport page), then ground. Open the ATC panel (`\`).
+3. Request clearance or taxi, and read each call against [ATC comms](/aviation/atc-comms/fundamentals/).
+4. On handoffs, tune the new frequency on COM1 and check in from the menu.
+
+### Practice an engine failure
+1. Climb to at least 3,000 ft AGL (above ground level) over flat ground.
+2. Pull mixture to idle cutoff (in the sim that works as a full power loss).
+3. Fly the aircraft sheet's Emergencies flow: glide speed, field, restart attempt, then secure.
+4. Mixture rich, restart, climb away.
+
+### Declutter for realism
+Taxi ribbon, landing path and markers off. Checklist auto-complete off. Gyro drift compensation off. Unlimited fuel
+off. Crash damage on.
+
+## References
+
+- [Sim Update 6 release notes (1.8.14.0)](https://www.flightsimulator.com/release-notes-sim-update-6-1-8-14-0-now-available-msfs-2024/):
+  walkaround skip option, ATC panel tuning fix
+- [Sim Update 5 release notes (1.7.27.0)](https://www.flightsimulator.com/release-notes-sim-update-5-1-7-27-0-now-available-msfs-2024/):
+  Avidyne IFD variants, EFB fuel warnings, ATC message queue
+- [Sim Update 3 release notes (1.5.27.0)](https://www.flightsimulator.com/sim-update-3-msfs-2024/): G1000 NXi,
+  GNS, EFB, ATC and copilot fixes
+- [MSFS SDK: Checklist best practices](https://docs.flightsimulator.com/msfs2024/html/5_Content_Configuration/Modular_SimObjects/Aircraft/Checklists/Checklist_Best_Practices.htm):
+  how checkpoints, **Tick item** and **Auto-complete item** behave
+- [MSFS avionics docs (Working Title)](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/intro/): G1000 NXi,
+  G3000/G5000, GNS and IFD packages
+- [FlyByWire: Flight planning with MSFS](https://docs.flybywiresim.com/aircraft/common/flight-planning-with-msfs/):
+  the EFB **SEND** and **OPEN** menus
+- [MSFS web flight planner](https://planner.flightsimulator.com) and [SimBrief](https://www.simbrief.com)
+- [Flight Sim Coach: MSFS 2024 keyboard commands](https://flightsimcoach.com/msfs-2024-keyboard-commands/) and
+  [preset switching](https://flightsimcoach.com/tip/using-classic-msfs-2020-keyboard-shortcuts-in-msfs-2024/)
+- [Editors Keys: 25 MSFS 2024 shortcuts](https://www.editorskeys.com/blogs/news/25-microsoft-flight-simulator-2024-keyboard-shortcuts-every-virtual-pilot-should-know):
+  second source for the 2024 key list
+- [FSNews: Aircraft in MSFS 2024](https://fsnews.eu/aircraft-in-microsoft-flight-simulator-2024/) and
+  [MSFS forum: first-party aircraft by edition](https://forums.flightsimulator.com/t/msfs-2024-list-of-all-first-party-aircraft-with-links-to-official-info-for-each/741340)
+
+[^keys]: Found in only one of the key lists we checked. The other keys in these tables appear in at least two
+    independent lists. Check each binding in Options → Controls. The 2020 preset uses different keys.

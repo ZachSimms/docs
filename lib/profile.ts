@@ -162,6 +162,7 @@ export const RESUME = {
       description:
         "Built an interactive React/Three.js application rendering real-time 3D visualizations of pathfinding algorithms (A*, BFS/DFS), letting users set start/end nodes and place obstacles to compare algorithm behavior live.",
       stack: ["React", "Three.js"],
+      source: "https://github.com/ZachSimms/Pathfinding-Algorithm-Visualizer",
     },
   ] satisfies readonly Project[] as readonly Project[],
   activities: [

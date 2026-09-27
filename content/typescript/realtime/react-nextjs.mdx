@@ -1,0 +1,765 @@
+---
+title: Realtime in React & Next.js
+date: 2026-09-27
+order: 2
+---
+
+One socket per tab in a store outside React, read with `useSyncExternalStore`, rooms joined by effects, sends shown
+with `useOptimistic`, and where each piece runs in a Next.js 16 app. Protocol patterns are in
+[Realtime fundamentals](/typescript/realtime/fundamentals/); hooks basics in
+[React hooks](/typescript/react/react-hooks/); the framework in [Next.js](/typescript/react/next-js/).
+
+## Where the socket lives
+
+| Next.js piece                 | Can hold a WebSocket? | Realtime job                                                |
+| :---------------------------- | :-------------------- | :---------------------------------------------------------- |
+| Client Component (`"use client"`) | yes, in the browser | open the socket, render live state                        |
+| Server Component              | no                    | render the initial state (history, members) from the DB     |
+| Server Action (`"use server"`) | no                   | validate and persist a write, then publish it to the realtime server |
+| Route Handler                 | no (on Vercel: beta, below) | issue socket tickets; SSE for one-way streams          |
+| `proxy.ts`                    | no                    | auth redirects only                                         |
+| Separate realtime server      | yes                   | hold sockets, rooms and fan-out                             |
+
+- A Server Component renders once and is done. On serverless hosts a Route Handler's work ends with its response
+  or its timeout, which closes any socket with it (Next.js "Backend for Frontend" guide).
+- Client Components also render on the server (SSR): never open a socket at module top level or in the render
+  body; open it in an effect or on the first `subscribe` call.
+- Only `NEXT_PUBLIC_*` variables reach the browser: the socket URL can be one, the publish secret must not.
+
+```text
+browser ──ws──▶ realtime server (Bun / Socket.IO / Durable Object) ◀──POST /publish── Server Action
+   ▲                     │ fan-out to room                                               ▲
+   └──── initial HTML ── Server Component (DB read) ──────────────── form submit ────────┘
+```
+
+## Socket store
+
+A plain module owns the socket and a snapshot object. React only subscribes; nothing about the connection lives
+in component state.
+
+```ts title="lib/realtime/protocol.ts"
+import { z } from "zod";
+
+export const ChatMsg = z.object({
+  id: z.string(),
+  room: z.string(),
+  from: z.string(),
+  text: z.string(),
+  ts: z.number(),
+});
+export type ChatMsg = z.infer<typeof ChatMsg>;
+
+export const ServerMsg = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("chat"), msg: ChatMsg }),
+  z.object({ type: z.literal("ack"), id: z.string(),
+    msg: ChatMsg }),
+  z.object({ type: z.literal("nack"), id: z.string(),
+    error: z.string() }),
+  z.object({ type: z.literal("history"), room: z.string(),
+    messages: z.array(ChatMsg) }),
+]);
+export type ServerMsg = z.infer<typeof ServerMsg>;
+
+export type ClientMsg =
+  | { type: "join" | "leave"; room: string }
+  | { type: "chat"; id: string; room: string; text: string };
+```
+
+```ts title="lib/realtime/store.ts"
+import ReconnectingWebSocket, {
+  type UrlProvider,
+} from "partysocket/ws";
+import { type ChatMsg, type ClientMsg, ServerMsg }
+  from "./protocol";
+
+export type Status = "connecting" | "open" | "closed";
+export type Snapshot = Readonly<{
+  status: Status;
+  retries: number;
+  rooms: Readonly<Record<string, readonly ChatMsg[]>>;
+}>;
+type Waiter = PromiseWithResolvers<ChatMsg>;
+
+const INITIAL: Snapshot = {
+  status: "connecting", retries: 0, rooms: {},
+};
+
+// One socket per tab, shared by every component.
+export function createRealtime(url: UrlProvider) {
+  let state = INITIAL;
+  let ws: ReconnectingWebSocket | undefined;
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const listeners = new Set<() => void>();
+  const joined = new Map<string, number>(); // refcounts
+  const waiting = new Map<string, Waiter>();
+
+  const set = (patch: Partial<Snapshot>) => {
+    state = { ...state, ...patch }; // new object: re-render
+    for (const l of listeners) l();
+  };
+  const send = (msg: ClientMsg) => {
+    if (ws?.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(msg));
+    return true;
+  };
+  const append = (room: string, list: ChatMsg[]) => {
+    const old = state.rooms[room] ?? [];
+    const ids = new Set(old.map((m) => m.id));
+    const fresh = list.filter((m) => !ids.has(m.id));
+    const next = [...old, ...fresh];
+    set({ rooms: { ...state.rooms, [room]: next } });
+  };
+
+  const parse = (raw: unknown) => {
+    try {
+      const r = ServerMsg.safeParse(JSON.parse(String(raw)));
+      return r.success ? r.data : null;
+    } catch {
+      return null; // not JSON
+    }
+  };
+
+  const onMessage = (e: MessageEvent) => {
+    const m = parse(e.data);
+    if (!m) return;
+    if (m.type === "chat") append(m.msg.room, [m.msg]);
+    if (m.type === "history") append(m.room, m.messages);
+    if (m.type === "ack" || m.type === "nack") {
+      const w = waiting.get(m.id);
+      waiting.delete(m.id);
+      if (m.type === "ack") {
+        append(m.msg.room, [m.msg]);
+        w?.resolve(m.msg);
+      } else w?.reject(new Error(m.error));
+    }
+  };
+
+  const connect = () => {
+    ws = new ReconnectingWebSocket(url, [], {
+      // partysocket has no jitter: add some
+      minReconnectionDelay: 1000 + Math.random() * 4000,
+      maxReconnectionDelay: 30_000,
+    });
+    ws.addEventListener("open", () => {
+      set({ status: "open", retries: 0 });
+      for (const room of joined.keys()) {
+        send({ type: "join", room }); // server forgot us
+      }
+    });
+    ws.addEventListener("close", () => {
+      const retries = ws?.retryCount ?? 0;
+      set({ status: "closed", retries });
+    });
+    ws.addEventListener("message", onMessage);
+  };
+
+  return {
+    getSnapshot: () => state,
+    getServerSnapshot: () => INITIAL, // SSR: never connect
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      clearTimeout(idle);
+      if (!ws) connect(); // lazily, on first subscriber
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size > 0) return;
+        // delay: StrictMode and route changes resubscribe
+        idle = setTimeout(() => {
+          ws?.close();
+          ws = undefined;
+          state = INITIAL;
+        }, 2000);
+      };
+    },
+    join(room: string): () => void {
+      const n = joined.get(room) ?? 0;
+      joined.set(room, n + 1);
+      if (n === 0) send({ type: "join", room });
+      return () => {
+        const left = (joined.get(room) ?? 1) - 1;
+        if (left > 0) return void joined.set(room, left);
+        joined.delete(room);
+        send({ type: "leave", room });
+      };
+    },
+    reconnect(): void { // e.g. when the tab wakes up
+      if (ws && ws.readyState !== WebSocket.OPEN) {
+        ws.reconnect();
+      }
+    },
+    // resolves with the server's copy once acked
+    say(room: string, text: string, timeoutMs = 8000) {
+      const id = crypto.randomUUID();
+      const w: Waiter = Promise.withResolvers();
+      if (!send({ type: "chat", id, room, text })) {
+        w.reject(new Error("offline"));
+        return w.promise;
+      }
+      waiting.set(id, w);
+      const t = setTimeout(() => {
+        waiting.delete(id);
+        w.reject(new Error("timed out"));
+      }, timeoutMs);
+      return w.promise.finally(() => clearTimeout(t));
+    },
+  };
+}
+
+const WS_URL = process.env.NEXT_PUBLIC_REALTIME_URL;
+export const realtime = createRealtime(
+  WS_URL ?? "ws://localhost:3001",
+);
+```
+
+| Design choice                         | Why                                                               |
+| :------------------------------------ | :---------------------------------------------------------------- |
+| Module singleton, not context         | one socket per tab however many components read it                |
+| New snapshot object on every change   | `useSyncExternalStore` compares with `Object.is`                  |
+| Connect on first `subscribe`          | nothing runs during SSR or in modules that are only imported      |
+| Close 2 s after the last unsubscribe  | StrictMode and navigation resubscribe before it fires            |
+| Rooms ref-counted                     | two components in one room send one `join`                        |
+| Rejoin every room on `open`           | a new connection starts with no rooms on the server               |
+| `say()` rejects when offline          | the UI shows "not sent" instead of a silent queue                 |
+
+The same shape works with a Zustand store ([Zustand](/typescript/react/zustand/)) or a Socket.IO client in place
+of partysocket (see [Recipes](#recipes)).
+
+## useSyncExternalStore
+
+```ts title="lib/realtime/hooks.ts"
+"use client";
+import { useEffect, useSyncExternalStore } from "react";
+import type { ChatMsg } from "./protocol";
+import { realtime, type Snapshot } from "./store";
+
+// select must return part of the snapshot, not a new
+// object or array: that would re-render forever
+export function useRealtime<T>(select: (s: Snapshot) => T) {
+  return useSyncExternalStore(
+    realtime.subscribe,
+    () => select(realtime.getSnapshot()),
+    () => select(realtime.getServerSnapshot()),
+  );
+}
+
+const NONE: readonly ChatMsg[] = []; // stable empty value
+
+export function useRoom(room: string): readonly ChatMsg[] {
+  useEffect(() => realtime.join(room), [room]); // cleanup
+  return useRealtime((s) => s.rooms[room] ?? NONE);
+}
+```
+
+| Argument             | Rule                                                             | If broken                               |
+| :------------------- | :--------------------------------------------------------------- | :-------------------------------------- |
+| `subscribe`          | stable function (module-level), returns an unsubscribe           | resubscribes on every render            |
+| `getSnapshot`        | same value until the store changes                               | "getSnapshot should be cached" warning, infinite loop |
+| `getServerSnapshot`  | required when the component is server-rendered; same on server and first client render | error during SSR, or a hydration mismatch |
+| selector result      | a field of the snapshot or a primitive; never `.filter()`/`.map()` inline | infinite loop: memoize outside or select raw data |
+
+- Store updates are synchronous and never tearing: every component in a render sees the same snapshot.
+- They can't be marked non-blocking with `startTransition`; for a heavy list, pass the data through
+  `useDeferredValue`.
+- More on the hook: [React hooks](/typescript/react/react-hooks/#useid-usesyncexternalstore--usedebugvalue).
+
+## Connection status
+
+```tsx title="components/connection-status.tsx"
+"use client";
+import { useRealtime } from "@/lib/realtime/hooks";
+
+const LABEL = {
+  connecting: "Connecting…",
+  open: "Live",
+  closed: "Reconnecting…",
+} as const;
+
+export function ConnectionStatus() {
+  const status = useRealtime((s) => s.status);
+  const retries = useRealtime((s) => s.retries);
+  const offline = status === "closed" && retries > 3;
+  return (
+    <p role="status" aria-live="polite" data-status={status}>
+      {offline ? "Offline: sends paused" : LABEL[status]}
+    </p>
+  );
+}
+```
+
+| State           | Show                                    | Inputs                                       |
+| :-------------- | :-------------------------------------- | :------------------------------------------- |
+| First connect   | nothing for ~1 s, then a quiet "Connecting…" | enabled; sends fail with "offline"      |
+| Open            | a small "Live" dot, or nothing          | enabled                                      |
+| Brief drop      | "Reconnecting…" after ~2 s (avoid flicker) | enabled; pending rows stay dimmed        |
+| Long drop       | a banner: "Offline: changes won't send" | disable send, or queue with a visible count  |
+| Refused (auth)  | "Session expired", a sign-in link       | disabled; stop reconnecting                  |
+
+`role="status"` + `aria-live="polite"` announces changes to screen readers without stealing focus.
+
+## StrictMode & effects
+
+In development, StrictMode mounts every component, unmounts it, and mounts it again, to prove effects clean up.
+A socket opened in an effect without cleanup opens twice.
+
+| Gotcha                                       | Symptom                                   | Fix                                                  |
+| :------------------------------------------- | :---------------------------------------- | :--------------------------------------------------- |
+| `new WebSocket()` in an effect, no cleanup    | two connections in dev, two of every message | return `() => ws.close()`, or use a store         |
+| Store closes on the last unsubscribe at once | connect, close, connect on every mount    | close after a short delay (the store above)          |
+| `new WebSocket()` in the render body or `useState(() => …)` | runs on the server and on every render | only in effects or in `subscribe`     |
+| Listener added in an effect, never removed   | handlers pile up: duplicates after each remount | return `() => ws.removeEventListener(…)`      |
+| `onmessage` reads React state                | stale values (closure from the first render) | keep data in the store, or read a ref         |
+| Fast Refresh re-runs an edited store module  | an extra socket per edit in dev           | keep the store in a file you rarely edit; reload the page |
+| Room effect depends on an object prop        | leave/join on every render                | depend on the room id string                         |
+
+Effects run twice only in development; production mounts once. Never "fix" it with a `useRef` flag that skips the
+second run: it hides real cleanup bugs.
+
+## Subscribing per room
+
+`useRoom(room)` above joins in an effect and returns the leave function as its cleanup, so the room follows the
+component's lifetime.
+
+| Event                          | Effect runs                  | Server sees                         |
+| :----------------------------- | :--------------------------- | :---------------------------------- |
+| Mount                          | `join("a")`                  | `join a`                            |
+| StrictMode remount (dev)       | leave, then `join("a")`      | `join a`, `leave a`, `join a` (dev only) |
+| `room` prop changes to `b`     | leave `a`, `join("b")`       | `leave a`, `join b`                 |
+| Second component in room `a`   | refcount 2                   | nothing                             |
+| Unmount                        | leave                        | `leave a` once the count hits 0     |
+| Reconnect                      | nothing                      | the store rejoins every room on `open` |
+
+- Key the component by room (`<Chat key={room} room={room} />`) when local state (drafts, scroll) must reset too.
+- Events with no stored state (typing, cursors) can use a tiny `on(event, fn)` API on the store that returns an
+  unsubscribe; call it from an effect the same way.
+- Load history in the Server Component and pass it down; the socket then only carries what happens next. Dedupe
+  by `id` where the two overlap.
+
+## Optimistic sends
+
+`useOptimistic` shows the new row while the send is in flight; when the action finishes, React drops the
+optimistic layer and renders the store's confirmed copy.
+
+```tsx title="app/rooms/[id]/chat.tsx"
+"use client";
+import { useOptimistic, useState } from "react";
+import { useRoom } from "@/lib/realtime/hooks";
+import type { ChatMsg } from "@/lib/realtime/protocol";
+import { realtime } from "@/lib/realtime/store";
+
+type Row = ChatMsg & { pending?: true };
+
+export function Chat({ room }: { room: string }) {
+  const messages = useRoom(room);
+  const [error, setError] = useState<string>();
+  const [rows, addPending] = useOptimistic(
+    messages as readonly Row[],
+    (rows, text: string): readonly Row[] => [
+      ...rows,
+      { id: `tmp-${rows.length}`, room, from: "you", text,
+        ts: Date.now(), pending: true },
+    ],
+  );
+
+  // a form action runs in a transition: the pending row
+  // shows until it returns, then `messages` takes over
+  async function send(form: FormData) {
+    const text = String(form.get("text") ?? "").trim();
+    if (!text) return;
+    addPending(text);
+    setError(undefined);
+    try {
+      await realtime.say(room, text); // store adds it
+    } catch (err) {
+      const why = (err as Error).message;
+      setError(`"${text}" (${why})`); // the input was reset
+    }
+  }
+
+  return (
+    <section>
+      <ul>
+        {rows.map((m) => (
+          <li key={m.id} data-pending={m.pending}>
+            <b>{m.from}</b> {m.text}
+          </li>
+        ))}
+      </ul>
+      {error && <p role="alert">Not sent: {error}</p>}
+      <form action={send}>
+        <input name="text" maxLength={2000} />
+        <button>Send</button>
+      </form>
+    </section>
+  );
+}
+```
+
+| `useOptimistic` fact                         | Consequence                                               |
+| :------------------------------------------- | :-------------------------------------------------------- |
+| Only updates inside an Action or transition | call it from a form `action`, or wrap in `startTransition` |
+| Optimistic state lasts until the Action ends | `await` the ack inside the action, not after it           |
+| Base value (1st arg) keeps flowing          | other users' messages appear under the pending row        |
+| Failure needs no rollback code              | the pending row vanishes on its own; show the error       |
+| `<form action>` resets uncontrolled inputs when the action returns without throwing | no manual clearing; a caught error clears the input too, so show the failed text |
+
+Style pending rows with `li[data-pending]` (dimmed). For writes that go through a Server Action instead of the
+socket, pass the action to `send` the same way: see [Server Actions & broadcast](#server-actions--broadcast).
+
+## Reconnecting client
+
+`partysocket/ws` is a drop-in `WebSocket` that reconnects, buffers sends and accepts an async URL. It works with
+any WebSocket server, not only PartyServer.
+
+| Option                        | Default    | Notes                                                    |
+| :---------------------------- | :--------- | :------------------------------------------------------- |
+| `minReconnectionDelay`        | `3000` ms  | first retry; randomize it for jitter (no built-in jitter) |
+| `maxReconnectionDelay`        | `10000` ms | cap                                                      |
+| `reconnectionDelayGrowFactor` | `1.3`      | multiplier per retry                                     |
+| `connectionTimeout`           | `4000` ms  | give up on a hanging handshake and retry                 |
+| `minUptime`                   | `5000` ms  | a connection shorter than this doesn't reset the retry count |
+| `maxRetries`                  | `Infinity` |                                                          |
+| `maxEnqueuedMessages`         | `Infinity` | `send()` while closed queues; flushed on open            |
+| `startClosed`                 | `false`    | `true`: call `reconnect()` to start                      |
+| `shouldReconnectOnClose`      | none       | `(e) => e.code !== 4001` stops retrying on auth failure  |
+
+- `url` may be `() => Promise<string>`: fetch a fresh ticket before every attempt (see [Recipes](#recipes)).
+- `ws.reconnect()`, `ws.retryCount`, and all normal `WebSocket` members and events.
+- `partysocket/react` has `useWebSocket(url, protocols, options)` for a socket per component, and the default
+  export `PartySocket` targets PartyServer rooms (`host`, `room`, `party`).
+- Hand-rolled alternative: [WebSockets: Reconnect with backoff and jitter](/typescript/backend/websockets/#reconnect-with-backoff-and-jitter).
+
+## Server Actions & broadcast
+
+Writes go through a Server Action (auth, validation, database); the action then asks the realtime server to fan
+the result out. The socket stays read-mostly and the database stays the source of truth.
+
+```ts title="app/rooms/actions.ts"
+"use server";
+import { z } from "zod";
+import { getSession } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+const Input = z.object({
+  room: z.string().min(1).max(64),
+  text: z.string().trim().min(1).max(2000),
+});
+
+export async function postMessage(
+  input: z.input<typeof Input>,
+) {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  const { room, text } = Input.parse(input);
+  if (!(await db.canPost(session.userId, room))) {
+    throw new Error("Forbidden");
+  }
+  const msg = await db.insertMessage({ // persist first
+    room, text, from: session.name,
+  });
+  const url = `${process.env.REALTIME_HTTP}/publish`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.REALTIME_SECRET}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ room, msg }),
+  });
+  // saved but not broadcast: clients catch up on resync
+  if (!res.ok) console.error("publish failed", res.status);
+  return msg;
+}
+```
+
+The realtime server's side, next to its WebSocket handling:
+
+```ts title="realtime-server.ts"
+import { z } from "zod";
+import { ChatMsg } from "./lib/realtime/protocol";
+
+const SECRET = process.env.REALTIME_SECRET;
+if (!SECRET) throw new Error("REALTIME_SECRET not set");
+const Publish = z.object({ room: z.string(), msg: ChatMsg });
+
+const server = Bun.serve({
+  port: 3001,
+  async fetch(req, server) {
+    const { pathname } = new URL(req.url);
+    if (req.method === "POST" && pathname === "/publish") {
+      const auth = req.headers.get("authorization");
+      if (auth !== `Bearer ${SECRET}`) {
+        return new Response(null, { status: 401 });
+      }
+      const body = Publish.safeParse(await req.json());
+      if (!body.success) {
+        return new Response(null, { status: 400 });
+      }
+      const { room, msg } = body.data;
+      const out = JSON.stringify({ type: "chat", msg });
+      server.publish(room, out);
+      return new Response(null, { status: 204 });
+    }
+    // ...verify a ticket, then server.upgrade(req, { data })
+    return new Response("Not found", { status: 404 });
+  },
+  websocket: {
+    // join/leave: authorize, then ws.subscribe(room)
+    message() {},
+  },
+});
+```
+
+- Keep `/publish` off the public internet (private network, or at least the shared secret) and the secret out of
+  `NEXT_PUBLIC_*`.
+- Hosted providers replace `/publish` with their server SDK (`channel.publish(...)`, `pusher.trigger(...)`).
+- To refresh Server Component data for the author too, call `refresh()` or `updateTag()` from `next/cache` in the
+  action; everyone else hears it over the socket.
+- `after()` from `next/server` can run the publish after the response is sent, at the cost of ordering guarantees
+  between the action result and the broadcast.
+
+## Deployment options
+
+| Option                                   | Where sockets live               | Good for                                     | Watch out for                                   |
+| :--------------------------------------- | :------------------------------- | :------------------------------------------- | :---------------------------------------------- |
+| Separate Bun WS server (Railway, Fly, VPS) | a long-running process         | full control, Bun pub/sub, cheapest at scale | you run deploys, TLS, scaling; add Redis at 2+ nodes |
+| Socket.IO service                        | a long-running Bun or Node process | acks, rooms, recovery for free            | sticky sessions or `transports: ["websocket"]` |
+| Cloudflare Durable Objects (PartyServer) | one object per room, at the edge | many small rooms, global users, hibernation  | Workers runtime, not Node; per-request pricing  |
+| Vercel `experimental_upgradeWebSocket()` | a Vercel Function instance       | one repo and one deploy with the Next.js app | beta; closes at max duration; no shared state between instances |
+| Hosted (Ably, Pusher, Supabase, Liveblocks) | the provider                   | zero ops; presence and history built in      | per-message pricing; vendor protocol            |
+| Custom Next.js server (`server.ts`, self-hosted) | the Next.js process        | a single box, one process                    | not on Vercel; can't combine with `output: "standalone"` |
+
+- The Next.js app itself deploys anywhere; point `NEXT_PUBLIC_REALTIME_URL` at whichever option holds the sockets.
+- Comparison of costs: [fundamentals: Build vs buy](/typescript/realtime/fundamentals/#build-vs-buy).
+
+## Vercel WebSockets
+
+Vercel Functions can accept WebSocket upgrades (public beta, Fluid compute). Next.js has no upgrade API of its
+own, so a Route Handler uses `experimental_upgradeWebSocket()` from `@vercel/functions`, which hands you a `ws`
+socket.
+
+```sh
+bun add @vercel/functions ws
+bun add -d @types/ws
+```
+
+```ts title="app/api/ws/route.ts"
+import {
+  experimental_upgradeWebSocket,
+  type WebSocketData,
+} from "@vercel/functions";
+import { connection } from "next/server";
+
+export async function GET() {
+  await connection(); // Cache Components: request time only
+  return experimental_upgradeWebSocket(
+    (ws) => {
+      ws.on("message", (data: WebSocketData) => {
+        ws.send(data); // echo; real app: validate, fan out
+      });
+    },
+    { maxPayload: 64 * 1024 }, // default 256 KiB
+  );
+}
+```
+
+| Fact                                         | Detail                                                        |
+| :------------------------------------------- | :------------------------------------------------------------ |
+| Status                                       | public beta; API name starts with `experimental_`             |
+| Dependency                                   | `ws` must be installed; `ws` is the socket type in the handler |
+| Local development                            | `vc dev` (Vercel CLI 54.14.2+), not `next dev`                |
+| Cache Components                             | `await connection()` first, so the handler isn't prerendered  |
+| Lifetime                                     | the socket closes at the function's max duration: always reconnect |
+| Instances                                    | a socket is pinned to one instance; reconnects may land elsewhere; old deployments keep old sockets |
+| State                                        | nothing shared across instances: rooms and presence go in Redis |
+| Billing                                      | normal function usage while open, plus data transfer          |
+| Routing                                      | the upgrade `GET` passes through middleware, firewall and rate limits |
+
+Treat it like any multi-instance server: every instance subscribes to Redis (or another broker) and relays to its
+own sockets, as in [WebSockets: Scaling](/typescript/backend/websockets/#scaling).
+
+## Recipes
+
+### Short-lived socket ticket
+
+When the socket server is on another origin and can't read the app's session cookie: a Route Handler signs a
+30-second ticket, the client fetches one before every connection attempt.
+
+```ts title="lib/ticket.ts"
+const enc = new TextEncoder();
+const algo = { name: "HMAC", hash: "SHA-256" };
+
+const key = (secret: string) =>
+  crypto.subtle.importKey(
+    "raw", enc.encode(secret), algo, false,
+    ["sign", "verify"],
+  );
+
+// userId must not contain "."
+export async function signTicket(
+  userId: string, secret: string, ttlS = 30,
+): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + ttlS;
+  const body = `${userId}.${exp}`;
+  const k = await key(secret);
+  const sig = await crypto.subtle.sign(
+    "HMAC", k, enc.encode(body),
+  );
+  return `${body}.${Buffer.from(sig).toString("base64url")}`;
+}
+
+export async function verifyTicket(
+  ticket: string, secret: string,
+): Promise<string | null> {
+  const [userId, exp, sig] = ticket.split(".");
+  if (!userId || !exp || !sig) return null;
+  if (Number(exp) < Date.now() / 1000) return null; // old
+  const ok = await crypto.subtle.verify(
+    "HMAC", await key(secret),
+    Buffer.from(sig, "base64url"),
+    enc.encode(`${userId}.${exp}`),
+  );
+  return ok ? userId : null;
+}
+```
+
+```ts title="app/api/realtime-ticket/route.ts"
+import { getSession } from "@/lib/auth";
+import { signTicket } from "@/lib/ticket";
+
+export async function GET() {
+  const session = await getSession(); // cookies: dynamic
+  if (!session) return new Response(null, { status: 401 });
+  const secret = process.env.REALTIME_SECRET;
+  if (!secret) throw new Error("REALTIME_SECRET not set");
+  const ticket = await signTicket(session.userId, secret);
+  return Response.json(
+    { ticket },
+    { headers: { "cache-control": "no-store" } },
+  );
+}
+```
+
+```ts
+// store.ts, last line: a fresh ticket per (re)connect
+const WS = process.env.NEXT_PUBLIC_REALTIME_URL;
+export const realtime = createRealtime(async () => {
+  const res = await fetch("/api/realtime-ticket");
+  const { ticket } = await res.json() as { ticket: string };
+  return `${WS}?ticket=${encodeURIComponent(ticket)}`;
+});
+```
+
+The Bun server calls `verifyTicket()` before `server.upgrade()`. Tickets in URLs land in logs, which is why they
+expire in seconds.
+
+### Reconnect when the tab wakes
+
+When laptops sleep and phones background the tab: retry at once instead of waiting out the backoff.
+
+```tsx
+"use client";
+import { useEffect } from "react";
+import { realtime } from "@/lib/realtime/store";
+
+export function WakeReconnect() {
+  useEffect(() => {
+    const wake = () => {
+      if (document.visibilityState === "visible") {
+        realtime.reconnect();
+      }
+    };
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", wake);
+    return () => {
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", wake);
+    };
+  }, []);
+  return null;
+}
+```
+
+Render it once in the root layout.
+
+### Room page with server-rendered shell
+
+When the page should stream a static shell and let the client connect: the Server Component renders the layout,
+the Client Components own the socket.
+
+```tsx title="app/rooms/[id]/page.tsx"
+import { Suspense } from "react";
+import {
+  ConnectionStatus,
+} from "@/components/connection-status";
+import { Chat } from "./chat";
+
+export default function Page(
+  props: PageProps<"/rooms/[id]">,
+) {
+  return (
+    <main>
+      <ConnectionStatus />
+      <Suspense fallback={<p>Loading room…</p>}>
+        {props.params.then(({ id }) => (
+          <Chat key={id} room={id} />
+        ))}
+      </Suspense>
+    </main>
+  );
+}
+```
+
+With Cache Components, dynamic `params` are request-time data: reading them inside `Suspense` keeps the rest of
+the page in the static shell.
+
+### Socket.IO status in a hook
+
+When the store is a Socket.IO client instead of partysocket: the same `useSyncExternalStore` pattern over its
+events.
+
+```ts
+"use client";
+import { useSyncExternalStore } from "react";
+import { io } from "socket.io-client";
+
+export const socket = io(process.env.NEXT_PUBLIC_IO_URL, {
+  autoConnect: false, // connect on first subscriber
+  transports: ["websocket"],
+});
+
+function subscribe(onChange: () => void) {
+  socket.on("connect", onChange);
+  socket.on("disconnect", onChange);
+  if (!socket.connected) socket.connect();
+  return () => {
+    socket.off("connect", onChange);
+    socket.off("disconnect", onChange);
+  };
+}
+
+export function useConnected(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => socket.connected,
+    () => false, // server render: not connected
+  );
+}
+```
+
+Full client setup and typed events: [Socket.IO](/typescript/realtime/socket-io/#client).
+
+## References
+
+- [react.dev: useSyncExternalStore](https://react.dev/reference/react/useSyncExternalStore),
+  [useOptimistic](https://react.dev/reference/react/useOptimistic),
+  [StrictMode](https://react.dev/reference/react/StrictMode): the hooks and the double-mount check
+- Next.js docs (bundled in `node_modules/next/dist/docs/`):
+  [Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components),
+  [Server Actions](https://nextjs.org/docs/app/guides/server-actions),
+  [Route Handlers](https://nextjs.org/docs/app/getting-started/route-handlers),
+  [connection](https://nextjs.org/docs/app/api-reference/functions/connection)
+- [Vercel: WebSockets](https://vercel.com/docs/functions/websockets) and
+  [`experimental_upgradeWebSocket`](https://vercel.com/docs/functions/functions-api-reference/vercel-functions-package#experimental_upgradewebsocket):
+  beta limits, local dev with `vc dev`
+- [partysocket](https://github.com/cloudflare/partykit/tree/main/packages/partysocket): reconnecting WebSocket options
+- [MDN: WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket): the browser API underneath

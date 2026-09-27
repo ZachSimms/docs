@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" fill="none" stroke="currentColor">
+  <defs>
+    <marker id="rt-do-hibernation-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" stroke="none"/>
+    </marker>
+  </defs>
+  <rect class="d-chip" x="24" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <rect class="d-chip" x="104" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <rect class="d-chip" x="224" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <rect class="d-chip" x="304" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <rect class="d-chip" x="424" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <rect class="d-chip" x="504" y="58" width="72" height="26" rx="5" stroke-width="1.5"/>
+  <path stroke-width="1.5" d="M60 86 V 112 M140 86 V 112 M260 86 V 112 M340 86 V 112 M540 86 V 112"/>
+  <path class="d-stroke-0" stroke-width="2" d="M460 86 V 110" marker-end="url(#rt-do-hibernation-arrow)"/>
+  <rect class="d-muted" x="10" y="114" width="580" height="40" rx="6" stroke-width="1.5"/>
+  <path stroke-width="1.5" d="M100 156 V 186" marker-start="url(#rt-do-hibernation-arrow)" marker-end="url(#rt-do-hibernation-arrow)"/>
+  <path class="d-muted" stroke-width="1.5" stroke-dasharray="4 4" d="M300 156 V 186"/>
+  <path class="d-stroke-0" stroke-width="2" d="M500 156 V 186" marker-end="url(#rt-do-hibernation-arrow)"/>
+  <rect class="d-fill-0 d-tint d-stroke-0" x="25" y="190" width="150" height="50" rx="6" stroke-width="1.5"/>
+  <rect class="d-muted" x="225" y="190" width="150" height="50" rx="6" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <rect class="d-fill-0 d-tint d-stroke-0" x="425" y="190" width="150" height="50" rx="6" stroke-width="1.5"/>
+  <path stroke-width="1.5" d="M100 242 V 268 M300 242 V 268 M500 242 V 268"/>
+  <rect class="d-chip" x="10" y="270" width="580" height="36" rx="6" stroke-width="1.5"/>
+  <g fill="currentColor" stroke="none">
+    <text x="100" y="24" font-size="13" text-anchor="middle" font-weight="600">1. Active</text>
+    <text x="100" y="42" font-size="11" text-anchor="middle" class="d-muted">handlers run, billed</text>
+    <text x="300" y="24" font-size="13" text-anchor="middle" font-weight="600">2. Hibernated</text>
+    <text x="300" y="42" font-size="11" text-anchor="middle" class="d-muted">idle ~10 s, then evicted</text>
+    <text x="500" y="24" font-size="13" text-anchor="middle" font-weight="600">3. Message arrives</text>
+    <text x="500" y="42" font-size="11" text-anchor="middle" class="d-muted">object is rebuilt</text>
+    <text x="60" y="76" font-size="12" text-anchor="middle">client</text>
+    <text x="140" y="76" font-size="12" text-anchor="middle">client</text>
+    <text x="260" y="76" font-size="12" text-anchor="middle">client</text>
+    <text x="340" y="76" font-size="12" text-anchor="middle">client</text>
+    <text x="460" y="76" font-size="12" text-anchor="middle" class="d-fill-0" font-weight="600">sends</text>
+    <text x="540" y="76" font-size="12" text-anchor="middle">client</text>
+    <text x="300" y="132" font-size="12" text-anchor="middle" font-weight="600">Cloudflare edge holds every WebSocket open</text>
+    <text x="300" y="147" font-size="11" text-anchor="middle" class="d-muted">protocol pings and setWebSocketAutoResponse are answered here</text>
+    <text x="100" y="211" font-size="12" text-anchor="middle" class="d-fill-0" font-weight="600">ChatRoom</text>
+    <text x="100" y="228" font-size="11" text-anchor="middle">in memory</text>
+    <text x="300" y="211" font-size="12" text-anchor="middle" class="d-muted" font-weight="600">no instance</text>
+    <text x="300" y="228" font-size="11" text-anchor="middle" class="d-muted">no duration billed</text>
+    <text x="500" y="211" font-size="12" text-anchor="middle" class="d-fill-0" font-weight="600">constructor()</text>
+    <text x="500" y="228" font-size="11" text-anchor="middle">webSocketMessage()</text>
+    <text x="300" y="293" font-size="12" text-anchor="middle">Kept: SQLite storage, each socket's tags and attachment</text>
+    <text x="300" y="330" font-size="11" text-anchor="middle" class="d-muted">Lost on eviction: class fields, Maps, timers. Rebuild them in the constructor.</text>
+  </g>
+</svg>

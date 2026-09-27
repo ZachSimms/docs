@@ -1,0 +1,347 @@
+---
+title: VFR at towered airports
+date: 2026-09-27
+order: 2
+---
+
+Every call for a VFR flight from a towered Class D field to a Class C airport, with flight following in between:
+Palo Alto (KPAO) to Sacramento International (KSMF), about 80 NM. Word meanings and readback rules are in
+[radio fundamentals](/aviation/atc-comms/fundamentals/); fields with no tower are in
+[VFR untowered](/aviation/atc-comms/vfr-untowered/).
+
+<Note kind="warning">
+A radio reference for the sim and for study. In a real aircraft the current charts, the Chart Supplement and the
+controller's actual words win over any example here. Frequencies below are from the September 2026 charts; read
+the current ones from your chart or EFB.
+</Note>
+
+## The example route
+
+| | Palo Alto (KPAO), departure | Sacramento Intl (KSMF), arrival |
+| :--- | :--- | :--- |
+| airspace | Class D 0700–2100 local, Class G when the tower is closed | Class C |
+| weather | ATIS 135.275 | D-ATIS 126.75 |
+| clearance delivery | none (Class D) | 121.1 |
+| ground | Palo Alto Ground 125.0 | Capitol Ground 121.7 |
+| tower | Palo Alto Tower 118.6 (CTAF when closed) | Capitol Tower 125.7 |
+| approach / departure | NorCal Departure 121.3 | NorCal Approach 125.25 (southwest), 125.4 (west–northeast), 127.4 (east–southeast) |
+| runways | 13–31, 2,441 ft; right traffic for 31 | 17L–35R, 17R–35L; right traffic for 35R and 17R |
+| notes | pattern 1,000 ft west, 800 ft east; after takeoff on 31, turn 10° right until the Dumbarton Bridge (noise) | South General Aviation parking at the south end, off Papa |
+
+Course is about 005° magnetic, so cruise at an odd thousand + 500: 5,500 ft once clear of the San Francisco Class B
+above the bay. The FAA Chart Supplement and airport diagram name SMF's tower and ground "Capitol"; some older
+sources and sim data still say "Sacramento". Taxi routes below follow the current airport diagrams but are examples:
+use what ATC gives you.
+
+## ATIS and clearance delivery
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| engine running, before any call | KPAO ATIS 135.275 | nothing: listen | "Palo Alto information Charlie … wind three one zero at eight … altimeter three zero zero two … runway three one in use" | set the altimeter; note the letter, runway and any NOTAMs |
+| departing a Class B primary airport (always) or a Class C airport that asks for it (ATIS or Chart Supplement: "VFR departures contact clearance delivery") | Clearance Delivery, e.g. KSMF 121.1 | "Capitol Clearance, Skyhawk one two three alpha bravo, VFR to Palo Alto, four thousand five hundred, with information Delta" | "Skyhawk one two three alpha bravo, departure frequency one two five point two five, squawk four five two one"; Class B adds "cleared out of Bravo airspace" or an altitude limit; or: "hold for release", "call ground when ready to taxi" | read back frequency, squawk and any altitude; set the squawk now |
+| Class D field like KPAO | no clearance delivery | ask Ground for flight following in the taxi call instead | squawk and departure frequency come from Ground | as above |
+
+### If ATC says…
+
+- "Information Delta is current": you're on an old ATIS. Say "Skyhawk three alpha bravo, have Delta" after listening.
+- "Say altitude and direction of flight": they need your plan. Answer "northbound, five thousand five hundred".
+- "Standby": wait; call again only if a couple of minutes pass.
+- "Expect a delay": acknowledge, then stay on the frequency and don't move.
+
+## Ground and taxi
+
+Call ground from the parking spot with ATIS copied. Taxi instructions are never "cleared": they give the runway,
+the route and any hold-short (AIM 4-3-18).
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| at the parking spot, ready to move | Palo Alto Ground 125.0 | "Palo Alto Ground, Skyhawk one two three alpha bravo, at transient parking, with information Charlie, VFR to Sacramento International, northbound departure, request flight following, request taxi" | "Skyhawk one two three alpha bravo, Palo Alto Ground, runway three one, taxi via Yankee; squawk four five two one, departure frequency one two one point three"; or: "… taxi via Yankee, hold short of taxiway Alpha"; or: "give way to the Cherokee from your right"; or: "hold position" | "Runway three one, taxi via Yankee, squawk four five two one, Skyhawk three alpha bravo"; any hold short, read back word for word |
+| unsure of the route | Ground | "Skyhawk three alpha bravo, unfamiliar with the airport, request progressive taxi" | step-by-step: "turn left at Yankee, … continue …" | follow each step; stop and ask before guessing |
+| route crosses a runway | Ground | nothing until instructed | "cross runway one two at Alpha" (always explicit, one runway at a time) | read it back; cross without stopping; never cross on a taxi clearance alone |
+| at the run-up area | stay on Ground (AIM 4-3-14) | nothing | nothing | run-up; switch to Tower only when ready to go |
+
+### If ATC says…
+
+- "Hold short of runway one two" (or any runway): stop before the hold-short line and read it back; ATC must hear it.
+- "Hold position": stop where you are, now. Answer "holding, Skyhawk three alpha bravo".
+- "Expedite taxi" or "taxi without delay": keep it moving, traffic is waiting.
+- "Monitor tower": switch to the tower frequency and listen; don't call.
+- "Say position": tell them the taxiway and the nearest intersection.
+- If you cross a hold line or taxi the wrong way: stop, then say so ("Skyhawk three alpha bravo, stopped on Yankee short of Alpha, I think I missed the turn").
+
+## Tower: takeoff
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| run-up done, at the hold-short line | Palo Alto Tower 118.6 | "Palo Alto Tower, Skyhawk one two three alpha bravo, ready for departure runway three one, northbound departure" | "Skyhawk one two three alpha bravo, Palo Alto Tower, runway three one, cleared for takeoff"; or: "runway three one, line up and wait, traffic landing runway three one" (hold on the runway, max about 90 s); or: "hold short runway three one, traffic on final"; or: "runway three one, cleared for takeoff, northbound departure approved" | "Runway three one, cleared for takeoff, Skyhawk three alpha bravo"; lights on, roll |
+| at an intersection | Tower | "… at Bravo, ready for departure runway three one" | "runway three one at Bravo, cleared for takeoff" | read back with the intersection |
+| lined up and waiting over about 90 s | Tower | "Skyhawk three alpha bravo, holding in position runway three one" | "continue holding" or the takeoff clearance | keep waiting; never roll without "cleared for takeoff" |
+
+### If ATC says…
+
+- "Cleared for takeoff, no delay" or "immediate": go now or say "unable" and stay put.
+- "Cancel takeoff clearance": stop if still on the ground; read it back ("aborting, Skyhawk three alpha bravo") and wait.
+- "Hold for wake turbulence": you're behind a heavier aircraft; wait for the new clearance.
+- "Traffic, a Citation on a two-mile final": acknowledge ("traffic in sight" or "looking"); it's why you're waiting.
+- "Say intentions": tell them your departure direction, or "remaining in the pattern".
+- "Unable northbound departure, fly runway heading": fly it, and request your turn later.
+
+## Leaving the Delta and flight following
+
+Flight following (radar traffic advisories for VFR) is optional, free and workload-permitting. It's not a
+clearance: it doesn't let you into Class B, and ATC can drop it any time (AIM 4-1-15, 4-1-18).
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| climbing out, with flight following set up on the ground | Tower | nothing | "Skyhawk three alpha bravo, contact NorCal Departure one two one point three" (about ½ NM past the runway end or later) | read back and switch |
+| first call to departure | NorCal Departure 121.3 | "NorCal Departure, Skyhawk one two three alpha bravo, one thousand one hundred, climbing to three thousand five hundred" | "Skyhawk three alpha bravo, NorCal Departure, radar contact two miles north of Palo Alto, altimeter three zero zero two"; or: "remain outside Class Bravo airspace"; or: "ident" | read back the altimeter; comply |
+| leaving the Class D with no flight following | Tower | optional: "Skyhawk three alpha bravo, request frequency change" | "frequency change approved"; outside the Class D you may leave without asking (AIM 4-3-2) | switch to your en route frequency; squawk 1200 |
+| clear of the Class D, want flight following now | NorCal Approach (sectional box or EFB) | "NorCal Approach, Skyhawk one two three alpha bravo, VFR request" | "Skyhawk one two three alpha bravo, NorCal, go ahead" | then give type, position, altitude, destination, cruise altitude (Recipes) |
+
+### If ATC says…
+
+- "Unable flight following, workload": acknowledge, squawk 1200, and try the next sector later.
+- "Squawk four five two one and ident": set it, press IDENT once, read back the code.
+- "Remain outside Class Bravo airspace": you're not cleared into it; stay below or around it.
+- "Maintain VFR": you're on your own for clouds and terrain; nothing else changes.
+- "Say altitude" / "verify altitude": state your exact altimeter reading ("three thousand four hundred").
+
+## En route handoffs
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| ATC hands you off | current NorCal sector | nothing | "Skyhawk three alpha bravo, contact NorCal Approach one two five point two five" | "One two five point two five, Skyhawk three alpha bravo"; switch, listen, check in |
+| check-in on the new frequency | new sector | "NorCal Approach, Skyhawk one two three alpha bravo, five thousand five hundred" | "Skyhawk three alpha bravo, NorCal Approach, altimeter three zero zero one" | read back the altimeter |
+| changing cruise altitude | current sector | "NorCal, Skyhawk three alpha bravo, climbing to five thousand five hundred" (tell them, AIM 4-1-15) | "roger"; or: "maintain three thousand five hundred for traffic" | comply or say "unable" |
+| leaving to listen to the destination ATIS | current sector | "NorCal, Skyhawk three alpha bravo, request to leave the frequency for two minutes for the Sacramento weather" | "approved, report back on" | copy the ATIS; call "Skyhawk three alpha bravo, back on, with Echo" |
+| ending flight following early | current sector | "NorCal, Skyhawk three alpha bravo, request to cancel flight following" | "radar service terminated, squawk VFR, frequency change approved" | squawk 1200; switch |
+
+### If ATC says…
+
+- "Radar contact lost": you're too low or out of coverage. Climb if you can, or "roger" and keep navigating.
+- "Radar service terminated, squawk VFR, frequency change approved": set 1200; you're on your own.
+- "Contact NorCal on one two five point two five" and you get no answer: go back to the old frequency and say "unable contact".
+- A traffic call: answer every one ("looking", "traffic in sight", "negative contact").
+- "Suggest heading zero one zero for traffic": it's advisory for VFR; accept or say what you'll do instead.
+
+## Arrival: ATIS and the Class C
+
+Class C rule: you may enter once ATC has answered **using your callsign**. On flight following you already have
+that; a handoff within NorCal keeps it (AIM 3-2-4).
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| about 30 NM out | KSMF D-ATIS 126.75 (on COM2, or after asking to leave the frequency) | nothing | "Sacramento International information Echo … landing and departing runway one seven left and right …" | note letter, runway, altimeter |
+| handed to the SMF sector, on flight following | NorCal Approach 125.25 | "NorCal Approach, Skyhawk one two three alpha bravo, five thousand five hundred, with information Echo, landing Sacramento International" | "Skyhawk three alpha bravo, NorCal Approach, descend and maintain two thousand five hundred, expect right downwind runway one seven right"; or: "fly heading three five zero for sequencing"; or: "follow the Bonanza at your eleven o'clock, four miles" | read back altitude, heading or runway; "traffic in sight" before you can follow |
+| not on flight following, about 20–25 NM out, before the outer ring | NorCal Approach 125.25 | "NorCal Approach, Skyhawk one two three alpha bravo, two five miles southwest, five thousand five hundred, with information Echo, landing Sacramento International" | "Skyhawk one two three alpha bravo, squawk four five one six" (you're in contact: enter); or: "Skyhawk one two three alpha bravo, standby" (in contact: you may enter); or: "Aircraft calling, standby" (not in contact: stay out); or: "remain outside Charlie airspace and standby" | set the squawk; only enter after hearing your callsign |
+| inside about 10 NM | Approach | nothing | "Skyhawk three alpha bravo, contact Capitol Tower one two five point seven" | read back; switch |
+
+### If ATC says…
+
+- "Remain outside Charlie airspace and standby": orbit or turn away before the ring until they call you.
+- "Say intentions": "full stop at Sacramento International" or "touch-and-go, then back to Palo Alto".
+- "Airport twelve o'clock, eight miles, report it in sight": answer "airport in sight" or "negative contact".
+- "Resume appropriate VFR altitudes": the assigned altitude is over; pick an odd or even + 500 again.
+
+## Tower: pattern and landing
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| handed off by approach, or about 15 NM out at a Class D field (AIM 4-3-2) | Capitol Tower 125.7 | "Capitol Tower, Skyhawk one two three alpha bravo, eight miles southwest, two thousand five hundred, with information Echo, full stop" | "Skyhawk three alpha bravo, Capitol Tower, enter right downwind runway one seven right, report midfield"; or: "make straight-in runway one seven right, report three-mile final"; or: "enter right base"; or: "runway one seven right, cleared to land" | read back the runway and entry; report where asked |
+| at the reporting point | Tower | "Skyhawk three alpha bravo, midfield right downwind, one seven right" | "Skyhawk three alpha bravo, number two, follow the Cherokee on base, runway one seven right, cleared to land"; or: "continue" (no clearance yet); or: "extend downwind, I'll call your base"; or: "make short approach" | read back the landing clearance; "traffic in sight" for the one you follow |
+| on final, no clearance yet | Tower | "Skyhawk three alpha bravo, short final, one seven right" | "runway one seven right, cleared to land" or "go around" | no clearance by the threshold: go around |
+| want practice | Tower, entering downwind (AIM 4-3-23) | "Skyhawk three alpha bravo, request touch-and-go" or "request the option" | "runway one seven right, cleared touch-and-go"; or: "cleared for the option"; or: "right closed traffic approved" | read back; tell them if you'll stop on the runway |
+
+### If ATC says…
+
+- "Go around": full power, climb, say "going around, Skyhawk three alpha bravo". With no other instruction, overfly the runway, climb to pattern altitude and rejoin via crosswind (P/CG).
+- "Continue": keep flying the approach; a landing clearance is coming. It's not one yet.
+- "Make left three-sixty": a full circle for spacing, then resume; say "left three-sixty" back.
+- "Extend downwind, I'll call your base": keep flying downwind until tower calls "turn base".
+- "Change to runway one seven left, runway one seven left cleared to land": the runway changed; read the new one back.
+- "Cleared to land, hold short of runway …" (LAHSO): accept only if you can stop in the distance; otherwise "unable hold short".
+- "Traffic holding in position runway one seven right": expect it to take off ahead of you; watch it.
+- Never make an unannounced 360° in the pattern (AIM 4-3-5).
+
+## After landing
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| slowing on the rollout | Tower | nothing | "Skyhawk three alpha bravo, turn left next taxiway, contact ground point seven"; or: "turn left at Alpha One One, hold short of taxiway Alpha" | exit at the first safe turnoff; cross the hold-short line; stop and switch |
+| clear of the runway | Capitol Ground 121.7 | "Capitol Ground, Skyhawk one two three alpha bravo, clear of one seven right at Alpha One One, taxi to south general aviation parking" | "Skyhawk three alpha bravo, Capitol Ground, taxi to the south general aviation ramp via Alpha, Papa" | read back any hold short; taxi |
+| tower gave no instruction | stay on Tower | nothing | "contact ground" when ready | don't switch until told (AIM 4-3-14) |
+| filed a VFR flight plan | Flight Service (1-800-WX-BRIEF, app or "… Radio") | "close my VFR flight plan, Skyhawk one two three alpha bravo, Sacramento International" | "flight plan closed" | towers don't close VFR flight plans (AIM 5-1-14) |
+
+"Clear of the runway" means the whole airplane is past the runway holding position markings (P/CG).
+
+## Class B clearance
+
+Class B needs a clearance: you must hear "cleared through / to enter / out of Bravo airspace". "Radar contact",
+a squawk code or flight following is **not** a clearance (AIM 3-2-3, 7110.65 7-9-2).
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| outside the Class B, before its boundary | the Approach frequency charted for that sector, e.g. NorCal for San Francisco | "NorCal Approach, Skyhawk one two three alpha bravo, over Palo Alto, three thousand five hundred, request Bravo transition northbound to Petaluma, five thousand five hundred" | "Skyhawk three alpha bravo, squawk four five two one" … "radar contact … cleared through San Francisco Bravo airspace via the shoreline, maintain five thousand five hundred" | read back the whole clearance: "cleared through the Bravo via the shoreline, maintain five thousand five hundred" |
+| cleared in | Approach | nothing | assigned headings, routes or altitudes | fly them exactly; say "unable" if they'd put you in cloud |
+| leaving | Approach | nothing | "leaving San Francisco Bravo airspace, resume appropriate VFR altitudes" (often "radar service terminated, squawk VFR") | pick a VFR altitude; squawk 1200 if told |
+
+### If ATC says…
+
+- "Remain outside Bravo airspace": stay out, below the shelf or around; ask again later.
+- "Remain outside Bravo airspace, expect clearance in five minutes": hold outside; don't enter early.
+- "Squawk four five two one" or "radar contact": still no clearance. Stay out until you hear "cleared".
+
+## Recipes
+
+### Full script: Palo Alto to Sacramento International
+Flight following requested on the ground; one example of each exchange. Letters, codes and headings are made up.
+
+```text
+(KPAO ATIS 135.275: "information Charlie, runway three one, altimeter three zero zero two")
+
+YOU  Palo Alto Ground, Skyhawk one two three alpha bravo, at transient parking, with information Charlie,
+     VFR to Sacramento International, northbound departure, request flight following, request taxi.
+GND  Skyhawk one two three alpha bravo, Palo Alto Ground, squawk four five two one, departure frequency
+     one two one point three, runway three one, taxi via Yankee.
+YOU  Squawk four five two one, one two one point three, runway three one, taxi via Yankee,
+     Skyhawk one two three alpha bravo.
+     (run-up at the run-up area, then 118.6)
+YOU  Palo Alto Tower, Skyhawk one two three alpha bravo, ready for departure runway three one,
+     northbound departure.
+TWR  Skyhawk one two three alpha bravo, Palo Alto Tower, runway three one, line up and wait,
+     traffic departing runway three one.
+YOU  Runway three one, line up and wait, Skyhawk one two three alpha bravo.
+TWR  Skyhawk three alpha bravo, runway three one, cleared for takeoff, northbound departure approved.
+YOU  Runway three one, cleared for takeoff, Skyhawk three alpha bravo.
+TWR  Skyhawk three alpha bravo, contact NorCal Departure.
+YOU  NorCal Departure, Skyhawk three alpha bravo.
+     (121.3)
+YOU  NorCal Departure, Skyhawk one two three alpha bravo, one thousand one hundred, climbing to
+     three thousand five hundred.
+DEP  Skyhawk one two three alpha bravo, NorCal Departure, radar contact two miles north of Palo Alto,
+     remain outside Class Bravo airspace, altimeter three zero zero two.
+YOU  Remain outside Bravo, three zero zero two, Skyhawk three alpha bravo.
+DEP  Skyhawk three alpha bravo, traffic one o'clock, three miles, westbound, a Cessna, two thousand five hundred.
+YOU  Traffic in sight, Skyhawk three alpha bravo.
+YOU  NorCal, Skyhawk three alpha bravo, clear of the Bravo, climbing to five thousand five hundred.
+DEP  Skyhawk three alpha bravo, roger.
+     (one or more NorCal handoffs as you cross the East Bay and the Delta; frequencies vary by sector)
+DEP  Skyhawk three alpha bravo, contact NorCal Approach one two five point two five.
+YOU  One two five point two five, Skyhawk three alpha bravo.
+YOU  NorCal Approach, Skyhawk one two three alpha bravo, five thousand five hundred.
+APP  Skyhawk three alpha bravo, NorCal Approach, altimeter three zero zero one.
+YOU  Three zero zero one, Skyhawk three alpha bravo. Request to leave the frequency for two minutes
+     for the Sacramento weather.
+APP  Skyhawk three alpha bravo, approved, report back on.
+     (D-ATIS 126.75: "information Echo, runway one seven left and right")
+YOU  Skyhawk three alpha bravo, back on, with Echo.
+APP  Skyhawk three alpha bravo, descend and maintain two thousand five hundred,
+     expect right downwind runway one seven right.
+YOU  Down to two thousand five hundred, expect right downwind one seven right,
+     Skyhawk three alpha bravo.
+APP  Skyhawk three alpha bravo, contact Capitol Tower one two five point seven.
+YOU  One two five point seven, Skyhawk three alpha bravo.
+YOU  Capitol Tower, Skyhawk one two three alpha bravo, eight miles southwest, two thousand five hundred,
+     with information Echo, full stop.
+TWR  Skyhawk three alpha bravo, Capitol Tower, enter right downwind runway one seven right,
+     report midfield.
+YOU  Right downwind one seven right, report midfield, Skyhawk three alpha bravo.
+YOU  Skyhawk three alpha bravo, midfield right downwind, one seven right.
+TWR  Skyhawk three alpha bravo, number two, follow the Cherokee on a one-mile final,
+     runway one seven right, cleared to land.
+YOU  Traffic in sight, number two, runway one seven right, cleared to land, Skyhawk three alpha bravo.
+TWR  Skyhawk three alpha bravo, turn left next taxiway, contact ground point seven.
+YOU  Left next taxiway, ground point seven, Skyhawk three alpha bravo.
+     (121.7, clear of the runway)
+YOU  Capitol Ground, Skyhawk one two three alpha bravo, clear of one seven right at Alpha One One,
+     taxi to south general aviation parking.
+GND  Skyhawk three alpha bravo, Capitol Ground, taxi to the south general aviation ramp via Alpha, Papa.
+YOU  Via Alpha, Papa to the south general aviation ramp, Skyhawk three alpha bravo.
+```
+
+### Leaving a Class C with clearance delivery
+Return leg from KSMF. Call Clearance Delivery with the ATIS, then Ground; the tower hands you to departure.
+
+```text
+YOU  Capitol Clearance, Skyhawk one two three alpha bravo, VFR to Palo Alto, four thousand five hundred,
+     with information Foxtrot.
+CLR  Skyhawk one two three alpha bravo, departure frequency one two five point two five, squawk four five two six.
+YOU  One two five point two five, squawk four five two six, Skyhawk one two three alpha bravo.
+YOU  Capitol Ground, Skyhawk one two three alpha bravo, south general aviation ramp, with Foxtrot,
+     ready to taxi.
+GND  Skyhawk one two three alpha bravo, runway one seven right, taxi via Papa, Alpha.
+YOU  Runway one seven right, taxi via Papa, Alpha, Skyhawk one two three alpha bravo.
+     (run-up, then Capitol Tower 125.7: "ready for departure runway one seven right, southwest departure")
+```
+
+### Asking for flight following in the air
+Two steps: call-up, then the details after "go ahead" (AIM 4-2-3).
+
+```text
+YOU  NorCal Approach, Skyhawk one two three alpha bravo, VFR request.
+APP  Skyhawk one two three alpha bravo, NorCal Approach, go ahead.
+YOU  Skyhawk one two three alpha bravo, a Cessna one seventy-two, five miles northeast of Palo Alto,
+     two thousand five hundred climbing to five thousand five hundred, request flight following
+     to Sacramento International.
+APP  Skyhawk one two three alpha bravo, squawk four five two one.
+YOU  Four five two one, Skyhawk one two three alpha bravo.
+APP  Skyhawk one two three alpha bravo, radar contact six miles northeast of Palo Alto,
+     altimeter three zero zero two.
+YOU  Three zero zero two, Skyhawk three alpha bravo.
+```
+
+### Entering a Class C without flight following
+Call before the outer ring. Only your callsign in the reply lets you in.
+
+```text
+YOU  NorCal Approach, Skyhawk one two three alpha bravo, two five miles southwest, five thousand five hundred,
+     with information Echo, landing Sacramento International.
+APP  Skyhawk one two three alpha bravo, standby.
+     (you're in contact: you may enter, keep listening)
+APP  Aircraft calling NorCal, standby.
+     (not in contact: stay outside the Class C)
+```
+
+### Coming back to a Class D (Palo Alto)
+About 15 NM out, with the ATIS; expect a pattern entry and a report point.
+
+```text
+YOU  Palo Alto Tower, Skyhawk one two three alpha bravo, one two miles east, two thousand five hundred,
+     with information Golf, full stop.
+TWR  Skyhawk one two three alpha bravo, Palo Alto Tower, enter right downwind runway three one,
+     report midfield.
+YOU  Right downwind three one, report midfield, Skyhawk one two three alpha bravo.
+```
+
+### Closed traffic for landing practice
+Ask before takeoff or when entering downwind; say how many if the tower asks.
+
+```text
+YOU  Palo Alto Tower, Skyhawk one two three alpha bravo, ready for departure runway three one,
+     request right closed traffic.
+TWR  Skyhawk one two three alpha bravo, right closed traffic approved, runway three one,
+     cleared for takeoff.
+YOU  Right closed traffic, runway three one, cleared for takeoff, Skyhawk three alpha bravo.
+YOU  Skyhawk three alpha bravo, right downwind, request touch-and-go.
+TWR  Skyhawk three alpha bravo, runway three one, cleared touch-and-go.
+YOU  Runway three one, cleared touch-and-go, Skyhawk three alpha bravo.
+```
+
+### Go-around
+Fly first, talk second.
+
+```text
+TWR  Skyhawk three alpha bravo, go around, aircraft on the runway.
+YOU  Going around, Skyhawk three alpha bravo.
+TWR  Skyhawk three alpha bravo, make right traffic, re-enter right downwind runway three one.
+YOU  Right traffic, re-enter right downwind three one, Skyhawk three alpha bravo.
+```
+
+## References
+
+- [FAA Aeronautical Information Manual, Basic with Change 3 (July 9, 2026)](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/): 3-2 Class B, C, D entry; 4-1-13 ATIS, 4-1-15 and 4-1-18 radar services for VFR; 4-3 towered airport operations (patterns, taxi, readbacks, exiting the runway, option); 5-1 VFR flight plans
+- [FAA Order JO 7110.65BB, Air Traffic Control](https://www.faa.gov/air_traffic/publications/atpubs/atc_html/): what the controller says; 3-7 taxi, 3-8 sequencing and touch-and-go, 3-9 takeoff and line up and wait, 3-10 landing, 7-6 VFR radar service, 7-8 Class C, 7-9 Class B
+- [FAA Pilot/Controller Glossary](https://www.faa.gov/air_traffic/publications/atpubs/pcg_html/): go around, clear of the runway, radar contact, option approach
+- [FAA Chart Supplement, Southwest, September 3 to October 29, 2026](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/): KPAO and KSMF frequencies, airspace hours, patterns and noise rules
+- [FAA d-TPP airport diagrams, cycle 2609](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/): KPAO and KSMF taxiways
+- [AirNav: KPAO](https://www.airnav.com/airport/KPAO), [KSMF](https://www.airnav.com/airport/KSMF): quick cross-check of frequencies and runway data

@@ -1,0 +1,449 @@
+---
+title: Cessna Citation Longitude
+date: 2026-09-27
+order: 6
+---
+
+The MSFS 2024 Cessna Citation Longitude (Textron model 700): a super-midsize twinjet with the Garmin G5000, FADEC
+engines and autothrottle. Limits come from the type certificate (FAA T00015WI, mirrored by EASA.IM.A.620) and Working
+Title's *Cessna Citation Longitude Model 700 Operators Guide* written for the sim; performance comes from Textron.
+Speeds are KIAS unless marked. Editions, the EFB, SimBrief, the checklist panel and key bindings are in
+[sim basics](/aviation/msfs-2024/sim-basics/); radio calls are in [ATC comms](/aviation/atc-comms/). The single-pilot
+jet is the [Vision Jet](/aviation/msfs-2024/vision-jet/).
+
+<Note kind="warning">For the simulator only. Working Title's guide says so too: it is for MSFS, not real flight. The
+checklists below are condensed paraphrases.</Note>
+
+## Profile
+
+| Item | Value | Notes and source |
+| :--- | :--- | :--- |
+| role | super-midsize business jet, two crew (the sim lets one pilot fly it) | transport category (Part 25) |
+| engines | 2 × Honeywell HTF7700L, 7,665 lb thrust each, flat-rated to ISA +18.9 °C | TCDS; Textron; WT guide |
+| seats | 8 passengers standard, up to 12[^1] | WT guide; Textron |
+| max takeoff weight | 39,500 lb; ramp 39,700, landing 33,500, zero fuel 26,800 | TCDS; WT guide; Textron |
+| usable fuel | 14,511 lb (2,166 US gal), two wing tanks | TCDS; Textron rounds to 14,500 lb |
+| typical burn | about 1,400–1,960 lb/h total in cruise, slow to fast[^2] | AIN, FlightGlobal and AOPA flight reports |
+| cruise | 483 KTAS max; about 451 KTAS at Mach 0.79 long-range cruise | Textron; FlightGlobal |
+| ceiling | FL450 (45,000 ft) | TCDS-based WT guide; Textron |
+| range | 3,500 NM (4 passengers, Mach 0.80, NBAA IFR reserves) | Textron; BCA |
+| field length | takeoff 4,810 ft (MTOW, sea level, ISA); landing 3,170 ft | Textron |
+| cabin | 5,950 ft cabin at FL450 | WT guide; BCA ("sub-6,000 ft") |
+| MSFS edition | Premium Deluxe | first-party aircraft list; Windows Central |
+| avionics | Garmin G5000: 2 PFDs, 1 MFD, 4 GTC touch controllers, autothrottle | WT guide |
+
+**FADEC** (full-authority digital engine control) runs the start and sets thrust for each lever position. **KTAS** is
+true airspeed. **NBAA IFR reserves** are a business-aviation fuel reserve standard.
+
+## Speeds
+
+### Limits
+
+| Speed | Value | Meaning and notes |
+| :--- | :--- | :--- |
+| Vmo | 290 at sea level → 305 at 8,000 ft (linear); 325 from 8,000 to 29,375 ft | maximum operating speed |
+| Mmo | Mach 0.84 above 29,375 ft | maximum operating Mach |
+| Vfe flaps 1 (7°) | 250 | max speed with flaps 1 |
+| Vfe flaps 2 (15°) | 230 | max speed with flaps 2 |
+| Vfe flaps full (35°) | 180 | max speed with full flaps |
+| Vlo / Vle | 230 | gear operating and extended |
+| speedbrakes | no speed limit | retract by 500 ft AGL on approach |
+| Va | 222 at 39,500 lb, sea level | maneuvering speed; 156 at 22,400 lb; rises with altitude |
+| rough air (VRA) | 235 / Mach 0.75 | turbulence penetration |
+| VMCG | 80 | minimum control speed on the ground (flaps 1 or 2) |
+| VMCA | 100 (flaps 1) / 96 (flaps 2) | minimum control speed in the air, one engine out |
+| tire speed | 195 kt groundspeed | |
+| RVSM minimum | 190 | lowest speed in RVSM airspace (FL290–FL410) |
+| flaps or gear | not above FL180 | |
+| wind | tailwind ≤ 10 kt for takeoff and landing | |
+| field elevation | ≤ 14,000 ft | |
+
+### Takeoff and landing speeds (weight-dependent)
+
+Jets have no fixed rotate speed: the G5000 computes them from weight, temperature, pressure altitude, wind, runway and
+flaps on the GTC **PERF** pages (TOLD: takeoff and landing data).
+
+| Speed | Meaning |
+| :--- | :--- |
+| V1 | decision speed: an engine failure before V1 means stop; after V1, go |
+| Vr | rotate speed |
+| V2 | takeoff safety speed: the minimum speed to hold in the initial climb with one engine out |
+| Vref | landing reference speed over the threshold, full flaps |
+| Vapp | approach speed: Vref plus a wind additive (BCA: half the steady wind plus all the gust, 5–20 kt) |
+
+Representative examples (flight reports, not for your weight):
+
+| Case | Speeds | Source |
+| :--- | :--- | :--- |
+| takeoff, 32,965 lb, 12 °C, flaps 2 | V1 107, Vr 113, V2 125 | BCA and AOPA (same flight) |
+| takeoff, 32,265 lb ramp, flaps 2 | V1 106, Vr 112, V2 124 | AIN |
+| landing | Vref 118–120, Vapp 130–131 | BCA; AOPA |
+| no TOLD at hand | fly the angle-of-attack gauge at 0.66: that's approach speed at any weight | WT guide |
+
+Sim vs real: Working Title says the engine and flight model are tuned to book speeds, climb rates and fuel flows, so the
+PERF numbers are the ones to fly.
+
+## Cockpit & avionics
+
+| Where | What's there |
+| :--- | :--- |
+| PFDs (left and right) | flight instruments, AFCS status box at the top: A/T mode, lateral and vertical modes, AP and AT status |
+| MFD (center) | EIS strip on the left, always shown (N1, ITT, N2, fuel, oil); maps, radar, traffic, synoptics |
+| PFD GTCs (outboard) | radios, nav source, bearing pointers, speed bugs, minimums, PFD settings |
+| MFD GTCs (under the MFD) | all flight management: Flight Plan, PROC, Direct-to, PERF, Systems, Utilities, transponder |
+| autopilot panel | modes, altitude and heading knobs; speed knob with FMS / MAN |
+| throttles | no detents: TO fully forward, then CLB, CRU; TO/GA button outboard on each handle; AT disconnect on the front; AT arm button on the lever |
+| pedestal, behind the throttles | ENGINE RUN/STOP buttons (covered) and ENGINE START buttons |
+| pedestal, right front | fuel controls |
+| left of the throttles | SPEEDBRAKE handle |
+| pilot's lower panel | electrical controls |
+| copilot's lower panel | ice protection: ENGINE L/R, WING, STAB, PITOT/STATIC |
+
+**GTC** is Garmin's touch controller. **EIS** is the engine indication strip. **AFCS** is the automatic flight control
+system: autopilot, flight director and autothrottle.
+
+## Normal procedures
+
+Condensed and reworded from section XVII of Working Title's guide; the in-sim checklist panel has the same flows.
+
+### Preflight
+
+| Item | Action / value |
+| :--- | :--- |
+| STBY PWR | test (green light 10 s or more), then ON |
+| EMER LTS | ARM |
+| gear handle | DOWN |
+| BATT (both) | ON, check volts |
+| power | external power, or APU: knob ON (digits within 10 s), START, 98–100% RPM, APU BLEED NORM, APU GEN ON |
+| trims | stab trim in the green band, set for your CG from the guide's chart |
+| PERF: Weight and Fuel | done on the MFD GTC |
+| PERF: Takeoff Data | done; V-speeds verified and set |
+| pressurization | landing elevation verified |
+| fuel | quantity and balance (≤ 500 lb side to side) |
+
+### Before start
+
+| Item | Action / value |
+| :--- | :--- |
+| parking brake | set (PARK BRAKE ON shown) |
+| EIS / CAS | check (CAS: crew alerting messages) |
+| dry motor | if 15–180 min since shutdown, ENG DRY MTR PROC appears: motor first (Recipes) |
+
+### Engine start
+
+| Item | Action / value |
+| :--- | :--- |
+| throttles | IDLE |
+| RUN/STOP (one engine) | RUN (the guide suggests the right engine first) |
+| start pressure | ≥ 32 psi in the EIS start box |
+| START | press once: the FADEC runs the whole sequence |
+| engine | monitor N1, ITT, N2, oil |
+| other engine | repeat |
+| limits | 3 starts in a row, then 15 min cooling |
+
+### Before taxi / taxi
+
+| Item | Action / value |
+| :--- | :--- |
+| flight controls | free and correct |
+| speedbrakes | retracted |
+| flaps | takeoff setting (1 or 2) |
+| instruments | attitude and heading aligned, no flags; altimeters within 75 ft of field and 50 ft of each other |
+| engine anti-ice | as required (ON in icing: visible moisture at 10 °C or colder) |
+| taxi | lights; parking brake stowed; brakes and nosewheel steering checked |
+| thrust reversers | deploy at idle (green T/R DEPLOY), stow |
+| stationary thrust | don't hold 45–55% N1 with a tailwind over 10 kt or crosswind over 25 kt |
+
+### Before takeoff
+
+| Item | Action / value |
+| :--- | :--- |
+| flaps, speedbrakes, trims | set, retracted, set |
+| ice protection | as required; icing at or below 400 ft AGL: ENGINE, WING, STAB ON before takeoff |
+| V-speeds | displayed on the PFD |
+| SPD knob | FMS |
+| briefing | done; a rolling takeoff adds 500 ft to the computed distance |
+| PITOT/STATIC | in icing, ON for 15 s within 1 min of takeoff, then NORM |
+| after takeoff clearance | autothrottle may be armed only now, not during taxi |
+
+### Takeoff
+
+| Item | Action / value |
+| :--- | :--- |
+| throttles | fully forward to TO |
+| autothrottle | green HOLD (servos stay off until 400 ft AGL) |
+| EIS | N1 matches the target, green TO |
+| brakes | release (rolling takeoff: be at TO within 500 ft) |
+| rotate | at Vr to 10° nose up |
+
+### Climb
+
+| Item | Action / value |
+| :--- | :--- |
+| gear | UP with positive rate |
+| flaps | UP at V2 + 20 or faster |
+| throttles | CLB (A/T CLIMB) |
+| autopilot | not below 400 ft AGL |
+| speeds | 250 below 10,000 ft, then about 270 KIAS / Mach 0.76 (BCA flight) |
+| pressurization | check |
+| altimeters | standard at 18,000 ft |
+| APU | OFF before climbing above FL350 |
+
+### Cruise
+
+| Item | Action / value |
+| :--- | :--- |
+| throttles | CRU, or A/T SPD |
+| RVSM | autopilot on; altimeters within 200 ft of each other, checked at least hourly |
+| speed | ≤ Mach 0.84; ≥ 190 KIAS in RVSM airspace |
+| cabin | about 5,950 ft at FL450 |
+| above FL410 | PRESS SOURCE, ENG BLEED and ECS all NORM |
+
+### Descent
+
+| Item | Action / value |
+| :--- | :--- |
+| landing elevation | verify on the pressurization page |
+| APU | START at or below FL310 if wanted |
+| altimeters | local setting at 18,000 ft |
+| speedbrakes | any speed; retract by 500 ft AGL |
+| landing data | PERF: Landing Data done early (Vref, landing distance) |
+
+### Approach
+
+| Item | Action / value |
+| :--- | :--- |
+| landing data | V-speeds set, landing distance calculated |
+| ice protection | as required; below 190 KIAS in icing: WING and STAB ON |
+| nav | FMS or radios set; minimums set; altimeters checked |
+| briefing | done |
+| flaps | 1, then 2, when wanted (BCA flight: flaps 1 at 200 KIAS, flaps 2 and 160 KIAS near the final fix) |
+
+### Landing
+
+| Item | Action / value |
+| :--- | :--- |
+| gear | DOWN, 3 green |
+| flaps | FULL (≤ 180 KIAS) |
+| speedbrakes | retracted |
+| autopilot | off before its minimum: 160 ft AGL on approaches |
+| speed | at least Vref over the threshold |
+| flare | A/T shows green RETARD around 40–50 ft and pulls to idle; throttles IDLE |
+| rollout | brakes after nosewheel touchdown; reversers, back to reverse idle by 45 KIAS |
+| sink rate | touchdown ≤ 600 fpm |
+
+### After landing
+
+| Item | Action / value |
+| :--- | :--- |
+| thrust reversers | stowed |
+| flaps | as desired |
+| ice protection | WING and STAB OFF; ENGINE as required |
+| lights | as required |
+
+### Shutdown
+
+| Item | Action / value |
+| :--- | :--- |
+| throttles | IDLE |
+| parking brake | set |
+| engine anti-ice | OFF |
+| RUN/STOP (both) | STOP |
+| EMER LTS, STBY PWR | OFF |
+| APU | OFF |
+| lights, BATT | OFF |
+
+## Flying it in the sim
+
+Load the plan as in [sim basics](/aviation/msfs-2024/sim-basics/#flight-planning-efb-and-simbrief); calls are in
+[IFR departure](/aviation/atc-comms/ifr-departure/) and [IFR en route and arrival](/aviation/atc-comms/ifr-enroute-arrival/).
+
+| Step | What to do |
+| :--- | :--- |
+| 1. plan | send the EFB or SimBrief plan to the avionics; review every waypoint on the MFD GTC Flight Plan page |
+| 2. procedures | MFD GTC → PROC: departure now, arrival and approach later |
+| 3. weights | MFD GTC → PERF → Weight and Fuel: passengers, cargo, fuel |
+| 4. takeoff data | PERF → Takeoff Data: runway, wind, temperature, altimeter, flaps, anti-ice; the FMS computes V1, Vr, V2 |
+| 5. check | V-speeds shown on the PFD tape; SPD knob to FMS; altitude preselect set |
+| 6. takeoff | throttles fully forward, A/T HOLD, rotate at Vr, gear up, flaps up at V2 + 20 |
+| 7. climb | AP on above 400 ft AGL; FLC or VNAV; throttles to CLB |
+| 8. cruise | A/T holds the FMS speed; request levels as fuel burns off |
+| 9. descent | Landing Data done; VNAV follows the path from the top of descent |
+| 10. approach | activate the approach; arm approach mode; flaps 1, 2, gear, full; A/T slows toward Vref |
+
+Autothrottle modes (white when armed, green when active, in the AFCS status box):
+
+| A/T mode | Does |
+| :--- | :--- |
+| TO | holds takeoff thrust (on a go-around) |
+| HOLD | on the takeoff roll: servos off, levers stay where you put them until 400 ft AGL |
+| CLIMB | holds the FADEC climb thrust |
+| DESC | idle thrust for a descent |
+| SPD | holds the selected speed (FMS or MAN) |
+| RETARD | pulls to idle for landing below about 40 ft |
+| MAX SPD | protection: pulls thrust back before an overspeed |
+| MIN SPD | protection: adds thrust before a stall |
+
+Autopilot modes, as on other Garmin jets:
+
+| Mode | Does |
+| :--- | :--- |
+| HDG / NAV | heading bug / FMS or radio course |
+| FLC | flight level change: pitch holds speed while thrust stays at climb or idle |
+| VS | vertical speed |
+| VNAV | FMS vertical path (the status box shows armed modes such as ALTS VPATH) |
+| ALT | altitude hold |
+| approach | ILS or RNAV approach guidance, armed from the mode panel |
+
+Flight-level change: set the new level with the altitude knob, press FLC; expect the A/T to show CLIMB or DESC. Top of
+descent: VNAV computes it; check with 3 NM per 1,000 ft (FL410 to 3,000 ft is about 114 NM).
+
+## Emergencies
+
+Working Title's guide has no emergency checklists. Items marked "generic" are standard twin-jet technique, not Textron
+text; follow the in-sim CAS checklist where one appears.
+
+| Emergency | What to do |
+| :--- | :--- |
+| engine failure before V1 | generic: throttles IDLE, max braking, reversers, stop |
+| engine failure after V1 | generic: continue, rotate at Vr, fly V2, gear up with positive rate; the FADEC's APR (automatic power reserve) mode gives the good engine reserve thrust (up to 10 min single-engine); flaps up once safe, then the CAS checklist |
+| engine fire | generic: throttle IDLE, that engine's RUN/STOP to STOP, then the CAS checklist (extinguisher modeling is not described in the guide) |
+| depressurization | CABIN ALTITUDE turns amber over 8,500 ft and red over 9,800 ft cabin; generic: oxygen masks, descend with throttles IDLE and full speedbrakes (no speed limit) at up to Vmo / Mmo to 10,000 ft or the minimum safe altitude, squawk 7700 |
+| high cabin delta P | red CABIN DELTA P over 10.2 psi |
+| both generators lost | the PTCU (hydraulic-driven generator) is a backup; start the APU (battery-only start up to FL310) |
+| one generator lost | either generator can power both buses through the bus tie |
+| ice | amber ICING: WING and STAB ON below 190 KIAS; ENGINE ON below Mach 0.52 |
+| stall | stick shaker and amber AoA band from 0.8; recover: nose down, thrust up |
+
+For the radio side (Mayday, 7700, lost comms), see [emergencies and lost comms](/aviation/atc-comms/emergencies-lost-comms/).
+
+### Autoland and Safe Return
+
+The Longitude has **no** emergency autoland: the real jet doesn't offer it and neither the WT guide nor the release
+notes mention one for the sim. Textron is putting Garmin Emergency Autoland on its
+Gen3 light jets (M2, CJ3, CJ4), not the Longitude. For an automatic emergency landing in MSFS, fly the
+[Vision Jet](/aviation/msfs-2024/vision-jet/).
+
+## Sim quirks
+
+Official items come from the WT guide and Microsoft's release notes; forum reports are marked "(reported)".
+
+| Quirk | Status |
+| :--- | :--- |
+| red HOLD/FAIL instead of green HOLD on the takeoff roll | (reported); push the throttles fully forward, not just to the TO band, and arm the A/T after takeoff clearance, not while taxiing |
+| minimum crew is two in reality | the guide waives it: "we'll let it slide" |
+| display reversion modes and most GDU controller functions | not modeled (only map range and baro work) |
+| Category II ILS | not modeled |
+| STAB anti-ice button | modeled, but has no effect |
+| dual-channel and secondary pitch trim, control lock | not modeled |
+| spoiler hydraulics and spoiler animation | improved in Sim Update 3 (20 August 2025) |
+| EFB checklists | more added in SU2 (15 May 2025) |
+| EFB performance and holding data | updated in SU5 (30 April 2026) |
+| doors not opening for boarding; no EFB tablet | fixed in SU6 (13 August 2026) |
+
+## Recipes
+
+### Cold and dark to takeoff
+
+From a parking spot, everything off.
+
+```text
+STBY PWR test/ON, EMER LTS ARM, gear DOWN, BATT x2 ON
+APU: knob ON, START, 98-100%, APU BLEED NORM, APU GEN ON
+EFB plan -> avionics; GTC: Flight Plan, PROC departure
+PERF: Weight and Fuel, Takeoff Data -> V-speeds set
+Stab trim in the green band; LDG ELEV verified
+Parking brake SET; throttles IDLE
+R engine: RUN, >= 32 psi, START; then L engine
+Flaps 1 or 2; controls, speedbrakes, reversers checked
+Taxi; lineup: SPD knob FMS, altitude preselect set
+Cleared: arm A/T, throttles FULLY forward, green HOLD
+Rotate at Vr to 10 deg; gear up; flaps up at V2+20; CLB
+```
+
+### Quick IFR setup
+
+For a plan already built in the EFB.
+
+```text
+EFB -> send to avionics; review Flight Plan on the GTC
+PROC: departure; later arrival + approach
+PERF: Weight and Fuel, Takeoff Data; V-speeds on the tape
+SPD FMS; AP on above 400 ft; FLC or VNAV; CLB thrust
+Cruise: A/T SPD, check fuel at destination
+Before TOD: PERF Landing Data, minimums, LDG ELEV
+Approach: arm APPR; flaps 1, 2, gear, full; Vref
+```
+
+### Engine dry motor
+
+When ENG DRY MTR PROC shows (restart 15–180 min after shutdown).
+
+```text
+Throttle IDLE; RUN/STOP on that side: STOP
+Bleed air: APU, or other engine at IDLE + 25% N1
+START: hold until N2 about 19-20% or 15 s, release
+Wait for the CAS message to clear (about 3 min)
+Start normally within 40 min
+```
+
+### Crossbleed start
+
+No APU: start one engine on the APU or ground air, then the other from it.
+
+```text
+First engine started normally
+Running engine: IDLE + 25% N1 minimum
+Other engine: throttle IDLE, RUN, >= 32 psi, START
+Both throttles IDLE when done; EIS/CAS check
+```
+
+### Autothrottle takeoff and landing demo
+
+Watch every A/T mode in one circuit.
+
+```text
+Takeoff: A/T armed after clearance -> HOLD (green)
+400 ft: HOLD ends; throttles to CLB -> CLIMB
+Level off: SPD (FMS or MAN speed)
+Descend with FLC: expect DESC
+Final: SPD toward Vref
+Below ~40-50 ft: RETARD pulls to idle
+```
+
+### Emergency descent drill
+
+Practice a rapid descent from cruise.
+
+```text
+Masks on (announce it); squawk 7700
+Altitude preselect 10,000 ft; FLC
+Throttles IDLE; speedbrakes FULL
+Speed toward Mmo/Vmo; turn off airway if needed
+Level at 10,000 ft: speedbrakes in, thrust back up
+```
+
+## References
+
+- [Working Title: Cessna Citation Longitude Model 700 Operators Guide (PDF)](https://flightsimulator.azureedge.net/wp-content/uploads/2023/02/Cessna-Model-700-Operators-Guide.pdf): limits, systems, autothrottle, G5000, normal checklists for the sim; linked from [Microsoft's aircraft manuals page](https://www.flightsimulator.com/aircraft-manuals/)
+- [EASA TCDS IM.A.620, Model 700, Issue 3 (26 October 2021)](https://www.easa.europa.eu/en/downloads/129064/en): speed limits, weights, fuel, thrust; it cites FAA TCDS T00015WI
+- [FAA TCDS database (T00015WI)](https://drs.faa.gov/browse/TCDSMODEL/doctypeDetails): the primary type certificate
+- [Textron Aviation: Citation Longitude](https://cessna.txtav.com/en/citation/longitude): cruise, range, field lengths, weights, fuel, engines
+- [BCA pilot report: Cessna Citation Longitude (2021)](https://code7700.com/pdfs/bca/bca_pilot_report_citation_longitude_2021-03-01.pdf): example V-speeds, climb schedule, approach flow, pressurization
+- [AOPA: Citation Longitude, super-mid standout](https://www.aopa.org/news-and-media/all-news/2021/march/pilot/citation-longitude-super-mid-standout): example speeds, fuel burn at Mmo
+- [AIN: Cessna Citation Longitude pilot report](https://www.ainonline.com/aviation-news/business-aviation/2021-05-03/cessna-citation-longitude-pilot-report): example V-speeds, cruise fuel flows
+- [Wikipedia: Cessna Citation Longitude](https://en.wikipedia.org/wiki/Cessna_Citation_Longitude): cruise fuel flow figures from AIN (2018) and FlightGlobal (2021)
+- [Textron: Garmin Emergency Autoland on Citations](https://cessna.txtav.com/en/lp/eal): which Citations get autoland
+- [MSFS 2024 avionics docs: G3000/G5000](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/g3000/overview/): the shared G3000/G5000 package (TOLD, autothrottle, VNAV)
+- [Microsoft: Sim Update 6](https://www.flightsimulator.com/release-notes-sim-update-6-1-8-14-0-now-available-msfs-2024/), [SU5](https://www.flightsimulator.com/release-notes-sim-update-5-1-7-27-0-now-available-msfs-2024/), [SU3](https://www.flightsimulator.com/sim-update-3-msfs-2024/), [SU2](https://www.flightsimulator.com/msfs2024-sim-update-2/) release notes: official Longitude fixes
+- [MSFS forums: autothrottle HOLD/FAIL on takeoff](https://forums.flightsimulator.com/t/citation-longitude-takeoff-with-autothrottle-gets-hold-fail-msfs-2024/740224): the reported quirk and workaround
+- [Windows Central: every aircraft in MSFS 2024](https://www.windowscentral.com/gaming/xbox/microsoft-flight-simulator-2024-list-of-every-aircraft): edition per aircraft
+
+[^1]: Working Title's guide describes 8 passengers in the standard layout. Textron lists 12 maximum occupants; the EASA
+    TCDS says up to 13 occupants including the two crew in its description, but 14 seats (two crew plus twelve
+    passengers) as the maximum seating capacity.
+
+[^2]: AIN (2021): 980 lb/h per engine at Mach 0.84 and FL410 (479 KTAS), 700 lb/h per engine at Mach 0.739
+    (421 KTAS). AIN (2018, via Wikipedia): 860–880 lb/h per side at Mach 0.83 and FL430. FlightGlobal (2021, via
+    Wikipedia): 1,820 lb/h total at Mach 0.79, 451 KTAS, 38,001 lb. AOPA (2021): 940 lb/h per side at Mach 0.84.
+    SimBrief or the EFB gives the number for your flight.

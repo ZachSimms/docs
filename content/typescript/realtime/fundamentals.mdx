@@ -1,0 +1,579 @@
+---
+title: Realtime fundamentals
+date: 2026-09-27
+order: 1
+---
+
+The patterns every multiplayer app shares, whatever the library: rooms, fan-out, presence, message envelopes,
+ordering, acks, resync, trust and scaling. The socket itself (handshake, browser API, heartbeats, backpressure)
+is under [WebSockets](/typescript/backend/websockets/); applying these patterns in React is
+[Realtime in React & Next.js](/typescript/realtime/react-nextjs/), and in a library is
+[Socket.IO](/typescript/realtime/socket-io/) or [Durable Objects](/typescript/realtime/durable-objects/).
+
+## Transports
+
+| Transport               | Shape                        | Delivery                        | Pick it for                                   |
+| :---------------------- | :--------------------------- | :------------------------------ | :-------------------------------------------- |
+| WebSocket               | client ↔ server, one socket  | reliable, ordered (TCP)         | the default: chat, presence, boards, most games |
+| SSE (`EventSource`)     | server → client over HTTP    | reliable, auto-reconnect        | feeds, notifications, LLM streams; writes go over `fetch` |
+| WebRTC data channel     | peer ↔ peer (after signaling) | reliable or not, ordered or not | 2–8 player games, voice/video sidecars, P2P file transfer |
+| WebTransport            | client ↔ server, HTTP/3      | streams + unreliable datagrams  | fast games and media where stale data is worthless |
+| Long polling            | repeated HTTP requests       | reliable, slow                  | fallback only (Socket.IO does it for you)     |
+
+- Support, limits and head-of-line blocking: [WebSockets: Comparing transports](/typescript/backend/websockets/#comparing-transports).
+- **WebRTC** still needs a server to exchange offers and ICE candidates (signaling, usually over a WebSocket) and
+  a TURN relay for peers behind strict NATs. For unreliable, unordered delivery pass
+  `{ ordered: false, maxRetransmits: 0 }` to `createDataChannel()`.
+- **WebTransport** is Baseline 2026 (newly available) and needs HTTPS plus an HTTP/3 server; keep a WebSocket
+  fallback.
+- Server-to-client only? SSE plus plain `POST` for writes is simpler to host than any socket.
+
+## Rooms & channels
+
+A **room** (Socket.IO), **channel** (Ably, Pusher, Supabase) or **topic** (Bun, MQTT) is a named group of
+connections that receive the same messages. The server owns membership; the client only asks.
+
+| Concept      | What it is                                  | Example name        |
+| :----------- | :------------------------------------------ | :------------------ |
+| Connection   | one socket; one tab, one device             | `conn_8f2a`         |
+| User         | one identity; may hold several connections  | `user:42`           |
+| Room         | everyone looking at one thing               | `doc:7b1c`, `match:9` |
+| Private room | one user's devices (DMs, notifications)     | `user:42`           |
+| Namespace    | a separate app on the same server           | `/admin`            |
+
+- **Authorize on join** (may user 42 see `doc:7b1c`?) and again on every write; membership is not permission.
+- Name rooms after the resource (`doc:<id>`), never after a user-typed label.
+- Rooms are cheap: one per document, match or conversation, plus one per user for direct messages.
+- Cap rooms per connection and connections per room; a single hot room is the usual scaling limit.
+
+## Pub/sub fan-out
+
+A client sends one message; the server validates it, stamps it and **fans it out** to every connection in the
+room (usually excluding the sender, who already shows it).
+
+| Delivery guarantee     | Meaning                                  | How you get it                              |
+| :--------------------- | :--------------------------------------- | :------------------------------------------ |
+| At most once           | may be lost, never duplicated            | plain broadcast; Redis pub/sub              |
+| At least once          | never lost, may repeat                   | acks + resend, a log (Redis Streams, DB)    |
+| Effectively once       | at least once + dedupe                   | client-made `id`, server remembers it       |
+
+- In one process, fan-out is a loop or Bun's `server.publish(topic, data)`.
+- Across processes, every node relays through a broker so users on other nodes hear it: see [Scaling](#scaling).
+- **Persist first, then broadcast**: a message that is shown but never stored vanishes on refresh.
+- Fan-out cost is messages × members: 1 message in a 1,000-member room is 1,000 sends. Coalesce high-rate
+  updates (cursors, positions) to the latest value per tick instead of forwarding each one.
+
+## Presence
+
+Presence answers "who is here right now" (and what they are doing: cursor, selection, typing).
+
+| Rule                                   | Why                                                        |
+| :------------------------------------- | :--------------------------------------------------------- |
+| Track connections, report users        | two tabs must not make a user leave when one closes         |
+| Expire on silence (TTL), not only on `close` | crashed tabs and dead networks never send `close`     |
+| Send diffs (`joined`, `left`), not the full list | full lists are O(n²) traffic in big rooms          |
+| Full list once on join                 | the newcomer needs the starting state                      |
+| Throttle ephemeral state (cursors 20–30 Hz max) | nobody sees 120 Hz; interpolate on the client     |
+| Never persist ephemeral state          | cursors and "typing…" are worthless after a reconnect      |
+
+```ts title="presence.ts"
+type Conn = { user: string; seen: number };
+
+// Presence per user, tracked per connection: a user
+// with two tabs open stays online until both close.
+export class Presence {
+  #conns = new Map<string, Conn>();
+
+  #count(user: string): number {
+    let n = 0;
+    for (const c of this.#conns.values()) {
+      if (c.user === user) n++;
+    }
+    return n;
+  }
+
+  // true when this is the user's first connection
+  join(conn: string, user: string): boolean {
+    this.#conns.set(conn, { user, seen: Date.now() });
+    return this.#count(user) === 1;
+  }
+
+  // the user, when their last connection went away
+  leave(conn: string): string | undefined {
+    const c = this.#conns.get(conn);
+    this.#conns.delete(conn);
+    if (c && this.#count(c.user) === 0) return c.user;
+  }
+
+  beat(conn: string): void {
+    const c = this.#conns.get(conn);
+    if (c) this.#conns.set(conn, { ...c, seen: Date.now() });
+  }
+
+  // run on a timer: evict silent connections
+  sweep(ttlMs: number): string[] {
+    const cutoff = Date.now() - ttlMs;
+    const gone: string[] = [];
+    for (const [id, c] of this.#conns) {
+      if (c.seen >= cutoff) continue;
+      const user = this.leave(id);
+      if (user) gone.push(user);
+    }
+    return gone;
+  }
+
+  online(): string[] {
+    const all = [...this.#conns.values()];
+    return [...new Set(all.map((c) => c.user))];
+  }
+}
+```
+
+Broadcast `joined` when `join()` returns `true` and `left` when `leave()` or `sweep()` returns a user. Across
+nodes, keep presence in Redis (a hash per room with per-connection expiry) or in the room's Durable Object.
+
+## Message envelopes
+
+Every message shares one outer shape; the `type` field picks the payload. Start from
+[WebSockets: Typed messages](/typescript/backend/websockets/#typed-messages) and add these fields:
+
+| Field  | Set by | Purpose                                                              |
+| :----- | :----- | :------------------------------------------------------------------- |
+| `type` | sender | discriminant for the union; drives exhaustive `switch`               |
+| `id`   | client | UUID made once per logical message; idempotency and ack matching     |
+| `room` | client | target room; the server re-checks membership                         |
+| `seq`  | server | per-room counter, 1, 2, 3…: total order and gap detection            |
+| `ts`   | server | server clock in ms; display only, never for ordering                 |
+| `v`    | sender | protocol version; bump before the first breaking change             |
+
+```ts title="envelope.ts"
+import { z } from "zod";
+
+const base = {
+  id: z.uuid(), // made by the client: idempotency key
+  room: z.string().min(1).max(64),
+  v: z.literal(1).default(1), // protocol version
+};
+
+export const ClientMsg = z.discriminatedUnion("type", [
+  z.object({ ...base, type: z.literal("join") }),
+  z.object({
+    ...base,
+    type: z.literal("chat"),
+    text: z.string().trim().min(1).max(2000),
+  }),
+  z.object({
+    ...base,
+    type: z.literal("resume"),
+    since: z.int().nonnegative(), // last seq applied
+  }),
+]);
+export type ClientMsg = z.infer<typeof ClientMsg>;
+
+// the server stamps order (seq) and time (ts)
+export type Body =
+  | { type: "chat"; from: string; text: string }
+  | { type: "left"; user: string };
+export type RoomEvent = Body & {
+  id: string;
+  room: string;
+  seq: number;
+  ts: number;
+};
+export type Reply =
+  | { type: "ack"; id: string; seq: number }
+  | { type: "nack"; id: string; code: NackCode }
+  | { type: "snapshot"; room: string; seq: number;
+      state: unknown };
+type NackCode = "invalid" | "forbidden" | "rate_limited";
+
+export function parseClient(raw: string): ClientMsg | null {
+  try {
+    const r = ClientMsg.safeParse(JSON.parse(raw));
+    return r.success ? r.data : null;
+  } catch {
+    return null; // not JSON
+  }
+}
+```
+
+- The client never sends `seq`, `ts` or `from`: the server fills them from its own state (`ws.data.userId`).
+- Validate on the server always; on the client too if the server is not yours.
+
+## Ordering & idempotency
+
+| Problem                      | Cause                                         | Fix                                              |
+| :--------------------------- | :-------------------------------------------- | :----------------------------------------------- |
+| Out of order                 | several servers, retries, parallel requests   | one writer per room assigns `seq`                |
+| Duplicates                   | resend after a lost ack, replay on resume     | client `id`; server keeps `id → seq`; client drops `seq ≤ last` |
+| Gaps                         | missed events while offline or on a lagging node | detect `seq > last + 1`, ask to resume        |
+| Clock skew                   | client clocks disagree by seconds             | order by `seq`; `ts` is only a label             |
+| Two writers, one field       | concurrent edits                              | last-writer-wins by `seq`, or a CRDT: [Collaboration](/typescript/realtime/collaboration/) |
+
+The client side of that contract: apply each event once, in `seq` order, and hold early arrivals until the gap
+fills.
+
+```ts title="inbox.ts"
+import type { RoomEvent } from "./envelope.ts";
+
+// Applies each room event once, in seq order.
+export function inbox(
+  apply: (e: RoomEvent) => void,
+  onGap: (last: number) => void, // send a resume
+) {
+  let last = 0; // highest seq applied
+  const early = new Map<number, RoomEvent>();
+
+  const drain = () => {
+    let next = early.get(last + 1);
+    while (next) {
+      early.delete(next.seq);
+      apply(next);
+      last = next.seq;
+      next = early.get(last + 1);
+    }
+  };
+
+  return {
+    get last() {
+      return last;
+    },
+    reset(seq: number) { // after a snapshot
+      last = seq;
+      for (const n of early.keys()) {
+        if (n <= seq) early.delete(n);
+      }
+      drain();
+    },
+    push(e: RoomEvent): void {
+      if (e.seq <= last) return; // duplicate: drop
+      early.set(e.seq, e);
+      if (e.seq > last + 1) return onGap(last); // hole
+      drain();
+    },
+  };
+}
+```
+
+Debounce `onGap`: one hole can trigger it for every later event.
+
+## Optimistic updates & acks
+
+Show the user's own action immediately, then let the server confirm or reject it.
+
+```text
+client                         server
+  | render "pending" (id=a1)     |
+  |-- { type: chat, id: a1 } --> | validate, authorize, rate limit
+  |                              | persist, seq = 58
+  | <-- { type: ack, id: a1,     | broadcast event seq 58 to the room
+  |       seq: 58 }              |
+  | swap pending a1 → event 58   |
+  |                              |
+  | (or) <-- { type: nack,       | rejected: roll back, show why
+  |       id: a1, code }         |
+```
+
+| State     | UI                              | Leaves it when                                     |
+| :-------- | :------------------------------ | :------------------------------------------------- |
+| pending   | dimmed, spinner or clock icon   | ack (→ confirmed), nack (→ failed), timeout (→ retry) |
+| confirmed | normal                          | never                                              |
+| failed    | red, "Retry" / "Delete"         | user retries with the **same** `id`                |
+
+- Match the ack by `id`, not by content or position.
+- Your own broadcast echo also arrives (unless excluded): dedupe it by `id` against the pending list.
+- Keep the server as the source of truth: when the confirmed event differs (trimmed text, new `seq`), it wins.
+- React: [`useOptimistic`](/typescript/realtime/react-nextjs/#optimistic-sends); Socket.IO:
+  [acks](/typescript/realtime/socket-io/#acknowledgements).
+
+## Reconnection & resync
+
+Reconnecting the socket is the easy half ([backoff with jitter](/typescript/backend/websockets/#reconnect-with-backoff-and-jitter));
+the other half is catching up on what happened while you were gone.
+
+| Strategy               | Client sends            | Server needs                         | Use when                            |
+| :--------------------- | :---------------------- | :----------------------------------- | :---------------------------------- |
+| Refetch everything     | nothing; `GET` the state | nothing extra                       | small state, rare disconnects       |
+| Replay since last seq  | `{ type: "resume", since }` | a bounded log per room (ring buffer, Redis Stream) | short gaps, chat, activity feeds |
+| Snapshot + deltas      | `resume`; server decides | a snapshot at `seq` + the log after it | long gaps, game and doc state       |
+| Library recovery       | automatic               | Socket.IO `connectionStateRecovery`   | gaps under ~2 minutes               |
+
+```ts title="room-log.ts"
+import type { Body, RoomEvent } from "./envelope.ts";
+
+// One per room: assigns seq, dedupes by id, keeps
+// the last `max` events so reconnecting clients
+// can catch up without a full snapshot.
+export class RoomLog {
+  #events: RoomEvent[] = [];
+  #byId = new Map<string, number>(); // id -> seq
+  #seq = 0;
+
+  constructor(readonly room: string, readonly max = 500) {}
+
+  get seq(): number {
+    return this.#seq;
+  }
+
+  append(id: string, body: Body) {
+    const dup = this.#byId.get(id);
+    if (dup !== undefined) return { seq: dup, fresh: false };
+    const seq = ++this.#seq;
+    const event: RoomEvent = {
+      ...body, id, room: this.room, seq, ts: Date.now(),
+    };
+    this.#events.push(event);
+    this.#byId.set(id, seq);
+    if (this.#events.length > this.max) {
+      const old = this.#events.shift();
+      if (old) this.#byId.delete(old.id);
+    }
+    return { seq, fresh: true, event };
+  }
+
+  // events after `since`, or null if they were trimmed
+  since(since: number): RoomEvent[] | null {
+    const first = this.#events[0]?.seq ?? this.#seq + 1;
+    if (since + 1 < first) return null; // too old
+    return this.#events.filter((e) => e.seq > since);
+  }
+}
+```
+
+```ts title="resume.ts"
+import type { Reply } from "./envelope.ts";
+import type { RoomLog } from "./room-log.ts";
+
+type Conn = { send(data: string): unknown };
+
+// on { type: "resume", since }: replay or snapshot
+export function resume(
+  conn: Conn,
+  log: RoomLog,
+  since: number,
+  state: () => unknown, // current room state
+): void {
+  const missed = log.since(since);
+  if (missed) {
+    for (const e of missed) conn.send(JSON.stringify(e));
+    return;
+  }
+  const snap: Reply = {
+    type: "snapshot",
+    room: log.room,
+    seq: log.seq, // client calls inbox.reset(seq)
+    state: state(),
+  };
+  conn.send(JSON.stringify(snap));
+}
+```
+
+- On reconnect, in order: re-authenticate, rejoin rooms, resume each room, then resend pending writes.
+- A snapshot must be taken at exactly `log.seq`, or events are applied twice or skipped.
+- A seq counter kept only in memory resets when the process restarts: persist it with the room, or add an
+  epoch (`{ epoch, seq }`) and force a snapshot when the epoch changes.
+
+## Authority & trust
+
+| Model                    | Who decides                         | Good for                               | Cost                                      |
+| :----------------------- | :---------------------------------- | :------------------------------------- | :---------------------------------------- |
+| Authoritative server     | server validates and applies every action | chat, games with stakes, anything with money or ranks | latency: hide it with prediction |
+| Relay server             | server forwards, clients decide     | cursors, low-stakes toys               | trivial to cheat or corrupt               |
+| Peer-to-peer (WebRTC)    | one peer hosts, or lockstep         | small co-op games, LAN-like play       | host can cheat; NAT and TURN pain         |
+| CRDT                     | nobody: replicas merge by math      | docs, canvases, offline-first          | bigger payloads; permissions still need a server |
+
+Trust rules for any server that fans out:
+
+- **Validate** every message with a schema and **authorize** every action (join, write, kick) against the room.
+- **Identity comes from the connection** (`ws.data.userId`, `socket.data`), never from a field in the message.
+- **Rate limit** per connection and per user (token bucket in
+  [WebSockets: Security](/typescript/backend/websockets/#security)); `nack` with `rate_limited`, then disconnect repeat
+  offenders.
+- **Cap sizes**: message bytes, rooms per connection, members per room, events per second per room.
+- **Clients send intent, not results**: "move left", not "I am at x = 900"; "buy item 3", not "gold = 999".
+- **Escape on render**: realtime text is user input.
+- Games: [Game worlds](/typescript/realtime/game-worlds/) covers prediction, reconciliation and anti-cheat.
+
+## Scaling
+
+One server holds every socket until it doesn't. The two common shapes:
+
+<Diagram src="/images/diagrams/rt-fan-out.svg" label="Two panels. Left, Socket.IO plus Redis adapter: amy is connected to node A, bob and cy to node B. Amy emits to node A, node A publishes to Redis pub/sub, Redis relays to node B, and node B sends to bob and cy. Note: every node hears every room; sticky sessions if polling is on. Right, one Durable Object per room: amy, bob and cy all connect to the same Durable Object named room:lobby, which stores state in SQLite. Amy sends, and the object broadcasts to bob and cy. Note: no broker, one object orders the room; a room is capped at one object's speed. Footer: left scales by adding nodes; right scales by adding rooms." caption="Two ways to fan out one room: a broker between many servers, or one object per room" />
+
+| Approach                        | How it works                                               | Watch out for                                      |
+| :------------------------------ | :--------------------------------------------------------- | :------------------------------------------------- |
+| Vertical first                  | one Bun process handles tens of thousands of idle sockets  | memory per socket; one deploy drops everyone       |
+| Sticky sessions                 | the load balancer pins a client to one node (cookie or IP hash) | required for polling fallbacks and in-memory sessions |
+| Broker fan-out (Redis pub/sub)  | every node publishes and relays; Socket.IO: Redis adapter  | fire-and-forget; every node receives every message |
+| Broker with a log (Redis Streams) | same, but replayable; Socket.IO: Redis Streams adapter  | stream trimming (`maxLen`) bounds recovery         |
+| One object per room             | route by room name to a single owner: a Durable Object, or a consistent-hash shard | a hot room can't spread across machines |
+| Hosted service                  | Ably, Pusher, Supabase, Liveblocks run the fan-out          | per-message and per-connection pricing             |
+
+- Details and a Bun + Redis relay: [WebSockets: Scaling](/typescript/backend/websockets/#scaling).
+- Socket.IO adapters: [Socket.IO: Scaling with adapters](/typescript/realtime/socket-io/#scaling-with-adapters).
+- One object per room on Cloudflare: [Durable Objects](/typescript/realtime/durable-objects/).
+- Serverless functions (Vercel) pin each socket to one instance but share nothing between instances: they need a
+  broker too. See [Realtime in React & Next.js](/typescript/realtime/react-nextjs/#deployment-options).
+
+## Build vs buy
+
+| Option                    | What you get                                              | Pricing model (checked September 2026)                                     |
+| :------------------------ | :-------------------------------------------------------- | :------------------------------------------------------------------------- |
+| Self-hosted (Bun, Socket.IO) | full control, any protocol                              | your servers + Redis; you run scaling, deploys and on-call                 |
+| Ably                      | pub/sub channels, presence, history, ordering guarantees  | free: 6M messages/month, 200 connections; Standard from 29 USD/month + per message and per connection-minute |
+| Pusher Channels           | public, private and presence channels; simple SDKs        | free: 200k messages/day, 100 connections; tiers by connections + daily messages, from 49 USD/month |
+| Supabase Realtime         | Broadcast, Presence, Postgres change feeds                | Free: 2M messages, 200 peak connections; Pro: 5M and 500 included, then per million messages and per 1,000 peak connections |
+| Liveblocks                | presence, conflict-free storage, Yjs, comments            | free: 3,000 collaboration minutes, 10 connections per room; Pro 30 USD/month in usage credits |
+| PartyKit → Cloudflare     | PartyKit joined Cloudflare (April 2024); PartyServer + partysocket on Durable Objects | Workers pricing: free tier, paid from 5 USD/month; incoming WebSocket messages billed 20:1; hibernated sockets cost no duration |
+
+- **Buy** when realtime is a feature, not the product: notifications, a presence dot, a live counter.
+- **Build** when the protocol is the product (a game loop, a custom CRDT), or per-message pricing explodes at your
+  message rate.
+- Middle path: Durable Objects or PartyServer, where you write the room logic and Cloudflare runs the fleet.
+- Prices change: confirm on each vendor's pricing page before committing.
+
+## Recipes
+
+### Idempotent write handler
+
+When clients may resend: the same `id` always returns the same `seq` and never broadcasts twice.
+
+```ts
+import { parseClient, type Reply } from "./envelope.ts";
+import { RoomLog } from "./room-log.ts";
+
+type Conn = { userId: string; send(d: string): unknown };
+const logs = new Map<string, RoomLog>();
+
+export function onMessage(
+  conn: Conn,
+  raw: string,
+  broadcast: (room: string, data: string) => void,
+): void {
+  const msg = parseClient(raw);
+  if (!msg || msg.type !== "chat") return;
+  let log = logs.get(msg.room);
+  if (!log) {
+    log = new RoomLog(msg.room);
+    logs.set(msg.room, log);
+  }
+  const res = log.append(msg.id, {
+    type: "chat",
+    from: conn.userId, // from the socket, not the message
+    text: msg.text,
+  });
+  const ack: Reply = {
+    type: "ack", id: msg.id, seq: res.seq,
+  };
+  conn.send(JSON.stringify(ack)); // ack duplicates too
+  if (res.event) {
+    broadcast(msg.room, JSON.stringify(res.event));
+  }
+}
+```
+
+### Resend until acked
+
+When the network may drop the message or its ack; call `ack(id)` on each `ack` reply and `resendAll()` after
+reconnecting.
+
+```ts
+// Resend until acked, always with the same id, so a
+// retry after a lost ack can't create a duplicate.
+type Pending = { data: string; tries: number };
+
+export function reliable(
+  send: (data: string) => void,
+  { timeoutMs = 5000, maxTries = 5 } = {},
+) {
+  const pending = new Map<string, Pending>();
+  type T = ReturnType<typeof setTimeout>;
+  const timers = new Map<string, T>();
+
+  const attempt = (id: string) => {
+    const p = pending.get(id);
+    if (!p) return;
+    if (p.tries >= maxTries) {
+      pending.delete(id); // give up: show "not sent"
+      return;
+    }
+    pending.set(id, { ...p, tries: p.tries + 1 });
+    send(p.data);
+    timers.set(id, setTimeout(() => attempt(id), timeoutMs));
+  };
+
+  return {
+    send(id: string, msg: object): void {
+      const data = JSON.stringify({ ...msg, id });
+      pending.set(id, { data, tries: 0 });
+      attempt(id);
+    },
+    ack(id: string): void { // on { type: "ack", id }
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+      pending.delete(id);
+    },
+    resendAll(): void { // call after reconnecting
+      for (const id of pending.keys()) {
+        clearTimeout(timers.get(id));
+        attempt(id);
+      }
+    },
+  };
+}
+```
+
+### Presence sweep with diffs
+
+When the server should announce joins and leaves without waiting for `close` events that never come.
+
+```ts
+import { Presence } from "./presence.ts";
+
+const TTL = 45_000; // > 2 client heartbeats
+const rooms = new Map<string, Presence>();
+
+export function startSweeper(
+  broadcast: (room: string, data: string) => void,
+): () => void {
+  const timer = setInterval(() => {
+    for (const [room, p] of rooms) {
+      for (const user of p.sweep(TTL)) {
+        const left = { type: "left", room, user };
+        broadcast(room, JSON.stringify(left));
+      }
+    }
+  }, 15_000);
+  return () => clearInterval(timer);
+}
+```
+
+### Pick an architecture
+
+When starting a new realtime feature and deciding what to run.
+
+```text
+Only server → client updates?          → SSE + POST, or a hosted provider
+A few rooms, one region, < ~10k sockets → one Bun process (Bun.serve topics)
+Need acks, rooms, reconnect for free   → Socket.IO (+ Redis Streams adapter at 2+ nodes)
+Many independent rooms, global users   → one Durable Object per room (PartyServer)
+Shared documents or canvases           → Yjs over any of the above (see Collaboration)
+Fast action game                       → authoritative server loop (see Game worlds)
+Realtime is a small feature            → Ably, Pusher, Supabase Realtime, Liveblocks
+```
+
+## References
+
+- [MDN: WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket),
+  [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource),
+  [RTCDataChannel](https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel),
+  [WebTransport](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport): the browser transports
+- [Socket.IO: Delivery guarantees](https://socket.io/docs/v4/delivery-guarantees): ordering and at-most-once by default
+- [Socket.IO: Connection state recovery](https://socket.io/docs/v4/connection-state-recovery): library-level resync
+- [Cloudflare: Durable Objects](https://developers.cloudflare.com/durable-objects/): one object per room;
+  [pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+- [Ably pricing](https://ably.com/pricing), [Pusher Channels pricing](https://pusher.com/channels/pricing/),
+  [Supabase Realtime pricing](https://supabase.com/docs/guides/realtime/pricing),
+  [Liveblocks pricing](https://liveblocks.io/pricing): hosted options
+- [PartyKit is joining Cloudflare](https://blog.partykit.io/posts/partykit-is-joining-cloudflare/): where PartyKit went
+- [Stripe: Designing robust APIs with idempotency](https://stripe.com/blog/idempotency): the idempotency-key pattern

@@ -1,0 +1,722 @@
+---
+title: Durable Objects
+date: 2026-09-27
+order: 4
+---
+
+Cloudflare Durable Objects as the server for rooms, games and documents: classes and RPC, SQLite storage,
+alarms, the WebSocket Hibernation API, config, limits and pricing. Shared patterns are in
+[Realtime fundamentals](/typescript/realtime/fundamentals/); a full chat room built on one object is in
+[Chat rooms](/typescript/realtime/chat-rooms/); the socket itself is under [WebSockets](/typescript/backend/websockets/).
+
+## What a Durable Object is
+
+A Durable Object (DO) is an instance of a class you write, addressed by a name or id, that Cloudflare runs as
+exactly one live copy worldwide, with its own private SQLite database on the same machine.
+
+| Property | What it means | Consequence for multiplayer |
+| :--- | :--- | :--- |
+| Globally unique | at most one live instance per id, anywhere | every client of `lobby` reaches the same object: no broker, no locks |
+| Single-threaded | one event runs at a time (interleaving only at `await`) | in-memory state is race-free; a slow handler delays the whole room |
+| Storage co-located | private SQLite (plus a key-value API) on the same host | `sql.exec` is synchronous and strongly consistent, no network hop |
+| Placed once | created near its first caller and does not move afterward | far-away users pay latency; use `locationHint` |
+| Evictable | leaves memory when idle, on deploys, or when the runtime moves it | memory is a cache; anything important goes to storage |
+| Addressed by name | `env.ROOM.getByName("lobby")` from any Worker | the room, game or doc id is the address |
+
+It is the actor model: one object per unit of coordination.
+
+| App | One object per | Avoid |
+| :--- | :--- | :--- |
+| Chat | room or DM thread | one object for all rooms |
+| Game | match or lobby | one object for the whole world map; shard by zone |
+| Collaborative doc, canvas, board | document | a global document index in one object |
+| Per-user state | user (inbox, rate limit, presence fan-in) | a global rate limiter or counter |
+
+- Soft limit about 1,000 requests/s per object (Cloudflare's rules page: ~200–500/s with storage writes). Plan
+  for many objects, not a bigger one.
+- Not for stateless request handling: plain Workers scale out without coordination.
+
+## Classes, stubs & RPC
+
+A class extends `DurableObject` from `cloudflare:workers`; `this.ctx` is the `DurableObjectState` (id, storage,
+sockets) and `this.env` holds the bindings. Every public method is an RPC method on the stub.
+
+```ts title="counter.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+export class Counter extends DurableObject<Env> {
+  // Public methods are callable over RPC from the stub.
+  async increment(by = 1): Promise<number> {
+    const kv = this.ctx.storage.kv; // synchronous, SQLite
+    const n = (kv.get<number>("n") ?? 0) + by;
+    kv.put("n", n);
+    return n; // held until the write is durable
+  }
+
+  async current(): Promise<number> {
+    return this.ctx.storage.kv.get<number>("n") ?? 0;
+  }
+}
+```
+
+```ts title="worker.ts"
+import { Counter } from "../counter";
+
+export { Counter }; // every DO class is exported from main
+
+export interface Env {
+  COUNTER: DurableObjectNamespace<Counter>;
+}
+
+export default {
+  async fetch(req, env): Promise<Response> {
+    const name = new URL(req.url).searchParams.get("c");
+    if (!name) return new Response("?c=", { status: 400 });
+    // Same name -> same object, from any Worker, anywhere.
+    const counter = env.COUNTER.getByName(name);
+    const n = await counter.increment(); // RPC: always await
+    return Response.json({ name, n });
+  },
+} satisfies ExportedHandler<Env>;
+```
+
+### Getting a stub
+
+| Call | Returns | Use |
+| :--- | :--- | :--- |
+| `ns.getByName(name, opts?)` | stub | the default: name is the room/game/doc id |
+| `ns.idFromName(name)` then `ns.get(id, opts?)` | id, then stub | same object in two steps |
+| `ns.newUniqueId(opts?)` | random id | skips the global name check (faster first call); store `id.toString()` yourself |
+| `ns.idFromString(hex)` | id | rebuild a stored unique id; `ctx.id.name` is then `undefined` |
+| `ns.jurisdiction("eu")` | sub-namespace | objects created and stored only in that jurisdiction (`eu`, `fedramp`, …) |
+| `{ locationHint: "weur" }` | option | first-creation placement: `wnam`, `enam`, `sam`, `weur`, `eeur`, `apac`, `oc`, `afr`, `me` |
+
+- Creating a stub costs nothing; the object starts (constructor, then the method) on the first call.
+- Inside the object, `this.ctx.id.name` is the name when the caller used `getByName` or `idFromName`.
+
+### RPC rules
+
+| Rule | Detail |
+| :--- | :--- |
+| Compatibility date | RPC needs `2024-04-03` or later |
+| Always `await` | an unawaited call loses its result and swallows its error |
+| Arguments and results | structured-cloneable values, plus functions and `RpcTarget` subclasses (sent as stubs), streams, `Request`, `Response`; max 32 MiB serialized |
+| Plain classes | cannot cross RPC (only `RpcTarget` subclasses) |
+| Errors | thrown in the object, rethrown in the caller without the stack |
+| Billing | each call on the stub is one request |
+| `fetch(req)` | still available: WebSocket upgrades go through it |
+
+## Configuration
+
+Bind the class, then declare it so Cloudflare creates its namespace. The current docs use `exports`; the older
+`migrations` array still works, but a Worker uses one or the other, never both.
+
+```jsonc title="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "chat",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT", "class_name": "ChatRoom" }
+    ]
+  },
+  // Declarative class lifecycle (replaces "migrations").
+  "exports": {
+    "ChatRoom": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
+```
+
+The legacy form, still what most templates and PartyServer's README show:
+
+```jsonc title="wrangler.jsonc (legacy)"
+{
+  // ...name, main, compatibility_date, durable_objects
+  // Append a new tagged entry per change; never edit one.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["Limiter"] }
+  ]
+}
+```
+
+| Change | `exports` entry | Legacy `migrations` entry |
+| :--- | :--- | :--- |
+| Add a class | `"storage": "sqlite"` | `new_sqlite_classes` (not `new_classes`, which is key-value) |
+| Delete a class and all its data | `"state": "deleted"` | `deleted_classes` |
+| Rename | `"state": "renamed", "renamed_to"` | `renamed_classes: [{ from, to }]` |
+| Move to another Worker | `"transferred"` + target's `"expecting-transfer"` | `transferred_classes` |
+
+- The class must also be exported from the Worker's `main` module.
+- **Storage backend is permanent**: SQLite or key-value is fixed when the namespace is created. New namespaces
+  can only be SQLite (key-value only for accounts that already have one); the Free plan only has SQLite.
+- Secrets: `.dev.vars` locally, `bunx wrangler secret put NAME` in production; plain values in `"vars"`.
+
+## SQLite storage
+
+`ctx.storage.sql.exec(query, ...bindings)` runs synchronously and returns a cursor. Run schema setup in the
+constructor; it runs again after every wake, so make it idempotent or versioned.
+
+```ts title="notes.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+type Note = { id: number; body: string; at: number };
+
+// Schema migrations, append-only, applied in order.
+const MIGRATIONS = [
+  `CREATE TABLE notes (
+     id INTEGER PRIMARY KEY,
+     body TEXT NOT NULL,
+     at INTEGER NOT NULL)`,
+  "CREATE INDEX notes_at ON notes (at)",
+];
+
+export class Notes extends DurableObject<Env> {
+  sql: SqlStorage;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    const kv = ctx.storage.kv;
+    const done = kv.get<number>("schema") ?? 0;
+    // Synchronous, so no request can run in between.
+    ctx.storage.transactionSync(() => {
+      for (const m of MIGRATIONS.slice(done)) {
+        this.sql.exec(m);
+      }
+      kv.put("schema", MIGRATIONS.length);
+    });
+  }
+
+  async add(body: string): Promise<number> {
+    return this.sql.exec<{ id: number }>(
+      `INSERT INTO notes (body, at) VALUES (?, ?)
+       RETURNING id`,
+      body,
+      Date.now(),
+    ).one().id; // one() throws unless exactly one row
+  }
+
+  async recent(limit: number): Promise<Note[]> {
+    return this.sql.exec<Note>(
+      "SELECT * FROM notes ORDER BY id DESC LIMIT ?",
+      limit,
+    ).toArray(); // consume the cursor before any await
+  }
+
+  async stats() {
+    const c = this.sql.exec<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM notes",
+    );
+    const { n } = c.one();
+    const rows = [
+      ...this.sql.exec("SELECT id, body FROM notes").raw(),
+    ]; // [[1, "hello"], ...]
+    return {
+      n,
+      first: rows[0],
+      rowsRead: c.rowsRead, // billed
+      bytes: this.sql.databaseSize,
+    };
+  }
+}
+```
+
+| Cursor member | Returns | Notes |
+| :--- | :--- | :--- |
+| `for (const row of cursor)` | row objects | iterable and iterator (`next()`) |
+| `.toArray()` | `T[]` | all remaining rows |
+| `.one()` | `T` | throws unless exactly one row |
+| `.raw()` | iterator of value arrays | no column names; `columnNames` has them |
+| `.rowsRead`, `.rowsWritten` | `number` | what you are billed for |
+| `sql.databaseSize` | bytes | whole database |
+
+- `exec<T>` types rows as `T`; `T` must be a `type` alias, since an `interface` lacks the index signature
+  `Record<string, SqlStorageValue>` requires. Values are `string | number | null | ArrayBuffer`; integers beyond
+  2^53 lose precision.
+- Several statements in one string run in order; bindings apply to the last one.
+- `BEGIN`/`SAVEPOINT` are rejected: use `ctx.storage.transactionSync(() => …)` or `transaction(async (txn) => …)`.
+- Consume a cursor before any `await` (`.toArray()`); a cursor held across an `await` sees later writes.
+- Extensions available: FTS5, JSON functions, math functions. Each index row written counts as a billed row.
+
+### Key-value APIs
+
+| API | Style | Notes |
+| :--- | :--- | :--- |
+| `ctx.storage.kv.get/put/delete/list` | synchronous | SQLite-backed objects only; values are structured-cloned |
+| `ctx.storage.get/put/delete/list` | `Promise` | both backends; up to 128 keys per call; `list({ prefix, start, end, reverse, limit })` |
+| `ctx.storage.deleteAll()` | `Promise` | wipes storage (and, from compat date 2026-02-24, the alarm); dropping tables leaves metadata |
+
+- Key-value data lives in a hidden `__cf_kv` table in the same database, and is billed as rows.
+- Point-in-time recovery (SQLite only, last 30 days, not in local dev): `getBookmarkForTime`,
+  `onNextSessionRestoreBookmark`, then `ctx.abort()`. See [Recipes](#recipes).
+
+## Input & output gates
+
+A DO is single-threaded, but `await` lets other events in. The runtime narrows that window automatically.
+
+| Mechanism | Guarantees | Breaks when |
+| :--- | :--- | :--- |
+| Input gate | no new event is delivered while a storage call is in flight | you await non-storage I/O (`fetch`, R2, another DO) |
+| Output gate | responses and outgoing messages wait until earlier writes are durable | you pass `allowUnconfirmed: true` |
+| Write coalescing | writes with no `await` between them commit as one atomic transaction | an `await` splits them |
+| `ctx.blockConcurrencyWhile(fn)` | nothing else runs until `fn` settles (30 s timeout, then reset) | used per request: throughput collapses |
+
+- Don't `await` a SQLite write; the output gate already holds the reply until it is safe.
+- Around an `await fetch()`, re-read state afterward or use a version check (check-and-set).
+- `blockConcurrencyWhile` in the constructor for async initialization only. SQL is synchronous, so SQL-only setup
+  doesn't need it.
+- `ctx.waitUntil()` does nothing in a DO: the object stays alive while work is pending.
+
+## Alarms
+
+One alarm per object, stored like data: it survives eviction and wakes the object at the set time.
+
+```ts title="reminders.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+type Job = { id: number; what: string; due: number };
+
+// One alarm per object: keep a queue in SQL and always
+// arm the alarm for the earliest job.
+export class Reminders extends DurableObject<Env> {
+  sql: SqlStorage;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS jobs (
+      id INTEGER PRIMARY KEY, what TEXT, due INTEGER)`);
+  }
+
+  async schedule(what: string, due: number) {
+    this.sql.exec(
+      "INSERT INTO jobs (what, due) VALUES (?, ?)",
+      what,
+      due,
+    );
+    await this.arm();
+  }
+
+  async pending(): Promise<Job[]> {
+    return this.sql
+      .exec<Job>("SELECT * FROM jobs ORDER BY due")
+      .toArray();
+  }
+
+  async alarm(info?: AlarmInvocationInfo) {
+    const due = this.sql.exec<Job>(
+      "SELECT * FROM jobs WHERE due <= ?",
+      Date.now(),
+    ).toArray();
+    for (const job of due) {
+      // At-least-once: must be safe to run twice.
+      console.info("run", job.what, info?.retryCount);
+      this.sql.exec("DELETE FROM jobs WHERE id = ?", job.id);
+    }
+    await this.arm();
+  }
+
+  private async arm() {
+    const { due } = this.sql.exec<{ due: number | null }>(
+      "SELECT MIN(due) AS due FROM jobs",
+    ).one();
+    if (due === null) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(due);
+  }
+}
+```
+
+| Method | Notes |
+| :--- | :--- |
+| `storage.setAlarm(msOrDate)` | replaces any existing alarm; billed as one row written |
+| `storage.getAlarm()` | epoch ms or `null` (`null` inside a running `alarm()` unless re-set) |
+| `storage.deleteAlarm()` | cancel |
+| `alarm(info)` | handler; `info.retryCount`, `info.isRetry`; max 15 min wall time |
+
+- At-least-once: a throwing handler retries with exponential backoff from 2 s, up to 6 times, then stops. Catch
+  errors and re-arm if the work must eventually happen.
+- On a cold wake the constructor runs before `alarm()`, so never call `setAlarm` unconditionally in the constructor.
+- Local dev: alarms can fail after a hot reload; restart `wrangler dev`.
+- Use alarms instead of `setTimeout`/`setInterval`: timers are lost on eviction and block hibernation.
+
+## WebSocket Hibernation
+
+Accept sockets with `ctx.acceptWebSocket()` rather than `ws.accept()`. Cloudflare's edge then holds the
+connections, and the object can leave memory while clients stay connected, so idle rooms cost no duration.
+
+<Diagram src="/images/diagrams/rt-do-hibernation.svg" label="Three columns over time. 1, Active: two clients connect through the Cloudflare edge to the ChatRoom object in memory; handlers run and duration is billed. 2, Hibernated after about 10 seconds idle: the clients stay connected to the edge, which answers protocol pings and auto-responses, while the object has no instance and no duration is billed. 3, Message arrives: a client sends, the edge wakes the object, the constructor runs and then webSocketMessage. Along the bottom: SQLite storage and each socket's tags and attachment are kept; class fields, Maps and timers are lost on eviction and must be rebuilt in the constructor." caption="Sockets stay open at the edge while the object sleeps" />
+
+```ts title="presence.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+type Att = { user: string; joinedAt: number };
+
+// Hibernation API: the runtime owns the sockets, so the
+// object can leave memory while clients stay connected.
+export class Presence extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env); // re-runs after every wake: keep cheap
+    ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair("ping", "pong"),
+    );
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    const user = url.searchParams.get("user"); // demo only
+    if (!user) return new Response("user?", { status: 400 });
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server, [`user:${user}`]);
+    const att: Att = { user, joinedAt: Date.now() };
+    server.serializeAttachment(att); // survives hibernation
+    this.broadcast(`+${user}`);
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+    });
+  }
+
+  async webSocketMessage(
+    ws: WebSocket,
+    msg: string | ArrayBuffer,
+  ) {
+    if (typeof msg !== "string") return;
+    const { user } = ws.deserializeAttachment() as Att;
+    const dm = /^@(\S+) (.+)$/.exec(msg);
+    if (!dm) return this.broadcast(`${user}: ${msg}`);
+    // A tag finds one user's sockets (all their tabs).
+    const to = this.ctx.getWebSockets(`user:${dm[1]}`);
+    for (const s of to) s.send(`${user} (dm): ${dm[2]}`);
+  }
+
+  async webSocketClose(ws: WebSocket, code: number) {
+    const { user } = ws.deserializeAttachment() as Att;
+    this.broadcast(`-${user}`, ws);
+  }
+
+  private broadcast(text: string, skip?: WebSocket) {
+    for (const s of this.ctx.getWebSockets()) {
+      if (s !== skip) s.send(text);
+    }
+  }
+}
+```
+
+| API | Notes |
+| :--- | :--- |
+| `ctx.acceptWebSocket(ws, tags?)` | up to 32,768 sockets per object; up to 10 tags of 256 chars |
+| `webSocketMessage(ws, msg)` | `msg` is `string \| ArrayBuffer`; not called for protocol ping frames |
+| `webSocketClose(ws, code, reason, wasClean)` | from compat date 2026-04-07 the runtime completes the close handshake; before that, call `ws.close(code)` |
+| `webSocketError(ws, error)` | transport error on that socket; log it |
+| `ctx.getWebSockets(tag?)` | connected sockets, optionally by tag; can include ones already `CLOSING` |
+| `ctx.getTags(ws)` | a socket's tags |
+| `ws.serializeAttachment(v)` / `ws.deserializeAttachment()` | per-socket state that survives hibernation; structured clone, max 16,384 bytes |
+| `ctx.setWebSocketAutoResponse(pair)` | exact-match text reply sent by the edge without waking the object; 2,048 chars each way |
+| `ctx.getWebSocketAutoResponseTimestamp(ws)` | when that socket last got an auto-response: a free "last seen" |
+| `ctx.setHibernatableWebSocketEventTimeout(ms)` | cap how long one handler may run |
+
+| State | After hibernation | Keep it in |
+| :--- | :--- | :--- |
+| SQLite and key-value storage | kept | storage |
+| Socket attachment and tags | kept while the socket is open | `serializeAttachment` (a storage key if larger than 16 KiB) |
+| Alarm | kept | `setAlarm` |
+| Class fields, `Map`s, caches | lost; the constructor runs again | rebuild lazily from storage |
+| `setTimeout`/`setInterval` | prevents hibernation entirely | alarms |
+
+- Hibernation happens after about 10 s with no events, and only if no timer, awaited `fetch`, `ws.accept()` socket,
+  running request or outbound socket exists. Otherwise an idle object stays in memory, billed, for 70–140 s.
+- Outbound WebSockets never hibernate and keep the object alive (up to 15 minutes per connection).
+- Every deploy restarts objects and disconnects all their sockets: clients must reconnect and resync.
+- `wrangler dev` hibernates too: after 20 s idle the constructor runs again on the next message, with attachments
+  intact. A `console.log` in the constructor shows it.
+
+## Types & tooling
+
+| Task | Command or setting |
+| :--- | :--- |
+| New project | `bun create cloudflare@latest` (pick a Durable Object template) |
+| Types matching your compatibility date and bindings | `bunx wrangler types` writes `worker-configuration.d.ts` with a global `Env`; set `"types": ["./worker-configuration.d.ts"]` |
+| Types from npm instead | `@cloudflare/workers-types` (v5: latest runtime only); `"types": ["@cloudflare/workers-types"]` |
+| Local dev | `bunx wrangler dev` (workerd on your machine; storage persists in `.wrangler/state`) |
+| Local secrets | `.dev.vars` (`KEY="value"`); keep it out of git |
+| Deploy | `bunx wrangler deploy` |
+| Production secret | `bunx wrangler secret put CHAT_SECRET` |
+| Live logs | `bunx wrangler tail` (WebSocket request logs appear only after the socket closes) |
+
+- Keep Worker code in its own `tsconfig` without Bun or DOM types: both declare globals (`WebSocket`, `Response`)
+  that clash with the Workers ones. Shared modules must compile under both.
+- `wrangler types` now recommends replacing `@cloudflare/workers-types`; the npm package remains the choice for
+  shared libraries.
+- `wrangler dev` needs no Cloudflare login. Set `WRANGLER_SEND_METRICS=false` to turn off telemetry.
+
+## Limits & pricing
+
+From the Durable Objects limits and pricing pages (September 2026). Workers Paid has a 5 USD/month minimum.
+
+| | Workers Free | Workers Paid |
+| :--- | :--- | :--- |
+| Storage backend | SQLite only | SQLite (key-value only if the account already has it) |
+| Requests | 100,000 / day | 1 million / month, then 0.15 USD / million |
+| Duration | 13,000 GB-s / day | 400,000 GB-s / month, then 12.50 USD / million GB-s |
+| SQLite rows read | 5 million / day | 25 billion / month, then 0.001 USD / million |
+| SQLite rows written | 100,000 / day | 50 million / month, then 1.00 USD / million |
+| Stored data | 5 GB total | 5 GB-month, then 0.20 USD / GB-month |
+| Storage per object | 1 GB | 10 GB |
+| Classes per account | 100 | 500 |
+
+| Limit (both plans) | Value |
+| :--- | :--- |
+| Memory | 128 MB per isolate, which several objects may share |
+| CPU | 30 s per request or message by default, up to 5 min with `limits.cpu_ms`; each message resets it |
+| Incoming WebSocket message | 32 MiB |
+| SQL | 100 columns per table; 2 MB per row, string or blob; 100 KB per statement; 100 bound parameters |
+| Key + value (SQLite backend) | 2 MB combined |
+| RPC payload | 32 MiB serialized (stream larger bodies) |
+| Throughput | soft limit ~1,000 requests/s per object, then "overloaded" errors |
+
+- Billing: 20 incoming WebSocket messages count as 1 request; outgoing messages, protocol pings and
+  auto-responses are free. Duration is billed at 128 MB whatever you use, and not at all while an object is
+  hibernatable.
+- The pricing page's example: 100 rooms × 50 sockets, one message a minute, 8 h a day, *without* hibernation,
+  comes to about 143 USD/month, 137.50 of it duration. Hibernation removes most of that duration.
+- The pricing page dates SQLite storage billing from January 2026. Key-value methods on SQLite-backed objects are
+  billed as rows.
+- Free plan: exceeding a daily limit makes those operations fail until 00:00 UTC.
+
+## PartyServer
+
+`partyserver` (Cloudflare, successor to PartyKit) is a thin `Server` class over a Durable Object: room routing,
+connection ids and per-connection state kept through hibernation, `broadcast`, and hooks. `partysocket` is its
+client: a reconnecting WebSocket.
+
+```ts title="party.ts"
+import {
+  Server,
+  type Connection,
+  type ConnectionContext,
+  type WSMessage,
+} from "partyserver";
+import type { Env } from "./worker";
+
+// PartyServer: Durable Object + rooms + hooks. Binding
+// PARTY is reachable at /parties/party/:room.
+export class Party extends Server<Env> {
+  static options = { hibernate: true };
+
+  onStart() {
+    this.sql`CREATE TABLE IF NOT EXISTS log (msg TEXT)`;
+  }
+
+  onConnect(conn: Connection, ctx: ConnectionContext) {
+    const n = [...this.getConnections()].length;
+    conn.send(`welcome to ${this.name}, ${n} here`);
+  }
+
+  onMessage(conn: Connection, message: WSMessage) {
+    if (typeof message !== "string") return;
+    this.sql`INSERT INTO log (msg) VALUES (${message})`;
+    this.broadcast(message, [conn.id]); // all but sender
+  }
+}
+```
+
+In the Worker: `(await routePartykitRequest(req, env)) ?? new Response("Not found", { status: 404 })`. It serves
+`/parties/:binding-in-kebab-case/:room`.
+
+```ts title="client.ts"
+import { PartySocket } from "partysocket";
+
+async function getToken(): Promise<string> {
+  const r = await fetch("/api/chat-token", {
+    method: "POST",
+  });
+  return ((await r.json()) as { token: string }).token;
+}
+
+// Reconnects with backoff and buffers sends while offline.
+const socket = new PartySocket({
+  host: "party.example.workers.dev", // default: page host
+  party: "party", // binding PARTY, kebab-cased
+  room: "lobby", // -> /parties/party/lobby
+  query: async () => ({ token: await getToken() }),
+});
+
+socket.addEventListener("message", (e: MessageEvent) => {
+  console.info(e.data);
+});
+socket.send("hello");
+```
+
+| Hook or method | Instead of |
+| :--- | :--- |
+| `onStart()` | constructor setup (runs on first start and after each wake) |
+| `onConnect(conn, { request })` | `fetch` + `acceptWebSocket` |
+| `onMessage(conn, msg)` / `onClose` / `onError` | `webSocketMessage` / `webSocketClose` / `webSocketError` (don't override those) |
+| `onRequest(req)` | plain HTTP to the room |
+| `onAlarm()` | `alarm()` |
+| `conn.setState(v)` / `conn.state` | `serializeAttachment` (up to 2 KB) |
+| `getConnectionTags(conn, ctx)` + `getConnections(tag)` | tags |
+| `this.name` | `ctx.id.name` (requires `getByName`/`idFromName` addressing) |
+| ``this.sql`…${v}` `` | `ctx.storage.sql.exec` with bindings |
+| `static options = { hibernate: true }` | hibernation is off by default |
+
+- React: `usePartySocket({ room, party, onMessage })` from `partysocket/react`.
+- `routePartykitRequest` options `onBeforeConnect`/`onBeforeRequest` are the place for auth: return a `Response`
+  to reject.
+- Yjs documents on PartyServer: `y-partyserver`, see [Collaboration](/typescript/realtime/collaboration/).
+
+## Gotchas
+
+| Gotcha | What happens | Fix |
+| :--- | :--- | :--- |
+| State in module scope | objects in the same isolate can share it | keep state on `this` or in storage |
+| `await fetch()` mid-handler | other events run during the await | re-read after, or check-and-set with a version |
+| `blockConcurrencyWhile` per request | every request serialized (5 ms each ≈ 200 req/s) | constructor only |
+| One global object | the ~1,000 req/s ceiling for the whole app | one object per room, user or doc |
+| 128 MB memory | big in-memory caches evict the isolate | keep data in SQLite, R2 for blobs |
+| Hot room | one thread for all its users | batch messages (tens per frame), split into shards |
+| Cursor across `await` | no snapshot: sees later writes | `.toArray()` first |
+| `setTimeout` for scheduling | lost on eviction; blocks hibernation | alarms |
+| `setAlarm` in the constructor | overwrites the pending alarm on every wake | only if `getAlarm()` is `null` |
+| Alarm throws 6+ times | retries stop for good | catch, then re-arm |
+| Unawaited stub call | result lost, error swallowed | `await` every RPC |
+| Deploy | all sockets drop; old and new code briefly coexist | client reconnect + resync; RPC changes backward compatible |
+| Addressed by `idFromString` | `ctx.id.name` is `undefined` | `getByName` |
+| KV-backed class | can't switch to SQLite later | `sqlite` from day one |
+| Accepting with `ws.accept()` | object never hibernates, billed while sockets are open | `ctx.acceptWebSocket()` |
+| Trusting headers from the client | anyone can send `X-User` | set identity in the Worker, overwrite the header, and reach the object only through the Worker |
+
+## Recipes
+
+### One object per user as a rate limiter
+
+Shard by the thing being limited; a single global limiter object becomes the bottleneck.
+
+```ts title="limiter.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+const RATE = 5; // tokens per second
+const BURST = 20;
+
+// One object per user id: the limit is exact, and no
+// single object sees every request.
+export class Limiter extends DurableObject<Env> {
+  async take(cost = 1): Promise<boolean> {
+    const kv = this.ctx.storage.kv;
+    const now = Date.now();
+    const b = kv.get<{ tokens: number; at: number }>("b")
+      ?? { tokens: BURST, at: now };
+    const refill = ((now - b.at) / 1000) * RATE;
+    const tokens = Math.min(BURST, b.tokens + refill);
+    const ok = tokens >= cost;
+    const left = ok ? tokens - cost : tokens;
+    kv.put("b", { tokens: left, at: now });
+    return ok;
+  }
+}
+```
+
+`if (!(await env.LIMITER.getByName(userId).take())) return new Response("Slow down", { status: 429 })`.
+
+### Delete idle rooms, restore a room
+
+Each visit pushes an alarm a week ahead; the alarm wipes storage. Point-in-time recovery rolls a room back.
+
+```ts title="scratch.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { Env } from "./worker";
+
+const IDLE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Rooms nobody visits for a week delete themselves.
+export class Scratch extends DurableObject<Env> {
+  async touch(): Promise<void> {
+    // Each visit pushes the deadline back.
+    await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
+  }
+
+  async alarm() {
+    await this.ctx.storage.deleteAll(); // data + alarm
+  }
+
+  // Point-in-time recovery (SQLite-backed, last 30 days,
+  // not in local dev): restore, then restart the object.
+  async restore(msAgo: number): Promise<string> {
+    const s = this.ctx.storage;
+    const t = Date.now() - msAgo;
+    const at = await s.getBookmarkForTime(t);
+    const undo = await s.onNextSessionRestoreBookmark(at);
+    this.ctx.abort("restoring"); // resets now
+    return undo; // restore to this to roll back
+  }
+}
+```
+
+### Smoke-test a room locally
+
+Two clients against `bunx wrangler dev`, no login needed.
+
+```ts title="smoke.ts"
+const url = "ws://localhost:8787/presence/lobby?user=";
+const open = (user: string) =>
+  new Promise<WebSocket>((resolve) => {
+    const ws = new WebSocket(url + user);
+    ws.onmessage = (e) => console.info(user, "<-", e.data);
+    ws.onopen = () => resolve(ws);
+  });
+
+const ann = await open("ann");
+const ben = await open("ben");
+ann.send("ping"); // auto-response: never wakes the object
+ann.send("hello all");
+ann.send("@ben just you");
+await Bun.sleep(300);
+ben.close();
+ann.close();
+```
+
+Run with `bun smoke.ts`. Idle for over 10 s before a send to watch the constructor run again.
+
+### Add a class to a deployed Worker
+
+1. Write and export the class from `main`.
+2. Add a binding under `durable_objects.bindings`.
+3. Add an `exports` entry with `"storage": "sqlite"` (or a new tagged `migrations` step, never editing old
+   ones).
+4. `bunx wrangler types`, `bunx wrangler deploy`.
+
+## References
+
+- [Cloudflare: Durable Objects](https://developers.cloudflare.com/durable-objects/): overview and get-started
+- [Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/):
+  sharding, gates, anti-patterns
+- [SQLite storage API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/),
+  [State API](https://developers.cloudflare.com/durable-objects/api/state/),
+  [Namespace API](https://developers.cloudflare.com/durable-objects/api/namespace/),
+  [Alarms](https://developers.cloudflare.com/durable-objects/api/alarms/)
+- [Use WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/) and
+  [Lifecycle of a Durable Object](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/):
+  hibernation
+- [Class exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/) and
+  [legacy migrations](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/)
+- [Limits](https://developers.cloudflare.com/durable-objects/platform/limits/),
+  [Pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/),
+  [Known issues](https://developers.cloudflare.com/durable-objects/platform/known-issues/)
+- [Workers RPC](https://developers.cloudflare.com/workers/runtime-apis/rpc/) and
+  [Workers TypeScript](https://developers.cloudflare.com/workers/languages/typescript/): `wrangler types`
+- [Durable Objects: Easy, Fast, Correct, Choose three](https://blog.cloudflare.com/durable-objects-easy-fast-correct-choose-three/):
+  input and output gates
+- [PartyServer](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) and
+  [partysocket](https://www.npmjs.com/package/partysocket)
+- [MDN: WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)

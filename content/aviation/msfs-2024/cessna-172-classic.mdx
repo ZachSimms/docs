@@ -1,0 +1,380 @@
+---
+title: Cessna 172 Classic
+date: 2026-09-27
+order: 3
+---
+
+The steam-gauge Cessna 172 in MSFS 2024: a 172S Skyhawk SP with round gauges, GNS 530/430 (or Avidyne
+IFD550/540) and a KAP 140 autopilot. It's the same airframe and engine as the
+[172 G1000](/aviation/msfs-2024/cessna-172/), so the speeds are identical. What changes is the scan, the radios and
+the autopilot. EFB, keys and assists are in [sim basics](/aviation/msfs-2024/sim-basics/), radio calls in
+[ATC comms](/aviation/atc-comms/fundamentals/). Numbers come from the pre-G1000 Cessna 172S POH (172SPHUS,
+revision 5, 2004) and FAA TCDS 3A12. Flows are paraphrased from that POH.
+
+<Note kind="warning">For the simulator only. The checklists here are condensed paraphrases, not the Cessna 172S POH. Real
+aircraft: use the manufacturer's POH/AFM and approved checklists.</Note>
+
+## Profile
+
+| Item | Value | Source |
+| :--- | :--- | :--- |
+| model in the sim | Cessna 172S Skyhawk SP: Marketplace name "Cessna 172 Skyhawk (SP)", fuel-injected 180 hp[^model] | Marketplace listing, TCDS |
+| role | 4-seat trainer and tourer, fixed gear, fixed-pitch prop | POH |
+| engine | Lycoming IO-360-L2A, fuel injected, 180 hp at 2,700 RPM | TCDS, POH |
+| seats | 4 | TCDS |
+| max takeoff / landing weight | 2,550 lb (ramp 2,558 lb); utility category 2,200 lb | TCDS, POH |
+| useful load | 895 lb max (standard empty weight 1,663 lb) | POH |
+| fuel | 56 gal total, **53 gal usable**, 100LL | TCDS, POH |
+| typical burn | about 9 gal/h at 65–75% power, leaned | POH section 5 |
+| cruise | 124 KTAS at 75% power, 8,500 ft (with speed fairings) | POH |
+| ceiling | 14,000 ft | POH |
+| range, 45 min reserve | 518 NM at 75%, 8,500 ft; 638 NM at 45%, 10,000 ft | POH |
+| takeoff / landing | 960 ft roll, 1,630 ft over 50 ft / 575 ft roll, 1,335 ft over 50 ft | POH |
+| MSFS edition | Deluxe and above[^edition]; built by Asobo, carried over from MSFS 2020 and updated | edition lists |
+| variants | GNS 530/430 (default); Avidyne IFD550/540 (added in SU5); floats and skis (reported) | SU5 release notes |
+| avionics | six-pack, GNS 530 + GNS 430 or IFD550 + IFD540, Bendix/King KAP 140, transponder, ADF | SU5 notes, forum reports |
+
+## Speeds
+
+Identical to the G1000 airplane. Same POH numbers, KIAS at 2,550 lb.
+
+| Speed | KIAS | What it means |
+| :--- | :--- | :--- |
+| Vs0 | 40 | stall, flaps 30°, bottom of the white arc |
+| Vs1 | 48 | stall, flaps up, bottom of the green arc |
+| Vr | 55 | lift the nosewheel |
+| Vx | 62 (67 at 10,000 ft) | best angle of climb |
+| Vy | 74 (72 at 10,000 ft) | best rate of climb |
+| normal climb | 75–85 | enroute climb |
+| best glide | 68 | engine out |
+| engine failure after takeoff | 70 flaps up / 65 flaps down | also the power-off landing speeds |
+| Va | 105 / 98 / 90 at 2,550 / 2,200 / 1,900 lb | full or abrupt inputs only below this |
+| Vfe | 110 flaps 10°; 85 flaps 10°–30° | TCDS lists only 85[^vfe] |
+| Vno | 129 | top of the green arc |
+| Vne | 163 | red line |
+| approach | 65–75 flaps up; 60–70 flaps 30° | normal landing |
+| short-field approach | 61 | flaps 30° |
+| go-around | 60 | full power, flaps 20° |
+
+Sim vs real: we found no published stall or V-speed figures for the sim model. The SU3 notes list a sideslip drag
+fix and new slip-ball physics for "Cessna 172 Skyhawk", so earlier builds flew slips differently.
+
+## Cockpit & avionics
+
+### Six-pack and scan
+
+| Position | Instrument | Powered by | Tells you |
+| :--- | :--- | :--- | :--- |
+| top left | airspeed indicator | pitot-static | speed; colored arcs as in Speeds |
+| top center | attitude indicator (AI) | vacuum | pitch and bank |
+| top right | altimeter | static | altitude; set BARO in the Kollsman window |
+| bottom left | turn coordinator (TC) | electric | rate of turn and the slip ball |
+| bottom center | directional gyro (DG), with heading bug | vacuum | heading; drifts, so reset to the compass |
+| bottom right | vertical speed indicator (VSI) | static | climb or descent rate, with lag |
+
+The scan (FAA Instrument Flying Handbook, radial scan): keep coming back to the attitude indicator, glance out to one
+instrument, then back to the AI. The **primary** instrument is the one that shows the value you're holding:
+
+| Maneuver | Pitch | Bank | Power |
+| :--- | :--- | :--- | :--- |
+| straight and level | altimeter | DG | airspeed |
+| standard-rate turn (3°/s) | altimeter | turn coordinator | airspeed |
+| constant-airspeed climb | airspeed | DG | tachometer (full power) |
+| constant-rate descent | VSI | DG | airspeed |
+
+| Engine and systems gauges | Normal |
+| :--- | :--- |
+| tachometer | green 2,100–2,500 RPM at sea level, to 2,600 at 5,000 ft, to 2,700 at 10,000 ft; red line 2,700 |
+| vacuum gauge | 4.5–5.5 in.Hg green |
+| oil pressure / oil temperature | 50–90 psi / 100–245 °F green |
+| fuel flow | 0–12 gal/h green |
+| where | oil, fuel quantity, vacuum/ammeter and EGT/fuel flow gauges sit left of the six-pack in the real airplane |
+| annunciator panel | fuel, oil pressure, low vacuum, low voltage (VOLTS) |
+
+### Radios and GPS
+
+| Unit | Role | Key controls |
+| :--- | :--- | :--- |
+| GNS 530 (top) | COM1, NAV1, GPS1 (usual setup) | big/small knobs; COM and VLOC flip-flop; **CDI** key switches the nav needle between GPS and VLOC (VOR/localizer) |
+| GNS 430 (below) | COM2, NAV2, GPS2 | same keys on a smaller screen |
+| common keys | D→, FPL, PROC, MENU, CLR, ENT, OBS, MSG | same meanings as on the G1000 |
+| IFD550 + IFD540 (SU5 variants) | replace the two GNS units | touchscreen plus knobs; FMS, MAP and AUX pages |
+| KAP 140 | 2-axis autopilot (roll and pitch) | see below |
+| transponder, ADF | squawk code and mode; ADF tuning | present in the sim; exact models not verified |
+
+### Differences from the G1000 172
+
+| Area | Classic | G1000 |
+| :--- | :--- | :--- |
+| flight instruments | six-pack; AI and DG vacuum-driven | PFD with AHRS (solid-state gyros); vacuum drives only the standby attitude indicator |
+| heading | DG drifts, reset to the compass | AHRS heading, no drift |
+| engine gauges | round gauges, left sub-panel | MFD engine strip with exceedance colors |
+| nav | GNS 530/430 or IFD, CDI needle(s) with OBS | G1000 NXi HSI with CDI softkey, synthetic map |
+| autopilot | KAP 140: ROL, HDG, NAV, APR, REV, ALT, VS | GFC 700: adds FLC, VNAV, flight director, BC |
+| altitude preselect | on the KAP 140 display | ALT SEL on the PFD |
+| standby power | none; battery only | standby battery for at least 30 min |
+| start | ignition key, no STBY BATT test | STBY BATT test, then key |
+| electrical failure | lose the radios, GPS and autopilot; vacuum instruments keep working | PFD stays on the standby battery |
+| learning value | instrument scan, partial panel | automation and flight-plan management |
+
+## Normal procedures
+
+Condensed from the 172S POH (non-G1000). Same order as the G1000 sheet, minus the standby battery and plus
+round-gauge checks.
+
+### Preflight
+
+| Item | Action / value |
+| :--- | :--- |
+| weight, fuel | EFB: 2,550 lb max, 53 gal usable |
+| walkaround | covers, chocks, tie-downs off (as the variant shows them) |
+| DG | will be set to the compass after start |
+
+### Before start
+
+| Item | Action / value |
+| :--- | :--- |
+| seats, belts, brakes | adjusted; brakes tested and set |
+| circuit breakers, including avionics | in |
+| electrical equipment, avionics master | off |
+| fuel selector / shutoff | BOTH / on (pushed in) |
+
+### Engine start
+
+| Item | Action / value |
+| :--- | :--- |
+| throttle | open ¼ inch |
+| mixture | idle cutoff |
+| prop area | clear |
+| master switch, beacon | on |
+| prime (cold only) | aux fuel pump on, mixture full rich 3–5 s until fuel flow shows, mixture cutoff, pump off |
+| ignition key | START; release when it fires |
+| mixture | smoothly to rich |
+| oil pressure | rising into the green |
+| nav lights, avionics master, radios | on |
+| flaps | retract |
+
+### Before taxi / taxi
+
+| Item | Action / value |
+| :--- | :--- |
+| ATIS, altimeter | Kollsman window set, compare field elevation |
+| GNS/IFD | COM1 ground, COM2 tower or ATIS; flight plan loaded; CDI on GPS or VLOC |
+| DG | set to the compass (or runway heading on the runway) |
+| KAP 140 | self-test done (real unit: runs at power-up); BARO matches the altimeter |
+| transponder | code set |
+| taxi | brakes checked; in turns, TC and DG turn the right way, ball swings out, AI stays level |
+
+### Run-up
+
+| Item | Action / value |
+| :--- | :--- |
+| parking brake, doors, belts | set, closed, secure |
+| flight controls | free and correct |
+| flight instruments | checked and set |
+| fuel quantity, mixture, selector | checked, rich, BOTH |
+| 1,800 RPM | mag drop ≤ 150 RPM each, ≤ 50 RPM difference; vacuum 4.5–5.5; engine gauges and ammeter checked |
+| annunciators | none lit |
+| idle | check, then ≤ 1,000 RPM |
+| radios and avionics, NAV/GPS source | set |
+| autopilot | **off** (the KAP 140 must be off for takeoff and landing) |
+| electric trim | check if installed |
+| elevator trim, flaps | takeoff mark; 0°–10° |
+| brakes | release |
+
+### Takeoff
+
+| Item | Action / value |
+| :--- | :--- |
+| power | full throttle; mixture rich (above 3,000 ft, lean for max RPM) |
+| rotate | 55 KIAS |
+| climb | 70–80 KIAS; flaps up |
+| short field | flaps 10°, full power on the brakes, 56 KIAS until clear, flaps up slowly after 60 |
+
+### Climb
+
+| Item | Action / value |
+| :--- | :--- |
+| airspeed | 70–85 KIAS (Vy 74, Vx 62) |
+| power, mixture | full throttle; rich, lean for max RPM above 3,000 ft |
+
+### Cruise
+
+| Item | Action / value |
+| :--- | :--- |
+| power | 2,100–2,700 RPM, no more than 75% |
+| trim, mixture | adjust; lean with the EGT gauge |
+| DG | re-check against the compass in straight, level flight (common practice: every 15 min) |
+
+### Descent
+
+| Item | Action / value |
+| :--- | :--- |
+| power, mixture | as needed; mixture full rich for idle power |
+| altimeter, NAV/GPS source | set |
+| fuel selector | BOTH |
+| flaps | 0°–10° below 110 KIAS, 10°–30° below 85 |
+
+### Approach
+
+| Item | Action / value |
+| :--- | :--- |
+| seats, belts | upright, secured |
+| fuel selector, mixture | BOTH, rich |
+| landing and taxi lights | on |
+| autopilot | off |
+
+### Landing
+
+| Item | Action / value |
+| :--- | :--- |
+| speeds | 65–75 KIAS flaps up, 60–70 KIAS flaps down |
+| touchdown | main wheels first, nose down gently, minimum braking |
+| short field | flaps 30°, 61 KIAS, idle over the obstacle, brake hard, flaps up |
+| go-around | full throttle, flaps to 20°, 60 KIAS; flaps 10° until clear, then up at a safe height and 65 KIAS |
+
+### After landing
+
+| Item | Action / value |
+| :--- | :--- |
+| flaps | up |
+| lights, transponder | per procedure (common practice: strobes and landing light off) |
+
+### Shutdown
+
+| Item | Action / value |
+| :--- | :--- |
+| parking brake | set |
+| electrical equipment, autopilot, avionics master | off |
+| mixture | idle cutoff |
+| ignition key | off |
+| master switch | off |
+| control lock | installed |
+| fuel selector | LEFT or RIGHT (stops crossfeeding) |
+
+## Flying it in the sim
+
+| Step | Action |
+| :--- | :--- |
+| plan | EFB → **SEND TO AVIONICS**. If your variant doesn't take it, enter the route on the GNS: FPL, then waypoints with the small and big knobs. |
+| check | FPL page on the GNS 530: departure, waypoints, approach |
+| nav source | **CDI** key: GPS for the flight plan, VLOC for a VOR or ILS (tune it on the VLOC side) |
+| heading bug | on the DG; in NAV, APR and REV modes it also gives the autopilot its course reference, so set it to the course |
+| altitude preselect | KAP 140 rotary knobs; the autopilot captures it when climbing or descending in VS |
+| engage | trimmed, above the pattern: AP (engages in ROL + VS at the current rate), then HDG or NAV |
+
+KAP 140 controls (Bendix/King supplement in the 172S POH):
+
+| Control | Does |
+| :--- | :--- |
+| AP | engage/disengage; starts in ROL (wing leveler) + VS (holds the current vertical speed) |
+| HDG | follow the DG heading bug; press again to go back to ROL |
+| NAV | capture and track the #1 CDI source: VOR, localizer or GPS |
+| APR | approach: tighter tracking of VOR, GPS or localizer, plus glideslope capture on an ILS |
+| REV | back-course localizer; no glideslope |
+| ALT | hold the altitude you're at when you press it (overshoots about 10% of the current VS) |
+| UP / DN | VS mode: ±100 fpm per press (held: 300 fpm per second). ALT mode: ±20 ft per press |
+| rotary knobs, ARM | set the preselect altitude; arming for capture is automatic when you set it |
+| BARO | shows the autopilot's baro setting for 3 s; set it to match the altimeter |
+| A/P DISC (yoke) | disconnect; two-second tone and a flashing AP |
+
+The KAP 140 has no FLC and no VNAV. In a climb, hold airspeed yourself with VS: start at +500 fpm and cut it back
+if the speed drops below about 75 KIAS.
+
+**Approach setup.** GNS: PROC → select the approach → Load, then Activate when cleared. ILS: tune the localizer on
+the 530's VLOC, press **CDI** until the needle shows VLOC, set the heading bug to the inbound course, then APR on the
+KAP 140. GPS approach: the CDI stays on GPS, APR on the KAP 140.
+
+## Emergencies
+
+Immediate-action items are **bold**. Paraphrased from the 172S POH section 3.
+
+| Situation | Flow |
+| :--- | :--- |
+| engine failure on the takeoff roll | **throttle idle, brakes, flaps up**; mixture cutoff, ignition off, master off |
+| engine failure right after takeoff | **70 KIAS flaps up / 65 flaps down**; mixture cutoff, fuel shutoff off, ignition off, flaps as needed, master off, door unlatched, land straight ahead |
+| engine failure in flight | **68 KIAS**; fuel shutoff on, selector BOTH, aux fuel pump on, mixture rich, ignition BOTH (START if the prop stopped); pump off once running (back on if fuel flow drops to zero) |
+| engine fire in flight | **mixture cutoff, fuel shutoff off, aux pump off, master off**; cabin heat and air off; 100 KIAS; forced landing |
+| electrical fire in flight | **master off**; vents and heat closed; extinguisher; then avionics master and all switches off |
+| ammeter pegged high (overcharge) | alternator half of the master off; non-essential equipment off; land as soon as practical |
+| low voltage (VOLTS) light | avionics master off, alternator field breaker in, master off then on, check the light is out, avionics back on; if it comes back: alternator off, shed load, land as soon as practical |
+| vacuum failure | check vacuum gauge; if low, the AI and DG will fail: cover them, fly the turn coordinator, airspeed, altimeter and compass |
+| lost in cloud, no vacuum | note the compass heading, standard-rate left turn on the TC for 60 s by the clock, roll level, check the compass shows the reciprocal |
+| autopilot runs away | **grasp the yoke, press and hold A/P DISC**; avionics master off if it won't let go; don't re-engage |
+
+**Memory items**: best glide 68 · failure after takeoff 70/65 · fire: mixture, fuel, master · autopilot: yoke and
+disconnect · squawk 7700. Calls: [emergencies and lost comms](/aviation/atc-comms/emergencies-lost-comms/).
+
+## Sim quirks
+
+| Quirk | Status |
+| :--- | :--- |
+| at launch the whole electrical system was dead (starter, flaps, GNS, lights) | (reported), marked fixed on the forum |
+| SU3: new slip-ball physics, sideslip drag corrected, copilot now spawns, altimeter strip precision fixed | official SU3 notes |
+| SU5: IFD550/540 variants added | official |
+| SU6: GNS approach-loading calculations and IFD CDI validity fixed | official |
+| DG drifts once gyro drift compensation is off | realistic; reset it to the compass |
+| KAP 140 baro out of sync with the altimeter | (reported, MSFS 2020 era); press the set-altimeter key or match BARO by hand |
+| GNS flight-plan catalog page missing: can't save or recall plans | (reported) |
+| Standard edition: bought separately, then picked via Configure → "Basic" variant | (reported) |
+| fuel priming and engine start feel don't match the real engine | (reported) |
+
+## Recipes
+
+### Cold and dark to takeoff
+The whole flow in one pass.
+1. Brakes set, breakers in, avionics master off, selector BOTH, fuel shutoff in.
+2. Throttle ¼ inch, mixture cutoff, master and beacon on.
+3. Cold engine: aux pump on, mixture rich 3–5 s, cutoff, pump off.
+4. Key to START, mixture rich, oil pressure up, avionics master on, radios on, flaps up.
+5. ATIS, altimeter, DG to the compass, GNS plan, squawk. Taxi and check the instruments in turns.
+6. Run-up at 1,800 RPM: mags, vacuum, gauges. KAP 140 off, trim set, flaps 0°–10°.
+7. Full power, 55 KIAS rotate, 70–80 KIAS climb.
+
+### Pattern work
+Same numbers as the [G1000 pattern](/aviation/msfs-2024/cessna-172/#pattern-work). On downwind, check the DG
+against the runway heading and fly the airspeed indicator, not the attitude indicator.
+
+### Quick IFR setup
+1. EFB plan → **SEND TO AVIONICS AND ATC**, or enter it on the GNS 530. Check the FPL page.
+2. Altimeter and KAP 140 BARO set, preselect the initial altitude, heading bug on the runway heading.
+3. CDI on GPS. Clearance per [ifr-departure](/aviation/atc-comms/ifr-departure/).
+4. After takeoff: AP (ROL + VS), set +500 fpm with UP/DN, then HDG or NAV.
+5. For the approach: PROC → load, CDI to VLOC for an ILS, heading bug on the inbound course, APR.
+
+### Partial-panel practice
+1. Turn gyro drift compensation off.
+2. At a safe altitude, cover the AI and DG (a sticky note on the screen works).
+3. Fly headings with the turn coordinator and compass. Compass turning error: roll out early when turning to
+   north, late when turning to south.
+4. Do a timed 180° turn: standard rate for 60 s.
+
+## References
+
+- Cessna 172S Information Manual (POH/AFM 172SPHUS), revision 5, 19 July 2004,
+  [copy hosted by BEFA](https://www.befa.org/wp-content/uploads/2019/12/POH-Cessna-172S.pdf): every speed, flow and
+  number, plus supplement 15, the Bendix/King KAP 140 autopilot
+- FAA Type Certificate Data Sheet 3A12, section XII Model 172S: read in Rev. 80; the current revision is
+  [Rev. 88 on FAA DRS](https://drs.faa.gov/browse/excelExternalWindow/DRSDOCID153801600120250627164731.0001).
+  Engine, limits, weights, fuel
+- [FAA Instrument Flying Handbook (FAA-H-8083-15B)](https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/FAA-H-8083-15B.pdf):
+  scan, primary and supporting instruments, partial panel
+- [Sim Update 5 release notes](https://www.flightsimulator.com/release-notes-sim-update-5-1-7-27-0-now-available-msfs-2024/):
+  IFD550/540 variants of the classic 172
+- [Sim Update 3 release notes](https://www.flightsimulator.com/sim-update-3-msfs-2024/) and
+  [Sim Update 6 release notes](https://www.flightsimulator.com/release-notes-sim-update-6-1-8-14-0-now-available-msfs-2024/)
+- [MSFS avionics docs: GNS](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/gns/overview/) and
+  [IFD](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/ifd/overview/) packages
+- MSFS forum threads: [Cessna 172 feedback](https://forums.flightsimulator.com/t/msfs2024-cessna-172-skyhawk/664560),
+  [classic electrical failure](https://forums.flightsimulator.com/t/cessna-172-classic-electrical-systems-not-functioning/666791),
+  [buying the 172 SP in Standard](https://forums.flightsimulator.com/t/bought-cessna-172-skyhawk-sp-today-cant-find-it-in-sim-2024/725171),
+  [KAP 140 baro](https://forums.flightsimulator.com/t/struggling-to-understand-the-kap-140-and-baro-settings/475970):
+  sources of the "(reported)" items
+
+[^model]: The sim doesn't state a model year. The Marketplace name "Skyhawk SP" (the 172S marketing name), the
+    third-party "172SP Classic Enhancement" mod built for it, and the electric fuel pump listed in forum bug reports
+    all point to the fuel-injected 172S (1998 on, 180 hp), not the carbureted 160 hp 172N. The POH used here is
+    the pre-G1000 172S one.
+[^edition]: Most edition lists (FSNews, FSElite, the MSFS forum's first-party list) and forum answers put it in
+    Deluxe. One beginner guide says Premium Deluxe. Standard owners can buy it separately.
+[^vfe]: TCDS 3A12 lists one flap-extended speed, 85 KIAS. The POH adds 110 KIAS for flaps 10° only.

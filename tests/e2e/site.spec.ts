@@ -105,16 +105,16 @@ test.describe("home", () => {
     await expect(search.locator("i")).toHaveCSS("border-bottom-style", "dotted");
   });
 
-  test("the docs index lists the twenty-one topics as cards and links every sheet", async ({
+  test("the docs index lists the twenty-two topics as cards and links every sheet", async ({
     page,
   }) => {
     await page.goto("/docs/");
     await expect(page).toHaveTitle(`Docs - ${SITE_TITLE}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Docs");
-    await expect(topicCards(page)).toHaveCount(21);
-    await expect(topicCards(page).first()).toHaveText("Math");
-    await expect(topicCards(page).last()).toHaveText("Design");
-    await expect(page.locator("main nav[data-menu] .card-head .dim").first()).toHaveText("21");
+    await expect(topicCards(page)).toHaveCount(22);
+    await expect(topicCards(page).first()).toHaveText("3D graphics");
+    await expect(topicCards(page).last()).toHaveText("Writing");
+    await expect(page.locator("main nav[data-menu] .card-head .dim").first()).toHaveText("22");
     await expect(page.locator("main nav[data-menu] .card-head .dim").last()).toHaveText("01");
     await expect(page.locator("main a", { hasText: /^All \d+ sheets$/ })).toHaveAttribute(
       "href",
@@ -678,7 +678,7 @@ test.describe("mdx showcase", () => {
     for (const right of boxes) expect(right).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
   });
 
-  test("the Math topic exists and is listed first", async ({ page }) => {
+  test("the Math topic exists", async ({ page }) => {
     await page.goto("/math/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Math");
     await expect(topicEntries(page)).toHaveCount(5);
@@ -700,7 +700,7 @@ test.describe("mdx showcase", () => {
 });
 
 test.describe("typescript topic and directories", () => {
-  test("the topic lists its nine directories, then its loose sheet", async ({ page }) => {
+  test("the topic lists its ten directories, then its loose sheet", async ({ page }) => {
     await page.goto("/docs/");
     await page.locator("main nav[data-menu] a", { hasText: "TypeScript" }).click();
     await expect(page).toHaveURL(/\/typescript\/$/);
@@ -714,13 +714,15 @@ test.describe("typescript topic and directories", () => {
       "React/",
       "Web APIs/",
       "Backend/",
+      "Realtime/",
       "Three.js/",
       "WebAssembly/",
       "Testing",
     ]);
     await expect(links.nth(1)).toHaveAttribute("href", "/typescript/design-architecture/");
-    await expect(links.nth(7)).toHaveAttribute("href", "/typescript/three-js/");
-    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("09.");
+    await expect(links.nth(7)).toHaveAttribute("href", "/typescript/realtime/");
+    await expect(links.nth(8)).toHaveAttribute("href", "/typescript/three-js/");
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("10.");
     // Every directory is unfolded: its sheets are listed under its heading.
     await expect(
       page.locator(".topic-folder", { has: page.locator('h2 a[href="/typescript/language/"]') }),
@@ -769,10 +771,10 @@ test.describe("typescript topic and directories", () => {
     await page.goto("/sheets/");
     const hrefs = await page
       .locator(
-        'main nav[data-menu] a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"]):not([href$="/overview/"])',
+        'main nav[data-menu] a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"], [href^="/aviation/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(158);
+    expect(hrefs).toHaveLength(177);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });
@@ -800,15 +802,13 @@ test.describe("typescript topic and directories", () => {
 });
 
 test.describe("new topics", () => {
-  test("databases and infrastructure are listed after TypeScript", async ({ page }) => {
+  test("databases and infrastructure are listed alphabetically", async ({ page }) => {
     await page.goto("/docs/");
     const links = topicCards(page);
-    await expect(links.nth(3)).toHaveText("Fitness");
-    await expect(links.nth(4)).toHaveText("Economics");
-    await expect(links.nth(10)).toHaveText("DS&A");
-    await expect(links.nth(11)).toHaveText("TypeScript");
-    await expect(links.nth(12)).toHaveText("Databases");
-    await expect(links.nth(13)).toHaveText("Infrastructure");
+    await expect(links.nth(4)).toHaveText("Databases");
+    await expect(links.nth(6)).toHaveText("DS&A");
+    await expect(links.nth(11)).toHaveText("Infrastructure");
+    await expect(links.nth(20)).toHaveText("TypeScript");
     await page.goto("/infrastructure/");
     await expect(topicEntries(page)).toHaveText([
       "Linux/",
@@ -821,15 +821,15 @@ test.describe("new topics", () => {
     ]);
   });
 
-  test("game dev sits after C++ and holds the Godot and game design directories", async ({
+  test("game dev is listed alphabetically and holds the Godot and game design directories", async ({
     page,
   }) => {
     await page.goto("/docs/");
     const links = topicCards(page);
-    await expect(links.nth(15)).toHaveText("C++");
-    await expect(links.nth(16)).toHaveText("3D graphics");
-    await expect(links.nth(17)).toHaveText("Game dev");
-    await links.nth(17).click();
+    await expect(links.nth(0)).toHaveText("3D graphics");
+    await expect(links.nth(3)).toHaveText("C++");
+    await expect(links.nth(10)).toHaveText("Game dev");
+    await links.nth(10).click();
     await expect(page).toHaveURL(/\/game-dev\/$/);
     await expect(topicEntries(page)).toHaveText(["Godot/", "Game design/"]);
     await page.goto("/game-dev/design/");
@@ -954,17 +954,17 @@ test.describe("keyboard", () => {
     await hydrated(page);
     const active = page.locator("main nav[data-menu] a[data-active]");
     await page.keyboard.press("ArrowDown");
-    await expect(active.locator(".card-head i")).toHaveText("Math");
+    await expect(active.locator(".card-head i")).toHaveText("3D graphics");
     await page.keyboard.press("j");
-    await expect(active.locator(".card-head i")).toHaveText("Physics");
+    await expect(active.locator(".card-head i")).toHaveText("Aviation");
     await expect(active).toHaveCSS("border-top-color", "rgb(0, 0, 0)");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/physics\/$/);
+    await expect(page).toHaveURL(/\/aviation\/$/);
     await expect(page.locator(".back-rail a")).toHaveAttribute("href", "/docs/");
     await effectsFlushed(page);
     await page.keyboard.press("ArrowLeft");
     await expect(page).toHaveURL(/\/docs\/$/);
-    await expect(active.locator(".card-head i")).toHaveText("Physics");
+    await expect(active.locator(".card-head i")).toHaveText("Aviation");
   });
 
   test("a topic's menu runs through its directories' sheets without opening them", async ({
@@ -1513,16 +1513,16 @@ test.describe("DS&A and 3D graphics", () => {
 });
 
 test.describe("finance, thinking, leadership, startups and writing", () => {
-  test("the four new topics sit between Economics and ML/AI", async ({ page }) => {
+  test("the new topics are listed alphabetically", async ({ page }) => {
     await page.goto("/docs/");
     const links = topicCards(page);
-    await expect(links.nth(4)).toHaveText("Economics");
-    await expect(links.nth(5)).toHaveText("Finance");
-    await expect(links.nth(6)).toHaveText("Thinking");
-    await expect(links.nth(7)).toHaveText("Leadership");
-    await expect(links.nth(8)).toHaveText("Startups");
-    await expect(links.nth(9)).toHaveText("ML/AI");
-    await expect(links.nth(19)).toHaveText("Writing");
+    await expect(links.nth(7)).toHaveText("Economics");
+    await expect(links.nth(8)).toHaveText("Finance");
+    await expect(links.nth(12)).toHaveText("Leadership");
+    await expect(links.nth(14)).toHaveText("ML/AI");
+    await expect(links.nth(18)).toHaveText("Startups");
+    await expect(links.nth(19)).toHaveText("Thinking");
+    await expect(links.nth(21)).toHaveText("Writing");
   });
 
   test("each new topic lists its directories and sheets in order", async ({ page }) => {
@@ -2004,8 +2004,14 @@ test.describe("split layout", () => {
       "3D Algorithm Visualizer",
     ]);
     await expect(page.locator("main .project-card").first()).toContainText(
-      /\d+ cheatsheets across 21 topics/,
+      /\d+ cheatsheets across 22 topics/,
     );
+    await expect(
+      page
+        .locator("main .project-card")
+        .nth(2)
+        .getByRole("link", { name: /source/ }),
+    ).toHaveAttribute("href", "https://github.com/ZachSimms/Pathfinding-Algorithm-Visualizer");
     await page.goto("/resume/");
     await expect(page.locator("main h2")).toHaveText([
       "Education",

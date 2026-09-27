@@ -33,6 +33,7 @@ const TOPICS: Readonly<Record<string, Layout>> = {
       "react/",
       "web-apis/",
       "backend/",
+      "realtime/",
       "three-js/",
       "webassembly/",
       "testing",
@@ -73,6 +74,15 @@ const TOPICS: Readonly<Record<string, Layout>> = {
         "page-visibility",
       ],
       backend: ["hono", "file-io", "streaming", "websockets", "authentication"],
+      realtime: [
+        "fundamentals",
+        "react-nextjs",
+        "socket-io",
+        "durable-objects",
+        "chat-rooms",
+        "game-worlds",
+        "collaboration",
+      ],
       "three-js": [
         "fundamentals",
         "geometry-materials",
@@ -82,6 +92,27 @@ const TOPICS: Readonly<Record<string, Layout>> = {
         "react-three-fiber",
       ],
       webassembly: ["fundamentals", "wat", "rust", "emscripten", "wasi-components"],
+    },
+  },
+  aviation: {
+    entries: ["atc-comms/", "msfs-2024/"],
+    directories: {
+      "atc-comms": [
+        "fundamentals",
+        "vfr-towered",
+        "vfr-untowered",
+        "ifr-departure",
+        "ifr-enroute-arrival",
+        "emergencies-lost-comms",
+      ],
+      "msfs-2024": [
+        "sim-basics",
+        "cessna-172",
+        "cessna-172-classic",
+        "cirrus-sr22",
+        "vision-jet",
+        "longitude",
+      ],
     },
   },
   databases: { entries: ["postgres", "db-design", "drizzle"], directories: {} },
@@ -271,6 +302,26 @@ const DESIGN_DIRECTORIES: Readonly<Record<string, readonly string[]>> = {
  * matches that slug in any topic, a `topic/group/slug` label matches one sheet.
  */
 const WITH_RECIPES: ReadonlySet<string> = new Set([
+  ...[
+    "fundamentals",
+    "react-nextjs",
+    "socket-io",
+    "durable-objects",
+    "chat-rooms",
+    "game-worlds",
+    "collaboration",
+  ].map((slug) => `typescript/realtime/${slug}`),
+  ...[
+    "fundamentals",
+    "vfr-towered",
+    "vfr-untowered",
+    "ifr-departure",
+    "ifr-enroute-arrival",
+    "emergencies-lost-comms",
+  ].map((slug) => `aviation/atc-comms/${slug}`),
+  ...["cessna-172", "cessna-172-classic", "cirrus-sr22", "vision-jet", "longitude"].map(
+    (slug) => `aviation/msfs-2024/${slug}`,
+  ),
   "oop",
   "async-promises",
   "array-methods",
@@ -731,5 +782,21 @@ describe("MDX block components", () => {
       componentsGluedToProse(readSheetBody(sheet)).map((line) => `${label(sheet)}:${line}`),
     );
     expect(glued).toEqual([]);
+  });
+});
+
+describe("writing/nonfiction/technical-writing", () => {
+  it("shows the docstring example in TypeScript and Python tabs", () => {
+    const body = readSheetBody({
+      topic: "writing",
+      group: "nonfiction",
+      slug: "technical-writing",
+    });
+    const section = body.split(/^## /m).find((s) => s.startsWith("Code comments and docstrings"));
+    expect(section).toBeDefined();
+    const tabs = section?.match(/<Tabs\b[\s\S]*?<\/Tabs>/)?.[0] ?? "";
+    expect(tabs).toStartWith('<Tabs items={["TypeScript", "Python"]}>');
+    expect(tabs).toMatch(/```ts\b[\s\S]*applyCoupon[\s\S]*```py\b[\s\S]*def apply_coupon/);
+    expect(tabs).toContain(">>> apply_coupon(");
   });
 });

@@ -1,0 +1,816 @@
+---
+title: Collaborative editing
+date: 2026-09-27
+order: 7
+---
+
+Several people editing one shared artifact (a doc, a canvas, a board, code) at once: merge strategies, CRDT basics,
+Yjs with its providers and servers, presence, persistence, permissions, React and editor bindings, and undo.
+Transport and room basics are in [Realtime fundamentals](/typescript/realtime/fundamentals/); running a room on
+Cloudflare is [Durable Objects](/typescript/realtime/durable-objects/); sockets in React are
+[Realtime in React & Next.js](/typescript/realtime/react-nextjs/).
+
+## Strategies
+
+| Strategy                    | How                                                                                        | Pros                                              | Cons                                                          | Seen in                          |
+| :-------------------------- | :----------------------------------------------------------------------------------------- | :------------------------------------------------ | :------------------------------------------------------------ | :------------------------------- |
+| Lock / turns                | one editor holds a lease (with a TTL, released on disconnect); others watch                | trivial, no merging                               | blocks people; stale locks                                    | CMS records, a slide being edited |
+| Last-writer-wins per field  | the server stores each property separately; the later write replaces it                   | small, easy to reason about, server can validate  | concurrent edits to one field drop one; text is all-or-nothing | Figma (server-ordered, per property), boards, forms |
+| OT (operational transformation) | the server orders operations and transforms concurrent ones against each other      | compact; good at text intent                      | needs a central server; transforms are hard; weak offline     | Google Docs, ShareDB             |
+| CRDT (conflict-free replicated data type) | every replica applies operations that commute; all converge, no coordinator | offline, P2P, the server can be a dumb relay     | metadata overhead; validation and permissions are harder      | Yjs, Automerge                   |
+
+- A canvas of independent objects is fine with **per-field LWW** on an authoritative server (see
+  [Authority & trust](/typescript/realtime/fundamentals/#authority--trust)); reach for a CRDT when there is shared
+  text, offline editing, or no server you want in the middle.
+- Mixed is normal: CRDT for the content, LWW or locks for metadata (title, owner, sharing).
+
+## CRDT basics
+
+<Diagram src="/images/diagrams/rt-crdt-merge.svg" label="Replica A and replica B start with the same state: title Plan, shape s1 at x 0, red. Offline, A appends v2 to the title and moves s1 to x 100; B inserts Sprint before the title and recolors s1 blue. They swap updates, each applying only what it lacks. Both end with title Sprint Plan v2 and s1 at x 100, blue. Footer: merging is commutative and idempotent; when both set the same field, one value wins on every replica, picked deterministically." caption="Edits to different fields and different spots in the text all survive the merge (tested with Yjs)" />
+
+| Term                  | Meaning                                                                                   | In Yjs                                              |
+| :-------------------- | :---------------------------------------------------------------------------------------- | :-------------------------------------------------- |
+| Replica               | one copy of the document: a tab, the server, a phone                                     | a `Y.Doc`                                           |
+| Update                | a batch of operations, encoded to apply anywhere                                          | `Uint8Array` from `doc.on("update")`                |
+| Operation ID          | (client ID, counter): unique and causally ordered                                         | `doc.clientID` (random 32-bit) + clock              |
+| State vector          | for each client, how many of its operations I have                                        | `Y.encodeStateVector(doc)`                          |
+| Convergence           | same set of operations → same state, in any order, applied any number of times           | `applyUpdate` is commutative and idempotent         |
+| Sequence CRDT         | list and text items remember their neighbors, so concurrent inserts interleave the same way everywhere | `Y.Array`, `Y.Text` (the YATA algorithm) |
+| LWW register          | concurrent writes to one key: one value wins on every replica                             | `Y.Map` keys                                        |
+| Tombstone / GC        | a deletion leaves a tiny marker; the content itself is garbage-collected                  | `new Y.Doc({ gc: true })` is the default            |
+
+- Intent the data type can't express still conflicts: two people moving the same item, or two people fixing one
+  typo differently. CRDTs guarantee *convergence*, not the result a human would pick.
+
+## Yjs documents & types
+
+| Type                         | Holds                                            | Concurrent behavior                                        |
+| :--------------------------- | :----------------------------------------------- | :--------------------------------------------------------- |
+| `Y.Map<V>`                   | keys → JSON values or nested Y types             | per key, one write wins                                    |
+| `Y.Array<V>`                 | ordered list                                     | inserts from everyone kept; no *move* operation            |
+| `Y.Text`                     | text + formatting attributes (a delta)           | character-level merge                                      |
+| `Y.XmlFragment` / `Y.XmlElement` | a tree of elements and text                   | used by ProseMirror / Tiptap bindings                      |
+
+- Top-level ("root") types are named and created on first use: `doc.getMap("shapes")`. Every client must use the
+  same type for the same name.
+- Nest `Y.Map`s for objects so each field merges on its own. A plain object in one key is replaced whole.
+- A type lives in one place: re-inserting an integrated type throws; insert `type.clone()` instead.
+- **Transactions** batch changes into one update and one observer call; the second argument is the **origin**,
+  which observers and the undo manager use to tell your edits from remote ones.
+
+```ts title="board.ts"
+import * as Y from "yjs";
+
+export type Shape = { x: number; y: number; color: string };
+export const LOCAL = Symbol("local"); // transaction origin
+
+export function createBoard(doc = new Y.Doc()) {
+  const shapes = doc.getMap<Y.Map<unknown>>("shapes");
+  const order = doc.getArray<string>("order"); // z-order
+  const title = doc.getText("title");
+
+  function add(id: string, s: Shape) {
+    // one transaction = one update, one observer call
+    doc.transact(() => {
+      shapes.set(id, new Y.Map(Object.entries(s)));
+      order.push([id]);
+    }, LOCAL);
+  }
+
+  function move(id: string, x: number, y: number) {
+    const s = shapes.get(id);
+    if (!s) return;
+    doc.transact(() => {
+      s.set("x", x); // per-field: concurrent x and color
+      s.set("y", y); // edits both survive
+    }, LOCAL);
+  }
+
+  return { doc, shapes, order, title, add, move };
+}
+```
+
+| Observe                       | Fires                                    | Gets                                                         |
+| :---------------------------- | :--------------------------------------- | :----------------------------------------------------------- |
+| `type.observe(fn)`            | changes to this type's direct content    | `event.changes.keys` (maps), `event.changes.delta` (arrays, text) |
+| `type.observeDeep(fn)`        | changes anywhere below this type         | an array of events, each with a `path` from the observed type |
+| `doc.on("update", fn)`        | after every transaction, local or remote | the binary update + origin: what providers send              |
+| `doc.on("afterTransaction")`  | after every transaction                  | the transaction: `local`, `origin`, changed types            |
+
+```ts title="observe.ts"
+import * as Y from "yjs";
+import { LOCAL, createBoard } from "./board";
+
+const { doc, shapes } = createBoard();
+
+// deep: fires for nested Y.Map changes too
+shapes.observeDeep((events, tr) => {
+  if (tr.origin === LOCAL) return; // already drawn
+  for (const e of events) {
+    // e.path: ["s1"], e.changes.keys: Map of key → action
+    // redraw what e.target / e.path points at
+  }
+});
+
+// every local or remote change, as a binary update
+doc.on("update", (update: Uint8Array, origin: unknown) => {
+  if (origin !== "remote") send(update); // → provider
+});
+
+declare function send(u: Uint8Array): void;
+export function receive(update: Uint8Array) {
+  Y.applyUpdate(doc, update, "remote"); // origin tag
+}
+```
+
+## Sync & updates
+
+```ts title="sync.ts"
+import * as Y from "yjs";
+
+// the two-step sync every provider runs on connect
+export function syncFrom(from: Y.Doc, to: Y.Doc) {
+  const sv = Y.encodeStateVector(to); // what `to` has
+  const diff = Y.encodeStateAsUpdate(from, sv); // the rest
+  Y.applyUpdate(to, diff);
+  return diff.byteLength;
+}
+```
+
+| Function                                | Does                                                             |
+| :-------------------------------------- | :--------------------------------------------------------------- |
+| `Y.encodeStateAsUpdate(doc, sv?)`       | everything (or only what a peer with state vector `sv` lacks)    |
+| `Y.applyUpdate(doc, update, origin?)`   | merge an update; out-of-order updates wait for their dependencies |
+| `Y.encodeStateVector(doc)`              | "what I have", a few bytes per client                            |
+| `Y.mergeUpdates(updates)`               | combine stored updates without loading a `Y.Doc`                 |
+| `Y.diffUpdate(update, sv)`              | the part of a stored update a peer lacks, without loading a doc  |
+| `Y.encodeStateVectorFromUpdate(update)` | a stored update's state vector                                   |
+| `…V2` variants                          | a smaller encoding; both peers must use the same one             |
+
+- The sync protocol on every connect: send my state vector (step 1), answer with what they lack (step 2), then
+  stream `update` events both ways (`y-protocols/sync`).
+- Tested: two boards edited offline swapped 134 and 137 bytes and ended identical; updates applied in reverse order
+  still produced `"hello world"`.
+
+## Awareness & presence
+
+Awareness is the ephemeral side channel: who is here, their cursor, selection and color. It is not stored in the
+document and not persisted.
+
+```ts title="awareness.ts"
+import * as Y from "yjs";
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from "y-protocols/awareness";
+
+export type Presence = {
+  user: { name: string; color: string };
+  cursor: { x: number; y: number } | null;
+  selection: string[]; // selected shape ids
+};
+
+export function createPresence(
+  doc: Y.Doc,
+  send: (u: Uint8Array) => void,
+) {
+  const aw = new Awareness(doc);
+  // "update" also fires on the 15 s keep-alive renewal
+  aw.on("update", (ch: Changes, origin: unknown) => {
+    if (origin === "remote") return;
+    const ids = [...ch.added, ...ch.updated, ...ch.removed];
+    send(encodeAwarenessUpdate(aw, ids));
+  });
+  return {
+    aw,
+    set: <K extends keyof Presence>(k: K, v: Presence[K]) =>
+      aw.setLocalStateField(k, v),
+    receive: (u: Uint8Array) =>
+      applyAwarenessUpdate(aw, u, "remote"),
+    // others only: Map<clientID, state>
+    peers: () =>
+      [...aw.getStates()].filter(
+        ([id]) => id !== doc.clientID,
+      ),
+    leave: () =>
+      removeAwarenessStates(aw, [doc.clientID], "leave"),
+  };
+}
+
+type Changes = {
+  added: number[];
+  updated: number[];
+  removed: number[];
+};
+```
+
+- Each client owns one state object, keyed by `doc.clientID`. `setLocalStateField` merges one field; `null` state
+  means "gone".
+- States are renewed every 15 s and dropped after 30 s without renewal. Call `leave()` on `pagehide`, or ghosts
+  linger for 30 s.
+- Throttle cursors to 10–20 updates per second ([recipe](#throttle-cursor-updates)); render remote cursors with
+  CSS transitions to hide the gaps.
+- Awareness is client-asserted: anyone can claim any name. Stamp identity on the server (Hocuspocus
+  `beforeHandleAwareness` can rewrite states).
+- Tested: two awareness instances exchanging updates see each other's user and cursor; `leave()` removes the peer
+  on the other side.
+
+## Providers & servers
+
+A provider connects a `Y.Doc` to a network or storage and runs the sync and awareness protocols for you.
+
+| Package                        | Version (Sept 2026) | Talks to                                                        | Notes                                                                   |
+| :----------------------------- | :------------------ | :-------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `y-websocket`                  | 3.1                 | any y-websocket server: `@y/websocket-server`, y-redis, y-sweet | cross-tab sync via BroadcastChannel; close codes 4400–4499 stop reconnecting |
+| `@hocuspocus/provider`         | 4.7                 | a Hocuspocus server                                             | token auth, many documents over one socket, `onSynced`, `onAuthenticationFailed` |
+| `y-partyserver/provider`       | 2.2                 | a `YServer` Durable Object                                      | `params` for tokens; React hook `useYProvider` in `y-partyserver/react`  |
+| `y-indexeddb`                  | 9.0                 | the browser's IndexedDB                                         | offline copy; pair it with a network provider                           |
+| `y-webrtc`                     | 10.3                | peers directly (signaling server only)                          | no server copy: someone must be online to sync                          |
+| `@liveblocks/yjs`              | 3.24                | Liveblocks (hosted)                                             | see [Alternatives](#alternatives)                                       |
+
+Providers compose: several on one doc is fine, and each only sends what the others lack.
+
+```ts title="client.ts"
+import { WebsocketProvider } from "y-websocket";
+import { IndexeddbPersistence } from "y-indexeddb";
+import * as Y from "yjs";
+
+const doc = new Y.Doc();
+
+// offline first: load the local copy, then go online
+const local = new IndexeddbPersistence("board:42", doc);
+await local.whenSynced;
+
+const ws = new WebsocketProvider(
+  "wss://collab.example.com", // server URL
+  "board:42", // room = document name
+  doc,
+  { params: { token: "…" } }, // → ?token=…
+);
+ws.on("sync", (synced: boolean) => {});
+ws.awareness.setLocalStateField("user", { name: "Zach" });
+```
+
+```ts title="hocuspocus-client.ts"
+import { HocuspocusProvider } from "@hocuspocus/provider";
+import * as Y from "yjs";
+
+declare function getToken(): Promise<string>;
+
+const doc = new Y.Doc();
+const provider = new HocuspocusProvider({
+  url: "wss://collab.example.com",
+  name: "board:42", // document name
+  document: doc,
+  token: getToken, // re-read on every reconnect
+  onSynced: () => {
+    // first full sync done: safe to render or seed
+  },
+  onAuthenticationFailed: ({ reason }) => {
+    // show "no access", stop retrying
+  },
+});
+
+provider.setAwarenessField("user", { name: "Zach" });
+// later: provider.destroy()
+```
+
+- `y-websocket` has no server anymore: run `@y/websocket-server`. Its 0.1.2+ releases target the Yjs 14
+  prereleases; with Yjs 13 pin 0.1.1 (tested with two clients):
+
+```sh
+HOST=localhost PORT=1234 \
+  bunx --package @y/websocket-server@0.1.1 y-websocket
+```
+
+### Hocuspocus 4
+
+| Hook                     | Runs                                             | Use it to                                                      |
+| :----------------------- | :----------------------------------------------- | :------------------------------------------------------------- |
+| `onAuthenticate`         | per document, with the provider's `token`        | verify; set `connectionConfig.readOnly`; return the context    |
+| `onLoadDocument`         | first open of a document not in memory           | apply the stored state, or seed a template                     |
+| `onChange`               | every update                                     | audit logs, webhooks                                           |
+| `onStoreDocument`        | `debounce` ms after the last change (default 2,000), at least every `maxDebounce` (10,000), and on unload | persist                     |
+| `beforeHandleAwareness`  | before an awareness update is applied            | overwrite names and colors from the authenticated context      |
+| `onConnect` / `onDisconnect` | socket lifecycle                             | metrics, presence counts                                       |
+
+```ts title="hocus.ts"
+import { Hocuspocus } from "@hocuspocus/server";
+import { Database } from "bun:sqlite";
+import * as Y from "yjs";
+
+type User = { id: string; canEdit: boolean };
+declare function verify(token: string): Promise<User | null>;
+
+const db = new Database("docs.sqlite");
+db.run(`create table if not exists docs
+  (name text primary key, data blob)`);
+
+export const hocuspocus = new Hocuspocus({
+  debounce: 2000, // store 2 s after the last change…
+  maxDebounce: 10_000, // …but at least every 10 s
+  async onAuthenticate({ token, connectionConfig }) {
+    const user = await verify(token);
+    if (!user) throw new Error("unauthorized"); // rejected
+    connectionConfig.readOnly = !user.canEdit;
+    return { user }; // becomes `context` in other hooks
+  },
+  async onLoadDocument({ documentName, document }) {
+    const row = db
+      .query<{ data: Uint8Array }, [string]>(
+        "select data from docs where name = ?",
+      )
+      .get(documentName);
+    if (row) Y.applyUpdate(document, row.data);
+  },
+  async onStoreDocument({ documentName, document }) {
+    db.query("insert or replace into docs values (?, ?)")
+      .run(documentName, Y.encodeStateAsUpdate(document));
+  },
+});
+```
+
+`new Server()` from `@hocuspocus/server` is Node-only (22+): on Bun it throws "Using Node.js adapter in an
+incompatible environment". Attach the `Hocuspocus` instance to `Bun.serve` instead:
+
+```ts title="server.ts"
+import { hocuspocus } from "./hocus";
+
+type Conn = ReturnType<typeof hocuspocus.handleConnection>;
+type Data = { req: Request; conn?: Conn };
+
+// Bun: `new Server()` is Node-only, attach to Bun.serve
+Bun.serve({
+  port: 1234,
+  fetch(req, server) {
+    if (server.upgrade(req, { data: { req } })) return;
+    return new Response("Upgrade required", { status: 426 });
+  },
+  websocket: {
+    data: {} as Data,
+    open(ws) {
+      ws.data.conn = hocuspocus.handleConnection(
+        ws,
+        ws.data.req,
+      );
+    },
+    message(ws, msg) {
+      if (typeof msg === "string") return; // binary only
+      ws.data.conn?.handleMessage(new Uint8Array(msg));
+    },
+    close(ws, code, reason) {
+      const ev = { code, reason } as CloseEvent;
+      ws.data.conn?.handleClose(ev);
+    },
+  },
+});
+```
+
+Tested on Bun with three providers: edits synced, awareness relayed, the read-only viewer's edit never reached the
+others, a bad token got `onAuthenticationFailed` ("permission-denied"), and a restarted server reloaded the
+document from SQLite.
+
+### y-partyserver 2 on Durable Objects
+
+One Durable Object per document; `YServer` speaks the y-websocket protocol.
+
+```ts title="worker.ts"
+import { YServer } from "y-partyserver";
+import {
+  routePartykitRequest,
+  type Connection,
+  type ConnectionContext,
+} from "partyserver";
+import * as Y from "yjs";
+
+type Role = { editor: boolean };
+declare function verify(
+  token: string | null,
+): Promise<Role | null>;
+
+export class Board extends YServer {
+  static override callbackOptions = {
+    debounceWait: 2000, // onSave 2 s after edits stop
+    debounceMaxWait: 10_000,
+  };
+
+  override async onLoad() {
+    const { storage } = this.ctx;
+    const saved = await storage.get<Uint8Array>("doc");
+    if (saved) Y.applyUpdate(this.document, saved);
+  }
+
+  override async onSave() {
+    const state = Y.encodeStateAsUpdate(this.document);
+    await this.ctx.storage.put("doc", state);
+  }
+
+  override onConnect(
+    conn: Connection,
+    ctx: ConnectionContext,
+  ) {
+    const role = ctx.request.headers.get("x-role");
+    conn.setState({ editor: role === "editor" });
+    return super.onConnect(conn, ctx);
+  }
+
+  override isReadOnly(conn: Connection) {
+    return !(conn.state as Role | null)?.editor;
+  }
+}
+
+// runs in the Worker, before the DO sees the socket
+async function auth(req: Request) {
+  const token = new URL(req.url).searchParams.get("token");
+  const role = await verify(token);
+  if (!role) return new Response(null, { status: 401 });
+  const headers = new Headers(req.headers); // overwrite
+  headers.set("x-role", role.editor ? "editor" : "viewer");
+  return new Request(req, { headers });
+}
+
+export default {
+  async fetch(req: Request, env: Cloudflare.Env) {
+    const res = await routePartykitRequest(req, env, {
+      onBeforeConnect: auth,
+    });
+    return res ?? new Response("Not found", { status: 404 });
+  },
+};
+```
+
+- `onLoad` runs once when the object wakes; `onSave` runs on the debounce and when the room empties.
+- Storage caps: 2 MB per key and value on SQLite-backed objects (128 KiB on the legacy key-value backend). A
+  bigger document needs chunking or R2.
+- Type-checked against `@cloudflare/workers-types`; not run under `wrangler dev`. Wiring, bindings and hibernation:
+  [Durable Objects](/typescript/realtime/durable-objects/).
+
+## Persistence
+
+| Approach                     | Write                                        | Read                               | Trade-off                                          |
+| :--------------------------- | :------------------------------------------- | :--------------------------------- | :------------------------------------------------- |
+| Snapshot only                | `encodeStateAsUpdate(doc)` on a debounce     | `applyUpdate` once                 | simple; lose up to one debounce window on a crash  |
+| Update log + compaction      | append every update; periodically replace the log with one snapshot | merge all rows | nothing lost; the log must be compacted |
+| JSON side copy               | `doc.getMap(…).toJSON()` next to the binary  | search, SQL, exports               | read-only projection; never write it back          |
+
+```ts title="log.ts"
+import { Database } from "bun:sqlite";
+import * as Y from "yjs";
+
+export function updateLog(db: Database) {
+  db.run(`create table if not exists updates (
+    doc text, id integer primary key, data blob)`);
+  const rows = db.query<{ data: Uint8Array }, [string]>(
+    "select data from updates where doc = ? order by id",
+  );
+  const add = db.query(
+    "insert into updates (doc, data) values (?, ?)",
+  );
+  const clear = db.query(
+    "delete from updates where doc = ?",
+  );
+  const load = (doc: string) =>
+    Y.mergeUpdates(rows.all(doc).map((r) => r.data));
+
+  return {
+    load, // → Y.applyUpdate(ydoc, load(name))
+    append: (doc: string, u: Uint8Array) => add.run(doc, u),
+    // replace N rows with one snapshot (same content)
+    compact: db.transaction((doc: string) => {
+      const ydoc = new Y.Doc();
+      Y.applyUpdate(ydoc, load(doc));
+      clear.run(doc);
+      add.run(doc, Y.encodeStateAsUpdate(ydoc)); // GC'd
+      ydoc.destroy();
+    }),
+    count: (doc: string) => rows.all(doc).length,
+  };
+}
+```
+
+- Measured: 200 keystrokes and a 150-character delete made 201 rows; `mergeUpdates` gave 1,887 bytes, the compacted
+  snapshot 83 bytes. Loading into a `Y.Doc` and re-encoding drops deleted content; `mergeUpdates` alone does not.
+- Store updates server-side; `y-indexeddb` is a cache, not a backup.
+- Version history needs `gc: false`, which keeps deleted content forever ([recipe](#named-versions)).
+
+## Permissions
+
+- **Authorize per document** when the connection opens: Hocuspocus `onAuthenticate`, y-partyserver
+  `onBeforeConnect` in the Worker, or the upgrade handler of a y-websocket server.
+- **Read-only**: Hocuspocus `connectionConfig.readOnly = true`; `YServer.isReadOnly(conn)`. The server drops that
+  client's updates, but its local doc still changes: make the editor read-only too.
+- **No field-level rules inside one doc**: updates are opaque binary. Split by permission boundary (content doc,
+  comments doc, admin doc), or put the rule on an authoritative server with per-field writes.
+- **Revoke** by closing the socket. y-websocket won't reconnect after a 4400–4499 close code; rejecting the HTTP
+  upgrade (401) shows up as a bare `1006` in the browser and the provider retries forever.
+- **Tokens expire**: pass a function (`token: getToken`) so each reconnect gets a fresh one.
+- Validate what you can on the server: size caps per update and per document, rate limits, and `onChange` checks
+  on the resulting state.
+
+## React & editors
+
+`toJSON()` allocates a new object each call, so cache the snapshot and replace it only when the type changes;
+otherwise `useSyncExternalStore` re-renders forever.
+
+```ts title="store.ts"
+import * as Y from "yjs";
+
+// an external store over a Y.Map for useSyncExternalStore
+export function yMapStore<T>(map: Y.Map<T>) {
+  let snap = map.toJSON() as Record<string, unknown>;
+  const listeners = new Set<() => void>();
+  const onChange = () => {
+    snap = map.toJSON(); // new reference only on change
+    listeners.forEach((l) => l());
+  };
+  map.observeDeep(onChange);
+  return {
+    subscribe(l: () => void) {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+    getSnapshot: () => snap,
+    destroy: () => map.unobserveDeep(onChange),
+  };
+}
+```
+
+```tsx title="use-y-map.tsx"
+"use client";
+import { useSyncExternalStore } from "react";
+import type { yMapStore } from "./store";
+
+type Store = ReturnType<typeof yMapStore>;
+
+export function useYMap(store: Store) {
+  // 3rd arg: the snapshot used during server rendering
+  return useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
+}
+
+type Shape = { x: number; y: number; color: string };
+
+export function Board({ store }: { store: Store }) {
+  const shapes = useYMap(store) as Record<string, Shape>;
+  return (
+    <svg viewBox="0 0 800 600">
+      {Object.entries(shapes).map(([id, s]) => (
+        <circle key={id} cx={s.x} cy={s.y} r={20}
+          fill={s.color} />
+      ))}
+    </svg>
+  );
+}
+```
+
+- Create the store once per `Y.Map` (outside render, or in `useMemo`) and call `destroy()` on unmount.
+- Tested: the snapshot is stable between changes, one transaction triggers one notification, and server rendering
+  shows the current shapes.
+
+| Editor                | Binding                                                      | Shared type     | Undo                                             |
+| :-------------------- | :----------------------------------------------------------- | :-------------- | :----------------------------------------------- |
+| ProseMirror           | `y-prosemirror` 1.3: `ySyncPlugin`, `yCursorPlugin`, `yUndoPlugin` | `Y.XmlFragment` | `yUndoPlugin` (drop `prosemirror-history`)     |
+| Tiptap 3              | `@tiptap/extension-collaboration` + `-collaboration-caret`   | `Y.XmlFragment` | built in: set `undoRedo: false` in StarterKit    |
+| CodeMirror 6          | `y-codemirror.next` 0.3: `yCollab(ytext, awareness, { undoManager })` | `Y.Text` | `yUndoManagerKeymap`                          |
+| Monaco                | `y-monaco` 0.1: `new MonacoBinding(ytext, model, editors, awareness)` | `Y.Text` | Yjs `UndoManager`                           |
+
+## Undo in multi-user
+
+```ts title="undo.ts"
+import * as Y from "yjs";
+import { LOCAL, createBoard } from "./board";
+
+const board = createBoard();
+// only transactions tagged LOCAL are undoable: never
+// another user's edits
+export const undo = new Y.UndoManager(
+  [board.shapes, board.order, board.title],
+  { trackedOrigins: new Set([LOCAL]), captureTimeout: 500 },
+);
+
+// keep selection with the stack item for a nice undo
+undo.on("stack-item-added", (e) => {
+  e.stackItem.meta.set("selection", ["s1"]);
+});
+undo.on("stack-item-popped", (e) => {
+  const sel = e.stackItem.meta.get("selection");
+  // restore selection
+});
+
+// ⌘Z / ⇧⌘Z
+undo.undo();
+undo.redo();
+undo.stopCapturing(); // next edit starts a new step
+```
+
+- **Undo only your own changes**: `trackedOrigins` lists the origins you tag local transactions with. Undoing
+  someone else's work is surprising and loses it.
+- `captureTimeout` (500 ms) merges quick edits into one step; `stopCapturing()` forces a boundary (after a drag,
+  on blur).
+- Undo inverts *your* operations against the current state: if someone else edited on top, the result is a merge,
+  not a time machine.
+- Remote writes to the same map key are not overwritten by an undo unless `ignoreRemoteMapChanges: true`.
+- Editor bindings bring their own Yjs undo; disable the editor's native history.
+- Tested: A adds and moves a shape, B adds and moves another; A's two undos revert only A's changes, and redo
+  restores them.
+
+## Alternatives
+
+### Automerge 3
+
+A JSON-like CRDT with full history, written in Rust and shipped as WebAssembly.
+
+```ts title="cards.ts"
+import * as A from "@automerge/automerge";
+
+type Board = { cards: { title: string; done: boolean }[] };
+
+let a = A.from<Board>({ cards: [] });
+let b = A.clone(a); // a second replica
+
+a = A.change(a, (d) => {
+  d.cards.push({ title: "Write spec", done: false });
+});
+b = A.change(b, (d) => {
+  d.cards.push({ title: "Draw board", done: false });
+});
+
+const merged = A.merge(a, b); // both cards, same order
+const bytes = A.save(merged); // compact binary
+export const history = A.getHistory(merged).length;
+```
+
+- 3.0 keeps documents in their compressed form at runtime: more than 10× less memory, with the same file format and
+  a nearly identical API to 2.x (pasting *Moby Dick*: 700 MB in 2.x, 1.3 MB in 3.0, per the announcement).
+- Documents are immutable values: `change()` returns a new doc (a natural fit for React state).
+- `@automerge/automerge-repo` adds sync, storage (IndexedDB, filesystem) and network adapters.
+- Tested with `@automerge/automerge` 3.5 under Bun: two clones each add a card; merging in either order gives the same
+  two cards.
+
+### Liveblocks
+
+- Hosted rooms with presence, conflict-free storage (`LiveObject`, `LiveMap`, `LiveList`), a Yjs provider, comments
+  and notifications, React hooks.
+- Pricing (checked September 2026) is metered usage paid from monthly credits, not MAU (monthly active users): Free
+  has hard caps (3,000 collaboration minutes, 10 simultaneous connections per room); Pro is 30 USD/month.
+- The sync engine and dev server were open-sourced in February 2026: `@liveblocks/server` is AGPL-3.0 and meant for
+  local development and testing; production self-hosting isn't supported yet. Client SDKs stay Apache-2.0.
+
+## Gotchas
+
+- **No move in `Y.Array`**: a move is delete + insert, so two people moving one item makes two copies (tested:
+  `["b", "a", "c", "a"]`). Order with fractional-index keys stored on each item instead.
+- **Seeding twice**: two clients that both see an empty doc and insert defaults create duplicates. Seed on the
+  server, or apply a fixed template update ([recipe](#seed-a-new-document-once)).
+- **Two copies of Yjs** in a bundle ("Yjs was already imported") break type checks between them; dedupe to one
+  version (`bun why yjs`).
+- **Yjs 14** is in prerelease (`yjs@next`, `@y/y`); the providers above target 13.6.
+- **Big values in one key**: a whole JSON object in a `Y.Map` key is replaced whole; nest `Y.Map`s per object.
+- **Ghost cursors** for 30 s after a tab closes without `removeAwarenessStates`.
+- **Growth**: history only grows; compact the stored log, and don't turn GC off unless you need versions.
+- **Next.js**: create docs and providers in client components (`"use client"`, inside `useEffect`); server
+  components only see the stored JSON copy.
+
+## Recipes
+
+### Seed a new document once
+
+When every new document starts from a template: a fixed update is idempotent, so applying it on every client (or
+twice) never duplicates content.
+
+```ts
+import * as Y from "yjs";
+
+// build once (a script), store the bytes as a constant
+export function makeTemplate(): Uint8Array {
+  const doc = new Y.Doc();
+  doc.clientID = 1; // stable: same bytes on every build
+  doc.transact(() => {
+    doc.getText("title").insert(0, "Untitled board");
+    doc.getArray<string>("order").push(["welcome"]);
+  });
+  return Y.encodeStateAsUpdate(doc);
+}
+
+// anywhere, any number of times: idempotent, never doubles
+export function seed(doc: Y.Doc, template: Uint8Array) {
+  Y.applyUpdate(doc, template);
+}
+```
+
+Tested: the template encodes to the same bytes every time, two replicas seeded separately merge without duplicates,
+while naive `push` seeding on both makes two copies.
+
+### Throttle cursor updates
+
+When pointer events flood the awareness channel.
+
+```ts
+import type { Awareness } from "y-protocols/awareness";
+
+type Point = { x: number; y: number };
+
+// pointermove fires 60–120×/s: send at most every 50 ms,
+// always ending on the latest position
+export function cursorSender(aw: Awareness, everyMs = 50) {
+  let latest: Point | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (p: Point | null) => {
+    latest = p;
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      aw.setLocalStateField("cursor", latest);
+    }, everyMs);
+  };
+}
+```
+
+Tested: 100 moves inside one 50 ms window produce one awareness change carrying the last position.
+
+### Named versions
+
+When users want "restore the version from this morning".
+
+```ts
+import * as Y from "yjs";
+
+// versions need deleted content: turn GC off
+const doc = new Y.Doc({ gc: false });
+
+export function saveVersion(): Uint8Array {
+  return Y.encodeSnapshot(Y.snapshot(doc)); // small
+}
+
+// a read-only doc as it was at that version
+export function openVersion(bytes: Uint8Array): Y.Doc {
+  const snap = Y.decodeSnapshot(bytes);
+  return Y.createDocFromSnapshot(doc, snap);
+}
+
+export { doc };
+```
+
+Tested: a restored snapshot (8 bytes here) shows the old text while the live doc keeps the new one. To restore,
+copy the old content into the live doc in a normal transaction so collaborators receive it as an edit.
+
+### Connect a document in React
+
+When a page opens a document by name: one `Y.Doc` and provider per name, destroyed on unmount.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+import { HocuspocusProvider } from "@hocuspocus/provider";
+import * as Y from "yjs";
+
+type Collab = { doc: Y.Doc; provider: HocuspocusProvider };
+
+// one doc + provider per document name, cleaned up on
+// unmount (and on StrictMode's dev double-mount)
+export function useCollab(name: string, token: string) {
+  const [collab, setCollab] = useState<Collab | null>(null);
+  useEffect(() => {
+    const doc = new Y.Doc();
+    const provider = new HocuspocusProvider({
+      url: process.env.NEXT_PUBLIC_COLLAB_URL ?? "",
+      name,
+      token,
+      document: doc,
+    });
+    setCollab({ doc, provider });
+    return () => {
+      provider.destroy();
+      doc.destroy();
+    };
+  }, [name, token]);
+  return collab; // null until mounted: render a skeleton
+}
+```
+
+- Pass `collab.doc` to the editor binding and `collab.provider.awareness` to cursors.
+- For sockets and state in React generally: [Realtime in React & Next.js](/typescript/realtime/react-nextjs/).
+
+## References
+
+- [Yjs docs](https://docs.yjs.dev/): shared types, document updates, awareness, subdocuments, offline editing
+- [y-protocols](https://github.com/yjs/y-protocols): sync and awareness protocols
+- [y-websocket](https://github.com/yjs/y-websocket) and [@y/websocket-server](https://github.com/yjs/y-websocket-server)
+- [Hocuspocus docs](https://tiptap.dev/docs/hocuspocus): server hooks, extensions, provider
+- [y-partyserver](https://github.com/cloudflare/partykit/tree/main/packages/y-partyserver): Yjs on Durable Objects
+- [MDN: IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API);
+  [react.dev: useSyncExternalStore](https://react.dev/reference/react/useSyncExternalStore)
+- [Tiptap: Collaboration](https://tiptap.dev/docs/editor/extensions/functionality/collaboration),
+  [y-prosemirror](https://github.com/yjs/y-prosemirror), [y-codemirror.next](https://github.com/yjs/y-codemirror.next),
+  [y-monaco](https://github.com/yjs/y-monaco)
+- [Automerge 3.0 announcement](https://automerge.org/blog/automerge-3/) and [automerge.org docs](https://automerge.org/docs/hello/)
+- [Liveblocks: open-sourcing the sync engine](https://liveblocks.io/blog/open-sourcing-the-liveblocks-sync-engine-and-dev-server),
+  [pricing](https://liveblocks.io/pricing)
+- [Figma: How multiplayer technology works](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/):
+  server-ordered last-writer-wins per property instead of OT or CRDTs
+- [crdt.tech](https://crdt.tech/): papers and implementations

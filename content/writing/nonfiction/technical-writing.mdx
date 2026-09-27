@@ -359,20 +359,66 @@ comment to explain what it does, try renaming or restructuring first.
 Python's PEP 257 asks for a one-line summary written as a command ("Return the…"); JSDoc/TSDoc use `@param`,
 `@returns`, `@throws`.
 
-```ts
-/**
- * Returns the price in cents after applying the coupon.
- *
- * @param priceCents - list price in cents; must be >= 0
- * @param coupon - percentage (0-100) or fixed amount
- * @returns discounted price, never below 0
- * @throws RangeError if the percentage exceeds 100
- */
-export function applyCoupon(
-  priceCents: number,
-  coupon: Coupon,
-): number { /* ... */ }
-```
+| Python style | Looks like | Common in |
+| :----------- | :--------- | :-------- |
+| Google | `Args:`, `Returns:`, `Raises:` blocks | most app code; read by Sphinx `napoleon` and mkdocstrings |
+| NumPy | `Parameters` / `Returns` headers underlined with `----------` | NumPy, SciPy, pandas, scikit-learn |
+| reST (Sphinx) | `:param price_cents:`, `:returns:`, `:raises ValueError:` | older libraries, plain Sphinx |
+
+Pick one style per project. `>>>` lines in a docstring are runnable examples: `python -m doctest file.py` checks
+that they still print what they say.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab>
+
+    ```ts
+    /**
+     * Returns the price in cents after applying the coupon.
+     *
+     * @param priceCents - list price in cents; must be >= 0
+     * @param coupon - percentage (0-100) or fixed amount
+     * @returns discounted price, never below 0
+     * @throws RangeError if the percentage exceeds 100
+     */
+    export function applyCoupon(
+      priceCents: number,
+      coupon: Coupon,
+    ): number { /* ... */ }
+    ```
+
+  </Tab>
+  <Tab>
+
+    ```py
+    def apply_coupon(price_cents: int, coupon: Coupon) -> int:
+        """Return the price in cents after applying the coupon.
+
+        Args:
+            price_cents: List price in cents; must be >= 0.
+            coupon: A percentage (0-100) or a fixed amount.
+
+        Returns:
+            The discounted price, never below 0.
+
+        Raises:
+            ValueError: If the percentage exceeds 100.
+
+        Examples:
+            >>> apply_coupon(1000, Percent(25))
+            750
+            >>> apply_coupon(500, Fixed(800))
+            0
+        """
+        if isinstance(coupon, Fixed):
+            return max(price_cents - coupon.cents, 0)
+        if coupon.value > 100:
+            raise ValueError("percentage exceeds 100")
+        # round(), not int(): int() truncates 749.99 to 749
+        return round(price_cents * (100 - coupon.value) / 100)
+    ```
+
+  </Tab>
+</Tabs>
 
 ## Error messages
 

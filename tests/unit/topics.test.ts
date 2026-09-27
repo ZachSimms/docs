@@ -3,30 +3,37 @@ import { describe, expect, it } from "bun:test";
 import { TOPICS, getTopic, topicNumber } from "@/lib/topics";
 
 describe("TOPICS", () => {
-  it("lists the twenty-one topics in display order", () => {
+  it("lists the twenty-two topics in alphabetical order", () => {
     expect(TOPICS.map((t) => t.slug)).toEqual([
-      "math",
-      "physics",
+      "3d",
+      "aviation",
       "biology",
-      "fitness",
+      "cpp",
+      "databases",
+      "design",
+      "dsa",
       "economics",
       "finance",
-      "thinking",
-      "leadership",
-      "startups",
-      "ml-ai",
-      "dsa",
-      "typescript",
-      "databases",
-      "infrastructure",
-      "python",
-      "cpp",
-      "3d",
+      "fitness",
       "game-dev",
+      "infrastructure",
+      "leadership",
+      "math",
+      "ml-ai",
+      "physics",
+      "python",
       "robotics",
+      "startups",
+      "thinking",
+      "typescript",
       "writing",
-      "design",
     ]);
+  });
+
+  it("keeps the names sorted, ignoring case, so new topics can't break the order", () => {
+    const names = TOPICS.map((t) => t.name);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+    expect(names).toEqual(sorted);
   });
 
   it("has a human name for every topic", () => {
@@ -44,6 +51,7 @@ describe("TOPICS", () => {
     expect(getTopic("startups")?.name).toBe("Startups");
     expect(getTopic("dsa")?.name).toBe("DS&A");
     expect(getTopic("3d")?.name).toBe("3D graphics");
+    expect(getTopic("aviation")?.name).toBe("Aviation");
   });
 });
 
@@ -55,19 +63,16 @@ describe("getTopic", () => {
 
 describe("topicNumber", () => {
   it("numbers the first topic highest and the last topic 1", () => {
-    expect(topicNumber("math")).toBe(21);
-    expect(topicNumber("physics")).toBe(20);
-    expect(topicNumber("fitness")).toBe(18);
-    expect(topicNumber("economics")).toBe(17);
-    expect(topicNumber("finance")).toBe(16);
-    expect(topicNumber("startups")).toBe(13);
-    expect(topicNumber("dsa")).toBe(11);
-    expect(topicNumber("typescript")).toBe(10);
-    expect(topicNumber("infrastructure")).toBe(8);
-    expect(topicNumber("3d")).toBe(5);
-    expect(topicNumber("game-dev")).toBe(4);
-    expect(topicNumber("writing")).toBe(2);
-    expect(topicNumber("design")).toBe(1);
+    expect(topicNumber("3d")).toBe(22);
+    expect(topicNumber("aviation")).toBe(21);
+    expect(topicNumber("design")).toBe(17);
+    expect(topicNumber("dsa")).toBe(16);
+    expect(topicNumber("game-dev")).toBe(12);
+    expect(topicNumber("math")).toBe(9);
+    expect(topicNumber("ml-ai")).toBe(8);
+    expect(topicNumber("thinking")).toBe(3);
+    expect(topicNumber("typescript")).toBe(2);
+    expect(topicNumber("writing")).toBe(1);
   });
 
   it("returns undefined for an unknown slug", () => {

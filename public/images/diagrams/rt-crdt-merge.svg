@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 340" fill="none" stroke="currentColor">
+  <defs>
+    <marker id="rt-crdt-merge-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" stroke="none"/>
+    </marker>
+  </defs>
+  <g class="d-chip" stroke-width="1.5">
+    <rect x="40" y="58" width="220" height="44" rx="6"/>
+    <rect x="340" y="58" width="220" height="44" rx="6"/>
+  </g>
+  <g class="d-bg" stroke-width="1.5">
+    <rect x="40" y="130" width="220" height="44" rx="6"/>
+    <rect x="340" y="130" width="220" height="44" rx="6"/>
+  </g>
+  <g class="d-fill-2 d-tint d-stroke-2" stroke-width="1.5">
+    <rect x="40" y="244" width="220" height="44" rx="6"/>
+    <rect x="340" y="244" width="220" height="44" rx="6"/>
+  </g>
+  <g stroke-width="1.5">
+    <path d="M150 104 V 126" marker-end="url(#rt-crdt-merge-arrow)"/>
+    <path d="M450 104 V 126" marker-end="url(#rt-crdt-merge-arrow)"/>
+  </g>
+  <g class="d-stroke-1" stroke-width="2">
+    <path d="M266 160 H 334" marker-start="url(#rt-crdt-merge-arrow)" marker-end="url(#rt-crdt-merge-arrow)"/>
+    <path d="M150 176 V 240" marker-end="url(#rt-crdt-merge-arrow)"/>
+    <path d="M450 176 V 240" marker-end="url(#rt-crdt-merge-arrow)"/>
+  </g>
+  <g fill="currentColor" stroke="none">
+    <text x="300" y="22" font-size="13" text-anchor="middle" font-weight="600">Two replicas edit offline, swap updates, converge</text>
+    <text x="150" y="48" font-size="12" text-anchor="middle" font-weight="600">replica A</text>
+    <text x="450" y="48" font-size="12" text-anchor="middle" font-weight="600">replica B</text>
+    <g font-size="12">
+      <text x="54" y="77">title: Plan</text>
+      <text x="54" y="94">s1: x 0, red</text>
+      <text x="354" y="77">title: Plan</text>
+      <text x="354" y="94">s1: x 0, red</text>
+      <text x="54" y="149">title: Plan <tspan class="d-fill-0" font-weight="600">v2</tspan></text>
+      <text x="54" y="166">s1: x <tspan class="d-fill-0" font-weight="600">100</tspan>, red</text>
+      <text x="354" y="149">title: <tspan class="d-fill-0" font-weight="600">Sprint</tspan> Plan</text>
+      <text x="354" y="166">s1: x 0, <tspan class="d-fill-0" font-weight="600">blue</tspan></text>
+      <text x="54" y="263">title: Sprint Plan v2</text>
+      <text x="54" y="280">s1: x 100, blue</text>
+      <text x="354" y="263">title: Sprint Plan v2</text>
+      <text x="354" y="280">s1: x 100, blue</text>
+    </g>
+    <text x="300" y="84" font-size="11" text-anchor="middle" class="d-muted">same start</text>
+    <text x="160" y="120" font-size="11" class="d-fill-0">append, move</text>
+    <text x="460" y="120" font-size="11" class="d-fill-0">insert, recolor</text>
+    <text x="300" y="148" font-size="11" text-anchor="middle" class="d-fill-1">swap</text>
+    <text x="160" y="206" font-size="11" class="d-fill-1">apply B's update</text>
+    <text x="160" y="220" font-size="11" class="d-muted">(only what A lacks)</text>
+    <text x="460" y="206" font-size="11" class="d-fill-1">apply A's update</text>
+    <text x="460" y="220" font-size="11" class="d-muted">(only what B lacks)</text>
+    <text x="300" y="270" font-size="11" text-anchor="middle" class="d-fill-2" font-weight="600">identical</text>
+    <text x="300" y="312" font-size="11" text-anchor="middle">Merging is commutative and idempotent: any order, any repeats, same result.</text>
+    <text x="300" y="328" font-size="11" text-anchor="middle" class="d-muted">Both set the same field? One value wins on every replica, picked deterministically.</text>
+  </g>
+</svg>

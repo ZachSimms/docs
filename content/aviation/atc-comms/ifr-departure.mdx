@@ -1,0 +1,392 @@
+---
+title: IFR departure
+date: 2026-09-27
+order: 4
+---
+
+What to say and what to expect from filing to the first departure-control check-in, at towered and untowered
+airports, in US FAA phraseology. The alphabet, readback rules and phrase dictionary are in
+[fundamentals](/aviation/atc-comms/fundamentals/); the same flight continues in
+[IFR en route & arrival](/aviation/atc-comms/ifr-enroute-arrival/); failures are in
+[emergencies & lost comms](/aviation/atc-comms/emergencies-lost-comms/). VFR calls are in
+[VFR towered](/aviation/atc-comms/vfr-towered/) and [VFR untowered](/aviation/atc-comms/vfr-untowered/).
+
+<Note kind="warning">
+A radio reference for the sim and for study. In a real aircraft the current charts, the Chart Supplement and the
+controller's actual words win over any example here. Frequencies below are from the September 2026 charts; read
+the current ones from your chart or EFB.
+</Note>
+
+## Terms
+
+| Term | Meaning |
+| :--- | :--- |
+| clearance | ATC's permission to fly IFR: where to, which way, how high, which frequency, which squawk |
+| clearance limit | the fix or airport you are cleared to; usually the destination, said with the word "airport" |
+| DP | departure procedure: either an ODP or a SID |
+| ODP | obstacle departure procedure: a published route that keeps you clear of terrain; you may fly it without being told to |
+| SID | standard instrument departure: an ATC procedure you fly only when it is in your clearance |
+| top altitude | the "maintain" altitude of a SID, either printed on the chart or assigned by ATC |
+| climb via | fly the SID's lateral path and its published speed and altitude restrictions up to the top altitude |
+| PDC / CPDLC-DCL | the clearance sent as text (to a printer or datalink) instead of by voice |
+| release | permission to take off IFR from an airport with no operating tower |
+| void time | the time after which a release no longer lets you depart IFR |
+| LUAW | line up and wait: taxi onto the runway and stop; **not** a takeoff clearance |
+| radar contact | departure has identified you on the scope; you stop routine position reports |
+
+## The example flight
+
+The same flight runs through this sheet and [IFR en route & arrival](/aviation/atc-comms/ifr-enroute-arrival/).
+
+| Item | Value |
+| :--- | :--- |
+| aircraft | Cirrus SR22, N45CD: "Cirrus four five charlie delta", "Cirrus five charlie delta" once ATC shortens it |
+| route | KSJC (San Jose, Class C) → SUNOL ONE departure, Sacramento transition → SAC VORTAC → KSAC (Sacramento Executive, Class D) |
+| filed | 6,000 ft; SUNOL ONE is restricted to propeller aircraft |
+| SUNOL ONE, runway 30L/R | climb heading 306° to 1.8 DME, turn right heading 043° to join SJC R-009, **cross SUNOL at 5,000**, then the transition; top altitude "assigned by ATC" |
+| KSJC | D-ATIS 126.95 · clearance delivery 118.0 (also pre-taxi clearance, PDC, CPDLC) · ground 121.7 · tower 124.0 · NorCal Departure 121.3 |
+| KSAC | ATIS 118.075 · NorCal Approach 125.25 · Executive Tower 119.5 (CTAF when closed) · ground 125.0 |
+| untowered example | KHAF (Half Moon Bay): CTAF 122.8 · AWOS 127.275 · NorCal 135.1 · clearance by phone 916-361-0519 · SEEMS ONE (OBSTACLE) (RNAV) departure |
+
+## Filing and ATIS
+
+| Step | How | Notes |
+| :--- | :--- | :--- |
+| file (real world) | ForeFlight, Garmin Pilot or 1800wxbrief.com (Leidos Flight Service) | file at least 30 minutes ahead; the route you file is what "as filed" means |
+| file (sim) | SimBrief (Navigraph), then load the plan into the sim; on VATSIM or PilotEdge file on their site | MSFS's own ATC builds the clearance from the loaded plan |
+| weather | ATIS, or AWOS/ASOS at an untowered field | note the letter, runway, altimeter and any "IFR departures" remark |
+| brief the DP | read the SID or ODP chart and the takeoff minimums before calling | know the first heading, first altitude and climb gradient before the clearance arrives |
+
+## Clearance delivery (CRAFT)
+
+**CRAFT** is an instructor's memory aid, not an FAA term. It follows the order controllers issue clearance
+items in (7110.65 4-2-1), so a pad with five lines catches everything:
+
+| Letter | Item | Example value | You write |
+| :--- | :--- | :--- | :--- |
+| C | clearance limit | "cleared to Sacramento Executive airport" | C: KSAC |
+| R | route (SID, transition, "then as filed") | "SUNOL One departure, Sacramento transition, then as filed" | R: SUNOL1.SAC AF |
+| A | altitude, plus "expect" altitude and time | "climb via SID except maintain five thousand, expect six thousand one zero minutes after departure" | A: CVS X 5 / 6 in 10 |
+| F | departure frequency (may be left out when it is printed on the SID) | "departure frequency one two one point three" | F: 121.3 |
+| T | transponder code | "squawk four two one three" | T: 4213 |
+
+### The call, the clearance, the readback
+
+```text
+YOU    "San Jose Clearance, Cirrus four five charlie delta, IFR to Sacramento Executive, with information Kilo."
+ATC    "Cirrus four five charlie delta, cleared to Sacramento Executive airport, SUNOL One departure, Sacramento
+        transition, then as filed. Climb via SID except maintain five thousand. Expect six thousand one zero
+        minutes after departure. Departure frequency one two one point three, squawk four two one three."
+YOU    "Cleared to Sacramento Executive, SUNOL One departure, Sacramento transition, then as filed. Climb via SID
+        except maintain five thousand, expect six thousand one zero minutes after departure. One two one point
+        three, squawk four two one three, Cirrus four five charlie delta."
+ATC    "Cirrus four five charlie delta, readback correct." (or it corrects the item you missed)
+```
+
+- Initial call: facility, full call sign, "IFR to" destination; the AIM example adds your position on the field.
+- If you changed the route after filing, say so and ask for the whole thing: "my route has been amended, request
+  full route clearance" (AIM 5-2-6).
+- Altitudes printed on the chart are not read back unless the controller said them (AIM 4-4-7).
+
+### Clearance wording
+
+| ATC says | It means | Do |
+| :--- | :--- | :--- |
+| "cleared to … airport as filed" | the route you filed; **not** your filed altitude, and no SID unless one is named | wait for "maintain …" in the same clearance |
+| "… SUNOL One departure, Sacramento transition, then as filed" | the SID and transition, then your filed route | fly the SID; SIDs are never implied by "as filed" |
+| "… then as filed, except change route to read …" | a partial reroute | copy the new part word for word and load it before taxi |
+| a full route clearance (every fix and airway) | issued when your filed route changed or you asked for one | read back the whole route |
+| "… PDC / CPDLC" available | the clearance arrives as text; a PDC needs no readback, a CPDLC one needs a response | on first contact with ground, confirm what the airport requires; ask clearance delivery if anything is unclear |
+| "hold for release" | the clearance is not valid yet | do not take off IFR; wait for "released" |
+
+### Climb via SID or climb and maintain
+
+| Clearance says | When ATC uses it | What you fly |
+| :--- | :--- | :--- |
+| "climb via SID" | SID with published crossing restrictions and a printed top altitude | lateral path + every published speed and altitude restriction, up to the printed top altitude |
+| "climb via SID except maintain five thousand" | top altitude not published (SUNOL ONE says "assigned by ATC"), or ATC wants a lower interim altitude | the same, but stop at 5,000 until cleared higher |
+| "maintain five thousand" | no SID, a radar-vector SID, or restrictions only after a vector segment (SUNOL ONE from runway 12) | climb straight to 5,000; no published altitude restrictions apply |
+| "climb and maintain seven thousand" issued after takeoff | ATC no longer needs the SID's altitude restrictions | keep the lateral path and speed limits; altitude restrictions are canceled; climb unrestricted |
+| "expect six thousand one zero minutes after departure" | a planning figure, also your lost-comms climb time | do **not** climb yet; with lost comms, climb to it at that time ([emergencies](/aviation/atc-comms/emergencies-lost-comms/#lost-comms-ifr)) |
+
+### If ATC says…
+
+- **"Cirrus four five charlie delta, advise ready to copy."** Pencil ready, then "Ready to copy, Cirrus four five
+  charlie delta."
+- **"Cleared as filed" with no altitude.** Ask: "Say altitude for Cirrus four five charlie delta." "As filed" never
+  includes the altitude.
+- **A SID you don't have or can't fly** (for example an RNAV SID without the equipment): "Unable the (name)
+  departure, Cirrus four five charlie delta" (AIM, 7110.65 4-3-2). Next time put "NO SID" in the flight plan
+  remarks.
+- **"Readback incorrect" or silence after your readback.** The controller repeats the item; read back that item only.
+
+## Ground and tower
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| clearance copied, engine running, ready to move | San Jose Ground 121.7 | "San Jose Ground, Cirrus four five charlie delta, west ramp, IFR to Sacramento Executive, with Kilo, ready to taxi." | "Cirrus four five charlie delta, runway three zero left, taxi via Whiskey." Or: a hold-short, "… hold short of runway three zero left" → read it back word for word. Or: "hold for release, expect one zero minute delay" → park clear and wait. | "Runway three zero left, taxi via Whiskey, Cirrus four five charlie delta." Every runway hold-short instruction is read back. |
+| run-up done, holding short, ready | San Jose Tower 124.0 | "San Jose Tower, Cirrus four five charlie delta, holding short three zero left, ready for departure, IFR." | "Cirrus four five charlie delta, runway three zero left, line up and wait." Or: "hold short, landing traffic" → stay behind the line. Or: "runway three zero left, cleared for takeoff." | LUAW: "Runway three zero left, line up and wait, Cirrus four five charlie delta" → line up and **stop**. |
+| on the runway after LUAW | tower | nothing; if nothing happens for about two minutes and no delay was given, ask: "Cirrus four five charlie delta, holding in position three zero left." | "Runway three zero left, cleared for takeoff." Or: "cancel takeoff clearance" → stop or continue as told, read it back. | "Runway three zero left, cleared for takeoff, Cirrus four five charlie delta." Transponder and lights on, take off. |
+| airborne, about half a mile past the runway end | tower | nothing | "Cirrus four five charlie delta, contact NorCal Departure." Or with a vector: "fly runway heading" / "turn right heading zero four zero" → read back, then fly it. | "Departure, Cirrus four five charlie delta." Switch to 121.3 **only when told**. |
+
+- **LUAW is not a takeoff clearance** (AIM 5-2-5). Pilots have read LUAW back correctly and then departed. With
+  two runways or intersection departures, make sure the runway in the clearance is yours.
+- Tower can give a heading with the takeoff clearance ("fly runway heading", "turn left heading 270, runway 30L,
+  cleared for takeoff"). A vector off a SID or ODP cancels that procedure; ATC then owns terrain clearance and must
+  give you an altitude (7110.65 4-3-2).
+- For an RNAV SID tower may add the first waypoint: "RNAV to (waypoint), runway …, cleared for takeoff". Check it
+  matches what is loaded; say so at once if it doesn't (AIM 5-2-8).
+
+### If ATC says…
+
+- **"Line up and wait" and the takeoff clearance never comes.** Ask; don't roll. A landing aircraft may be on short
+  final.
+- **"Cirrus five charlie delta, turn left heading two seven zero, maintain three thousand."** You are off the SID:
+  fly the heading and altitude only, and expect "resume the SUNOL One" or "proceed direct SUNOL" later.
+- **"Change to departure" before the runway end.** Fly the airplane first; switch once climbing and stable.
+- **"Contact departure" is not given by about 1,000 ft.** Check you are still on the tower frequency and ask.
+
+## Departure check-in
+
+The first call to departure confirms your altitude so the controller can trust your Mode C readout (7110.65 5-2-15).
+
+| Your clearance | Say | Source |
+| :--- | :--- | :--- |
+| a plain altitude ("maintain five thousand") | facility, call sign, altitude leaving (nearest 100 ft), "climbing to" assigned altitude; add the heading if assigned | AIM 5-3-1 |
+| "climb via SID" with a printed top altitude | facility, call sign, altitude leaving, "climbing via the (SID name)" | AIM 5-2-9, 7110.65 4-5-7 |
+| "climb via SID except maintain (altitude)" | facility, call sign, altitude leaving, "for (altitude)", "climbing via the (SID name)" | AIM 5-2-9 |
+| level at an assigned altitude | "level (altitude)" | AIM 5-3-1 |
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| tower says "contact departure" | NorCal Departure 121.3 | "NorCal Departure, Cirrus four five charlie delta, one thousand two hundred for five thousand, climbing via the SUNOL One departure." | "Cirrus four five charlie delta, NorCal Departure, radar contact." Or with a position: "radar contact two miles northwest of San Jose." Or: "San Jose altimeter three zero zero two" → set it. Or: an ident request, "ident" → press IDENT. | nothing to read back after "radar contact"; set the altimeter; read back any heading or altitude |
+| crossing SUNOL at 5,000 | same | nothing; stay level at 5,000 | "Cirrus five charlie delta, climb and maintain six thousand." Or: "proceed direct Sacramento" → only after you read it back. | "Climb and maintain six thousand, Cirrus five charlie delta." Start the climb at once, 500 fpm or better. |
+| ten minutes after takeoff and still at 5,000 | same | a short request if the frequency is quiet: "Cirrus five charlie delta, request six thousand." | "Climb and maintain six thousand." Or: "unable higher due traffic, expect higher in five miles." | read back the altitude, or "Wilco" to "expect" |
+
+### If ATC says…
+
+- **"Say altitude."** Your indicated altitude to the nearest 100 ft: "Cirrus five charlie delta, four thousand three
+  hundred, climbing to five thousand." If it differs from your readout, ATC gives the altimeter and says
+  "verify altitude".
+- **"Verify assigned altitude five thousand."** Confirm or correct: "Affirmative, five thousand" or "Negative,
+  assigned six thousand." Don't change altitude to match the question (AIM 5-3-1).
+- **"Stop altitude squawk, altitude differs by three hundred feet."** Turn Mode C off (or leave it on and ask how
+  they want it); your reported altitude is now used instead.
+- **"Squawk four two one three"** after you already set it. Check the code: you likely have a typo.
+- **"Radar contact lost."** Resume position reports over compulsory points until "radar contact" again (AIM 5-3-2).
+
+## Departure procedures and ODPs
+
+| Situation | What ATC expects | Notes |
+| :--- | :--- | :--- |
+| SID in the clearance | fly it | "climb via" rules above; tell ATC "unable" if you can't make its climb gradient |
+| ODP exists, ATC names it ("depart via the SEEMS One obstacle departure procedure") | fly it | altitude restrictions on an ODP protect you from terrain; ATC can't cancel them |
+| ODP exists, clearance says nothing about it | flying it is your call, and the sensible default in IMC | the rule requiring it (91.175(f)) covers Parts 121/125/129/135, not private Part 91; with no heading from ATC it is still the only published protection |
+| a vector ("fly heading …") | fly it | once vectored off a SID or ODP, the procedure is canceled; after an ODP ATC can't clear you to resume it |
+| diverse vector area | ATC may give any heading from the ground | the heading comes no later than the takeoff clearance |
+| VCOA (visual climb over airport) option in the ODP | say you intend to use it **when you request the clearance** | ATC adds "remain within (n) miles of the airport during visual climb" |
+
+Obstacle protection assumes you cross the runway end at 35 ft or more, reach 400 ft above it before turning, and
+climb at 200 ft/NM or more unless the chart asks for more (AIM 5-2-9). SEEMS ONE asks for 500 ft/NM to 566 ft: at
+90 kt ground speed that's 750 fpm.
+
+## Untowered IFR departures
+
+No tower means no one watches the runway for you, so ATC issues a release with a void time and holds other IFR
+traffic until you call or the time runs out (AIM 5-2-7, 7110.65 4-3-4).
+
+### Ways to get the clearance
+
+| Method | How | Notes |
+| :--- | :--- | :--- |
+| phone | the number under "CLEARANCE DELIVERY PHONE" in the Chart Supplement (KHAF: NorCal 916-361-0519) | say it's IFR and give departure and destination (AIM 5-2-3); taxi to the runway first so you can make the void time |
+| radio from the ground | the approach or center frequency, if it reaches the ramp | at KHAF, NorCal 135.1 may not reach the ground; try it from the run-up area |
+| RCO | a Flight Service radio outlet near the airport | FSS relays: "ATC clears …" (7110.65 4-2-2) |
+| GCO | click the mic on the GCO frequency: 4 clicks for ATC, 6 for Flight Service | a radio-to-phone link, only for use on the ground |
+| Flight Service (1-800-WX-BRIEF) | they call ATC and relay | slowest; expect a void time sized for relay delays |
+| pick it up in the air | depart VFR, call approach or center once airborne | only in VMC to the minimum IFR altitude; see below |
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| run-up done, at the runway, engine running | NorCal Approach, phone 916-361-0519 | "Cirrus four five charlie delta, IFR from Half Moon Bay to Sacramento Executive, at the end of runway three zero, ready to copy." | the clearance, then one of: "released for departure, clearance void if not off by one eight three zero, if not off by one eight three zero advise NorCal not later than one eight four five of intentions, time one eight one two." Or: "hold for release, expect one five minute delay, call back at one eight three zero." Or: "released for departure at one eight two five" → not before that time. | the full clearance, then "released, void one eight three zero, advise NorCal by one eight four five if not off, time one eight one two." Set your clock to the time check. |
+| lined up | KHAF CTAF 122.8 | "Half Moon Bay traffic, Cirrus four five charlie delta departing runway three zero, IFR, Half Moon Bay." | other pilots only | watch for traffic; ATC is not separating you from VFR aircraft here |
+| airborne, as soon as practical | NorCal 135.1 | "NorCal Departure, Cirrus four five charlie delta, eight hundred, climbing to four thousand, on the SEEMS One." | "Cirrus four five charlie delta, NorCal Departure, radar contact …" Or: nothing because you're still too low for the radio → keep flying the ODP and call again. | as for a towered departure |
+
+### If ATC says…
+
+- **"Hold for release, expect a one five minute departure delay."** You can't take off IFR until released. You may
+  still go VFR if weather allows: cancel the IFR plan first and squawk VFR, knowing an IFR clearance may not be
+  available later (AIM 5-2-7).
+- **"Released for departure at (time)."** That's the earliest you may go, not the latest.
+- **"Say how soon you can be off."** Give an honest figure including taxi and run-up; the void time is built from it.
+- **"Verify right turn after departure will allow compliance with terrain."** Only answer yes if it does; at a
+  Class E surface area ATC asks your intended turn before issuing it.
+
+### Missing the void time
+
+- Call ATC as soon as you know you won't make it, and no later than the "advise … not later than" time. That time
+  is never more than 30 minutes after the void time (AIM 5-2-7).
+- An expired void time doesn't cancel the clearance or the flight plan. It only removes your permission to take off
+  IFR until ATC issues a new release.
+- If you don't call within 30 minutes, ATC treats you as overdue and starts search and rescue (7110.65 10-3-1).
+- Departing at or after the void time gets you no IFR separation and may break 14 CFR 91.173.
+- If you go VFR instead, don't use the IFR squawk code.
+
+### VMC climb: picking up the clearance in the air
+
+- Legal and common when the weather is VFR to the minimum IFR altitude. File the plan first so the controller has
+  it, then call early.
+- Call: "NorCal Approach, Cirrus four five charlie delta, VFR departed Half Moon Bay, two thousand five hundred
+  climbing, request IFR clearance to Sacramento Executive" (AIM 5-2-6 format).
+- Below the minimum IFR altitude ATC asks: "Are you able to maintain your own terrain and obstruction clearance
+  until reaching four thousand?" Answer yes only if you are VMC and sure (7110.65 4-2-8). If not, "unable" and stay
+  VFR.
+- Stay VFR, clear of clouds and outside airspace you aren't cleared into, until you have read back the clearance.
+
+## Recipes
+
+### Full script: towered departure (KSJC)
+
+Clearance to first altitude change. The call sign is abbreviated once departure shortens it.
+
+```text
+[D-ATIS 126.95] "San Jose information Kilo ... departing runways three zero left and right ... altimeter three zero zero two."
+
+[CLNC DEL 118.0]
+YOU  "San Jose Clearance, Cirrus four five charlie delta, IFR to Sacramento Executive, with information Kilo."
+ATC  "Cirrus four five charlie delta, cleared to Sacramento Executive airport, SUNOL One departure, Sacramento transition,
+      then as filed. Climb via SID except maintain five thousand. Expect six thousand one zero minutes after departure.
+      Departure frequency one two one point three, squawk four two one three."
+YOU  "Cleared to Sacramento Executive, SUNOL One departure, Sacramento transition, then as filed, climb via SID except
+      maintain five thousand, expect six thousand one zero minutes after departure, one two one point three, squawk four
+      two one three, Cirrus four five charlie delta."
+ATC  "Cirrus four five charlie delta, readback correct, contact Ground one two one point seven when ready to taxi."
+
+[GND 121.7]
+YOU  "San Jose Ground, Cirrus four five charlie delta, west ramp, IFR Sacramento Executive, with Kilo, ready to taxi."
+ATC  "Cirrus four five charlie delta, runway three zero left, taxi via Whiskey."
+YOU  "Runway three zero left, taxi via Whiskey, Cirrus four five charlie delta."
+     ... run-up, set 4213, brief: heading 306 to 1.8 DME, right 043, cross SUNOL at 5000 ...
+ATC  "Cirrus four five charlie delta, monitor Tower one two four point zero."
+YOU  "Monitor Tower, Cirrus four five charlie delta."
+
+[TWR 124.0]
+YOU  "San Jose Tower, Cirrus four five charlie delta, holding short three zero left, ready for departure."
+ATC  "Cirrus four five charlie delta, runway three zero left, line up and wait, traffic an Airbus on the right runway departing."
+YOU  "Runway three zero left, line up and wait, Cirrus four five charlie delta."     (line up; do NOT take off)
+ATC  "Cirrus four five charlie delta, runway three zero left, cleared for takeoff."
+YOU  "Runway three zero left, cleared for takeoff, Cirrus four five charlie delta."
+ATC  "Cirrus four five charlie delta, contact NorCal Departure."
+YOU  "Departure, Cirrus four five charlie delta."
+
+[NORCAL DEP 121.3]
+YOU  "NorCal Departure, Cirrus four five charlie delta, one thousand two hundred for five thousand, climbing via the SUNOL
+      One departure."
+ATC  "Cirrus four five charlie delta, NorCal Departure, radar contact."
+     ... cross SUNOL at 5000 ...
+ATC  "Cirrus five charlie delta, climb and maintain six thousand."
+YOU  "Climb and maintain six thousand, Cirrus five charlie delta."
+     → continues in IFR en route & arrival
+```
+
+### Full script: untowered departure by phone (KHAF)
+
+Engine running at the runway end, phone on speaker or headset adapter, pad ready. Times are UTC.
+
+```text
+[AWOS 127.275] wind, ceiling, altimeter. Brief SEEMS ONE: heading 302 to 566 ft (500 ft/NM), climbing left turn direct
+SEEMS, climb in the SEEMS hold to at or above 3500, then on course.
+
+[PHONE 916-361-0519, NorCal Approach]
+YOU  "Hi, this is Cirrus four five charlie delta, IFR from Half Moon Bay to Sacramento Executive, at the end of runway
+      three zero, ready to copy."
+ATC  "Cirrus four five charlie delta is cleared to Sacramento Executive airport, depart via the SEEMS One obstacle
+      departure procedure, then as filed. Maintain four thousand, expect six thousand one zero minutes after departure.
+      Departure frequency one three five point one, squawk four two five one."
+YOU  (read it all back)
+ATC  "Readback correct. Cirrus four five charlie delta released for departure. Clearance void if not off by one eight
+      three zero. If not off by one eight three zero, advise NorCal not later than one eight four five of intentions.
+      Time one eight one two and one quarter."
+YOU  "Released, void at one eight three zero, advise NorCal not later than one eight four five if not off, time one
+      eight one two and one quarter, Cirrus four five charlie delta."
+
+[CTAF 122.8]
+YOU  "Half Moon Bay traffic, Cirrus four five charlie delta departing runway three zero, IFR, Half Moon Bay."
+
+[NORCAL 135.1, airborne before 1830]
+YOU  "NorCal Departure, Cirrus four five charlie delta, one thousand one hundred, climbing to four thousand, on the SEEMS One."
+ATC  "Cirrus four five charlie delta, NorCal Departure, radar contact one mile northwest of Half Moon Bay."
+```
+
+### Void time about to expire
+
+Say it before the time, not after.
+
+```text
+[PHONE or radio, before 1845]
+YOU  "NorCal, Cirrus four five charlie delta at Half Moon Bay, I did not depart before one eight three zero.
+      Request a new release."          (or: "cancel my IFR, I'll stay on the ground")
+ATC  "Cirrus four five charlie delta, released for departure, clearance void if not off by one eight five zero, time one
+      eight three six."
+```
+
+### Hold for release
+
+Park clear of the runway, engine running if the wait is short.
+
+```text
+ATC  "... squawk four two five one. Hold for release, expect a one five minute departure delay. Call back at one eight
+      three zero."
+YOU  "Hold for release, call back at one eight three zero, Cirrus four five charlie delta."
+     (no IFR takeoff until you hear "released for departure")
+```
+
+### VFR departure, clearance in the air
+
+Weather VFR to at least the minimum IFR altitude; flight plan already filed.
+
+```text
+[CTAF 122.8] normal VFR departure calls, squawk 1200.
+[NORCAL 135.1]
+YOU  "NorCal Approach, Cirrus four five charlie delta, VFR departed Half Moon Bay, two thousand five hundred climbing,
+      request IFR clearance to Sacramento Executive."
+ATC  "Cirrus four five charlie delta, squawk four two five one, ident."
+ATC  "Cirrus four five charlie delta, radar contact three miles east of Half Moon Bay. Are you able to maintain your own
+      terrain and obstruction clearance until reaching four thousand?"
+YOU  "Affirmative, Cirrus four five charlie delta."
+ATC  "Cirrus four five charlie delta, cleared to Sacramento Executive airport via direct SEEMS, then as filed.
+      Climb and maintain four thousand."
+YOU  (read back; you are IFR from now on)
+```
+
+### Amended route at clearance
+
+When the clearance doesn't match your plan, don't guess.
+
+```text
+ATC  "... then as filed, except change route to read SUNOL, Victor three three four, Sacramento."
+YOU  "Say again the route after SUNOL, Cirrus four five charlie delta."
+     (copy it, read it back, re-load the flight plan before taxi, and re-brief)
+```
+
+## References
+
+- [AIM chapter 5, section 2: Departure procedures](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap5_section_2.html):
+  pre-taxi clearance, PDC/CPDLC-DCL, clearances at uncontrolled airports, LUAW, "as filed", void times,
+  climb-via check-in (5-2-1 to 5-2-9)
+- [AIM 4-4: ATC clearances](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_4.html):
+  clearance items, readback (4-4-7), adherence and climb rates (4-4-10)
+- [AIM 5-3-1: ARTCC communications](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap5_section_3.html):
+  check-in format in a radar environment
+- [FAA Order JO 7110.65BB](https://www.faa.gov/air_traffic/publications/atpubs/atc_html/): 4-2-1 clearance items,
+  4-2-8 VFR-to-IFR, 4-3-2 to 4-3-4 departure clearances, releases and void times, 3-9 takeoff and LUAW, 4-5-7
+  climb via, 5-2-15 Mode C validation
+- [Pilot/Controller Glossary](https://www.faa.gov/air_traffic/publications/atpubs/pcg_html/): cleared as filed,
+  climb via, top altitude, hold for release, GCO, ODP
+- [FAA d-TPP](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/): SUNOL ONE departure
+  (KSJC), SEEMS ONE departure (KHAF), KSJC airport diagram
+- [FAA Chart Supplement](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/): KSJC, KSAC and
+  KHAF frequencies, tower hours and clearance phone numbers
+- [14 CFR 91.173](https://www.ecfr.gov/current/title-14/section-91.173): ATC clearance and flight plan required
+- [FAA Instrument Procedures Handbook, chapter 2](https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/instrument_procedures_handbook):
+  departure procedures in depth

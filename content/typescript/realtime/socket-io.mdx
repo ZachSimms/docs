@@ -1,0 +1,678 @@
+---
+title: Socket.IO
+date: 2026-09-27
+order: 3
+---
+
+Socket.IO 4.8 on Bun: typed events, rooms, namespaces, acks, auth middleware, connection state recovery and the
+Redis Streams adapter, with Bun's built-in pub/sub as the lighter alternative. Patterns it implements are in
+[Realtime fundamentals](/typescript/realtime/fundamentals/); using it from React is in
+[Realtime in React & Next.js](/typescript/realtime/react-nextjs/).
+
+## When to pick it
+
+Socket.IO is a protocol and library on top of WebSocket (with HTTP long polling as a fallback). A plain
+`WebSocket` client cannot talk to a Socket.IO server, and the Socket.IO client cannot talk to a plain WebSocket
+server.
+
+| You get                         | Raw WebSocket / Bun pub/sub       | Socket.IO                                        |
+| :------------------------------ | :-------------------------------- | :----------------------------------------------- |
+| Reconnect with backoff          | write it                          | built in (1 s → 5 s, jittered)                   |
+| Named events + typed payloads   | your own union + `switch`         | `socket.emit("event", ...args)`, typed generics  |
+| Request/response                | your own `id` matching            | acks, `emitWithAck()` with timeout               |
+| Rooms, broadcast                | Bun topics; `ws` has none         | rooms, namespaces, `to()`, `except()`            |
+| Multi-server fan-out            | your own Redis relay              | adapters (Redis, Redis Streams, Postgres, …)     |
+| Resume after a short drop       | your own log + `seq`              | `connectionStateRecovery`                        |
+| Outgoing buffer while offline   | write it                          | client buffers emits until reconnected           |
+| Hostile proxies                 | fails                             | falls back to long polling                       |
+| Cost                            | nothing extra                     | own wire format, client bundle, one more dependency |
+
+- **Pick Socket.IO** for chat, notifications, dashboards and turn-based games where acks, rooms and reconnect save
+  real work.
+- **Skip it** for Cloudflare Durable Objects (use PartyServer), for clients that must speak plain WebSocket
+  (IoT, other languages without a Socket.IO client), and for fast games where you want binary snapshots and full
+  control: see [Game worlds](/typescript/realtime/game-worlds/).
+- Delivery is ordered and **at most once** by default; see [Acknowledgements](#acknowledgements) for at least once.
+
+## Typed events
+
+One file of interfaces, shared by server and client. Each property is an event; a trailing function parameter is
+the ack callback.
+
+```ts title="events.ts"
+export type ChatMsg = {
+  id: string; // client-made UUID
+  room: string;
+  from: string;
+  text: string;
+  ts: number;
+};
+export type Res<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+// server → client
+export interface ServerToClientEvents {
+  message: (msg: ChatMsg) => void;
+  joined: (room: string, user: string) => void;
+}
+
+// client → server; the last function arg is the ack
+export interface ClientToServerEvents {
+  join: (
+    room: string,
+    ack: (r: Res<ChatMsg[]>) => void,
+  ) => void;
+  send: (
+    msg: Pick<ChatMsg, "id" | "room" | "text">,
+    ack: (r: Res<{ ts: number }>) => void,
+  ) => void;
+  leave: (room: string) => void;
+}
+
+// server ↔ server, through the adapter
+export interface InterServerEvents {
+  kick: (userId: string) => void;
+}
+
+// per-socket state: socket.data
+export interface SocketData {
+  userId: string;
+  name: string;
+}
+```
+
+| Generic slot | Server: `new Server<…>`  | Client: `Socket<…>`      |
+| :----------- | :----------------------- | :----------------------- |
+| 1st          | `ClientToServerEvents` (listen) | `ServerToClientEvents` (listen) |
+| 2nd          | `ServerToClientEvents` (emit)   | `ClientToServerEvents` (emit)   |
+| 3rd          | `InterServerEvents`      | none                     |
+| 4th          | `SocketData`             | none                     |
+
+- Payloads are JSON plus binary (`Buffer`, `ArrayBuffer`, typed arrays); `Date` becomes a string, `Map`/`Set` become `{}`.
+- Types are compile-time only: validate payloads with Zod in each handler, as with any socket.
+
+## Server on Bun
+
+`@socket.io/bun-engine` (0.1.x) replaces the Node HTTP layer with `Bun.serve`; the Socket.IO API above it is
+unchanged, adapters included.
+
+```sh
+bun add socket.io @socket.io/bun-engine
+bun add socket.io-client   # in the client app
+```
+
+```ts title="server.ts"
+import { Server as Engine } from "@socket.io/bun-engine";
+import { Server } from "socket.io";
+import { verifyToken } from "./auth.ts";
+import type {
+  ChatMsg,
+  ClientToServerEvents as C2S,
+  InterServerEvents as S2S,
+  ServerToClientEvents as S2C,
+  SocketData,
+} from "./events.ts";
+
+const io = new Server<C2S, S2C, S2S, SocketData>({
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60_000, // default
+    skipMiddlewares: true, // recovered: skip auth
+  },
+});
+const engine = new Engine({
+  path: "/socket.io/", // default is /engine.io/
+  cors: { origin: ["http://localhost:5173"] },
+});
+io.bind(engine);
+
+// runs once per connection, before "connection"
+io.use(async (socket, next) => {
+  const token: unknown = socket.handshake.auth.token;
+  const user =
+    typeof token === "string" && (await verifyToken(token));
+  if (!user) return next(new Error("unauthorized"));
+  socket.data = user;
+  next();
+});
+
+const history = new Map<string, ChatMsg[]>();
+
+io.on("connection", (socket) => {
+  // a recovered socket already has its rooms and data;
+  // handlers must still be attached to every new socket
+  if (!socket.recovered) {
+    socket.join(`user:${socket.data.userId}`);
+  }
+
+  socket.on("join", async (room, ack) => {
+    await socket.join(room);
+    socket.to(room).emit("joined", room, socket.data.name);
+    ack({ ok: true, data: history.get(room) ?? [] });
+  });
+
+  socket.on("send", ({ id, room, text }, ack) => {
+    if (!socket.rooms.has(room)) {
+      return ack({ ok: false, error: "join first" });
+    }
+    const msg: ChatMsg = {
+      id, room, text, from: socket.data.name, ts: Date.now(),
+    };
+    history.set(room, [...(history.get(room) ?? []), msg]);
+    socket.to(room).emit("message", msg); // not to sender
+    ack({ ok: true, data: { ts: msg.ts } });
+  });
+
+  socket.on("leave", (room) => socket.leave(room));
+});
+
+Bun.serve({ port: 3000, ...engine.handler() });
+```
+
+| `new Engine({…})` option | Default        | Notes                                                   |
+| :----------------------- | :------------- | :------------------------------------------------------ |
+| `path`                   | `/engine.io/`  | set `/socket.io/`: the client's default path            |
+| `pingInterval`           | `25000` ms     | heartbeat; `handler()` sets Bun's `idleTimeout` to 2× it |
+| `pingTimeout`            | `20000` ms     | no pong in time → `ping timeout`                        |
+| `maxHttpBufferSize`      | `1e6` bytes    | also Bun's `maxPayloadLength`; bigger messages close the socket |
+| `cors`                   | none           | needed when the page is on another origin (polling)     |
+| `allowRequest`           | none           | `(req, server) => Promise` that rejects to refuse       |
+
+- `engine.handler()` returns `fetch`, `websocket`, `idleTimeout` and `maxRequestBodySize`; spread it into
+  `Bun.serve` (or `export default { port, ...engine.handler() }`). With Hono, route `/socket.io/` to
+  `engine.handleRequest(c.req.raw, c.env)`.
+- If you set Bun's `idleTimeout` yourself, keep it above `pingInterval` (in seconds), or Bun drops healthy sockets.
+
+### Node alternative
+
+```ts title="node-server.ts"
+import { createServer } from "node:http";
+import { Server } from "socket.io";
+import type {
+  ClientToServerEvents as C2S,
+  InterServerEvents as S2S,
+  ServerToClientEvents as S2C,
+  SocketData,
+} from "./events.ts";
+
+const http = createServer(); // or your Express/Hono app
+const io = new Server<C2S, S2C, S2S, SocketData>(http, {
+  cors: { origin: ["http://localhost:5173"] },
+  connectionStateRecovery: {},
+});
+// same io.use(...) and io.on("connection") as above
+http.listen(3000);
+```
+
+On Node the `path` already defaults to `/socket.io/`, and options such as `pingInterval` go to `new Server()`.
+
+## Client
+
+```ts title="client.ts"
+import { io, type Socket } from "socket.io-client";
+import type {
+  ClientToServerEvents as C2S,
+  ServerToClientEvents as S2C,
+} from "./events.ts";
+
+export type ChatSocket = Socket<S2C, C2S>; // reversed
+
+export function connect(token: string): ChatSocket {
+  const socket: ChatSocket = io("http://localhost:3000", {
+    auth: { token }, // or (cb) => cb({ token: fresh() })
+    transports: ["websocket"], // no polling, no sticky
+  });
+
+  socket.on("connect", () => {
+    // recovered: rooms kept and missed events replayed
+    if (!socket.recovered) {
+      // fresh session: rejoin rooms, refetch state
+    }
+  });
+  socket.on("connect_error", (err) => {
+    // active: will retry; else refused by middleware
+    if (!socket.active) console.error(err.message);
+  });
+  socket.on("disconnect", (reason) => {
+    if (reason === "io server disconnect") {
+      // kicked by the server: no auto-reconnect
+    }
+  });
+  return socket;
+}
+```
+
+| `io(url, {…})` option   | Default                    | Notes                                                   |
+| :---------------------- | :------------------------- | :------------------------------------------------------ |
+| `auth`                  | none                       | object or `(cb) => cb({...})`; read as `socket.handshake.auth` |
+| `transports`            | `["polling", "websocket", "webtransport"]` | `["websocket"]` skips polling and the need for sticky sessions |
+| `path`                  | `/socket.io`               | must match the server                                   |
+| `reconnectionDelay`     | `1000` ms                  | first retry; doubles up to `reconnectionDelayMax`       |
+| `reconnectionDelayMax`  | `5000` ms                  | cap                                                     |
+| `randomizationFactor`   | `0.5`                      | jitter                                                  |
+| `reconnectionAttempts`  | `Infinity`                 | then gives up (`reconnect_failed` on `socket.io`)       |
+| `ackTimeout` + `retries` | none                      | resend acked emits until answered: at least once        |
+| `autoConnect`           | `true`                     | `false`: call `socket.connect()` yourself               |
+| `withCredentials`       | `false`                    | send cookies cross-origin                               |
+
+- `socket.id` changes on every new session (not on a recovered one); don't use it as a user id.
+- Manager events (`reconnect_attempt`, `reconnect`) live on `socket.io`, not on `socket`.
+
+## Emitting
+
+| Call                                    | Who receives                                        |
+| :-------------------------------------- | :-------------------------------------------------- |
+| `socket.emit(ev, ...args)`              | this client only                                    |
+| `socket.broadcast.emit(ev)`             | everyone in the namespace except this socket        |
+| `io.emit(ev)`                           | everyone in the namespace                           |
+| `io.to(room).emit(ev)`                  | everyone in `room` (an array: the union of rooms)   |
+| `socket.to(room).emit(ev)`              | everyone in `room` except this socket               |
+| `io.except(room).emit(ev)`              | everyone not in `room`                              |
+| `io.to("a").to(["b", "c"]).except("d")` | in a, b or c, and not in d; each socket once         |
+| `io.to(socketId).emit(ev)`              | one socket: each socket is in a room named by its id |
+| `io.to("user:42").emit(ev)`             | all of a user's tabs (join that room on connect)    |
+| `io.of("/admin").emit(ev)`              | everyone in another namespace                       |
+| `socket.volatile.emit(ev)`              | dropped if the socket isn't ready: positions, cursors |
+| `socket.compress(false).emit(ev)`       | skip `permessage-deflate` for this packet           |
+| `io.local.emit(ev)`                     | this node's sockets only, with an adapter           |
+| `socket.timeout(ms).emitWithAck(ev)`    | this client; resolves with its ack                  |
+| `io.to(room).timeout(ms).emitWithAck(ev)` | the room; resolves with an array of acks          |
+| `io.serverSideEmit(ev)`                 | the other servers (`InterServerEvents`)             |
+
+Reserved names you can't emit: `connect`, `connect_error`, `disconnect`, `disconnecting`, `newListener`,
+`removeListener`.
+
+## Rooms & namespaces
+
+**Rooms** are server-side groups inside a namespace; clients can't join them directly, only ask via an event.
+
+| Call                                  | Does                                                        |
+| :------------------------------------ | :---------------------------------------------------------- |
+| `socket.join(room)` / `socket.leave(room)` | add or remove (await it with an async adapter)         |
+| `socket.rooms`                        | `Set` of rooms, including its own id                        |
+| `io.in(room).fetchSockets()`          | sockets in a room, across nodes with an adapter             |
+| `io.in(room).socketsJoin(other)`      | move a room's sockets into another room                     |
+| `io.in(room).disconnectSockets(true)` | kick everyone in a room (true closes the connection)        |
+| `socket.on("disconnecting", …)`       | fires while `socket.rooms` is still filled: say goodbye     |
+
+- Sockets leave all rooms on disconnect (unless a recovered session restores them).
+- Adapter events: `io.of("/").adapter.on("join-room", (room, id) => …)` and `leave-room`, `create-room`,
+  `delete-room`.
+
+**Namespaces** split one server into separate apps, each with its own events, rooms and middleware, sharing one
+connection.
+
+```ts
+const admin = io.of("/admin");
+admin.use(requireAdmin); // namespace middleware
+admin.on("connection", (socket) => {
+  socket.emit("stats", getStats());
+});
+
+// dynamic: one namespace per workspace
+const teams = io.of(/^\/team-\d+$/);
+teams.on("connection", (socket) => {
+  const nsp = socket.nsp; // e.g. /team-42
+  nsp.emit("online", socket.data.userId);
+});
+```
+
+Client: `io("https://api.example.com/admin")`. Rooms are enough for most apps; use namespaces for different
+audiences (admin vs users) or per-tenant isolation.
+
+## Acknowledgements
+
+An ack is a callback passed as the last argument; the other side calls it once to reply.
+
+| Style                   | Sender                                            | On timeout                      |
+| :---------------------- | :------------------------------------------------ | :------------------------------ |
+| Callback                | `socket.emit("ev", arg, (res) => …)`              | waits forever                   |
+| Callback with timeout   | `socket.timeout(5000).emit("ev", arg, (err, res) => …)` | `err` is set              |
+| Promise                 | `await socket.emitWithAck("ev", arg)`             | waits forever                   |
+| Promise with timeout    | `await socket.timeout(5000).emitWithAck("ev", arg)` | rejects                       |
+| Broadcast               | `await io.to(room).timeout(5000).emitWithAck("ev")` | rejects if any socket is late |
+| Retried (client)        | `io(url, { ackTimeout: 10_000, retries: 3 })`     | resends, then drops the packet  |
+
+```ts
+const res = await socket
+  .timeout(5000)
+  .emitWithAck("send", {
+    id: crypto.randomUUID(),
+    room: "lobby",
+    text: "hi",
+  }); // res: Res<{ ts: number }>, typed from events.ts
+if (!res.ok) showError(res.error);
+```
+
+- Always use a timeout: a handler that throws before calling `ack` leaves a bare promise pending forever.
+- Answer errors inside the ack (`{ ok: false, error }`); don't throw across the wire.
+- `retries` makes client-to-server delivery at least once: send an `id` and dedupe on the server.
+- Server to client, at least once needs your own log: store events, have the client send its last offset in
+  `auth`, replay on connect. See [fundamentals](/typescript/realtime/fundamentals/#reconnection--resync).
+
+## Middleware & auth
+
+| Hook                             | Runs                              | Use                                        |
+| :------------------------------- | :-------------------------------- | :----------------------------------------- |
+| `io.use((socket, next) => …)`    | once per connection, per namespace | authenticate, set `socket.data`           |
+| `io.of("/x").use(…)`             | namespace-specific                | admin checks                               |
+| `socket.use(([ev, ...args], next) => …)` | every incoming packet     | rate limits, per-event authorization       |
+| `allowRequest` (engine)          | every HTTP request                | reject by IP or origin before the handshake |
+
+- `next(new Error("unauthorized"))` refuses the connection; the client gets `connect_error` with that message and
+  `socket.active === false` (no retry). Attach details with `err.data = { code: 401 }`.
+- Read credentials from `socket.handshake.auth` (sent by the client's `auth` option), not the query string, which
+  ends up in logs. `socket.handshake.headers.cookie` works for same-site cookie sessions.
+- Check `socket.handshake.headers.origin` (or set `cors.origin`) when authenticating by cookie: see
+  [WebSockets: Authentication](/typescript/backend/websockets/#authentication).
+- Tokens expire while sockets live: re-verify on a timer and `socket.disconnect(true)` when a session ends. The
+  client then refreshes the token (use the function form of `auth`) and reconnects.
+
+## Connection state recovery
+
+Enabled on the server, it restores a socket that drops briefly (Wi-Fi hiccup, phone lock): same `socket.id`, same
+rooms, same `socket.data`, and the events it missed are replayed.
+
+| Option                     | Default         | Meaning                                         |
+| :------------------------- | :-------------- | :---------------------------------------------- |
+| `maxDisconnectionDuration` | `120000` ms     | how long sessions and packets are kept           |
+| `skipMiddlewares`          | `false`         | `true`: recovered sockets skip `io.use` again    |
+
+Check it on both sides: `socket.recovered` in `io.on("connection")` and in the client's `connect` handler. When it's
+`false`, run your full join-and-resync path.
+
+Recovery fails when:
+
+- the gap was longer than `maxDisconnectionDuration`;
+- the client called `socket.disconnect()` (or the tab was closed or reloaded);
+- the server had not yet sent the socket at least one event;
+- the adapter can't store sessions (the plain Redis adapter).
+
+| Adapter                   | Supports recovery |
+| :------------------------ | :---------------- |
+| built-in (in memory)      | yes, one node     |
+| Redis (pub/sub)           | no                |
+| Redis Streams             | yes               |
+| MongoDB                   | yes (0.3.0+)      |
+| Postgres, cluster         | work in progress  |
+
+## Scaling with adapters
+
+An adapter relays broadcasts between Socket.IO servers so `io.to(room)` reaches sockets on every node.
+
+| Adapter                             | Transport        | Recovery | Notes                                              |
+| :---------------------------------- | :--------------- | :------- | :------------------------------------------------- |
+| `@socket.io/redis-streams-adapter`  | Redis Streams    | yes      | survives a brief Redis outage without losing packets; the default choice |
+| `@socket.io/redis-adapter`          | Redis pub/sub    | no       | older, simplest; fire-and-forget                   |
+| `@socket.io/postgres-adapter`       | `LISTEN/NOTIFY`  | not yet  | no Redis to run                                    |
+| `@socket.io/cluster-adapter`        | Node IPC         | not yet  | several workers on one machine                     |
+
+```ts title="adapter.ts"
+import {
+  createAdapter,
+} from "@socket.io/redis-streams-adapter";
+import { createClient } from "redis";
+import { Server } from "socket.io";
+
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+
+const io = new Server({
+  adapter: createAdapter(redis, {
+    streamName: "chat", // default "socket.io"
+    maxLen: 10_000, // entries kept: bounds recovery
+  }),
+  connectionStateRecovery: {},
+});
+
+// every node: the same calls now span the cluster
+io.to("lobby").emit("hello"); // reaches all nodes
+const all = await io.in("lobby").fetchSockets();
+io.serverSideEmit("kick", "u42"); // other nodes only
+io.on("kick", (userId) => {
+  io.in(`user:${userId}`).disconnectSockets(true);
+});
+```
+
+- **Sticky sessions** are required while HTTP long polling is enabled (each poll must hit the node holding the
+  session, or it gets a `400`). Use cookie or IP-hash affinity, or connect with `transports: ["websocket"]`.
+- Works with `redis` (node-redis) or `ioredis`, including Redis Cluster and Valkey.
+- `fetchSockets()` returns remote sockets with `id`, `rooms`, `data`, `emit`, `join`, `leave` and `disconnect`,
+  so keep `socket.data` serializable.
+- Architecture diagram: [fundamentals: Scaling](/typescript/realtime/fundamentals/#scaling).
+
+## Disconnects & debugging
+
+Server `disconnect` reasons (`socket.on("disconnect", (reason) => …)`):
+
+| Reason                        | Meaning                                                   |
+| :---------------------------- | :-------------------------------------------------------- |
+| `server namespace disconnect` | you called `socket.disconnect()`                          |
+| `client namespace disconnect` | the client called `socket.disconnect()`                   |
+| `server shutting down`        | `io.close()`                                              |
+| `ping timeout`                | no pong within `pingTimeout`                              |
+| `transport close`             | connection lost (network, closed tab)                     |
+| `transport error`             | connection errored                                        |
+| `parse error`                 | the client sent an invalid packet                         |
+| `forced close`                | the server closed the low-level connection                |
+| `forced server close`         | the client did not join a namespace in time               |
+
+Client `disconnect` reasons:
+
+| Reason                 | Meaning                                         | Reconnects? |
+| :--------------------- | :---------------------------------------------- | :---------- |
+| `io server disconnect` | the server called `socket.disconnect()`         | no: call `socket.connect()` |
+| `io client disconnect` | you called `socket.disconnect()`                | no          |
+| `ping timeout`         | no ping within `pingInterval + pingTimeout`     | yes         |
+| `transport close`      | connection lost                                 | yes         |
+| `transport error`      | connection errored                              | yes         |
+
+| Symptom                                  | Likely cause                                                 |
+| :--------------------------------------- | :----------------------------------------------------------- |
+| `connect_error: xhr poll error` / 404    | wrong URL or `path` (Bun engine defaults to `/engine.io/`)   |
+| CORS error in the console                | `cors.origin` missing the page origin (polling is plain HTTP) |
+| `400 Session ID unknown`                 | several nodes, no sticky sessions, polling enabled           |
+| Reconnect loop every ~25–45 s            | proxy or Bun `idleTimeout` shorter than `pingInterval`       |
+| Events never arrive                      | listener registered after the emit, or wrong namespace       |
+| Client connects, server never sees it    | client v2/v3 against a v4 server (`allowEIO3` for v3)        |
+
+- **Server logs**: `DEBUG=socket.io* bun server.ts` (`DEBUG=engine,socket.io*` adds the transport layer).
+- **Browser logs**: `localStorage.debug = "socket.io-client:*"`, then reload.
+- **Admin UI**: `@socket.io/admin-ui` + [admin.socket.io](https://admin.socket.io) shows sockets, rooms and events live.
+- DevTools → Network → WS → Messages shows raw frames: `42["message",{...}]` is packet type 4 (message) + 2 (event).
+
+## Bun native pub/sub
+
+When you control both ends and don't need acks, fallbacks or adapters, `Bun.serve` topics do rooms and broadcast
+with no dependency.
+
+```ts title="bun-pubsub.ts"
+type Data = { userId: string };
+
+const server = Bun.serve({
+  port: 3001,
+  fetch(req, server) {
+    const userId = crypto.randomUUID(); // real: session
+    if (server.upgrade(req, { data: { userId } })) return;
+    return new Response("Upgrade required", { status: 426 });
+  },
+  websocket: {
+    data: {} as Data,
+    open(ws) {
+      ws.subscribe("lobby");
+      const n = server.subscriberCount("lobby");
+      server.publish("lobby", `${n} online`); // to all
+    },
+    message(ws, msg) {
+      ws.publish("lobby", String(msg)); // all but ws
+    },
+    close(ws) {
+      // ws is already unsubscribed here
+      server.publish("lobby", `${ws.data.userId} left`);
+    },
+  },
+});
+```
+
+| Socket.IO                    | Bun.serve                                       |
+| :--------------------------- | :---------------------------------------------- |
+| `socket.join(room)`          | `ws.subscribe(topic)`                           |
+| `socket.leave(room)`         | `ws.unsubscribe(topic)`                         |
+| `socket.to(room).emit()`     | `ws.publish(topic, data)` (skips `ws`)          |
+| `io.to(room).emit()`         | `server.publish(topic, data)`                   |
+| `socket.rooms.has(room)`     | `ws.isSubscribed(topic)`                        |
+| room size                    | `server.subscriberCount(topic)`                 |
+| `socket.data`                | `ws.data` from `server.upgrade(req, { data })`  |
+| events + acks                | your own typed union: [WebSockets: Typed messages](/typescript/backend/websockets/#typed-messages) |
+| adapter                      | your own Redis relay: [WebSockets: Scaling](/typescript/backend/websockets/#scaling) |
+
+Topics are per process. A fuller room server: [WebSockets: Rooms with Bun topics](/typescript/backend/websockets/#rooms-with-bun-topics).
+
+## Recipes
+
+### Rate limit every event
+
+When one client could flood a room: a token bucket per socket in packet middleware.
+
+```ts title="rate-limit.ts"
+import type { Server } from "socket.io";
+
+// token bucket: `rate` per second, bursts up to `burst`
+function bucket(rate: number, burst: number) {
+  let tokens = burst;
+  let last = performance.now();
+  return () => {
+    const now = performance.now();
+    const refill = ((now - last) / 1000) * rate;
+    tokens = Math.min(burst, tokens + refill);
+    last = now;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
+}
+
+export function rateLimit(io: Server, rate = 5, burst = 10) {
+  io.on("connection", (socket) => {
+    const take = bucket(rate, burst);
+    let strikes = 0;
+    socket.use(([event], next) => {
+      if (take()) return next();
+      next(new Error(`rate limited: ${String(event)}`));
+    });
+    // next(err) is emitted here; with no listener it throws
+    socket.on("error", (err) => {
+      socket.emit("limited", err.message);
+      if (++strikes > 20) socket.disconnect(true);
+    });
+  });
+}
+```
+
+Call `rateLimit(io)` before your own `io.on("connection")` so the middleware is in place first.
+
+### Ready check across a room
+
+When every player must confirm before a match starts; the broadcast ack resolves with one answer per socket.
+
+```ts
+import { Server } from "socket.io";
+
+interface S2C {
+  "ready?": (ack: (ok: boolean) => void) => void;
+}
+const io = new Server<{}, S2C>();
+
+export async function readyCheck(room: string) {
+  try {
+    const answers = await io
+      .to(room)
+      .timeout(5000)
+      .emitWithAck("ready?"); // boolean[]: one per socket
+    return answers.every(Boolean);
+  } catch {
+    return false; // someone did not answer in time
+  }
+}
+```
+
+### Integration test with two clients
+
+When you want `bun test` to prove a broadcast and an ack work end to end, on a random port.
+
+```ts title="chat.test.ts"
+import { afterAll, expect, test } from "bun:test";
+import { Server as Engine } from "@socket.io/bun-engine";
+import { Server } from "socket.io";
+import {
+  io as connect,
+  type Socket,
+} from "socket.io-client";
+
+const io = new Server();
+const engine = new Engine({ path: "/socket.io/" });
+io.bind(engine);
+io.on("connection", (socket) => {
+  socket.join("t");
+  socket.on("say", (text: string, ack: () => void) => {
+    socket.to("t").emit("said", text);
+    ack();
+  });
+});
+const http = Bun.serve({ port: 0, ...engine.handler() });
+
+const opts = { transports: ["websocket"] };
+const url = `http://localhost:${http.port}`;
+const a = connect(url, opts);
+const b = connect(url, opts);
+
+afterAll(() => {
+  a.close();
+  b.close();
+  io.close();
+  void http.stop(true);
+});
+
+const once = <T>(s: Socket, ev: string) =>
+  new Promise<T>((r) => s.once(ev, r));
+
+test("b hears what a says, a gets an ack", async () => {
+  await Promise.all([
+    once(a, "connect"),
+    once(b, "connect"),
+  ]);
+  const heard = once<string>(b, "said");
+  await a.timeout(1000).emitWithAck("say", "hi");
+  expect(await heard).toBe("hi");
+});
+```
+
+### Kick a user everywhere
+
+When a user logs out or is banned: every tab, on every node (with an adapter), because each socket joined
+`user:<id>` on connect.
+
+```ts
+export async function kick(userId: string) {
+  const room = `user:${userId}`;
+  io.to(room).emit("kicked"); // tell the UI why
+  io.in(room).disconnectSockets(true); // reason on client:
+  // "io server disconnect": it will not auto-reconnect
+}
+```
+
+## References
+
+- [Socket.IO v4 docs](https://socket.io/docs/v4/): [emit cheatsheet](https://socket.io/docs/v4/emit-cheatsheet/),
+  [TypeScript](https://socket.io/docs/v4/typescript/),
+  [rooms](https://socket.io/docs/v4/rooms/),
+  [middlewares](https://socket.io/docs/v4/middlewares/)
+- [Connection state recovery](https://socket.io/docs/v4/connection-state-recovery),
+  [delivery guarantees](https://socket.io/docs/v4/delivery-guarantees): what survives a drop
+- [Redis Streams adapter](https://socket.io/docs/v4/redis-streams-adapter/): multi-node fan-out with recovery
+- [Server](https://socket.io/docs/v4/server-socket-instance/) and
+  [client](https://socket.io/docs/v4/client-socket-instance/) socket instances: disconnect reasons
+- [Logging and debugging](https://socket.io/docs/v4/logging-and-debugging/), [Admin UI](https://socket.io/docs/v4/admin-ui/)
+- [Bun engine announcement](https://socket.io/blog/bun-engine/) and
+  [socketio/bun-engine](https://github.com/socketio/bun-engine): options and Hono/Elysia setup
+- [Bun: WebSockets](https://bun.com/docs/runtime/http/websockets): native topics and `publish`

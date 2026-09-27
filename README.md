@@ -74,7 +74,8 @@ Everything a sheet can contain is demonstrated on `/design/overview/` (`content/
 Markdown text styles, links and heading anchors, lists and task lists, blockquotes, the built-in `<Note>`
 component, highlighted code in any language, aligned tables, images, `<details>`, footnotes, horizontal rules, KaTeX math,
 and build-time JavaScript expressions (`export const meta = …` then `{meta.updated}`).
-Topics live in `lib/topics.ts`; add one there and create its `content/<slug>/` folder.
+Topics live in `lib/topics.ts`, in alphabetical order by name (a unit test enforces it); add one there and create
+its `content/<slug>/` folder.
 
 ## Home, projects, resume and blog
 
@@ -186,7 +187,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/blog/`                 | the latest post as an excerpt, then every post by year                   |
 | `/blog/<slug>/`          | one post                                                                 |
 | `/resume/`               | experience, projects, education, skills                                  |
-| `/docs/`                 | the twenty-one topics as cards (number, sheet count), recently added     |
+| `/docs/`                 | the twenty-two topics as cards (number, sheet count), recently added     |
 | `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug`             |
 | `/<topic>/`              | that topic's directories, each unfolded with its sheets, and loose sheets |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                             |

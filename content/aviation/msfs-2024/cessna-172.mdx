@@ -1,0 +1,375 @@
+---
+title: Cessna 172 Skyhawk (G1000)
+date: 2026-09-27
+order: 2
+---
+
+The glass-cockpit Cessna 172S in MSFS 2024: numbers, POH-order flows condensed for the sim, the G1000 NXi autopilot
+workflow and emergencies. The steam-gauge version of the same airplane is the
+[172 Classic](/aviation/msfs-2024/cessna-172-classic/). EFB, keys and assists are in
+[sim basics](/aviation/msfs-2024/sim-basics/), radio calls in [ATC comms](/aviation/atc-comms/fundamentals/).
+Numbers come from the Cessna 172S Nav III GFC 700 POH (172SPHBUS-00, 2007) and FAA TCDS 3A12. Flows are
+paraphrased from that POH.
+
+<Note kind="warning">For the simulator only. The checklists here are condensed paraphrases, not the Cessna 172S POH. Real
+aircraft: use the manufacturer's POH/AFM and approved checklists.</Note>
+
+## Profile
+
+| Item | Value | Source |
+| :--- | :--- | :--- |
+| model | Cessna 172S Skyhawk (SP), Nav III avionics | TCDS 3A12 section XII |
+| role | 4-seat trainer and tourer, fixed gear, fixed-pitch prop | POH |
+| engine | Lycoming IO-360-L2A, fuel injected, 180 hp at 2,700 RPM | TCDS, POH, Textron |
+| seats | 4 | TCDS, Textron |
+| max takeoff / landing weight | 2,550 lb (ramp 2,558 lb); utility category 2,200 lb | TCDS, POH, Textron |
+| useful load | 895 lb (POH 2007) / 878 lb (Textron today)[^load] | POH, Textron |
+| fuel | 56 gal total, **53 gal usable**, two 28-gal wing tanks, 100LL | TCDS, POH, Textron |
+| oil | 8 qt | TCDS, POH |
+| typical burn | about 9 gal/h (8,000 ft, 2,600 RPM, 68% power, leaned: 9.4 gal/h) | POH fig. 5-8 |
+| cruise | 124 KTAS at 75% power, 8,500 ft (speed fairings on; 2 kt less without) | POH, Textron |
+| ceiling | 14,000 ft service ceiling | POH, Textron |
+| climb | 730 fpm at sea level | POH, Textron |
+| range, 45 min reserve | 518 NM at 75% power, 8,500 ft; 638 NM at 45%, 10,000 ft (Textron: 640 NM) | POH, Textron |
+| takeoff / landing | 960 ft ground roll, 1,630 ft over 50 ft / 575 ft roll, 1,335 ft over 50 ft | POH, Textron |
+| crosswind | 15 kt maximum demonstrated (not a limit) | POH |
+| MSFS edition | Standard; built by Asobo | edition lists |
+| avionics | Garmin G1000 NXi (Working Title), GFC 700 autopilot | Textron, MSFS avionics docs |
+
+## Speeds
+
+KIAS (indicated airspeed, knots) at 2,550 lb unless noted. POH figure 2-1, section 3 and section 4.
+
+| Speed | KIAS | What it means |
+| :--- | :--- | :--- |
+| Vs0 | 40 | stall, flaps full, max weight (bottom of the white arc)[^stall] |
+| Vs1 | 48 | stall, flaps up, forward CG (bottom of the green arc)[^stall] |
+| Vr | 55 | rotate: lift the nosewheel |
+| Vx | 62 (67 at 10,000 ft) | best angle of climb: most height per distance |
+| Vy | 74 (72 at 10,000 ft) | best rate of climb: most height per minute |
+| normal climb | 75–85 (70–80 at 10,000 ft) | cooler engine, better view than Vy |
+| short-field takeoff | 56 at 50 ft | flaps 10°, until obstacles clear |
+| best glide | 68 | engine out, max distance |
+| engine failure after takeoff | 70 flaps up / 65 flaps 10°–full | also the power-off landing speeds |
+| Va (maneuvering) | 105 / 98 / 90 at 2,550 / 2,200 / 1,900 lb | full or abrupt control inputs only below this; also turbulence speed |
+| Vfe (flaps extended) | 110 flaps 10°; 85 flaps 10°–full[^vfe] | top of the white arc is 85 |
+| Vno | 129 | max structural cruise: yellow arc above, smooth air only |
+| Vne | 163 | never exceed (red line) |
+| approach | 65–75 flaps up; 60–70 flaps full | normal landing |
+| short-field approach | 61 | flaps full, until the flare |
+| balked landing (go-around) | 60 | full power, flaps 20° |
+
+Sim vs real: we found no published stall or V-speed figures for the sim model, so none of these can be checked
+against an official sim number. Fly the POH numbers and use the recipe below to see what your build does.
+
+## Cockpit & avionics
+
+| Where | What |
+| :--- | :--- |
+| left display | **PFD**: attitude, airspeed and altitude tapes, HSI, COM/NAV frequencies, AP mode annunciations along the top |
+| right display | **MFD**: moving map, flight plan pages, and the engine strip on the left (RPM, fuel flow, oil, EGT, fuel, volts, amps) |
+| between the displays | audio panel: COM1/COM2 mic select, NAV audio, marker beacons |
+| display bezels | autopilot keys (AP, FD, HDG, ALT, NAV, VNV, APR, BC, VS, FLC, NOSE UP/DN) on the left side of each display |
+| lower left panel | MASTER (ALT and BAT halves), STBY BATT, AVIONICS (BUS 1, BUS 2), FUEL PUMP, lights, MAGNETOS key |
+| center pedestal | throttle (black), mixture (red), flap lever, elevator trim wheel, fuel selector (LEFT/BOTH/RIGHT) and fuel shutoff knob on the floor |
+| standby instruments | airspeed, attitude and altimeter gauges, plus the magnetic compass |
+
+| G1000 control | Use |
+| :--- | :--- |
+| HDG knob | set the heading bug; push to sync it to the current heading |
+| ALT knob | set the altitude preselect (ALT SEL) |
+| CRS/BARO knob | outer ring sets the altimeter, inner sets the course; push to center the CDI on the station |
+| COM / NAV knobs | tune standby; the flip-flop key swaps active and standby |
+| FMS knob | outer ring picks the page group, inner ring the page; push for a cursor |
+| D→, FPL, PROC, MENU, CLR, ENT | direct-to, flight plan, procedures, page menu, clear, enter |
+| PFD softkeys | CDI (GPS/NAV1/NAV2 source), OBS, XPDR, IDENT, TMR/REF, NRST, PFD options |
+| MFD page groups | MAP, WPT (waypoint info), AUX (setup, GPS status), NRST |
+
+## Normal procedures
+
+Condensed from the POH order. The sim models most but not every item, so skip what it doesn't show.
+
+### Preflight
+
+| Item | Action / value |
+| :--- | :--- |
+| weight and balance | EFB: at or below 2,550 lb, CG in limits |
+| fuel | enough for the trip + 45 min (53 gal usable, about 9 gal/h) |
+| walkaround | remove pitot cover, chocks, tie-downs and covers the variant shows |
+| ATIS and plan | frequencies noted, route in the EFB |
+
+### Before start
+
+| Item | Action / value |
+| :--- | :--- |
+| seats, belts | adjusted, locked |
+| brakes | test and set parking brake |
+| circuit breakers | in |
+| electrical equipment | off |
+| AVIONICS BUS 1 and 2 | **off** for engine start |
+| fuel selector | BOTH |
+| fuel shutoff | on (pushed in) |
+
+### Engine start
+
+| Item | Action / value |
+| :--- | :--- |
+| throttle | open ¼ inch |
+| mixture | idle cutoff |
+| STBY BATT | test (green lamp stays on 20 s), then ARM: PFD comes on |
+| engine page | no red X, essential bus at least 24 V |
+| prop area | clear |
+| MASTER (ALT and BAT) | on |
+| beacon | on |
+| prime (cold engine only) | fuel pump on, mixture full rich 3–5 s until fuel flow shows, mixture cutoff, pump off |
+| MAGNETOS | START; release when it fires |
+| mixture | smoothly to rich |
+| oil pressure | green within 30–60 s |
+| amps, LOW VOLTS | charging (+); annunciator out |
+| nav lights, AVIONICS 1 and 2 | on |
+
+### Before taxi / taxi
+
+| Item | Action / value |
+| :--- | :--- |
+| ATIS, altimeter | BARO set, compare field elevation |
+| COM/NAV | ground and tower tuned |
+| flight plan | loaded and checked (FPL page) |
+| transponder | code set |
+| flaps | up |
+| taxi light, brakes | on; test brakes as you roll |
+| instruments in turns | heading and HSI move correctly, ball and turn indicator swing |
+| mixture | leaned on the ground at high field elevations (common practice) |
+
+### Run-up
+
+| Item | Action / value |
+| :--- | :--- |
+| parking brake | set |
+| doors, windows, belts | closed, secure |
+| flight controls | free and correct |
+| PFD, standby altimeter | no red X; both altimeters set |
+| ALT SEL | first assigned altitude |
+| fuel | quantity checked, selector BOTH, mixture rich |
+| autopilot test | engage AP, overpower in pitch and roll, disconnect with the A/P TRIM DISC button (aural tone) |
+| flight director | off |
+| trim | takeoff mark |
+| 1,800 RPM | mag drop ≤ 150 RPM each, ≤ 50 RPM between; vacuum, engine and electrical in the green |
+| annunciators | none |
+| idle | check, then ≤ 1,000 RPM |
+| radios, CDI source | COM/NAV set, CDI on GPS or NAV as needed |
+| flaps | 0°–10° (10° preferred) |
+| strobes | on |
+
+### Takeoff
+
+| Item | Action / value |
+| :--- | :--- |
+| flaps | 0°–10° |
+| power | full throttle; mixture rich (above 3,000 ft pressure altitude, lean for max RPM) |
+| rotate | 55 KIAS |
+| climb | 70–80 KIAS; flaps up at a safe height |
+| short field | flaps 10°, full power on the brakes, release, 56 KIAS to 50 ft, flaps up slowly above 60 |
+
+### Climb
+
+| Item | Action / value |
+| :--- | :--- |
+| airspeed | 75–85 KIAS cruise climb; Vy 74, Vx 62 |
+| power | full throttle |
+| mixture | rich; lean for max RPM above 3,000 ft |
+
+### Cruise
+
+| Item | Action / value |
+| :--- | :--- |
+| power | 2,100–2,700 RPM, no more than 75% |
+| trim | adjust |
+| mixture | lean (EGT or best power), or rely on auto-mixture if the assist is on |
+| FMS | review the route, next altitude, next frequency |
+| typical setting | 8,000 ft, 2,600 RPM: 68%, 119 KTAS, 9.4 gal/h (standard day) |
+
+### Descent
+
+| Item | Action / value |
+| :--- | :--- |
+| power | as needed; mixture richer as you descend |
+| altimeters | set destination BARO on PFD and standby |
+| ALT SEL | next assigned altitude |
+| CDI source | the navaid you'll fly |
+| fuel selector | BOTH |
+| flaps | 10° below 110 KIAS, more below 85 |
+
+### Approach
+
+| Item | Action / value |
+| :--- | :--- |
+| seats, belts | upright, secured |
+| fuel, mixture | BOTH, rich |
+| landing and taxi lights | on |
+| autopilot | off by the approach minimums (or before the pattern) |
+| speed | 65–75 KIAS flaps up, 60–70 KIAS flaps full on final |
+
+### Landing
+
+| Item | Action / value |
+| :--- | :--- |
+| final | 60–70 KIAS, flaps full, trimmed |
+| touchdown | main wheels first, lower the nose gently, brake as little as needed |
+| short field | 61 KIAS flaps full, idle as the obstacle clears, brake hard, flaps up |
+| go-around | full throttle, flaps to 20°, 60 KIAS; flaps 10° once clear, then up above 65 KIAS |
+
+### After landing
+
+| Item | Action / value |
+| :--- | :--- |
+| flaps | up |
+| lights, transponder | strobes and landing light off; transponder per ATC or standby (common practice) |
+| taxi | contact ground when told |
+
+### Shutdown
+
+| Item | Action / value |
+| :--- | :--- |
+| parking brake | set |
+| throttle | idle |
+| electrical equipment, AVIONICS | off |
+| mixture | idle cutoff |
+| MAGNETOS | off (key out) |
+| MASTER, STBY BATT | off |
+| fuel selector | LEFT or RIGHT (stops fuel crossfeeding between tanks) |
+| control lock, covers | installed |
+
+## Flying it in the sim
+
+| Step | Action |
+| :--- | :--- |
+| plan | EFB Flight Planner or SimBrief → **SEND TO AVIONICS** (see [sim basics](/aviation/msfs-2024/sim-basics/)) |
+| check | FPL key on the MFD: departure, waypoints, approach, no gaps |
+| nav source | CDI softkey: GPS for the flight plan, NAV1/NAV2 for VOR or ILS |
+| altitude | ALT knob to the cleared altitude before takeoff |
+| after takeoff | above about 1,000 ft AGL (above ground level), trimmed: HDG or NAV, then FLC or VS, then AP |
+| climb | FLC at 75–85 KIAS; the AP captures ALT SEL (it shows ALTS armed) |
+| cruise | ALT hold; lean; PFD shows the next waypoint and ETE (time to go) |
+| descent | set ALT SEL lower, then VS about −500 fpm, or VNV to follow published altitudes |
+
+| AP key | Mode | Notes |
+| :--- | :--- | :--- |
+| AP | engage/disengage | with nothing chosen it holds wings level (ROL) and current pitch (PIT) |
+| FD | flight director only | command bars without the servos |
+| HDG | follow the heading bug | turn the bug, the plane follows |
+| NAV | track the CDI source | GPS flight plan, VOR or localizer |
+| APR | approach | localizer + glideslope, or GPS lateral + vertical guidance |
+| ALT | hold current altitude | NOSE UP/DN nudge the target |
+| VS | hold vertical speed | NOSE UP/DN change the fpm |
+| FLC | hold airspeed with pitch | set power for the climb or descent you want; NOSE UP/DN change the target speed |
+| VNV | vertical navigation | descends to the flight plan's altitude constraints |
+| BC | back course | reverse-sensing localizer approaches |
+
+The POH warns that switching the CDI source while the AP is in NAV, APR or BC drops it to ROL (wings level) with no
+aural alert. Set the heading bug and CDI source before you re-engage.
+
+**Approach setup.** PROC → Select Approach → pick the approach and transition (or vectors) → LOAD, then ACTIVATE
+when cleared. For an ILS, check that the localizer frequency is in NAV1 and that the CDI shows LOC1 inside the final
+approach course. Arm with APR. Brief minimums with the ALT bug or the BARO minimums on the PFD (TMR/REF).
+
+## Emergencies
+
+Immediate-action items are **bold**. Paraphrased from POH section 3.
+
+| Situation | Flow |
+| :--- | :--- |
+| engine failure on the takeoff roll | **throttle idle, brakes, flaps up**; mixture cutoff, mags off, STBY BATT and MASTER off |
+| engine failure right after takeoff | **70 KIAS flaps up / 65 flaps down**, land straight ahead; mixture cutoff, fuel shutoff off, mags off, flaps as needed (full recommended), STBY BATT and MASTER off, door unlatched |
+| engine failure in flight | **68 KIAS**, pick a field; fuel shutoff on, selector BOTH, fuel pump on, mixture rich, mags BOTH (START if the prop stopped); fuel pump off once it runs (back on if fuel flow drops to zero) |
+| forced landing, no power | seats upright, belts; 70 flaps up / 65 flaps down; mixture, fuel shutoff and mags off; flaps full when the field is made; MASTER off when landing is sure; doors unlatched; touch down tail low, brake hard |
+| engine fire in flight | **mixture cutoff, fuel shutoff off, fuel pump off, MASTER off**, cabin heat and air off, 100 KIAS (faster if the fire keeps burning), forced landing |
+| electrical fire in flight | **STBY BATT and MASTER off**, vents and heat closed, extinguisher, AVIONICS and all switches but the mags off; open vents once it's out |
+| HIGH VOLTS, or battery charging over 40 A | MASTER ALT half off; shed load (AVIONICS BUS 1, pitot heat, lights, 12 V power); tune COM1/NAV1 first, then AVIONICS BUS 2 off (keep it on in cloud); land as soon as practical |
+| LOW VOLTS at cruise RPM | MASTER ALT off, ALT FIELD breaker in, MASTER back on; if it stays lit: ALT off, shed load as above, land as soon as practical. The standby battery powers the essential bus for at least 30 min. |
+| LOW VOLTS at idle | normal below 1,000 RPM; check it goes out at 1,000 RPM |
+
+**Memory items**: best glide 68 KIAS · failure after takeoff 70/65 · fire: mixture cutoff, fuel off, master off ·
+squawk 7700 (emergency code). Calls: [emergencies and lost comms](/aviation/atc-comms/emergencies-lost-comms/).
+
+## Sim quirks
+
+| Quirk | Status |
+| :--- | :--- |
+| G1000 NXi by Working Title follows the real unit closely; the Garmin Nav III guide applies to most pages | by design |
+| `Ctrl+E` auto-start left the fuel selector in the wrong position | fixed in SU2 |
+| walkaround at the start of Free Flight; an option to skip it | option added in SU6 |
+| auto-mixture assist leans for you and hides mixture mistakes | turn it off to fly the POH leaning |
+| aircraft spawns with flaps at 10° | (reported) |
+| heading bug jumps 10° at a time when the knob turns fast | (reported); turn slowly for 1° steps |
+| missing own-ship symbol on the MFD map | (reported) at launch |
+| no engine sound after start, now and then | (reported) |
+| standby battery test and bus voltages may not behave exactly like the POH | not verified |
+
+## Recipes
+
+### Cold and dark to takeoff
+The whole POH flow in one pass for a VFR departure.
+1. Parking brake set, breakers in, AVIONICS off, selector BOTH, fuel shutoff in.
+2. Throttle ¼ inch, mixture cutoff, STBY BATT test → ARM, MASTER on, beacon on.
+3. Cold engine: fuel pump on, mixture rich 3–5 s, cutoff, pump off.
+4. MAGNETOS START, mixture rich, oil pressure green, AVIONICS on, nav lights.
+5. ATIS, BARO, ground frequency, transponder code, flight plan. Taxi with a brake check.
+6. Run-up: controls, instruments, trim, 1,800 RPM mag check, idle check, flaps 10°, strobes, lights.
+7. Line up: full power, 55 KIAS rotate, 70–80 KIAS climb, flaps up at a safe height.
+
+### Pattern work
+Circuits at a towered or untowered field ([vfr-towered](/aviation/atc-comms/vfr-towered/),
+[vfr-untowered](/aviation/atc-comms/vfr-untowered/)). Power settings are typical, not from the POH.
+
+| Point | Configuration |
+| :--- | :--- |
+| crosswind turn | about 300 ft below pattern altitude, still climbing at 74–80 KIAS |
+| downwind | pattern altitude (often 1,000 ft AGL), about 2,200–2,400 RPM, 90–100 KIAS |
+| abeam the numbers | power back to about 1,500–1,700 RPM, flaps 10° below 110, 75–80 KIAS |
+| base | flaps 20°, 70 KIAS |
+| final | flaps full, 60–70 KIAS, aim at the numbers |
+| touch-and-go | flaps up (or 10°), carb heat not needed (fuel injected), full power, rotate 55 |
+
+### Quick IFR setup
+From the EFB to an engaged autopilot.
+1. EFB plan → **SEND TO AVIONICS AND ATC**. FPL page: check the SID, route and approach.
+2. PFD: BARO set, ALT SEL to the initial altitude, HDG bug on the runway heading, CDI GPS.
+3. Clearance from ATC ([ifr-departure](/aviation/atc-comms/ifr-departure/)), squawk set.
+4. After takeoff, above 1,000 ft AGL: HDG (or NAV), FLC 80 KIAS, AP.
+5. Enroute: NAV + ALT. Before descent: PROC → load the approach, ALT SEL lower, VS or VNV.
+
+### Check the sim against the POH
+To see whether your build matches the book.
+1. 4,000 ft AGL, standard weather, 2,550 lb, no assists.
+2. Power idle, flaps up, slow 1 kt per second: note the stall (POH green arc bottom: 48 KIAS).
+3. Repeat with flaps full (white arc bottom: 40 KIAS).
+4. Best glide at 68 KIAS: note the fpm and compare runs across sim updates.
+
+## References
+
+- Cessna 172S Nav III GFC 700 AFCS Information Manual, original issue 20 December 2007 (POH/AFM 172SPHBUS-00),
+  [copy hosted by Wayman Aviation](https://wayman.edu/files/C172S-G1000-POH.pdf): sections 2 to 5 for every
+  speed, flow and performance number
+- FAA Type Certificate Data Sheet 3A12, section XII Model 172S: read in Rev. 80; the current revision is
+  [Rev. 88 on FAA DRS](https://drs.faa.gov/browse/excelExternalWindow/DRSDOCID153801600120250627164731.0001).
+  Engine, airspeed limits, weights, fuel
+- [Textron Aviation: Cessna Skyhawk](https://cessna.txtav.com/en/piston/cessna-skyhawk): current specs and G1000 NXi
+- [Garmin G1000 NXi Cockpit Reference Guide, Cessna Nav III](https://static.garmin.com/pumac/190-02178-03_a.pdf):
+  softkeys, knobs, autopilot modes
+- [MSFS avionics docs: G1000 package](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/avionics/g1000/overview/):
+  the sim G1000 reproduces the G1000 NXi
+- [MSFS Sim Update 2 release notes](https://www.flightsimulator.com/msfs2024-sim-update-2/) and
+  [Sim Update 6 release notes](https://www.flightsimulator.com/release-notes-sim-update-6-1-8-14-0-now-available-msfs-2024/)
+- [MSFS forum: MSFS2024 Cessna 172 Skyhawk feedback](https://forums.flightsimulator.com/t/msfs2024-cessna-172-skyhawk/664560):
+  source of the "(reported)" quirks
+- [AC 90-66C: Non-towered airport flight operations](https://www.faa.gov/documentlibrary/media/advisory_circular/ac_90-66c.pdf):
+  pattern altitude and entry
+
+[^load]: The 2007 POH lists a 1,663 lb standard empty weight and a 895 lb max useful load. Textron's current
+    spec sheet says 878 lb, because today's G1000 NXi airplanes carry more standard equipment.
+[^stall]: POH section 1 lists stall speeds as 53 KCAS flaps up and 48 KCAS flaps full (calibrated airspeed). The
+    arcs on the airspeed indicator, 48 and 40, are the same stalls in KIAS. At low speed the 172's indicated
+    airspeed reads well below calibrated.
+[^vfe]: TCDS 3A12 lists one flap-extended speed, 85 KIAS. The POH adds 110 KIAS for flaps 10° only. Both come
+    from Cessna. Use 110 for flaps 10° and 85 for anything more.

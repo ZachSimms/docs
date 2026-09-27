@@ -1,0 +1,307 @@
+---
+title: VFR at untowered airports
+date: 2026-09-27
+order: 3
+---
+
+Calls at airports with no tower (or a closed one), from engine start to shutdown: CTAF self-announce, a call for
+every pattern leg, flight following after takeoff, VFR flight plans with Flight Service, flying into a towered
+field and part-time towers. The route is Lincoln (KLHM) to Auburn (KAUN), 13 NM apart near Sacramento. Word
+meanings are in [radio fundamentals](/aviation/atc-comms/fundamentals/); towered fields are in
+[VFR towered](/aviation/atc-comms/vfr-towered/).
+
+<Note kind="warning">
+A radio reference for the sim and for study. In a real aircraft the current charts, the Chart Supplement and the
+controller's actual words win over any example here. Frequencies below are from the September 2026 charts; read
+the current ones from your chart or EFB.
+</Note>
+
+## The example airports
+
+| | Lincoln (KLHM) | Auburn (KAUN) | Mather (KMHR), part-time tower |
+| :--- | :--- | :--- | :--- |
+| elevation | 121 ft | 1,538 ft | 98 ft |
+| CTAF | 123.0 (also UNICOM) | 122.7 (also UNICOM) | 120.65 when the tower is closed |
+| weather | AWOS-3 124.25 | AWOS-3 119.375 | ATIS / AWOS-3PT 118.325 |
+| runways | 15–33, left traffic both ways; 15 is the calm-wind runway | 07–25, left traffic (helicopters right for 07) | 04R–22L (right traffic 04R), 04L–22R (right traffic 22R) |
+| pattern altitude | none published: 1,000 ft AGL ≈ 1,100 MSL | none published for airplanes: ≈ 2,500 MSL | 1,098 ft MSL for pistons |
+| radar service | NorCal Approach 125.4 | NorCal Approach 125.4 | NorCal Approach 127.4; Mather Tower 120.65 and Ground 121.85, 0500–2100 local |
+| notes | parachute jumping on the field | no straight-out VFR departures on 25: track 230° and turn on course after 2,500 MSL | arriving north for 22R: expect a base leg 2 NM from the threshold |
+
+## CTAF, UNICOM and MULTICOM
+
+A CTAF (common traffic advisory frequency) is the one frequency everyone near an untowered airport uses to announce
+where they are. Nobody gives clearances: you coordinate with other pilots and see and avoid.
+
+| Station | What it is | Frequency | Call it |
+| :--- | :--- | :--- | :--- |
+| CTAF | shared self-announce frequency | on the sectional (C in a dark circle) and in the Chart Supplement | "Lincoln traffic" |
+| UNICOM | an FBO or airport radio, usually on the CTAF; may give wind and runway on request | 122.7, 122.725, 122.8, 122.975, 123.0, 123.05, 123.075 | "Lincoln UNICOM" |
+| MULTICOM | self-announce where there's no tower, FSS or UNICOM | 122.9 | "(airport) traffic" |
+| closed tower | the tower frequency becomes the CTAF | Chart Supplement | "Palo Alto traffic" |
+
+Self-announce format (AIM 4-1-9, AC 90-66C):
+
+```text
+"<Airport> traffic, <type and callsign>, <position>, <altitude if airborne>, <intentions>, <Airport>."
+"Lincoln traffic, Skyhawk one two three alpha bravo, one zero miles south, two thousand five hundred,
+ inbound landing, Lincoln."
+```
+
+| Rule | Why |
+| :--- | :--- |
+| airport name first **and** last | nearby airports share the frequency |
+| the airport's published name, not the town or county | "Midwest National traffic", not "Clay County traffic" (AC 90-66C) |
+| say the type ("Skyhawk") | others look for a shape; paint colors don't replace the callsign |
+| say "runway three three", never "the active" | the pilot on the other end may be using another runway |
+| never "any traffic in the area, please advise" | not a recognized call (AIM 4-1-9); traffic should announce itself |
+| don't announce a landing sequence ("number two") | only a tower assigns one (AC 90-66C) |
+| avoid "to" and "for" before numbers | "left downwind runway two five", not "downwind for two five" (they sound like 2 and 4) |
+| full callsign on every CTAF call | there's no controller to shorten it |
+| monitor from start-up until 10 NM out, and from 10 NM in | AIM 4-1-9 |
+
+Pilot-controlled lighting: key the mic on the CTAF 7 times within 5 s for the highest intensity, 5 for medium,
+3 for lowest (AIM 2-1-9). At Lincoln and Auburn the CTAF turns on the runway lights.
+
+## Departure
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| engine running, before taxi | KLHM AWOS-3 124.25 | nothing: listen | "Lincoln automated weather observation, one eight five five Zulu, wind three two zero at eight, visibility one zero, sky clear, … altimeter three zero zero one" | set the altimeter; pick the runway most aligned with the wind (33 here) |
+| optional, if someone staffs UNICOM | Lincoln UNICOM 123.0 | "Lincoln UNICOM, Skyhawk one two three alpha bravo, request wind and runway information, Lincoln" | "wind three one zero at eight, favoring runway three three"; or no answer | treat it as advice, not a clearance |
+| starting to taxi | Lincoln CTAF 123.0 | "Lincoln traffic, Skyhawk one two three alpha bravo, taxiing from the ramp to runway three three, Lincoln" | usually silence; or: another aircraft's position call | keep listening while you taxi and run up |
+| run-up done, holding short, before entering the runway | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, departing runway three three, departing the pattern straight out, climbing to three thousand five hundred, Lincoln" | or: "Lincoln traffic, Cherokee … three-mile final runway three three": wait for it to land | look at both finals, including the opposite runway, before you enter (AC 90-66C) |
+| climbing out, leaving the pattern | CTAF | optional: "Lincoln traffic, Skyhawk one two three alpha bravo, two miles east, departing the area eastbound, two thousand five hundred, Lincoln" | — | straight out or a 45° left turn after reaching pattern altitude (AIM 4-3-3); monitor until 10 NM |
+
+### If ATC (or traffic) says…
+
+- "Skyhawk on the ramp, say position": answer with your exact spot and runway.
+- Traffic reports final for the opposite runway (15): don't take the runway; talk: "Cherokee on final one five, Skyhawk holding short three three will wait for you, Lincoln."
+- Someone is back-taxiing on the runway: wait until they report clear; the FAA discourages back-taxi at untowered fields.
+- "Jumpers away over Lincoln": parachutists are coming down; hold on the ground or remain well clear of the drop zone until they're down.
+- Nothing at all: silence doesn't mean the pattern is empty (no-radio aircraft are legal); look.
+
+## Pattern calls
+
+AIM 4-1-9 recommends calls on downwind, base, final and when clear of the runway; crosswind and departure calls
+help when you stay in the pattern (AC 90-66C). Calls below are for staying in the pattern at Lincoln, runway 33.
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| before entering the runway | Lincoln CTAF 123.0 | "Lincoln traffic, Skyhawk one two three alpha bravo, departing runway three three, remaining in the pattern, Lincoln" | — | check both finals, then take off |
+| turning crosswind (past the runway end, within 300 ft of pattern altitude) | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, left crosswind runway three three, Lincoln" | — | optional but useful |
+| turning or abeam midfield on downwind | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, left downwind runway three three, touch-and-go, Lincoln" | another aircraft: "… left base runway three three": fit in behind it | say "full stop" or "touch-and-go" here |
+| turning base | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, left base runway three three, Lincoln" | someone on a long straight-in final: extend and follow, or talk to them | look for straight-in traffic before turning |
+| turning final | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, final runway three three, touch-and-go, Lincoln" | — | runway clear? if not, go around |
+| off the runway, past the hold line | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, clear of runway three three, Lincoln" | — | stop past the line, then taxi |
+| going around | CTAF | "Lincoln traffic, Skyhawk one two three alpha bravo, going around runway three three, Lincoln" | — | climb straight ahead, sidestep if traffic is below, rejoin crosswind |
+
+### If ATC (or traffic) says…
+
+- "Skyhawk on downwind, say position": give leg and distance: "left downwind abeam midfield runway three three."
+- "Cessna on base, I'm on a three-mile straight-in": look for them; if you can't see them, extend and say so: "Skyhawk will extend downwind, looking for the straight-in traffic."
+- Two aircraft call the same leg: the lower one has the right-of-way on final but mustn't cut in (14 CFR 91.113); talk it out on the CTAF.
+- A pilot uses the other runway (15 vs 33): announce your intentions early and agree on one runway.
+
+## Arriving: the 10 NM call and pattern entry
+
+Listen to the AWOS, then call about 10 NM out with position, altitude and intentions. Enter at pattern altitude:
+45° to midfield downwind is standard; crossing midfield to downwind is the alternate when the pattern isn't busy
+(AC 90-66C). Straight-in landings are discouraged and have no priority.
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| about 15–20 NM out | KAUN AWOS-3 119.375 | nothing | "Auburn automated weather observation … wind two five zero at seven … altimeter three zero zero zero" | set the altimeter; runway 25 |
+| about 10 NM out | Auburn CTAF 122.7 | "Auburn traffic, Skyhawk one two three alpha bravo, one zero miles west, three thousand five hundred, inbound landing, Auburn" | traffic position calls | build a picture of who's where |
+| crossing midfield (from the non-downwind side, at pattern altitude) | CTAF | "Auburn traffic, Skyhawk one two three alpha bravo, crossing midfield at pattern altitude, joining left downwind runway two five, Auburn" | — | only when the pattern is quiet |
+| 45° entry | CTAF | "Auburn traffic, Skyhawk one two three alpha bravo, entering left downwind runway two five on the forty-five, full stop, Auburn" | — | join abeam midfield, level at ≈ 2,500 MSL |
+| straight-in, 8–10 NM out | CTAF | "Auburn traffic, Skyhawk one two three alpha bravo, eight miles east, straight-in runway two five, full stop, Auburn" | — | give way to pattern traffic (AIM 4-1-9) |
+| overflying, not landing | CTAF | "Auburn traffic, Skyhawk one two three alpha bravo, five miles south, three thousand five hundred, overflying northbound, Auburn" | — | stay above pattern altitude, well clear |
+| down and clear | CTAF | "Auburn traffic, Skyhawk one two three alpha bravo, clear of runway two five, taxiing to parking, Auburn" | — | monitor CTAF until shutdown |
+
+### If ATC (or traffic) says…
+
+- NorCal on flight following: "Skyhawk three alpha bravo, radar service terminated, squawk VFR, change to advisory frequency approved": squawk 1200, go to the CTAF (7110.65 7-6-11).
+- "Traffic, a Bonanza, on a ten-mile straight-in runway two five": sequence yourself; call when you have it in sight.
+- The wind favors 07 but traffic is using 25: follow the flow or announce and coordinate before landing opposite direction.
+
+## Flight following after takeoff
+
+Untowered fields have no ground or tower to set it up, so call Approach once you're clear of the pattern
+(AIM 4-1-18). Stay on the CTAF until clear of the pattern first.
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| clear of the pattern, climbing | NorCal Approach 125.4 | "NorCal Approach, Skyhawk one two three alpha bravo, VFR request" | "Skyhawk one two three alpha bravo, NorCal Approach, go ahead"; or: "standby" | wait for "go ahead" |
+| after "go ahead" | NorCal | "Skyhawk one two three alpha bravo, a Cessna one seventy-two, four miles east of Lincoln, two thousand five hundred climbing to three thousand five hundred, request flight following to Mather" | "Skyhawk one two three alpha bravo, squawk four five three one"; then "radar contact five miles east of Lincoln, altimeter three zero zero one"; or: "unable, workload" | read back the squawk and altimeter |
+| near your untowered destination | NorCal | "Skyhawk three alpha bravo, airport in sight, request frequency change" | "radar service terminated, squawk VFR, change to advisory frequency approved" | squawk 1200; switch to the CTAF |
+
+### If ATC says…
+
+- "Say altitude": read your altimeter exactly; ATC is checking your Mode C.
+- "Unable flight following, radar contact lost": you're low under coverage; climb or try later.
+- "Traffic eleven o'clock, two miles, a Cirrus on a Lincoln departure": answer "looking" or "traffic in sight".
+
+## VFR flight plans with Flight Service
+
+A VFR flight plan is optional in the US and only starts search and rescue if you **activate** it; towers don't open or
+close it (AIM 5-1-5, 5-1-14). Flight Service (FSS) is run by Leidos: 1-800-WX-BRIEF, 1800wxbrief.com, or on the radio
+as "(FSS name) Radio", often on 122.2 or a charted RCO (remote communications outlet) frequency.
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| filing, before the flight | 1800wxbrief.com, an EFB, or the phone | file the plan with route, ETE, fuel, equipment | a confirmation; registered web users get EasyActivate and EasyClose links by email or text | tap the EasyActivate link at takeoff, or set an assumed departure time |
+| airborne, activating by radio | Rancho Radio (the Chart Supplement's FSS for these fields is Rancho Murieta) on 122.2 | "Rancho Radio, Skyhawk one two three alpha bravo, on one two two point two, over Lincoln" | "Skyhawk one two three alpha bravo, Rancho Radio, go ahead" | then: "Request to open my VFR flight plan, Lincoln to Auburn, off at one eight three five Zulu" |
+| en route change (later ETA, new destination) | FSS by radio or phone | "Rancho Radio, Skyhawk one two three alpha bravo, amend my ETA to Auburn to two zero one five Zulu" | "amended" | search starts from the times FSS holds |
+| on the ground at the destination | EasyClose link, phone or radio | "Close my VFR flight plan, Skyhawk one two three alpha bravo, Auburn" | "flight plan closed" | close within 30 min of ETA or search and rescue starts (AIM 5-1-14); Leidos sends a reminder at 20 min |
+
+### If ATC says…
+
+- "Say again your frequency and location": FSS transmits on many outlets; repeat the frequency you're on and the nearest town or VOR (AIM 4-2-3).
+- "Unable, no flight plan on file": give your departure airport and destination; they can file one on the spot.
+- No answer on 122.2: try the RCO frequency on the chart, or activate by phone before takeoff next time.
+
+## Into a towered airport from an untowered one
+
+Lincoln to Mather (KMHR, Class D while the tower is open): listen to the ATIS early, then call the tower before the
+Class D boundary. Two-way contact means the tower used your callsign (AIM 3-2-5).
+
+| When | Who / freq | You say | Expect from ATC | You read back / do |
+| :--- | :--- | :--- | :--- | :--- |
+| about 20 NM out | KMHR ATIS 118.325 | nothing | "Mather information Kilo … runway two two left and two two right in use …" | note the letter and runway |
+| about 15 NM out, outside the Class D | Mather Tower 120.65 | "Mather Tower, Skyhawk one two three alpha bravo, one two miles north, two thousand five hundred, with information Kilo, landing" | "Skyhawk one two three alpha bravo, Mather Tower, enter right downwind runway two two right, expect base leg two miles from the threshold, report midfield"; or: "Skyhawk one two three alpha bravo, standby" (you may enter); or: "remain outside Delta airspace and standby" | read back runway and entry; enter only after hearing your callsign |
+| on flight following already | NorCal 127.4 | nothing | "Skyhawk three alpha bravo, contact Mather Tower one two zero point six five" | switch and make the tower call above |
+| after landing | Tower, then Mather Ground 121.85 | "Mather Ground, Skyhawk one two three alpha bravo, clear of two two right at …, taxi to parking" | "taxi to parking via …" | read back any hold short |
+
+### If ATC says…
+
+- "Aircraft calling Mather Tower, standby": no callsign, no contact: stay outside the Class D.
+- "Say position": distance and direction from the airport, plus altitude.
+- The rest of the tower calls (sequence, go-around, landing) are in [VFR towered](/aviation/atc-comms/vfr-towered/).
+
+## Part-time towers
+
+When the tower closes, the airport works like an untowered one. The Chart Supplement "AIRSPACE" line says what the
+Class D becomes ("other times CLASS G" or "CLASS E"), which changes the VFR weather minimums (AIM 3-2-5).
+
+| | Tower open | Tower closed |
+| :--- | :--- | :--- |
+| Palo Alto (KPAO) | Class D 0700–2100 local; Palo Alto Tower 118.6 | Class G; CTAF 118.6 "Palo Alto traffic"; runway lights stay on |
+| Mather (KMHR) | Class D 0500–2100 local; Mather Tower 120.65 | Class G; CTAF 120.65; CTAF also turns on the lights |
+| Sacramento Executive (KSAC) | Class D 0600–2100 local; tower 119.5 | Class E; CTAF 119.5 |
+| weather | ATIS | the ATIS frequency may broadcast the AWOS/ASOS (AIM 4-3-27) |
+| calls | tower clearances; read back runway and hold-short | self-announce everything; nobody clears you |
+| IFR clearance | Clearance Delivery or Ground | by phone to Approach (see [IFR departure](/aviation/atc-comms/ifr-departure/)) |
+
+Check the hours in local time and daylight saving: ‡ in the Chart Supplement means one hour earlier in Zulu during
+daylight time.
+
+### If ATC says…
+
+- On the tower frequency after hours: silence is normal; self-announce with "traffic" instead of "tower".
+- A tower about to close may say so on the frequency: after that time, keep the same frequency and self-announce.
+
+## Recipes
+
+### Full script: Lincoln to Auburn, engine start to shutdown
+All self-announce, no ATC. Weather times and winds are made up.
+
+```text
+     (KLHM AWOS 124.25: "wind three two zero at eight … altimeter three zero zero one")
+     (CTAF 123.0)
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, taxiing from the ramp to runway three three, Lincoln.
+     (run-up; listen)
+OTH  Lincoln traffic, Cherokee four four golf, left base runway three three, full stop, Lincoln.
+     (wait for the Cherokee to land and clear)
+OTH  Lincoln traffic, Cherokee four four golf, clear of runway three three, Lincoln.
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, departing runway three three, departing the pattern
+     straight out, climbing to three thousand five hundred, Lincoln.
+     (clear of the pattern, turn right eastbound)
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, two miles east, departing the area eastbound,
+     two thousand, Lincoln.
+     (KAUN AWOS 119.375: "wind two five zero at seven … altimeter three zero zero zero")
+     (CTAF 122.7)
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, one zero miles west, three thousand five hundred,
+     inbound landing, Auburn.
+OTH  Auburn traffic, Bonanza six two tango, left downwind runway two five, full stop, Auburn.
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, crossing midfield at pattern altitude,
+     joining left downwind runway two five, Auburn.
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, left downwind runway two five, full stop,
+     Bonanza in sight, Auburn.
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, left base runway two five, Auburn.
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, final runway two five, full stop, Auburn.
+YOU  Auburn traffic, Skyhawk one two three alpha bravo, clear of runway two five, taxiing to parking, Auburn.
+     (monitor 122.7 until shutdown)
+```
+
+### Touch-and-go loop
+One lap at Lincoln, runway 33. Repeat downwind to final each lap; change "touch-and-go" to "full stop" on the last.
+
+```text
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, departing runway three three,
+     remaining in the pattern, Lincoln.
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, left crosswind runway three three, Lincoln.
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, left downwind runway three three,
+     touch-and-go, Lincoln.
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, left base runway three three, Lincoln.
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, final runway three three, touch-and-go, Lincoln.
+```
+
+### Flight following from an untowered field
+Leave the CTAF once clear of the pattern, then call Approach in two steps.
+
+```text
+YOU  NorCal Approach, Skyhawk one two three alpha bravo, VFR request.
+APP  Skyhawk one two three alpha bravo, NorCal Approach, go ahead.
+YOU  Skyhawk one two three alpha bravo, a Cessna one seventy-two, four miles east of Lincoln,
+     two thousand five hundred climbing to three thousand five hundred, request flight following to Mather.
+APP  Skyhawk one two three alpha bravo, squawk four five three one.
+YOU  Four five three one, Skyhawk one two three alpha bravo.
+APP  Skyhawk one two three alpha bravo, radar contact five miles east of Lincoln, altimeter three zero zero one.
+YOU  Three zero zero one, Skyhawk three alpha bravo.
+```
+
+### Opening a VFR flight plan by radio
+Call up first, then the request. Use the FSS name and frequency from the chart's communication box.
+
+```text
+YOU  Rancho Radio, Skyhawk one two three alpha bravo, on one two two point two, over Lincoln.
+FSS  Skyhawk one two three alpha bravo, Rancho Radio, go ahead.
+YOU  Skyhawk one two three alpha bravo, request to open my VFR flight plan, Lincoln to Auburn,
+     off at one eight three five Zulu.
+FSS  Skyhawk one two three alpha bravo, your flight plan is open.
+YOU  Skyhawk one two three alpha bravo, thank you.
+```
+
+### Lincoln to Mather: untowered to towered
+Self-announce out of Lincoln, ATIS, then the tower call before the Class D.
+
+```text
+     (calm wind: runway one five, the calm-wind runway, points at Mather)
+YOU  Lincoln traffic, Skyhawk one two three alpha bravo, departing runway one five, departing the pattern
+     straight out to the south, Lincoln.
+     (KMHR ATIS 118.325: "information Kilo, runways two two left and two two right in use")
+     (Mather Tower 120.65, about 12 NM north)
+YOU  Mather Tower, Skyhawk one two three alpha bravo, one two miles north, two thousand five hundred,
+     with information Kilo, landing.
+TWR  Skyhawk one two three alpha bravo, Mather Tower, enter right downwind runway two two right,
+     report midfield.
+YOU  Right downwind two two right, report midfield, Skyhawk one two three alpha bravo.
+```
+
+### Arriving when the tower has just closed
+Same frequency, different rules: self-announce and use the airport name.
+
+```text
+YOU  Mather traffic, Skyhawk one two three alpha bravo, one zero miles north, two thousand five hundred,
+     inbound landing runway two two left, Mather.
+```
+
+## References
+
+- [FAA Aeronautical Information Manual, Basic with Change 3 (July 9, 2026)](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/): 4-1-9 traffic advisory practices at airports without operating towers, 4-1-11 UNICOM/MULTICOM frequencies, 4-3-3 traffic patterns, 4-3-27 ASOS/AWOS, 3-2-5 Class D, 2-1-9 pilot-controlled lighting, 5-1 VFR flight plans
+- [FAA AC 90-66C, Non-Towered Airport Flight Operations](https://www.faa.gov/documentlibrary/media/advisory_circular/ac_90-66c.pdf): self-announce wording, pattern entries, straight-in rules, departure coordination
+- [FAA Order JO 7110.65BB, Air Traffic Control](https://www.faa.gov/air_traffic/publications/atpubs/atc_html/): 7-6-11 radar service termination and "change to advisory frequency approved"; 3-1-13 two-way communications for Class D
+- [FAA Chart Supplement, Southwest, September 3 to October 29, 2026](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/): KLHM, KAUN, KMHR, KSAC and KPAO frequencies, hours and remarks
+- [Leidos Flight Service, 1800wxbrief.com](https://www.1800wxbrief.com/Website/faqs): filing, EasyActivate, EasyClose and close reminders
+- [AirNav: KLHM](https://www.airnav.com/airport/KLHM), [KAUN](https://www.airnav.com/airport/KAUN), [KMHR](https://www.airnav.com/airport/KMHR): quick cross-check of frequencies and patterns
