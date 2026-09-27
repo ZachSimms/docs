@@ -162,6 +162,12 @@ describe("readDiagram", () => {
       "js-tab-entity",
       "js-quoted-gt",
       "handler-quoted-gt",
+      "comment-quote",
+      "html-breakout",
+      "style-attr",
+      "external-image",
+      "external-use",
+      "external-url",
       "foreign",
       "style",
     ]) {
@@ -170,6 +176,9 @@ describe("readDiagram", () => {
     expect(() => readDiagram("/images/diagrams/plain.svg", root)).toThrow(/not an SVG/);
     expect(() => readDiagram("/images/diagrams/stray-id.svg", root)).toThrow(
       /"stray-id-" prefix: g/,
+    );
+    expect(() => readDiagram("/images/diagrams/unquoted-id.svg", root)).toThrow(
+      /"unquoted-id-" prefix: main/,
     );
   });
 
