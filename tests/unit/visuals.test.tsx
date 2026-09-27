@@ -158,6 +158,10 @@ describe("readDiagram", () => {
       "handler-quote",
       "js-url",
       "js-entity",
+      "js-named-entity",
+      "js-tab-entity",
+      "js-quoted-gt",
+      "handler-quoted-gt",
       "foreign",
       "style",
     ]) {

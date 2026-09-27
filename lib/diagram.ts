@@ -21,11 +21,24 @@ export const DIAGRAM_DIR = "/images/diagrams/";
 /** Elements refused anywhere: code, embedded HTML, and page-wide styles. */
 const UNSAFE_ELEMENTS = /<\s*(?:script|foreignObject|style|iframe|embed|object)\b/i;
 
-/** Every tag (element with its attributes), where handlers and URLs live. */
-const TAG = /<[^>]*>/g;
+/**
+ * Every tag (element with its attributes), where handlers and URLs live. Quoted
+ * attribute values may contain `>`, so they are matched whole: a naive `<[^>]*>`
+ * would end the tag early and let `<a title=">" href="javascript:…">` through.
+ */
+const TAG = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g;
 
-/** Inside a tag: an event handler, a `javascript:` URL (whitespace-split too) or a character reference. */
-const UNSAFE_IN_TAG = [/[\s"'/]on[a-z]+\s*=/i, /j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i, /&#/];
+/**
+ * Inside a tag: an event handler, a `javascript:` URL (whitespace-split too), or
+ * a character reference other than the five XML ones. The HTML parser decodes
+ * named references in inlined SVG attributes too, so `javascript&colon;` or
+ * `java&Tab;script:` would hide a URL as well as `&#58;` does.
+ */
+const UNSAFE_IN_TAG = [
+  /[\s"'/]on[a-z]+\s*=/i,
+  /j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i,
+  /&(?!(?:amp|lt|gt|quot|apos);)/,
+];
 
 /** `id="…"` attributes, whose values must carry the file-name prefix. */
 const ID = /[\s"'/]id\s*=\s*["']([^"']*)["']/gi;
