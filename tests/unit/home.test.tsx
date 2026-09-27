@@ -1,4 +1,4 @@
-/** Unit tests for the home page's key menu, theme hint and activity grid, and zen mode. */
+/** Unit tests for the home page's key menu, theme hint and dither block, and zen mode. */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
@@ -10,8 +10,7 @@ mock.module("next/navigation", () => ({
 const { HomeKeys } = await import("@/components/HomeKeys");
 const { ZenToggle, setZen } = await import("@/components/ZenToggle");
 const { ThemeHint } = await import("@/components/ThemeHint");
-const { ActivityGrid } = await import("@/components/ActivityGrid");
-const { buildActivity } = await import("@/lib/activity");
+const { DitherBlock } = await import("@/components/DitherBlock");
 const { ZEN_ATTRIBUTE, ZEN_INIT_SCRIPT, ZEN_STORAGE_KEY } = await import("@/lib/theme");
 
 const notes = { p: "agents", r: "SAIC since Oct 2024", b: "no posts yet", g: "21 topics" };
@@ -63,40 +62,11 @@ describe("ThemeHint", () => {
   });
 });
 
-describe("ActivityGrid", () => {
-  it("summarizes the totals, draws one cell per day and describes each day", () => {
-    const activity = buildActivity({
-      today: "2026-09-26",
-      weeks: 2,
-      commits: ["2026-09-25"],
-      sheets: ["2026-09-25", "2026-09-25"],
-      posts: [],
-    });
-    const { container } = render(<ActivityGrid activity={activity} />);
-    expect(screen.getByRole("img")).toHaveAccessibleName(
-      "Last 2 weeks: 1 commit, 2 sheets, 0 posts",
-    );
-    expect(container.querySelectorAll(".activity-grid .activity-cell")).toHaveLength(14);
-    expect(container.querySelector('[title="2026-09-25: 1 commit, 2 sheets"]')).toHaveAttribute(
-      "data-level",
-      "3",
-    );
-    expect(container.querySelector('[title="2026-09-24: nothing"]')).toHaveAttribute(
-      "data-level",
-      "0",
-    );
-  });
-
-  it("leaves commits out of the summary when they are unknown", () => {
-    const activity = buildActivity({
-      today: "2026-09-26",
-      weeks: 1,
-      commits: null,
-      sheets: [],
-      posts: [],
-    });
-    render(<ActivityGrid activity={activity} />);
-    expect(screen.getByRole("img")).toHaveAccessibleName("Last 1 weeks: 0 sheets, 0 posts");
+describe("DitherBlock", () => {
+  it("renders a decorative canvas, even where canvas drawing is unavailable", () => {
+    const { container } = render(<DitherBlock />);
+    const canvas = container.querySelector("canvas.dither");
+    expect(canvas).toHaveAttribute("aria-hidden", "true");
   });
 });
 

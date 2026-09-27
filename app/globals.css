@@ -1040,82 +1040,13 @@ footer p {
   column-gap: 2ch;
 }
 
-/* Home: activity grid. Columns are weeks, rows are days (Sunday on top); each mark is drawn by
-   CSS from its level so it doesn't depend on the monospace font. Marks shrink with their
-   column on narrow screens. */
-.activity {
-  margin-bottom: calc(var(--lh) * 1.5);
-}
-
-.activity-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  column-gap: 2ch;
-  margin-bottom: 0.5em;
-}
-
-.activity-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75em;
-}
-
-.activity-legend .activity-cell {
-  width: 0.55em;
-}
-
-.activity-legend .activity-cell[data-level="3"] {
-  width: 0.8em;
-}
-
-.activity-grid,
-.activity-months {
-  display: grid;
-  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
-}
-
-.activity-grid {
-  grid-template-rows: repeat(7, 1.3em);
-  grid-auto-flow: column;
-  align-items: center;
-}
-
-.activity-cell {
+/* Home: the dither block (<DitherBlock>), drawn on a canvas in the text color. */
+.dither {
   display: block;
-  width: min(0.55em, 80%);
-  aspect-ratio: 1;
-}
-
-.activity-cell[data-level="0"] {
-  width: 2px;
-  margin-left: 0.2em;
-  border-radius: 50%;
-  background: var(--dim);
-}
-
-.activity-cell[data-level="1"] {
-  border: 1px solid currentColor;
-}
-
-.activity-cell[data-level="2"] {
-  background: currentColor;
-}
-
-.activity-cell[data-level="3"] {
-  width: min(0.8em, 100%);
-  background: currentColor;
-}
-
-.activity-months {
-  color: var(--dim);
-  margin-top: 0.25em;
-}
-
-.activity-months span {
-  grid-row: 1;
-  white-space: nowrap;
+  width: 100%;
+  height: calc(var(--lh) * 9);
+  margin-bottom: calc(var(--lh) * 1.5);
+  color: var(--fg);
 }
 
 /* Home: the sections, each with its key, link and a line about it. */

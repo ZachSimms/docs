@@ -1,5 +1,6 @@
 /** Playwright end-to-end tests against a production build served on port 3100. */
 import { expect, test, type Page } from "@playwright/test";
+import { PROFILE } from "../../lib/profile";
 import { SITE_TITLE } from "../../lib/site";
 
 /**
@@ -43,7 +44,7 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("is one column: name, introduction, activity, sections with their keys", async ({
+  test("is one column: name, introduction, a dither block, sections with their keys", async ({
     page,
   }) => {
     await page.goto("/");
@@ -51,14 +52,28 @@ test.describe("home", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Zach Simms");
     await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-weight", "400");
     await expect(page.locator("main > p").nth(0)).toHaveText("-");
-    await expect(page.locator("main > p").nth(1)).toContainText("Software Engineer at SAIC.");
+    await expect(page.locator("main > p").nth(1)).toHaveText(PROFILE.bio);
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    const grid = page.getByRole("img", { name: /^Last 44 weeks: / });
-    await expect(grid).toBeVisible();
-    expect(await grid.locator(".activity-cell").count()).toBeGreaterThan(43 * 7);
-    await expect(page.locator(".activity-months span").first()).toBeVisible();
+    // The dither block: a decorative canvas, drawn in the text color, denser at the bottom.
+    const dither = page.locator("canvas.dither");
+    await expect(dither).toBeVisible();
+    await expect(dither).toHaveAttribute("aria-hidden", "true");
+    const [top, bottom] = await dither.evaluate((canvas: HTMLCanvasElement) => {
+      const { data, width, height } = canvas
+        .getContext("2d")!
+        .getImageData(0, 0, canvas.width, canvas.height);
+      const lit = (from: number, to: number) => {
+        let count = 0;
+        for (let y = from; y < to; y++)
+          for (let x = 0; x < width; x++) if (data[(y * width + x) * 4 + 3]! > 0) count++;
+        return count;
+      };
+      return [lit(0, Math.floor(height / 3)), lit(Math.floor((2 * height) / 3), height)];
+    });
+    expect(bottom).toBeGreaterThan(top);
+    expect(bottom).toBeGreaterThan(0);
 
     const rows = page.locator(".home-keys p");
     await expect(rows.locator("kbd")).toHaveText(["p", "r", "b", "g"]);
