@@ -2074,6 +2074,68 @@ test.describe("split layout", () => {
 });
 
 test.describe("home keys and zen mode", () => {
+  test("zen mode widens the sheet to 88ch and loosens its lines, without overlap or overflow", async ({
+    page,
+  }) => {
+    /** Main's width in ch, its paragraph line-height in px, and the TOC's right edge. */
+    const measure = () =>
+      page.evaluate(() => {
+        const main = document.querySelector("main")!;
+        const probe = document.createElement("span");
+        probe.style.cssText = "position:absolute;width:1ch";
+        main.append(probe);
+        const ch = probe.getBoundingClientRect().width;
+        probe.remove();
+        const box = main.getBoundingClientRect();
+        const toc = document.querySelector(".toc-frame")?.getBoundingClientRect();
+        const root = document.documentElement;
+        return {
+          widthCh: box.width / ch,
+          left: box.left,
+          lineHeight: parseFloat(getComputedStyle(main.querySelector("p")!).lineHeight),
+          codeLineHeight: parseFloat(
+            getComputedStyle(main.querySelector("pre") ?? main).lineHeight,
+          ),
+          fontSize: parseFloat(getComputedStyle(main).fontSize),
+          tocRight: toc && toc.width > 0 ? toc.right : null,
+          overflow: root.scrollWidth - root.clientWidth,
+        };
+      });
+
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto("/typescript/realtime/chat-rooms/");
+    await hydrated(page);
+    const off = await measure();
+    expect(off.widthCh).toBeCloseTo(72, 0);
+    expect(off.lineHeight / off.fontSize).toBeCloseTo(1.5, 2);
+
+    await page.keyboard.press("z");
+    await expect(page.getByRole("button", { name: "zen" })).toHaveAttribute("aria-pressed", "true");
+    const on = await measure();
+    expect(on.widthCh).toBeCloseTo(88, 0);
+    expect(on.lineHeight / on.fontSize).toBeCloseTo(1.65, 2);
+    expect(on.codeLineHeight).toBeCloseTo(off.codeLineHeight, 1);
+    expect(on.tocRight).not.toBeNull();
+    expect(on.tocRight!).toBeLessThanOrEqual(on.left);
+
+    // Narrower windows: the column shrinks with the viewport; nothing overlaps or scrolls sideways.
+    for (const width of [900, 1024, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const m = await measure();
+      expect(m.overflow, `${width}px`).toBeLessThanOrEqual(0);
+      expect(m.widthCh, `${width}px`).toBeGreaterThanOrEqual(72);
+      if (m.tocRight !== null) expect(m.tocRight, `${width}px`).toBeLessThanOrEqual(m.left);
+    }
+
+    // Phones: zen is already full width, and lines stay at 1.5.
+    await page.setViewportSize({ width: 390, height: 800 });
+    const phone = await measure();
+    expect(phone.overflow).toBeLessThanOrEqual(0);
+    expect(phone.lineHeight / phone.fontSize).toBeCloseTo(1.5, 2);
+
+    await page.keyboard.press("z");
+  });
+
   test("p, r, b and g open the sections from the home page", async ({ page }) => {
     for (const [key, url] of [
       ["p", /\/projects\/$/],

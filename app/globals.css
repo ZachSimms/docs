@@ -1432,6 +1432,23 @@ html[data-zen] [data-zen-able] :is(.site-nav, .crumbs, footer) {
     grid-column: 2;
   }
 
+  /* Zen gives the sheet more room: the grid grows from 104ch to 120ch, so the content column
+     goes from 72ch to 88ch (the TOC keeps the navigation's 24ch slot), and the sheet's lines
+     loosen. A line-height in em is inherited as a computed length, so `main` sets it again. */
+  html[data-zen]:has([data-zen-able]) {
+    --shell: 120ch;
+  }
+
+  html[data-zen] [data-zen-able] main {
+    --lh: 1.65em;
+    line-height: var(--lh);
+  }
+
+  /* Code keeps its compact lines. */
+  html[data-zen] [data-zen-able] main pre {
+    line-height: 1.5em;
+  }
+
   html[data-zen] body:has([data-zen-able]) .toc-rail {
     display: grid;
   }

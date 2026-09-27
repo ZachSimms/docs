@@ -114,8 +114,9 @@ not kebab-case fails the build.
 - **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
   with MathML alongside for screen readers. No client JavaScript.
 - **Zen mode**: on a sheet or a post, `zen` beside `../` (or `z`) hides the navigation, breadcrumbs
-  and footer and puts the table of contents on the left, from 900px up. It is remembered in
-  `localStorage` and restored before first paint.
+  and footer and puts the table of contents on the left, from 900px up. From 900px up it also widens
+  the sheet from 72ch to 88ch and loosens prose to 1.65 line height (code stays at 1.5). It is
+  remembered in `localStorage` and restored before first paint.
 - **Sky** (home, beside the text): tonight's moon in the light theme, the sun in the dark theme
   (`d` switches), dithered in 3px cells with an 8×8 Bayer matrix and drawn on a canvas in the text
   color (`lib/sky.ts`, `lib/dither.ts`). The moon shows its real phase, worked out in the reader's
