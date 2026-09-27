@@ -77,6 +77,23 @@ function lower(doc: SearchDoc): Lowered {
 }
 
 /**
+ * Lowercased views per index array. Lowercasing every document is most of a
+ * search's cost, and the index never changes once loaded, so it is done once
+ * per array instead of on every keystroke.
+ */
+const loweredIndexes = new WeakMap<readonly SearchDoc[], readonly Lowered[]>();
+
+/** The lowercased view of `docs`, computed on first use. */
+function lowerAll(docs: readonly SearchDoc[]): readonly Lowered[] {
+  let lowered = loweredIndexes.get(docs);
+  if (!lowered) {
+    lowered = docs.map(lower);
+    loweredIndexes.set(docs, lowered);
+  }
+  return lowered;
+}
+
+/**
  * Score one token against one document: the sum of {@link WEIGHT}s for every
  * field that contains the token as a substring. `0` means no field matched.
  */
@@ -94,7 +111,8 @@ function scoreToken(entry: Lowered, token: string): number {
  *
  * A document matches only if every token matches at least one of its fields.
  * Results are ordered by score (descending), then title, then URL, so the order
- * is deterministic. Neither `docs` nor its elements are mutated.
+ * is deterministic. Neither `docs` nor its elements are mutated, and they must
+ * not be mutated by the caller either: their lowercased view is cached per array.
  *
  * @param docs - The full index.
  * @param query - Raw user input; blank input yields no results.
@@ -105,7 +123,7 @@ export function rankSearch(docs: readonly SearchDoc[], query: string, limit = 10
   const tokens = tokenize(query);
   if (tokens.length === 0) return [];
 
-  const hits = docs.map(lower).flatMap((entry) => {
+  const hits = lowerAll(docs).flatMap((entry) => {
     const scores = tokens.map((token) => scoreToken(entry, token));
     if (scores.some((s) => s === 0)) return [];
     return [{ doc: entry.doc, score: scores.reduce((a, b) => a + b, 0) }];

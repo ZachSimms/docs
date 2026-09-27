@@ -13,7 +13,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { BreakablePath } from "@/components/BreakablePath";
 import { DocsTab } from "@/components/playground/DocsTab";
 import { Splitter } from "@/components/playground/Splitter";
@@ -110,7 +110,10 @@ export function ReferencePanel({
   };
   useEffect(syncTheme);
 
-  const hits = docs && query.trim() ? rankSearch(docs, query, RESULT_LIMIT) : [];
+  const hits = useMemo(
+    () => (docs && query.trim() ? rankSearch(docs, query, RESULT_LIMIT) : []),
+    [docs, query],
+  );
   const items: { url: string; label: string }[] = (
     query.trim()
       ? hits.map((h) => ({ url: h.doc.url, label: docPath(h.doc) }))

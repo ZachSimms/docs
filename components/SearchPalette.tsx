@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { BreakablePath } from "@/components/BreakablePath";
 import { padNumber } from "@/lib/format";
 import { isTypingTarget } from "@/lib/keys";
@@ -138,8 +138,12 @@ export function SearchPalette() {
     };
   }, [open]);
 
-  const hits: SearchHit[] =
-    index.status === "ready" ? rankSearch(index.docs, query, RESULT_LIMIT) : [];
+  // Not re-ranked on renders that only move the selection (arrow keys, hover).
+  const docs = index.status === "ready" ? index.docs : null;
+  const hits: SearchHit[] = useMemo(
+    () => (docs ? rankSearch(docs, query, RESULT_LIMIT) : []),
+    [docs, query],
+  );
   const current = Math.min(selected, Math.max(hits.length - 1, 0));
 
   /** Arrow keys move the selection; Enter navigates to the selected hit. */
