@@ -8,8 +8,10 @@
  * demand so pages carry none of it until then) and fetches `/site-tree.json`; the
  * commands live in `lib/terminal/shell.ts` and reach the page through `makeHost`.
  *
- * `md` opens the Markdown pane (`SourcePane`) beside the page; it follows `cd` unless
- * pinned to a path, and closes with the terminal's other state saved.
+ * `md` splits the terminal itself (`SourcePane`, loaded on first use): the shell on the
+ * left, the page's Markdown or the page rendered on the right. It follows `cd` unless
+ * pinned to a path, and is saved with the rest of the session. The page behind the
+ * terminal never moves.
  *
  * The prompt follows the page being read (`usePathname`), so clicking a link, `Esc` or
  * the browser's back button moves it too. Output links are the site's own dotted links.
@@ -24,6 +26,8 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -32,16 +36,18 @@ import {
   type KeyboardEvent,
 } from "react";
 import { TERMINAL_KEY, isPlainKey } from "@/lib/keys";
-import type { OutputLine, Shell } from "@/lib/terminal/shell";
+import type { OutputLine, Shell, SourceMode } from "@/lib/terminal/shell";
 import type { Fs } from "@/lib/terminal/vfs";
 import { TERMINAL_PATH } from "@/lib/site";
 import { EMBED_ATTRIBUTE } from "@/lib/theme";
 import { DottedLink } from "./DottedLink";
-import { SourcePane } from "./SourcePane";
 import { OPEN_TERMINAL_EVENT, type OpenTerminalOptions } from "./TerminalLink";
 
 /** The terminal's runtime, loaded on first open. */
 type Runtime = typeof import("@/lib/terminal/host");
+
+/** The split, loaded the first time `md` opens it. */
+const SourcePane = lazy(() => import("./SourcePane").then((mod) => ({ default: mod.SourcePane })));
 
 /** `sessionStorage` key for the open state and scrollback. */
 export const SESSION_KEY = "terminal";
@@ -60,12 +66,19 @@ type Entry =
   | { readonly id: number; readonly out: OutputLine };
 
 /**
- * The Markdown pane: following the shell (the source of each page it `cd`s to), or
- * pinned to one page's source.
+ * The terminal's split (`md`): following the shell (each page it `cd`s to), or pinned to
+ * one page; showing its Markdown (`raw`) or the page rendered. `mode` is absent in
+ * sessions saved before it existed, which were raw.
  */
 type Pane =
-  | { readonly follow: true }
-  | { readonly follow: false; readonly path: string; readonly source: string };
+  | { readonly follow: true; readonly mode?: SourceMode }
+  | {
+      readonly follow: false;
+      readonly mode?: SourceMode;
+      readonly path: string;
+      readonly href?: string;
+      readonly source?: string;
+    };
 
 /** What survives a reload. */
 interface Session {
@@ -82,12 +95,15 @@ type FsState = { status: "idle" | "error" } | { status: "ready"; fs: Fs };
 /** Nothing stored: closed, docked, empty. */
 const EMPTY_SESSION: Session = { open: false, max: false, entries: [] };
 
-/** Whether stored JSON is a pane state. */
+/** Whether stored JSON is a split state. */
 function isPane(value: unknown): value is Pane {
   if (typeof value !== "object" || value === null) return false;
-  const { follow, path, source } = value as Record<string, unknown>;
+  const { follow, mode, path, href, source } = value as Record<string, unknown>;
+  const optional = (field: unknown) => field === undefined || typeof field === "string";
   return (
-    follow === true || (follow === false && typeof path === "string" && typeof source === "string")
+    (mode === undefined || mode === "raw" || mode === "rendered") &&
+    (follow === true ||
+      (follow === false && typeof path === "string" && optional(href) && optional(source)))
   );
 }
 
@@ -174,9 +190,10 @@ function useHydrated(): boolean {
   );
 }
 
-/** Where the shell is: the prompt's path, and the page's Markdown source if it has one. */
+/** Where the shell is: the prompt's path, the page's URL, and its Markdown source if any. */
 interface Place {
   readonly path: string;
+  readonly href?: string;
   readonly source?: string;
 }
 
@@ -193,7 +210,13 @@ class PlaceStore {
     return () => this.listeners.delete(listener);
   };
   set(place: Place): void {
-    if (place.path === this.place.path && place.source === this.place.source) return;
+    if (
+      place.path === this.place.path &&
+      place.href === this.place.href &&
+      place.source === this.place.source
+    ) {
+      return;
+    }
     this.place = place;
     this.listeners.forEach((listener) => listener());
   }
@@ -298,13 +321,21 @@ export function Terminal() {
           history,
           clear: () => setEntries([]),
           showSource: (view) =>
-            setPane(
-              view === null
-                ? null
-                : view.follow
-                  ? { follow: true }
-                  : { follow: false, path: pathOf(view.node), source: view.node.source ?? "" },
-            ),
+            setPane((current) => {
+              if (view === null) return null;
+              const mode = view.mode ?? current?.mode ?? "raw";
+              const { target } = view;
+              if (target === undefined)
+                return current ? { ...current, mode } : { follow: true, mode };
+              if (target === "follow") return { follow: true, mode };
+              return {
+                follow: false,
+                mode,
+                path: pathOf(target),
+                href: target.href,
+                ...(target.source ? { source: target.source } : {}),
+              };
+            }),
           close: () => setOpen(false),
           toggleMax: () => {
             const next = !maxRef.current;
@@ -314,8 +345,11 @@ export function Terminal() {
           },
         });
         const start = nodeForHref(fs, window.location.pathname) ?? fs.root;
-        const placeOf = (node: typeof start): Place =>
-          node.source ? { path: pathOf(node), source: node.source } : { path: pathOf(node) };
+        const placeOf = (node: typeof start): Place => ({
+          path: pathOf(node),
+          href: node.href,
+          ...(node.source ? { source: node.source } : {}),
+        });
         placeStore.set(placeOf(start));
         shellRef.current = new Shell(fs, host, start, (node) => placeStore.set(placeOf(node)));
         runtimeRef.current = runtime;
@@ -397,12 +431,6 @@ export function Terminal() {
       store(() => sessionStorage, SESSION_KEY, { open, max, entries, pane } satisfies Session);
   }, [open, max, entries, pane]);
 
-  // With the Markdown pane open, the page (docked) or the terminal (full screen) takes the left half.
-  useEffect(() => {
-    if (!open || !hydrated || !pane) return;
-    document.body.setAttribute("data-source", "");
-    return () => document.body.removeAttribute("data-source");
-  }, [open, hydrated, pane]);
   useEffect(() => {
     const screen = screenRef.current;
     if (screen) screen.scrollTop = screen.scrollHeight;
@@ -511,17 +539,16 @@ export function Terminal() {
 
   if (!hydrated || !open) return null;
 
+  const shown = pane && (pane.follow ? place : pane);
+
   return (
     <>
-      {pane && (
-        <SourcePane
-          url={pane.follow ? place.source : pane.source}
-          path={pane.follow ? place.path : pane.path}
-          follow={pane.follow}
-          onClose={() => setPane(null)}
-        />
-      )}
-      <section className="terminal" data-size={max ? "max" : "docked"} aria-label="Terminal">
+      <section
+        className="terminal"
+        data-size={max ? "max" : "docked"}
+        data-split={pane ? "" : undefined}
+        aria-label="Terminal"
+      >
         <div className="terminal-bar">
           <span className="t-dim">terminal · {path}</span>
           <span>
@@ -540,58 +567,78 @@ export function Terminal() {
             </button>
           </span>
         </div>
-        <div
-          ref={screenRef}
-          className="terminal-screen"
-          onClick={() => {
-            // A click that is not a selection puts the caret back in the prompt.
-            if (window.getSelection()?.isCollapsed ?? true) inputRef.current?.focus();
-          }}
-        >
-          <div id={LOG_ID} role="log" aria-live="polite" aria-label="Terminal output">
-            {entries.length === 0 && (
-              <div className="terminal-line t-dim">
-                The site as a shell. Try ls, cd docs, tree, grep &lt;words&gt; or help.
-              </div>
-            )}
-            {entries.map((entry) =>
-              "out" in entry ? (
-                <Output key={entry.id} line={entry.out} />
-              ) : (
-                <div key={entry.id} className="terminal-line">
-                  <Prompt path={entry.path} />
-                  {entry.command}
+        <div className="terminal-body">
+          <div
+            ref={screenRef}
+            className="terminal-screen"
+            onClick={() => {
+              // A click that is not a selection puts the caret back in the prompt.
+              if (window.getSelection()?.isCollapsed ?? true) inputRef.current?.focus();
+            }}
+          >
+            <div id={LOG_ID} role="log" aria-live="polite" aria-label="Terminal output">
+              {entries.length === 0 && (
+                <div className="terminal-line t-dim">
+                  The site as a shell. Try ls, cd docs, tree, grep &lt;words&gt; or help.
                 </div>
-              ),
-            )}
-            {(fsState.status === "idle" || busy) && (
-              <div className="terminal-line t-dim">{busy ? "…" : "loading…"}</div>
-            )}
-            {fsState.status === "error" && (
-              <div className="terminal-line t-error">site tree unavailable; esc and ` to retry</div>
-            )}
+              )}
+              {entries.map((entry) =>
+                "out" in entry ? (
+                  <Output key={entry.id} line={entry.out} />
+                ) : (
+                  <div key={entry.id} className="terminal-line">
+                    <Prompt path={entry.path} />
+                    {entry.command}
+                  </div>
+                ),
+              )}
+              {(fsState.status === "idle" || busy) && (
+                <div className="terminal-line t-dim">{busy ? "…" : "loading…"}</div>
+              )}
+              {fsState.status === "error" && (
+                <div className="terminal-line t-error">
+                  site tree unavailable; esc and ` to retry
+                </div>
+              )}
+            </div>
+            <label className="terminal-line terminal-input">
+              <Prompt path={path} />
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(event) => {
+                  setInput(event.target.value);
+                  recallRef.current = null;
+                }}
+                onKeyDown={onKeyDown}
+                aria-label="Command"
+                aria-describedby={LOG_ID}
+                aria-busy={busy}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+              />
+            </label>
           </div>
-          <label className="terminal-line terminal-input">
-            <Prompt path={path} />
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(event) => {
-                setInput(event.target.value);
-                recallRef.current = null;
-              }}
-              onKeyDown={onKeyDown}
-              aria-label="Command"
-              aria-describedby={LOG_ID}
-              aria-busy={busy}
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              enterKeyHint="go"
-            />
-          </label>
+          {pane && shown && (
+            <Suspense fallback={<div className="source-pane t-dim">loading…</div>}>
+              <SourcePane
+                mode={pane.mode ?? "raw"}
+                source={shown.source}
+                href={shown.href}
+                path={shown.path}
+                follow={pane.follow}
+                onMode={(mode) => setPane({ ...pane, mode })}
+                onClose={() => {
+                  setPane(null);
+                  inputRef.current?.focus();
+                }}
+              />
+            </Suspense>
+          )}
         </div>
       </section>
     </>

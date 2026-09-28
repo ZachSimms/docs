@@ -29,6 +29,7 @@ let treeStatus = 200;
 /** Resolves a held page fetch, to test type-ahead while a command runs. */
 let releasePage: (() => void) | null = null;
 
+const FASTAPI_HTML = `<html><body><main><h1 id="fastapi">FastAPI</h1><p>See <a href="/python/overview/">the overview</a>.</p><script>window.ran = true</script></main></body></html>`;
 const OVERVIEW_HTML = `<html><body><main><h1>Overview</h1><p>Hello there.</p><h2 id="lists">Lists</h2></main></body></html>`;
 
 beforeEach(() => {
@@ -55,6 +56,9 @@ beforeEach(() => {
       return new Response("---\ntitle: Overview\n---\n\n## Lists\n", {
         headers: { "content-type": "text/markdown" },
       });
+    }
+    if (url === "/python/fastapi/") {
+      return new Response(FASTAPI_HTML, { headers: { "content-type": "text/html" } });
     }
     if (url === "/python/overview/") {
       await new Promise<void>((resolve) => (releasePage = resolve));
@@ -291,61 +295,96 @@ describe("Terminal", () => {
     expect(screen.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
   });
 
-  it("md shows the Markdown beside the page, following cd unless pinned, and remembers it", async () => {
+  it("md splits the terminal, not the page: raw Markdown that follows cd unless pinned", async () => {
     const input = await openTerminal();
     await enter(input, "cd docs/python/overview");
     await enter(input, "md");
-    const pane = await screen.findByRole("complementary", { name: "Markdown source" });
-    expect(pane).toHaveTextContent("md · ~/docs/python/overview · follows cd");
-    await waitFor(() => expect(pane.querySelector(".src-heading")).toHaveTextContent("## Lists"));
-    expect(pane.querySelectorAll(".src-meta")).toHaveLength(3);
-    expect(within(pane).getByRole("link", { name: "raw" })).toHaveAttribute(
+    const terminal = screen.getByRole("region", { name: "Terminal" });
+    const split = await within(terminal).findByRole("region", { name: "Markdown split" });
+    expect(terminal).toHaveAttribute("data-split");
+    expect(split).toHaveTextContent("~/docs/python/overview · follows cd");
+    await waitFor(() => expect(split.querySelector(".src-heading")).toHaveTextContent("## Lists"));
+    expect(split.querySelectorAll(".src-meta")).toHaveLength(3);
+    expect(within(split).getByRole("button", { name: "raw" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(split).getByRole("link", { name: "Markdown file" })).toHaveAttribute(
       "href",
       "/source/python/overview.md",
     );
-    expect(document.body).toHaveAttribute("data-source");
+    // Nothing outside the terminal changes.
+    expect(document.body).not.toHaveAttribute("data-source");
     const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "{}");
-    expect(saved.pane).toEqual({ follow: true });
+    expect(saved.pane).toEqual({ follow: true, mode: "raw" });
 
     // Following: a page without Markdown says so.
     await enter(input, "cd ~");
-    expect(pane).toHaveTextContent("No Markdown here");
+    expect(split).toHaveTextContent("No Markdown here");
 
     // Pinned: it stays on its page as the shell moves.
-    await enter(input, "md docs/python/overview");
+    await enter(input, "md ~/docs/python/overview");
     await enter(input, "cd docs");
-    expect(pane).toHaveTextContent("md · ~/docs/python/overview");
-    expect(pane).not.toHaveTextContent("follows cd");
+    expect(split).toHaveTextContent("~/docs/python/overview");
+    expect(split).not.toHaveTextContent("follows cd");
 
     await enter(input, "md -c");
-    expect(screen.queryByRole("complementary", { name: "Markdown source" })).toBeNull();
-    expect(document.body).not.toHaveAttribute("data-source");
+    expect(screen.queryByRole("region", { name: "Markdown split" })).toBeNull();
+    expect(terminal).not.toHaveAttribute("data-split");
     await enter(input, "md ~/docs/python/overview");
-    fireEvent.click(await screen.findByRole("button", { name: "Close the Markdown pane" }));
-    expect(screen.queryByRole("complementary", { name: "Markdown source" })).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Close the split" }));
+    expect(screen.queryByRole("region", { name: "Markdown split" })).toBeNull();
+    expect(input).toHaveFocus();
   });
 
-  it("the pane says when a source cannot load", async () => {
+  it("md --rendered shows the page as rendered, without scripts or ids, links navigating", async () => {
     const input = await openTerminal();
-    const tree = buildFs(TREE);
-    expect(tree.byHref.get("/python/fastapi/")?.source).toBeUndefined();
-    await enter(input, "cd docs/python/overview && md");
-    const pane = await screen.findByRole("complementary", { name: "Markdown source" });
-    await waitFor(() => expect(pane).toHaveTextContent("## Lists"));
-    // A pinned source that fails (a stale session, a missing file).
-    fireEvent.click(within(pane).getByRole("button", { name: "Close the Markdown pane" }));
+    await enter(input, "cd docs/python/fastapi");
+    await enter(input, "md --rendered");
+    const split = await screen.findByRole("region", { name: "Markdown split" });
+    const rendered = await waitFor(() => {
+      const el = split.querySelector(".source-rendered");
+      if (!el) throw new Error("not rendered yet");
+      return el;
+    });
+    expect(rendered.querySelector("h1")).toHaveTextContent("FastAPI");
+    expect(rendered.querySelector("h1")).not.toHaveAttribute("id");
+    expect(rendered.querySelector("script")).toBeNull();
+    expect(within(split).getByRole("button", { name: "rendered" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // No Markdown for this page, so no link to a file.
+    expect(within(split).queryByRole("link", { name: "Markdown file" })).toBeNull();
+
+    fireEvent.click(within(rendered as HTMLElement).getByRole("link", { name: "the overview" }));
+    expect(calls).toContain("push /python/overview/");
+
+    // The toggle switches modes; raw has nothing to show for this page.
+    fireEvent.click(within(split).getByRole("button", { name: "raw" }));
+    expect(split).toHaveTextContent("No Markdown here");
+    await enter(input, "md -R");
+    await waitFor(() => expect(split.querySelector(".source-rendered")).not.toBeNull());
+    expect(JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "{}").pane).toEqual({
+      follow: true,
+      mode: "rendered",
+    });
+  });
+
+  it("the split says when a page cannot load", async () => {
     sessionStorage.setItem(
       SESSION_KEY,
       JSON.stringify({
         open: true,
         max: false,
         entries: [],
-        pane: { follow: false, path: "~/x", source: "/source/x.md" },
+        pane: { follow: false, mode: "raw", path: "~/x", source: "/source/x.md", href: "/x/" },
       }),
     );
-    document.body.innerHTML = "";
     render(<Terminal />);
     expect(await screen.findByText("could not load /source/x.md")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "rendered" }));
+    expect(await screen.findByText("could not load /x/")).toBeInTheDocument();
   });
 });
 

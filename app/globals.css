@@ -1961,38 +1961,38 @@ html[data-embed] .terminal {
   display: none;
 }
 
-/* Markdown pane (components/SourcePane.tsx, the terminal's `md`): the page's MDX source in the right
-   half of the window, above the docked terminal. The page reflows into the left half; a full-screen
-   terminal moves over to it. */
+/* The terminal's split (components/SourcePane.tsx, `md`): the shell on the left, the page's Markdown
+   or the page rendered on the right, both inside the terminal. The page behind never moves. */
+.terminal-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.terminal-body > .terminal-screen {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .source-pane {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  width: 50vw;
-  background: var(--bg);
-  color: var(--fg);
+  min-width: 0;
   border-left: 1px dotted var(--fg);
 }
 
-body[data-terminal="docked"] .source-pane {
-  bottom: 42vh;
+.source-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  padding: 0 2ch;
+  white-space: nowrap;
 }
 
-body[data-source][data-terminal="docked"] {
-  padding-right: 50vw;
-}
-
-body[data-source] .terminal[data-size="max"] {
-  right: 50vw;
-}
-
-.source-pane .terminal-bar {
-  padding-left: 2ch;
-  padding-right: 2ch;
+.source-bar > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .source-body {
@@ -2041,25 +2041,25 @@ body[data-source] .terminal[data-size="max"] {
   color: var(--graph-3);
 }
 
+/* The rendered page keeps the site's own styles; images fit the half they are in, as in `main`. */
+.source-rendered img {
+  max-width: 100%;
+  height: auto;
+}
+
 @media (max-width: 600px) {
-  /* Phones: the pane covers the screen, over the terminal; `close` goes back to it. */
-  body[data-terminal] .source-pane {
-    inset: 0;
-    z-index: 10;
-    width: auto;
+  /* Phones: the split stacks, the page above and the shell (and its keyboard) below. */
+  .terminal-body {
+    flex-direction: column-reverse;
+  }
+
+  .source-pane {
     border-left: 0;
+    border-bottom: 1px dotted var(--fg);
   }
 
-  body[data-source][data-terminal] {
-    padding-right: 0;
-  }
-
-  body[data-source] .terminal[data-size] {
-    right: 0;
-  }
-
-  .source-pane .terminal-bar {
-    padding: 1em 1em 0.5em;
+  .source-bar {
+    padding: 0 1em;
   }
 
   .source-body {

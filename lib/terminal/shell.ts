@@ -50,12 +50,19 @@ interface Target {
 /** Where `scroll` moves the page. */
 export type ScrollTo = "top" | "bottom" | "up" | "down";
 
+/** How the terminal's split shows a page: its Markdown source, or the page as rendered. */
+export type SourceMode = "raw" | "rendered";
+
 /**
- * What the Markdown pane shows: the source of whatever page the shell is on (`follow`,
- * so it changes with every `cd`), or one page's, pinned.
+ * What `md` asks of the terminal's split. `target` is the page to show: `"follow"` for
+ * whatever page the shell is on (it changes with every `cd`), a node to pin one, or
+ * absent to keep the current one (a split that is closed opens following). `mode`
+ * absent keeps the current mode.
  */
-export type SourceView =
-  { readonly follow: true } | { readonly follow: false; readonly node: FsNode };
+export interface SourceView {
+  readonly target?: "follow" | FsNode;
+  readonly mode?: SourceMode;
+}
 
 /** A result of the full-text search that `grep` prints. */
 export interface SearchResult {
@@ -89,7 +96,7 @@ export interface Host {
   search(query: string): Promise<SearchResult[]>;
   /** Open the ⌘K palette. */
   openSearch(): void;
-  /** Show a page's Markdown source in the pane beside the page, or close it (`null`). */
+  /** Show a page in the terminal's split (raw Markdown or rendered), or close it (`null`). */
   showSource(view: SourceView | null): void;
   /** Commands entered so far, oldest first. */
   history(): readonly string[];
@@ -120,6 +127,12 @@ const FIND_LIMIT = 40;
 const GREP_LIMIT = 20;
 /** How deep `tree` goes without `-L`. */
 const TREE_DEPTH = 2;
+/** `md`'s long options, as their short letters. */
+const MD_FLAGS: Readonly<Record<string, string>> = {
+  "--raw": "r",
+  "--rendered": "R",
+  "--close": "c",
+};
 /** Widest name column in a listing, so a long slug cannot push titles off screen. */
 const NAME_COLUMN = 30;
 
@@ -201,16 +214,22 @@ export function tokenize(input: string): Token[] {
   return tokens;
 }
 
-/** Split `args` into flags (`-l`, `-L 3`) and the rest. */
+/**
+ * Split `args` into flags (`-l`, `-L 3`, and long forms such as `--raw` mapped to their
+ * short letter by `long`) and the rest.
+ */
 function parseFlags(
   args: readonly string[],
   withValue: readonly string[] = [],
+  long: Readonly<Record<string, string>> = {},
 ): { flags: Map<string, string>; rest: string[] } {
   const flags = new Map<string, string>();
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (/^-[a-zA-Z]+$/.test(arg)) {
+    const short = Object.prototype.hasOwnProperty.call(long, arg) ? long[arg] : undefined;
+    if (short !== undefined) flags.set(short, "");
+    else if (/^-[a-zA-Z]+$/.test(arg)) {
       for (const flag of arg.slice(1)) {
         flags.set(flag, withValue.includes(flag) ? (args[++i] ?? "") : "");
       }
@@ -658,32 +677,42 @@ export class Shell {
         },
       },
       md: {
-        usage: "md [-c] [path]",
+        usage: "md [--raw | --rendered] [-c] [path]",
         summary:
-          "the page's Markdown in a pane beside it, following each cd (a path pins one; -c closes)",
+          "split the terminal: the page's Markdown (--raw, -r) or the page rendered (--rendered, -R); follows cd unless given a path; -c closes",
         run: (args) => {
-          const { flags, rest } = parseFlags(args);
+          const { flags, rest } = parseFlags(args, [], MD_FLAGS);
+          const unknown = [...flags.keys()].find((flag) => !"rRc".includes(flag));
+          const stray = rest.find((arg) => arg.startsWith("-"));
+          if (unknown !== undefined || stray !== undefined) {
+            return fail(`md: unknown option ${stray ?? `-${unknown}`} (--raw, --rendered, -c)`);
+          }
+          if (flags.has("r") && flags.has("R")) return fail("md: --raw or --rendered, not both");
           if (flags.has("c")) {
             host.showSource(null);
             return ok();
           }
+          const mode: SourceMode | undefined = flags.has("r")
+            ? "raw"
+            : flags.has("R")
+              ? "rendered"
+              : undefined;
           if (rest[0] === undefined) {
-            host.showSource({ follow: true });
-            return this.cwdNode.source
-              ? ok()
-              : ok([
-                  line(
-                    `md: ${pathOf(this.cwdNode)} has no Markdown; the pane shows each sheet you cd to`,
-                    "dim",
-                  ),
-                ]);
+            // A mode alone switches the split's mode; plain `md` follows the shell.
+            host.showSource(mode ? { mode } : { target: "follow" });
+            return ok();
           }
           const node = this.resolve(rest[0]);
           if (!node) return fail(`md: no such page: ${rest[0]}`);
-          if (!node.source) {
-            return fail(`md: ${pathOf(node)} has no Markdown (sheets, directories and posts do)`);
+          if (isExternal(node.href) || node.kind === "link") {
+            return fail(`md: ${pathOf(node)} is a link, not a page of this site`);
           }
-          host.showSource({ follow: false, node });
+          if (mode !== "rendered" && !node.source) {
+            return fail(
+              `md: ${pathOf(node)} has no Markdown (sheets, directories and posts do); md --rendered ${rest[0]} shows it rendered`,
+            );
+          }
+          host.showSource({ target: node, ...(mode ? { mode } : {}) });
           return ok();
         },
       },

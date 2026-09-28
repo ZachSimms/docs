@@ -374,27 +374,41 @@ test.describe("terminal", () => {
     await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
   });
 
-  test("md shows a sheet's Markdown beside it, follows cd, and serves the raw file", async ({
+  test("md splits the terminal, raw or rendered, follows cd, and serves the raw file", async ({
     page,
   }) => {
     await page.goto("/python/overview/");
     await hydrated(page);
+    const before = (await page.locator("main").boundingBox())!;
     await page.keyboard.press("`");
     await run(page, "md");
-    const pane = page.getByRole("complementary", { name: "Markdown source" });
-    await expect(pane).toContainText("md · ~/docs/python/overview · follows cd");
-    await expect(pane.locator(".src-line").first()).toHaveText("1---");
-    await expect(pane.locator(".src-heading").first()).toContainText("## ");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    const split = terminal.getByRole("region", { name: "Markdown split" });
+    await expect(split).toContainText("~/docs/python/overview · follows cd");
+    await expect(split.locator(".src-line").first()).toHaveText("1---");
+    await expect(split.locator(".src-heading").first()).toContainText("## ");
 
-    // Docked: the page and the pane share the width above the terminal.
-    const paneBox = (await pane.boundingBox())!;
-    const main = (await page.locator("main").boundingBox())!;
-    expect(main.x + main.width).toBeLessThanOrEqual(paneBox.x + 1);
+    // The split is inside the terminal: the shell on the left, the page untouched above.
+    const shellBox = (await terminal.locator(".terminal-screen").boundingBox())!;
+    const splitBox = (await split.boundingBox())!;
+    const termBox = (await terminal.boundingBox())!;
+    expect(shellBox.x + shellBox.width).toBeLessThanOrEqual(splitBox.x + 1);
+    expect(splitBox.y).toBeGreaterThanOrEqual(termBox.y);
+    expect((await page.locator("main").boundingBox())!.width).toBe(before.width);
+
+    await run(page, "md --rendered");
+    await expect(split.locator(".source-rendered h1")).toHaveText("Overview");
+    await expect(split.getByRole("button", { name: "rendered" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     await run(page, "cd ../fastapi");
     await expect(page).toHaveURL(/\/python\/fastapi\/$/);
-    await expect(pane).toContainText("md · ~/docs/python/fastapi");
-    await expect(pane).toContainText("title: FastAPI");
+    await expect(split).toContainText("~/docs/python/fastapi");
+    await expect(split.locator(".source-rendered h1")).toHaveText("FastAPI");
+    await split.getByRole("button", { name: "raw" }).click();
+    await expect(split).toContainText("title: FastAPI");
 
     const raw = await page.request.get("/source/python/fastapi.md");
     expect(raw.headers()["content-type"]).toContain("text/markdown");
@@ -402,7 +416,7 @@ test.describe("terminal", () => {
     expect((await page.request.get("/source/python/_nope.md")).status()).toBe(404);
 
     await run(page, "md -c");
-    await expect(pane).toHaveCount(0);
+    await expect(split).toHaveCount(0);
   });
 
   test("/terminal/ opens it full screen, by URL or by the link on /info/, and cd keeps it so", async ({

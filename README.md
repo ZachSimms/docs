@@ -122,7 +122,7 @@ not kebab-case fails the build.
   | `tree [-L n] [path]` | the pages below a directory (two levels unless `-L`) |
   | `toc [path]` | a page's `##`/`###` sections; `cd #id` or `cd <number>` scrolls to one |
   | `cat [path]` | print a page as text: headings, lists, code, tables, LaTeX source for math |
-  | `md [-c] [path]` | the page's MDX source in a pane beside it; follows each `cd` (a path pins one page, `-c` closes) |
+  | `md [--raw \| --rendered] [-c] [path]` | split the terminal: the page's MDX source (`--raw`, `-r`, the default) or the page rendered (`--rendered`, `-R`) beside the shell; follows each `cd` (a path pins one page, `-c` closes) |
   | `find <words>` / `grep <words>` | pages by name and title / the full-text search index, numbered |
   | `pwd`, `back`, `forward`, `scroll [top\|bottom\|up\|down]` | where you are; the browser's buttons; the page |
   | `theme [light\|dark]`, `zen [on\|off]`, `search`, `whoami`, `history`, `clear`, `max`, `exit`, `help` | the rest of the site's controls |
@@ -136,13 +136,15 @@ not kebab-case fails the build.
   `/info/`) opens it full screen on arrival and after a reload, so the site can be bookmarked
   as a shell; `Esc` there shows a page with a button to reopen it.
 
-  `md` splits the window: docked, the page reflows into the left half and the Markdown takes the
-  right half above the terminal; full screen, the terminal takes the left half. The pane numbers
-  the lines, dims the frontmatter, imports and fences, bolds headings, and links the `raw` file.
+  `md` splits the terminal itself, docked or full screen: the shell on the left, the page on the
+  right; the page behind the terminal never moves. `--raw` shows the MDX source with line numbers
+  (frontmatter, imports and fences dimmed, headings bold); `--rendered` shows the page as the site
+  renders it (code, math, tables and diagrams included; links navigate as usual). A mode flag
+  alone switches the open split, as do its `raw` / `rendered` controls; `.md` opens the file.
   Sheets, directories (their `index.mdx`) and posts have a source, served as it is on disk at
   `/source/<topic>/[<directory>/]<slug>.md` (`/source/blog/<slug>.md` for posts), prerendered by
   `app/source/[...path]/route.ts`; only listed sources exist, so drafts and partials are never
-  served. On phones the pane covers the screen and `close` returns to the terminal. The scrollback survives
+  served. On phones the split stacks, the page above the shell. The scrollback survives
   reloads (`sessionStorage`), the history lives in `localStorage`. The filesystem is
   `/site-tree.json`, built with the site (`lib/terminal/tree.ts`); the shell
   (`lib/terminal/shell.ts`) is plain TypeScript behind a small host interface, so the renderer
