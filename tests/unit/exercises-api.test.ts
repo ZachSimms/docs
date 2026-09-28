@@ -19,7 +19,9 @@ const generateText = mock(async (options: Record<string, unknown>) => {
   calls.push(options);
   const value = next();
   if (value instanceof Error) throw value;
-  return { output: value, response: { modelId: "test/model" } };
+  // `output` for the constrained path, `text` for the JSON-in-the-prompt one.
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return { output: value, text, response: { modelId: "test/model" } };
 });
 mock.module("ai", () => ({ ...ai, generateText }));
 
@@ -36,6 +38,9 @@ const {
   whereRunning,
   DEFAULT_MODEL,
   ExerciseError,
+  extractJson,
+  modelInfo,
+  resetModelInfo,
 } = await import("@/lib/exercises/ai");
 const { allow, resetRateLimits, RATE_LIMITS, clientAddress } =
   await import("@/lib/exercises/guard");
@@ -74,8 +79,34 @@ function specOf(exercise: typeof LINKED_LIST_EXERCISE) {
   return { title, summary, brief, requirements, starterCode, tests, hints, solution, concepts };
 }
 
+/**
+ * The gateway's model catalog, as `fetch` serves it in these tests: `supported_parameters` per
+ * model id, `null` for a model that doesn't exist; anything else fails like a network error.
+ */
+const CATALOG: Record<string, string[] | null> = {
+  [DEFAULT_MODEL]: ["max_tokens", "tools", "reasoning"],
+  "openai/gpt-oss-120b": ["max_tokens", "response_format", "structured_outputs"],
+  "a/one": ["response_format"],
+  "b/two": ["response_format"],
+  "free/plain": ["max_tokens"],
+  "gone/model": null,
+};
+const lookups: string[] = [];
+const realFetch = globalThis.fetch;
+
 const savedKey = process.env.AI_GATEWAY_API_KEY;
 beforeEach(() => {
+  resetModelInfo();
+  lookups.length = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const id = decodeURIComponent(String(input).replace(/^.*\/v1\/models\//, ""));
+    lookups.push(id);
+    if (!(id in CATALOG)) throw new TypeError("offline");
+    const params = CATALOG[id];
+    return params === null
+      ? new Response(JSON.stringify({ error: { code: "model_not_found" } }), { status: 404 })
+      : new Response(JSON.stringify({ id, supported_parameters: params }));
+  }) as typeof fetch;
   process.env.AI_GATEWAY_API_KEY = "test-key";
   delete process.env.EXERCISE_MODEL;
   delete process.env.EXERCISE_FALLBACK_MODELS;
@@ -84,6 +115,7 @@ beforeEach(() => {
   generateText.mockClear();
 });
 afterEach(() => {
+  globalThis.fetch = realFetch;
   if (savedKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
   else process.env.AI_GATEWAY_API_KEY = savedKey;
 });
@@ -117,6 +149,10 @@ describe("POST /api/exercises/code/", () => {
     expect(call.model).toBe(DEFAULT_MODEL);
     expect(String(call.system)).toContain("assert_equal(actual, expected");
     expect(String(call.prompt)).toContain('"""\nI need to practice linked lists\n"""');
+    // The default (free) model has no schema-constrained output: the schema goes in the prompt.
+    expect(call.output).toBeUndefined();
+    expect(String(call.system)).toContain("It must validate against this JSON Schema");
+    expect(String(call.system)).toContain('"starterCode"');
   });
 
   it("uses the configured model and passes fallbacks to the gateway", async () => {
@@ -126,6 +162,7 @@ describe("POST /api/exercises/code/", () => {
     await generateCode(post({}));
     expect(calls[0].model).toBe("openai/gpt-oss-120b");
     expect(calls[0].providerOptions).toEqual({ gateway: { models: ["a/one", "b/two"] } });
+    expect(calls[0].output).toBeDefined(); // every model takes a schema: constrained output
   });
 
   it("says how to set up the gateway when there are no credentials", async () => {
@@ -157,6 +194,7 @@ describe("POST /api/exercises/code/", () => {
   });
 
   it("retries once when the model's JSON doesn't parse, then gives up with a clear message", async () => {
+    process.env.EXERCISE_MODEL = "openai/gpt-oss-120b";
     let n = 0;
     next = () =>
       n++ === 0
@@ -184,6 +222,90 @@ describe("POST /api/exercises/code/", () => {
     expect(response.status).toBe(502);
     expect((await response.json()).code).toBe("model");
     expect(generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads JSON wrapped in prose, fences or thinking from a model without constrained output", async () => {
+    const spec = specOf(LINKED_LIST_EXERCISE);
+    next = () =>
+      `<think>{draft}</think>Sure! Here it is:\n\`\`\`json\n${JSON.stringify(spec)}\n\`\`\`\nEnjoy.`;
+    const response = await generateCode(post({}));
+    expect(response.status).toBe(200);
+    expect((await response.json()).title).toBe(spec.title);
+    expect(generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the validation errors back once, and accepts the corrected reply", async () => {
+    const spec = specOf(LINKED_LIST_EXERCISE);
+    let n = 0;
+    next = () => (n++ === 0 ? { ...spec, tests: [] } : spec);
+    const response = await generateCode(post({}));
+    expect(response.status).toBe(200);
+    const followUp = calls[1].messages as { role: string; content: string }[];
+    expect(followUp.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(followUp[2].content).toContain("- tests:");
+  });
+
+  it("gives up after the corrective turn with a clear message", async () => {
+    next = () => "I can't do that.";
+    const response = await generateCode(post({}));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: "model" });
+    expect(generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("says so when the configured model no longer exists, without calling it", async () => {
+    process.env.EXERCISE_MODEL = "gone/model";
+    const response = await generateCode(post({}));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "config",
+      error: expect.stringContaining('"gone/model" isn\'t on the AI Gateway'),
+    });
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
+  it("drops missing fallbacks, and avoids constrained output if a fallback can't do it", async () => {
+    process.env.EXERCISE_MODEL = "openai/gpt-oss-120b";
+    process.env.EXERCISE_FALLBACK_MODELS = "gone/model, free/plain";
+    next = () => specOf(LINKED_LIST_EXERCISE);
+    expect((await generateCode(post({}))).status).toBe(200);
+    expect(calls[0].providerOptions).toEqual({ gateway: { models: ["free/plain"] } });
+    expect(calls[0].output).toBeUndefined();
+  });
+
+  it("uses the prompt path when the catalog can't be reached, and asks again next time", async () => {
+    process.env.EXERCISE_MODEL = "unknown/offline";
+    next = () => specOf(LINKED_LIST_EXERCISE);
+    expect((await generateCode(post({}))).status).toBe(200);
+    expect(calls[0].output).toBeUndefined();
+    await generateCode(post({}));
+    expect(lookups.filter((id) => id === "unknown/offline")).toHaveLength(2);
+  });
+
+  it("reports what an unrecognized gateway failure said", async () => {
+    next = () =>
+      Object.assign(new Error("\u001b[31mUpstream provider timed out\u001b[0m"), {
+        statusCode: 500,
+      });
+    const body = await (await generateCode(post({}))).json();
+    expect(body).toMatchObject({ code: "upstream" });
+    expect(body.error).toBe(
+      "The AI service failed (500 Upstream provider timed out). Try again in a moment.",
+    );
+  });
+
+  it("turns a rejected request into advice to change the model", async () => {
+    next = () =>
+      Object.assign(new Error("response_format is not supported"), {
+        name: "GatewayInvalidRequestError",
+        statusCode: 400,
+      });
+    const body = await (await generateCode(post({}))).json();
+    expect(body.code).toBe("config");
+    expect(body.error).toContain(
+      `refused the request for ${DEFAULT_MODEL} (400 response_format is not supported)`,
+    );
+    expect(body.error).toContain("EXERCISE_MODEL");
   });
 
   it("turns a rate limit into a 429 without retrying", async () => {
@@ -316,6 +438,26 @@ describe("classifyError", () => {
       errors: [new Error("a"), named("X", { statusCode: 401 })],
     });
     expect(classifyError(listed).code).toBe("config");
+  });
+});
+
+describe("model catalog and JSON extraction", () => {
+  it("caches what the gateway says about a model", async () => {
+    expect(await modelInfo("openai/gpt-oss-120b")).toEqual({ exists: true, structured: true });
+    expect(await modelInfo("openai/gpt-oss-120b")).toEqual({ exists: true, structured: true });
+    expect(await modelInfo(DEFAULT_MODEL)).toEqual({ exists: true, structured: false });
+    expect(await modelInfo("gone/model")).toEqual({ exists: false, structured: false });
+    expect(await modelInfo("unknown/offline")).toEqual({ exists: null, structured: false });
+    expect(lookups.filter((id) => id === "openai/gpt-oss-120b")).toHaveLength(1);
+  });
+
+  it("finds the JSON object in a reply", () => {
+    expect(extractJson('{"a": 1}')).toEqual({ a: 1 });
+    expect(extractJson('text ```json\n{"a": {"b": [1]}}\n``` text')).toEqual({ a: { b: [1] } });
+    expect(extractJson('<think>{"a": 0}</think>{"a": 2}')).toEqual({ a: 2 });
+    expect(extractJson("none")).toBeUndefined();
+    expect(extractJson("{broken")).toBeUndefined();
+    expect(extractJson("} {")).toBeUndefined();
   });
 });
 

@@ -306,6 +306,11 @@ Two generators share one pipeline:
   names in scope, its prints captured, and a result line tagged with a per-run nonce. Python tests use
   `assert_equal`/`assert_true`/`assert_close`/`assert_raises`; JS/TS tests `assertEqual` (deep)/`assertTrue`/
   `assertClose`/`assertThrows`, with a 3 s limit per async test. The playground's run limits apply.
+- **JSON from any model.** Models that support schema-constrained output (per the gateway's public
+  model catalog, `/v1/models/<id>`) get it; the others, including today's free ones, would reject such a
+  request, so they get the JSON Schema in the prompt and their reply is parsed and validated on the
+  server, with one follow-up turn quoting the validation errors. A model that has left the gateway is
+  reported as such, before any call.
 - **Trust.** Model output is validated with Zod on the server and again in the browser; its Markdown is
   rendered with raw HTML escaped and then sanitized with DOMPurify. A review can't pass while a test fails.
   The learner's request, code and working are quoted to the model as data.
@@ -347,8 +352,11 @@ available", pick another with `EXERCISE_MODEL`. Buying credits moves the team to
 monthly free credit stops); set a budget in the dashboard. A small paid model such as `openai/gpt-oss-120b`
 ($0.10 / $0.50 per million input / output tokens when this was written) comes to about $0.004 for an
 exercise of ~2.5k input and ~8k output tokens, and supports schema-constrained output (the gateway's
-`structured-output` capability), which the default free model doesn't: expect the occasional "didn't
-come out in the expected shape" from the free one.
+`structured-output` capability). The free models don't, so their JSON is checked after the fact:
+expect the occasional "didn't come out in the expected shape" from them.
+
+When something fails, the message in the page includes what the gateway said (status and message),
+and the full error is in the deployment's function logs.
 
 **Abuse.** The routes accept only same-origin POSTs of at most 64 KB that match their schema, and allow
 20 generations and 60 reviews or checks per client per 10 minutes. That limit is in memory, so per server
