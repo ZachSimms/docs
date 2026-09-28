@@ -10,7 +10,7 @@
 import { z } from "zod";
 
 /** The resizable parts. */
-export type LayoutPart = "tree" | "refs" | "output" | "preview" | "godot" | "http";
+export type LayoutPart = "tree" | "brief" | "refs" | "output" | "preview" | "godot" | "http";
 
 /** Size of every resizable part. */
 export type Layout = Readonly<Record<LayoutPart, number>>;
@@ -20,6 +20,7 @@ export const LAYOUT_BOUNDS: Readonly<
   Record<LayoutPart, { min: number; max: number; initial: number; axis: "x" | "y"; label: string }>
 > = {
   tree: { min: 160, max: 560, initial: 272, axis: "x", label: "file tree width" },
+  brief: { min: 260, max: 1000, initial: 460, axis: "x", label: "exercise panel width" },
   refs: { min: 260, max: 1200, initial: 420, axis: "x", label: "reference panel width" },
   output: { min: 96, max: 1400, initial: 280, axis: "y", label: "output height" },
   preview: { min: 160, max: 1600, initial: 560, axis: "x", label: "preview width" },
@@ -56,6 +57,7 @@ const size = (part: LayoutPart) =>
 export const layoutSchema = z
   .object({
     tree: size("tree"),
+    brief: size("brief"),
     refs: size("refs"),
     output: size("output"),
     preview: size("preview"),

@@ -28,8 +28,13 @@ export const PREVIEW_PENDING_KEY = "playground:v1:preview-pending";
  */
 const MAX_STORED_CHARS = PROJECT_LIMITS.maxBytes * 6 + 64 * 1024;
 
+/** What the playground shows: projects of files, or generated exercises with hidden tests. */
+export type PlaygroundMode = "code" | "exercise";
+
 /** Preferences that persist across visits. */
 export interface Prefs {
+  /** Projects or exercises (see `components/exercises/`). */
+  readonly mode: PlaygroundMode;
   /** The language shown on load. */
   readonly language: LanguageId;
   /** Sizes of the resizable parts (desktop and tablet). */
@@ -38,6 +43,8 @@ export interface Prefs {
   readonly zen: boolean;
   /** Whether the first-visit welcome card was dismissed (or the tour taken). */
   readonly welcomed: boolean;
+  /** The same for the exercise mode's "How it works" card. */
+  readonly exerciseWelcomed: boolean;
   /** Soft-wrap long lines in the editor. */
   readonly wrap: boolean;
   /** The stdin box per language. */
@@ -50,10 +57,12 @@ export interface Prefs {
 
 /** Preferences for a first visit. */
 export const DEFAULT_PREFS: Prefs = {
+  mode: "code",
   language: DEFAULT_LANGUAGE,
   layout: DEFAULT_LAYOUT,
   zen: false,
   welcomed: false,
+  exerciseWelcomed: false,
   wrap: false,
   stdin: {},
   treeOpen: true,
@@ -61,10 +70,12 @@ export const DEFAULT_PREFS: Prefs = {
 };
 
 const prefsSchema = z.object({
+  mode: z.enum(["code", "exercise"]).catch(DEFAULT_PREFS.mode),
   language: z.enum(LANGUAGE_IDS).catch(DEFAULT_PREFS.language),
   layout: layoutSchema,
   zen: z.boolean().catch(DEFAULT_PREFS.zen),
   welcomed: z.boolean().catch(DEFAULT_PREFS.welcomed),
+  exerciseWelcomed: z.boolean().catch(DEFAULT_PREFS.exerciseWelcomed),
   wrap: z.boolean().catch(DEFAULT_PREFS.wrap),
   stdin: z
     .partialRecord(z.enum(LANGUAGE_IDS), z.string().max(64 * 1024))

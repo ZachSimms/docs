@@ -118,3 +118,56 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: "⌘⌥Z hides everything but the code, output and Refs. Every pane can be resized from its edge. Help (F1) lists every shortcut.",
   },
 ];
+
+/** The tour of the exercise mode, in order (steps whose target isn't shown are skipped). */
+export const EXERCISE_TOUR_STEPS: readonly TourStep[] = [
+  {
+    id: "mode",
+    target: '[data-tour="mode"]',
+    pane: "code",
+    title: "Projects or exercises",
+    body: "Projects are your own code. Exercises are tasks an AI writes for you, with hidden tests that check your solution.",
+  },
+  {
+    id: "exercise-form",
+    target: '[data-tour="exercise-form"]',
+    pane: "files",
+    title: "Ask for an exercise",
+    body: "Say what you want to practice, or pick a theme, difficulty, language and size, then Generate. The AI's tests are checked against its own solution before you see them.",
+  },
+  {
+    id: "exercise-brief",
+    target: '[data-tour="exercise-brief"]',
+    pane: "files",
+    title: "Read the task",
+    body: "The brief, the requirements a reviewer will check, hints one at a time, and the reference solution if you're stuck.",
+  },
+  {
+    id: "editor",
+    target: '[data-tour="editor"]',
+    pane: "code",
+    title: "Write your solution",
+    body: "The starter code has every name the tests use. Hover a name for its type and docs.",
+  },
+  {
+    id: "run",
+    target: '[data-tour="run"]',
+    pane: "code",
+    title: "Run the hidden tests",
+    body: "▶ Run tests or ⌘↵ runs them in your browser. Submit also asks the AI to review what tests can't check.",
+  },
+  {
+    id: "output",
+    target: '[data-tour="output"]',
+    pane: "output",
+    title: "Read the results",
+    body: "Each test says whether it passed, why it failed, and what your code printed. The review appears at the top.",
+  },
+  {
+    id: "exercise-recent",
+    target: '[data-tour="exercise-recent"]',
+    pane: "files",
+    title: "Pick up where you left off",
+    body: "Exercises and your code are saved in this browser. × removes one; clear all removes them all.",
+  },
+];

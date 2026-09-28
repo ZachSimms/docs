@@ -18,6 +18,7 @@ import {
   isHelpShortcut,
   isZenShortcut,
   PLAYGROUND_SHORTCUTS,
+  EXERCISE_TOUR_STEPS,
   TOUR_STEPS,
 } from "@/lib/playground/shortcuts";
 import { TEMPLATES } from "@/lib/playground/templates";
@@ -174,6 +175,28 @@ describe("HelpPanel", () => {
   });
 });
 
+describe("HelpPanel in exercise mode", () => {
+  it("explains exercises and offers their tour", () => {
+    let toured = 0;
+    render(
+      <HelpPanel
+        open
+        spec={getLanguage("python")}
+        mode="exercise"
+        onClose={() => undefined}
+        onTour={() => toured++}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Getting started with exercises" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "How your code is checked" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Python" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "take the exercise tour" }));
+    expect(toured).toBe(1);
+  });
+});
+
 describe("Tour", () => {
   it("steps through every step with the keyboard, switching panes, and ends", () => {
     const panes: string[] = [];
@@ -191,6 +214,20 @@ describe("Tour", () => {
     expect(done).toBe(1);
     expect(panes).toContain("files");
     expect(panes).toContain("refs");
+  });
+
+  it("takes other steps: the exercise mode's tour", () => {
+    let done = 0;
+    render(<Tour steps={EXERCISE_TOUR_STEPS} onPane={() => undefined} onDone={() => done++} />);
+    const card = () => screen.getByRole("dialog");
+    expect(card()).toHaveTextContent("Projects or exercises");
+    expect(card()).toHaveTextContent(`1 / ${EXERCISE_TOUR_STEPS.length}`);
+    for (let i = 1; i < EXERCISE_TOUR_STEPS.length; i++) {
+      fireEvent.keyDown(card(), { key: "ArrowRight" });
+    }
+    expect(card()).toHaveTextContent("Pick up where you left off");
+    fireEvent.keyDown(card(), { key: "ArrowRight" });
+    expect(done).toBe(1);
   });
 });
 

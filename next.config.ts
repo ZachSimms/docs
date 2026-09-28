@@ -36,6 +36,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/maths/", destination: "/math/", permanent: true },
       { source: "/maths/:path*", destination: "/math/:path*", permanent: true },
+      // Coding exercises moved into the playground as a mode.
+      { source: "/exercises/", destination: "/playground/?mode=exercise", permanent: false },
     ];
   },
   async headers() {

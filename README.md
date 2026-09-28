@@ -174,6 +174,10 @@ not kebab-case fails the build.
   is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
   intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets, the official docs
   (MDN and others) or copy-ready code snippets beside the code. See [Playground](#playground).
+- **Exercises** (the playground's `Exercises` mode, `/playground/?mode=exercise`) and **math practice**
+  (`/math/practice/`, the first sheet of Math): a model writes a coding exercise or a math problem on
+  request, and your work is checked.
+  See [Exercises and practice problems](#exercises-and-practice-problems).
 - **Images**: put files under `public/images/<topic>/` and reference them as
   `![alt](/images/<topic>/name.png)`. Dimensions are read at build time and rendered through `next/image`;
   remote URLs fall back to a lazy plain `<img>`.
@@ -215,6 +219,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | double-tap left edge | touch, any page but home | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables) |
 | double-tap right edge | touch, list pages | same as `→`: open the highlighted row; nothing if no row is highlighted |
 | `⌘↵` / `Ctrl+↵` | playground editor | run the project |
+| `⌘↵` / `Ctrl+↵` | playground exercise mode: editor; request box | run the tests; generate |
 | `⌘K` | playground | search sheets and open the result in the reference panel |
 | `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree | move, fold/unfold, open, rename, delete (asks first) |
 | right-click, `Shift+F10`, Menu key | playground file tree | file menu: rename, delete, set as entry, new file/folder here, copy path, preview, download (a file; a folder or the whole project as `.zip`) |
@@ -240,6 +245,9 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/source/<path>.md`      | a sheet's, directory's or post's MDX source, as plain text               |
 | `/site-tree.json`        | every page as a tree, for the terminal (built with the site)             |
 | `/playground/`           | the in-browser IDE                                                       |
+| `/playground/?mode=exercise` | the playground's exercise mode (`/exercises/` redirects here)        |
+| `/math/practice/`        | AI-generated math problems with answer checking (a sheet of Math)        |
+| `/api/exercises/…`       | the model calls behind both (POST), and `status/` (GET, see below)       |
 
 Sheet URLs did not move when the site gained its other sections: the topic list moved from `/` to
 `/docs/`, and `../` from a topic now leads there.
@@ -269,6 +277,11 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
   sandbox runtime, docs, hover data), `playground/godot-runner/` (Godot project behind the GDScript runner),
   `public/playground/` (Godot export, DevDocs manifest, TypeScript lib files, hover docs; basedpyright is copied
   there at `dev`/`build` time and not committed)
+- Exercises: `app/api/exercises/` (route handlers), `components/exercises/` (the playground's exercise mode:
+  `useExerciseSession`, `ExercisePanel`, `ExerciseResults`, the test runner hook; the math sheet's
+  `MathPractice`; Markdown + math rendering, styles), `lib/exercises/` (schemas, options,
+  prompts, gateway calls, request guard, test harness, local math checking, storage),
+  `content/math/practice.mdx` (the math sheet), `tests/fixtures/exercises.ts` (model-output fixtures)
 - `tests/unit`, `tests/e2e` (`*.mobile.spec.ts` also run on emulated Pixel 7 and iPhone 14), `tests/fixtures`
 
 ## Playground
@@ -333,6 +346,99 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 - **Rebuilding the GDScript runner:** `brew install --cask godot`, install the single-threaded web export templates
   (`web_nothreads_debug.zip`, `web_nothreads_release.zip`) for the same version, then
   `./scripts/build-godot-runner.sh`. The export (`index.wasm` ≈ 38 MB) is committed.
+
+## Exercises and practice problems
+
+Two generators share one pipeline:
+
+| | Coding (playground, `Exercises` mode) | Math (`/math/practice/`) |
+| --- | --- | --- |
+| You choose | a request in your words ("I need to practice linked lists"), theme, difficulty, language (Python, JavaScript, TypeScript), exercise or mini-project | a request, area, difficulty |
+| The model writes | a brief, requirements, starter code, 3–15 hidden tests, hints and a reference solution | a problem (Markdown + KaTeX), the answer format, the answer, hints and a worked solution |
+| Checked by | the hidden tests, run in the playground's sandbox in your browser, then a model review of the requirements tests can't check ("uses a class") | numbers locally and instantly (`3/4`, `2√3`, `x = 2, x = -3`, any order); expressions, text and "explain my mistake" by the model, with your working |
+
+- **In the playground.** The `Projects` / `Exercises` switch in the toolbar (or `?mode=exercise`)
+  swaps the file tree for the exercise panel (request form, brief, requirements, hints, recent exercises;
+  resizable like the tree), the editor for the solution file (with the language's intellisense), and the
+  console for the test results and review. `▶ Run tests` (⌘↵) runs the hidden tests; `Submit` also asks
+  for a review; `Reset` restores the starter code. The reference panel works as in project mode; on
+  phones the panes are `Code`, `Task`, `Tests` and `Refs`. Python asks before its first download, as in
+  project mode. The chosen mode is remembered.
+- **Themes.** Grouped as *practical programs* (data wrangling, parsing, domain models, state machines
+  and game logic, simulations, formatted output, utilities, design patterns), *language skills* (including
+  async code in JS/TS and TypeScript types) and *algorithms and data structures*; each tells the model what
+  kind of scenario to write (`lib/exercises/options.ts`). "Any" with no request draws a theme: practical
+  programs half the time, language skills 30%, DS&A 20%. The prompt asks for realistic tasks unless the
+  theme or request is algorithmic, and for time, randomness and waiting to be passed in so tests control them.
+- **Self-check.** Before a coding exercise is shown, its reference solution runs against its own tests. If
+  any fail, the model is asked once to repair it; one that still disagrees is shown with a warning, since
+  a failing test could be the test's fault. If the sandbox can't start at all (offline), nothing is
+  repaired or flagged: the exercise says its tests weren't checked.
+- **Tests** are snippets, not files (`lib/exercises/harness.ts`): each runs on its own with the solution's
+  names in scope, its prints captured, and a result line tagged with a per-run nonce. Python tests use
+  `assert_equal`/`assert_true`/`assert_close`/`assert_raises`; JS/TS tests `assertEqual` (deep)/`assertTrue`/
+  `assertClose`/`assertThrows`, with a 3 s limit per async test. The playground's run limits apply.
+- **JSON from any model.** Models that support schema-constrained output (per the gateway's public
+  model catalog, `/v1/models/<id>`) get it; the others, including today's free ones, would reject such a
+  request, so they get the JSON Schema in the prompt and their reply is parsed and validated on the
+  server, with one follow-up turn quoting the validation errors. A model that has left the gateway is
+  reported as such, before any call.
+- **Trust.** Model output is validated with Zod on the server and again in the browser; its Markdown is
+  rendered with raw HTML escaped and then sanitized with DOMPurify. A review can't pass while a test fails.
+  The learner's request, code and working are quoted to the model as data.
+- **Memory.** The last 12 exercises and problems, your code for each and your progress stay in
+  `localStorage` (the `Recent` list); `×` removes one with its work, `clear all` (asks first) removes
+  them all.
+- **Getting started.** The exercise mode opens with a "How it works" card on the first visit (again from
+  `how it works` in the panel), offers an exercise tour on the real controls, and F1 help describes the
+  mode being shown. The math sheet starts with a four-step "How it works", and "how to type answers"
+  under the answer box lists the accepted formats.
+
+### Setup: Vercel AI Gateway
+
+The API routes call the model through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) with the
+[AI SDK](https://ai-sdk.dev) (`generateText` with `Output.object`), asking the gateway for the fastest
+provider serving the model (`sort: "tps"`).
+
+| Variable | Meaning |
+| -------- | ------- |
+| `AI_GATEWAY_API_KEY` | a gateway key (Vercel dashboard → AI Gateway → API keys). Not needed on Vercel deployments, which authenticate with the project's OIDC token automatically; for local development either set the key in `.env.local` or run `vercel env pull` |
+| `EXERCISE_MODEL` | the model id, default `openai/gpt-oss-120b` |
+| `EXERCISE_REASONING` | how hard the model thinks: `none`, `minimal`, `low` (default), `medium` or `high`. Lower is faster; the self-check catches the mistakes that costs |
+| `EXERCISE_FALLBACK_MODELS` | optional comma-separated model ids the gateway tries, in order, when the first fails or is rate limited |
+
+Without credentials the pages still load, and generating says what to set (HTTP 503).
+
+**Checking a deployment.** `GET /api/exercises/status/` reports, without secrets, what that deployment
+sees: `{ ready, auth: "api-key" | "oidc" | "none", vercelEnv, model }`. If `apiKey` is `false`:
+
+- A **shared** (team-level) variable only reaches projects it is **linked** to: Team Settings →
+  Environment Variables → the variable's `⋯` → Edit → Link to Projects (or, in the project, Settings →
+  Environment Variables → Link Shared Environment Variables).
+- It only applies to the **environments** ticked for it: a pull request's deployment is **Preview**.
+- Variables are read when a deployment is built: **redeploy** after adding or changing one.
+- `bun run dev` doesn't see Vercel's variables: put the key in `.env.local`, or run `vercel env pull`.
+
+With no key at all, deployments can still authenticate with the project's OIDC token when OIDC is
+enabled for the project (see [Vercel's OIDC guide](https://vercel.com/docs/ai-gateway/authentication-and-byok/oidc));
+`auth` then reads `"oidc"`.
+
+**Cost.** The default, `openai/gpt-oss-120b` ($0.10 / $0.50 per million input / output tokens when this
+was written), comes to about $0.004 for an exercise of ~2.5k input and ~8k output tokens, and supports
+schema-constrained output (the gateway's `structured-output` capability). The gateway's free tier gives
+monthly credits for a subset of models, and a few models are priced at $0 (such as
+`poolside/laguna-s-2.1-free`, listed at
+[vercel.com/ai-gateway/models?freeTier=true](https://vercel.com/ai-gateway/models?freeTier=true)), but
+they are slow, rate limited, come and go, and don't take a schema, so their JSON is checked after the
+fact: expect the occasional "didn't come out in the expected shape". Buying credits moves the team to
+the paid tier (the monthly free credit stops); set a budget in the dashboard.
+
+When something fails, the message in the page includes what the gateway said (status and message),
+and the full error is in the deployment's function logs.
+
+**Abuse.** The routes accept only same-origin POSTs of at most 64 KB that match their schema, and allow
+20 generations and 60 reviews or checks per client per 10 minutes. That limit is in memory, so per server
+instance: the gateway budget is the real ceiling.
 
 ## Runtime notes
 
