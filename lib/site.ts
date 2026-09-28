@@ -19,3 +19,12 @@ export const SITE_DESCRIPTION =
  * so the site can be bookmarked as a shell.
  */
 export const TERMINAL_PATH = "/terminal/";
+
+/**
+ * Whether `href` is a path on this site (`/…`), not another origin (`//host`, `/\host`,
+ * `https:`, `javascript:`). For values read back from storage before they are fetched,
+ * rendered or followed.
+ */
+export function isSitePath(href: string): boolean {
+  return /^\/(?![/\\])/.test(href);
+}

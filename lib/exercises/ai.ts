@@ -118,6 +118,9 @@ function describeIssues(error: z.ZodError): string {
     .join("\n");
 }
 
+/** What the gateway says when a budget rejects a request (`quota_for_entity_exceeded`). */
+const BUDGET_EXCEEDED = /quota_for_entity_exceeded|budget exceeded|quota limit exceeded/i;
+
 /** ANSI color codes (the gateway's errors carry some). */
 const ANSI = /\u001b\[[0-9;]*m/g;
 
@@ -188,6 +191,19 @@ export function classifyError(error: unknown): ExerciseError {
   for (const e of errorChain(error)) {
     const name = typeof e.name === "string" ? e.name : "";
     const status = typeof e.statusCode === "number" ? e.statusCode : undefined;
+    // A spend budget that has run out: the gateway answers 402, which the SDK can surface as
+    // an internal server error, so it is recognized by what the gateway says too.
+    if (
+      BUDGET_EXCEEDED.test(
+        `${typeof e.message === "string" ? e.message : ""} ${typeof e.responseBody === "string" ? e.responseBody : ""}`,
+      )
+    ) {
+      return new ExerciseError(
+        "busy",
+        "The exercise generator has reached its spending limit for now. Try again later.",
+        503,
+      );
+    }
     if (name === "GatewayAuthenticationError" || status === 401) {
       const hasKey = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
       return new ExerciseError(
@@ -273,6 +289,8 @@ export interface Generated<T> {
  * @param options.system - The system prompt.
  * @param options.prompt - The request.
  * @param options.maxOutputTokens - Cap on the answer (reasoning models count their thinking too).
+ * @param options.signal - Aborts the call, e.g. the request's signal when the client goes away,
+ *   so nobody pays for an answer no one will read.
  * @throws {ExerciseError} When the gateway isn't configured or the call fails.
  */
 export async function generate<T>(options: {
@@ -281,6 +299,7 @@ export async function generate<T>(options: {
   prompt: string;
   maxOutputTokens?: number;
   name: string;
+  signal?: AbortSignal;
 }): Promise<Generated<T>> {
   if (!gatewayConfigured()) {
     throw new ExerciseError(
@@ -302,6 +321,11 @@ export async function generate<T>(options: {
   // Constrained decoding only if every model the gateway may pick supports it.
   const structured =
     info.structured && fallbackInfo.every((f) => f.exists === false || f.structured);
+  /** The time limit, and the caller's signal if any. */
+  const abortSignal = () => {
+    const timeout = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
+    return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  };
   const common = {
     model,
     maxOutputTokens: options.maxOutputTokens ?? 16_000,
@@ -320,7 +344,7 @@ export async function generate<T>(options: {
       system: options.system,
       prompt: options.prompt,
       output: Output.object({ schema: options.schema, name: options.name }),
-      abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      abortSignal: abortSignal(),
     });
     return { output: result.output as T, model: result.response?.modelId || model };
   };
@@ -335,7 +359,7 @@ ${JSON.stringify(z.toJSONSchema(options.schema))}`;
       ...common,
       system,
       prompt: options.prompt,
-      abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      abortSignal: abortSignal(),
     });
     const parsed = options.schema.safeParse(extractJson(first.text));
     if (parsed.success) return { output: parsed.data, model: first.response?.modelId || model };
@@ -350,7 +374,7 @@ ${JSON.stringify(z.toJSONSchema(options.schema))}`;
           content: `That reply doesn't validate against the schema:\n${describeIssues(parsed.error)}\nReply again with only the corrected, complete JSON object.`,
         },
       ],
-      abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      abortSignal: abortSignal(),
     });
     const retried = options.schema.safeParse(extractJson(again.text));
     if (retried.success) return { output: retried.data, model: again.response?.modelId || model };

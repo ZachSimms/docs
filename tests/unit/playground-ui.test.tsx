@@ -17,6 +17,7 @@ import { WebPreview } from "@/components/playground/WebPreview";
 import { getLanguage } from "@/lib/playground/languages";
 import { appendOutput, EMPTY_OUTPUT } from "@/lib/playground/output";
 import { TEMPLATES } from "@/lib/playground/templates";
+import { PREVIEW_PENDING_KEY } from "@/lib/playground/storage";
 import {
   isPlaygroundPath,
   isSheetUrl,
@@ -494,6 +495,32 @@ describe("sandbox frames", () => {
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-forms");
     expect(frame.getAttribute("sandbox")).not.toMatch(/same-origin|popups|top-navigation|modals/);
+  });
+});
+
+describe("web preview after a freeze", () => {
+  afterEach(() => localStorage.removeItem(PREVIEW_PENDING_KEY));
+
+  it("waits for Run when the last preview never settled, then loads", async () => {
+    localStorage.setItem(PREVIEW_PENDING_KEY, "stale-token");
+    const props = { project: TEMPLATES.web, onReload: () => undefined, onOutput: () => undefined };
+    const { container, rerender } = render(<WebPreview {...props} refreshKey={0} />);
+    const frame = () => container.querySelector("iframe")!;
+    await waitFor(
+      () => expect(screen.getByText(/last preview froze the page/)).toBeInTheDocument(),
+      {
+        timeout: 3000,
+      },
+    );
+    expect(frame().getAttribute("srcdoc") ?? "").toBe("");
+
+    rerender(<WebPreview {...props} refreshKey={1} />);
+    await waitFor(() => expect(frame().getAttribute("srcdoc") ?? "").toContain("<script>"), {
+      timeout: 5000,
+    });
+    expect(screen.getByText("updates as you type")).toBeInTheDocument();
+    // The new preview left its own mark, to be cleared once it has run for a moment.
+    expect(localStorage.getItem(PREVIEW_PENDING_KEY)).not.toBe("stale-token");
   });
 });
 

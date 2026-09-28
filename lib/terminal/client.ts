@@ -5,6 +5,7 @@
 
 import { parseMain } from "./page-text";
 import { buildFs, isSiteTree, type Fs } from "./vfs";
+import { isSitePath } from "@/lib/site";
 
 /** URL of the prerendered tree (see `app/site-tree.json/route.ts`). */
 export const SITE_TREE_URL = "/site-tree.json";
@@ -43,9 +44,11 @@ const pageCache = new Map<string, Promise<Element | null>>();
  * @returns The element, or `null` when the page could not be loaded; failures are not cached.
  */
 export function loadPageMain(href: string): Promise<Element | null> {
+  // Only this site's pages: their HTML is rendered in the split.
+  if (!isSitePath(href)) return Promise.resolve(null);
   const cached = pageCache.get(href);
   if (cached) return cached;
-  const loading = fetch(href, { headers: { accept: "text/html" } })
+  const loading = fetch(href, { headers: { accept: "text/html" }, mode: "same-origin" })
     .then(async (res) => (res.ok ? parseMain(await res.text()) : null))
     .catch(() => null)
     .then((main) => {

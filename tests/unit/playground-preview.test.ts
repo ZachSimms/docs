@@ -84,6 +84,22 @@ describe("createLoopGuard", () => {
   });
 });
 
+describe("linking a page full of unclosed tags", () => {
+  it("takes linear time and leaves the text as it was", async () => {
+    const html = "<script <link <img <head ".repeat(12_000);
+    const started = performance.now();
+    const linked = await linkWebDocument(
+      { "index.html": html },
+      "index.html",
+      transpile,
+      addLoopGuards,
+    );
+    buildPreviewSrcDoc(linked.html, "t");
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(linked.html).toBe(html);
+  });
+});
+
 describe("linkWebDocument with loop guards", () => {
   it("guards module files, classic scripts and inline scripts, but not data scripts", async () => {
     const files = {

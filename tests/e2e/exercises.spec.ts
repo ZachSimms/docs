@@ -85,7 +85,12 @@ test.describe("playground exercises", () => {
 
   test("without a gateway key, the API says how to set it up", async ({ request }) => {
     test.skip(Boolean(process.env.AI_GATEWAY_API_KEY), "a key is configured");
-    const response = await request.post("/api/exercises/code/", { data: { language: "python" } });
+    // With the site's Origin, as the page's fetch sends it: a bare script is refused (403).
+    const origin = new URL(test.info().project.use.baseURL ?? "http://localhost").origin;
+    const response = await request.post("/api/exercises/code/", {
+      data: { language: "python" },
+      headers: { origin },
+    });
     expect(response.status()).toBe(503);
     expect(await response.json()).toMatchObject({ code: "config" });
   });

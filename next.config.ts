@@ -51,6 +51,14 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // HTTPS only (ignored over plain http, so local development is unaffected). Not
+          // includeSubDomains: other hosts under the domain aren't this site's to decide.
+          { key: "Strict-Transport-Security", value: "max-age=63072000" },
+          // No page (nor the playground's sandboxed frames) needs these: nothing may ask.
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+          },
         ],
       },
       {
@@ -62,7 +70,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
           },
         ],
       },

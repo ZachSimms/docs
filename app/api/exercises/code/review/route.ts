@@ -23,6 +23,7 @@ export async function POST(request: Request): Promise<Response> {
       system: REVIEW_SYSTEM,
       prompt: reviewPrompt(input),
       name: "review",
+      signal: request.signal,
       maxOutputTokens: 8000,
     });
     return Response.json(normalizeReview(output, input.tests));

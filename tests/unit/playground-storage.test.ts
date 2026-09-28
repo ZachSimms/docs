@@ -2,8 +2,11 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { getLanguage } from "@/lib/playground/languages";
 import {
+  clearPreviewPending,
   DEFAULT_PREFS,
   loadPrefs,
+  markPreviewPending,
+  previewFroze,
   loadProject,
   PROJECT_KEY_PREFIX,
   PREFS_KEY,
@@ -129,5 +132,32 @@ describe("prefs", () => {
     expect(layout.refs).toBe(1200);
     expect(layout.output).toBe(DEFAULT_PREFS.layout.output);
     expect(layout.godot).toBe(DEFAULT_PREFS.layout.godot);
+  });
+});
+
+describe("a project full of control characters", () => {
+  it("still loads after saving: JSON spells each as six characters", () => {
+    const base = getLanguage("python").template;
+    const text = "\u0001".repeat(140_000);
+    const project = { ...base, files: { ...base.files, [base.entry]: text } };
+    expect(saveProject("python", project, store)).toBe(true);
+    expect(loadProject("python", store).files[base.entry]).toBe(text);
+  });
+});
+
+describe("preview freeze mark", () => {
+  it("is left behind only by a preview that never settled", () => {
+    expect(previewFroze(store)).toBe(false);
+    markPreviewPending("a", store);
+    expect(previewFroze(store)).toBe(true);
+    markPreviewPending("b", store);
+    // An older preview settling doesn't clear a newer one's mark.
+    clearPreviewPending("a", store);
+    expect(previewFroze(store)).toBe(true);
+    clearPreviewPending("b", store);
+    expect(previewFroze(store)).toBe(false);
+    // Without working storage there is nothing to protect, and nothing throws.
+    markPreviewPending("c", memoryStorage(true));
+    expect(previewFroze(null)).toBe(false);
   });
 });

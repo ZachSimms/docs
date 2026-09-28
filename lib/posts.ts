@@ -10,8 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { cache } from "react";
-import matter from "gray-matter";
-import { isPartial, isValidSegment } from "./content";
+import { isPartial, isValidSegment, parseMatter } from "./content";
 import { postSchema } from "./schema";
 
 /** Where posts live. */
@@ -57,7 +56,7 @@ export function readingMinutes(body: string): number {
  */
 function readPost(dir: string, file: string): Post {
   const fullPath = path.join(dir, file);
-  const { data, content } = matter(fs.readFileSync(fullPath, "utf8"));
+  const { data, content } = parseMatter(fs.readFileSync(fullPath, "utf8"));
   const parsed = postSchema.safeParse(data);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
@@ -117,7 +116,7 @@ export function getPost(slug: string, root: string = POSTS_ROOT): Post | undefin
  */
 export function readPostBody(slug: string, root: string = POSTS_ROOT): string {
   if (!isValidSegment(slug)) throw new Error(`Invalid post slug: ${slug}`);
-  return matter(fs.readFileSync(path.join(root, `${slug}.mdx`), "utf8")).content;
+  return parseMatter(fs.readFileSync(path.join(root, `${slug}.mdx`), "utf8")).content;
 }
 
 /**

@@ -29,6 +29,7 @@ export async function POST(request: Request): Promise<Response> {
       system: codeSystemPrompt(input.language),
       prompt: codePrompt(input),
       name: "exercise",
+      signal: request.signal,
     });
     const exercise: CodeExercise = {
       ...normalizeCodeExercise(output),

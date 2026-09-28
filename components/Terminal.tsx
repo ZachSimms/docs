@@ -38,7 +38,7 @@ import {
 import { TERMINAL_KEY, isPlainKey } from "@/lib/keys";
 import type { OutputLine, Shell, SourceMode } from "@/lib/terminal/shell";
 import type { Fs } from "@/lib/terminal/vfs";
-import { TERMINAL_PATH } from "@/lib/site";
+import { TERMINAL_PATH, isSitePath } from "@/lib/site";
 import { EMBED_ATTRIBUTE } from "@/lib/theme";
 import { DottedLink } from "./DottedLink";
 import { OPEN_TERMINAL_EVENT, type OpenTerminalOptions } from "./TerminalLink";
@@ -57,6 +57,8 @@ export const HISTORY_KEY = "terminal-history";
 const MAX_ENTRIES = 1000;
 /** Commands kept in the history. */
 const MAX_HISTORY = 200;
+/** Longest command line, in characters: no command needs more. */
+const MAX_INPUT = 2000;
 /** DOM id of the output log, which the input describes. */
 const LOG_ID = "terminal-log";
 
@@ -99,11 +101,40 @@ const EMPTY_SESSION: Session = { open: false, max: false, entries: [] };
 function isPane(value: unknown): value is Pane {
   if (typeof value !== "object" || value === null) return false;
   const { follow, mode, path, href, source } = value as Record<string, unknown>;
-  const optional = (field: unknown) => field === undefined || typeof field === "string";
+  // Only this site's paths: the split fetches and renders them.
+  const optional = (field: unknown) =>
+    field === undefined || (typeof field === "string" && isSitePath(field));
   return (
     (mode === undefined || mode === "raw" || mode === "rendered") &&
     (follow === true ||
       (follow === false && typeof path === "string" && optional(href) && optional(source)))
+  );
+}
+
+/** Whether stored JSON is a line of output: text runs, links to this site or the web. */
+function isOutputLine(value: unknown): value is OutputLine {
+  return (
+    Array.isArray(value) &&
+    value.every((segment: unknown) => {
+      if (typeof segment !== "object" || segment === null) return false;
+      const { text, href, tone } = segment as Record<string, unknown>;
+      return (
+        typeof text === "string" &&
+        (href === undefined ||
+          (typeof href === "string" && (isSitePath(href) || /^(https:|mailto:)/i.test(href)))) &&
+        (tone === undefined || tone === "dim" || tone === "error" || tone === "strong")
+      );
+    })
+  );
+}
+
+/** Whether stored JSON is a line of the scrollback. */
+function isEntry(value: unknown): value is Entry {
+  if (typeof value !== "object" || value === null) return false;
+  const { id, out, path, command } = value as Record<string, unknown>;
+  return (
+    typeof id === "number" &&
+    (isOutputLine(out) || (typeof path === "string" && typeof command === "string"))
   );
 }
 
@@ -116,14 +147,8 @@ function isSession(value: unknown): value is Session {
     typeof max === "boolean" &&
     (pane === undefined || pane === null || isPane(pane)) &&
     Array.isArray(entries) &&
-    entries.every(
-      (entry: unknown) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as { id?: unknown }).id === "number" &&
-        (Array.isArray((entry as { out?: unknown }).out) ||
-          typeof (entry as { command?: unknown }).command === "string"),
-    )
+    entries.length <= MAX_ENTRIES &&
+    entries.every(isEntry)
   );
 }
 
@@ -160,7 +185,7 @@ function readHistory(): string[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
     return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
+      ? parsed.filter((item): item is string => typeof item === "string").slice(-MAX_HISTORY)
       : [];
   } catch {
     return [];
@@ -606,6 +631,7 @@ export function Terminal() {
               <input
                 ref={inputRef}
                 type="text"
+                maxLength={MAX_INPUT}
                 value={input}
                 onChange={(event) => {
                   setInput(event.target.value);

@@ -70,6 +70,32 @@ describe("acceptFrameMessage", () => {
     );
   });
 
+  it("cuts an HTTP answer's oversized headers instead of dropping the answer", () => {
+    const message = acceptFrameMessage(
+      {
+        source: frame,
+        data: {
+          type: "response",
+          token,
+          id: "1",
+          status: 200,
+          statusText: "s".repeat(500),
+          headers: Array.from({ length: 150 }, (_, i) => [`x-${i}`, "a".repeat(5000)]),
+          body: "ok",
+          error: "e".repeat(5000),
+        },
+      },
+      frame,
+      token,
+    );
+    expect(message?.type).toBe("response");
+    if (message?.type !== "response") return;
+    expect(message.statusText).toHaveLength(200);
+    expect(message.headers).toHaveLength(100);
+    expect(message.headers?.[0]?.[1]).toHaveLength(4096);
+    expect(message.error).toHaveLength(4096);
+  });
+
   it("drops messages from other windows, stale runs and malformed payloads", () => {
     const out = { type: "out", token, stream: "stdout", text: "hi" };
     expect(acceptFrameMessage({ source: other, data: out }, frame, token)).toBeNull();

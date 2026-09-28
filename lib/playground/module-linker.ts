@@ -17,6 +17,7 @@
 import { init, parse } from "es-module-lexer";
 import { esmUrl, readDependencies, type Dependencies } from "./npm";
 import { dirname, hasFile, joinPath } from "./project";
+import { replaceTags } from "./tags";
 
 /** Compile one file to JavaScript (see `transpile.ts`). */
 export type Transpile = (path: string, code: string) => string;
@@ -334,9 +335,12 @@ export async function linkWebDocument(
 
   let html = files[htmlPath] ?? "";
 
-  html = html.replace(
-    /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
-    (whole, attrText: string, body: string) => {
+  // Scanned rather than `html.replace(/<script\b([^>]*)>…/gi)`, which is quadratic on
+  // unclosed tags: the reader's HTML is linked on every pause in typing and every load.
+  html = replaceTags(
+    html,
+    /<script\b/i,
+    ({ text: whole, attrs: attrText, body }) => {
       const attrs = attributesOf(attrText);
       const type = attrs.get("type")?.trim().toLowerCase() ?? "";
       const isModule = type === "module";
@@ -356,9 +360,10 @@ export async function linkWebDocument(
       if (isClassic) return `<script${attrText}>${instrument(body)}</script>`;
       return whole;
     },
+    /<\/script>/i,
   );
 
-  html = html.replace(/<link\b[^>]*>/gi, (tag) => {
+  html = replaceTags(html, /<link\b/i, ({ text: tag }) => {
     const attrs = attributesOf(tag);
     const href = attrs.get("href");
     if (!/\bstylesheet\b/i.test(attrs.get("rel") ?? "") || href === undefined) return tag;
@@ -368,7 +373,7 @@ export async function linkWebDocument(
     return `<style>/* ${path} */\n${css}</style>`;
   });
 
-  html = html.replace(/<(?:img|source)\b[^>]*>/gi, (tag) => {
+  html = replaceTags(html, /<(?:img|source)\b/i, ({ text: tag }) => {
     const src = attributesOf(tag).get("src");
     if (src === undefined || !src.toLowerCase().endsWith(".svg")) return tag;
     const path = local(src);

@@ -42,8 +42,15 @@ const {
   modelInfo,
   resetModelInfo,
 } = await import("@/lib/exercises/ai");
-const { allow, resetRateLimits, RATE_LIMITS, clientAddress } =
-  await import("@/lib/exercises/guard");
+const {
+  allow,
+  resetRateLimits,
+  RATE_LIMITS,
+  DAILY_LIMITS,
+  GLOBAL_LIMITS,
+  clientAddress,
+  clientKey,
+} = await import("@/lib/exercises/guard");
 const { normalizeCodeExercise, normalizeMathProblem, normalizeReview, stripFence } =
   await import("@/lib/exercises/normalize");
 const prompts = await import("@/lib/exercises/prompts");
@@ -199,6 +206,11 @@ describe("POST /api/exercises/code/", () => {
       [post({ request: "x".repeat(501) }), 400],
       [post({}, { origin: "https://evil.example" }), 403],
       [post({}, { origin: "not a url" }), 403],
+      // No Origin at all: not a browser's fetch from this site (curl, a script).
+      [post({}, { origin: undefined as unknown as string }), 403],
+      [post({}, { "sec-fetch-site": "cross-site" }), 403],
+      [post({}, { "sec-fetch-site": "same-site" }), 403],
+      [post({}, { "content-type": "text/plain" }), 415],
       [post({ request: "x".repeat(70_000) }), 413],
     ];
     for (const [request, status] of cases) {
@@ -508,6 +520,81 @@ describe("guard", () => {
     expect(response.status).toBe(429);
   });
 
+  it("caps each client per day, beyond the burst window", () => {
+    const { max: burst, windowMs } = RATE_LIMITS.generate;
+    const { max: daily } = DAILY_LIMITS.generate;
+    let now = 0;
+    let allowed = 0;
+    // A client that waits out every burst window still stops at the daily cap.
+    for (let i = 0; i < daily * 2; i++) {
+      if (i > 0 && i % burst === 0) now += windowMs;
+      if (allow("generate", "7.7.7.7", now)) allowed++;
+    }
+    expect(allowed).toBe(daily);
+    expect(allow("generate", "7.7.7.8", now)).toBe(true);
+  });
+
+  it("caps all clients together per instance, however many addresses they use", () => {
+    const { max } = GLOBAL_LIMITS.generate;
+    for (let i = 0; i < max; i++)
+      expect(allow("generate", `10.0.${i >> 8}.${i & 255}`, 5)).toBe(true);
+    expect(allow("generate", "192.168.0.1", 5)).toBe(false);
+    expect(allow("check", "192.168.0.1", 5)).toBe(true);
+    expect(allow("generate", "192.168.0.1", 5 + GLOBAL_LIMITS.generate.windowMs)).toBe(true);
+  });
+
+  it("doesn't count refused requests", () => {
+    const { max, windowMs } = RATE_LIMITS.check;
+    for (let i = 0; i < max; i++) allow("check", "4.4.4.4", 0);
+    for (let i = 0; i < 1000; i++) expect(allow("check", "4.4.4.4", 1)).toBe(false);
+    expect(allow("check", "4.4.4.4", windowMs)).toBe(true);
+  });
+
+  it("keys IPv6 clients by their /64 network", () => {
+    expect(clientKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("2001:0DB8:0001:0002:ffff::9")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(clientKey("[2001:db8:1:2::1]")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(clientKey("::ffff:203.0.113.9")).toBe("203.0.113.9");
+    expect(clientKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(clientKey("local")).toBe("local");
+    expect(clientKey("not:an:address")).toBe("not:an:address");
+  });
+
+  it("limits rotating IPv6 addresses in one /64 as one client", async () => {
+    next = () => SIGN_SLIP_VERDICT;
+    const { statement, answerFormat, answer, solution } = QUADRATIC_PROBLEM;
+    const body = { problem: { statement, answerFormat, answer, solution }, answer: "1" };
+    for (let i = 0; i < RATE_LIMITS.check.max; i++)
+      await checkMath(post(body, { "x-forwarded-for": `2001:db8:5:6::${i.toString(16)}` }));
+    const response = await checkMath(post(body, { "x-forwarded-for": "2001:db8:5:6:ffff::1" }));
+    expect(response.status).toBe(429);
+  });
+
+  it("stops the model call when the client goes away", async () => {
+    next = () => LINKED_LIST_EXERCISE;
+    const gone = new AbortController();
+    const request = Object.assign(post({}), { signal: gone.signal });
+    await generateCode(request);
+    const signal = calls[0]?.abortSignal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    gone.abort();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("answers 503 without calling the model when switched off", async () => {
+    process.env.EXERCISES_DISABLED = "1";
+    try {
+      const response = await generateCode(post({}));
+      expect(response.status).toBe(503);
+      expect(generateText).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.EXERCISES_DISABLED;
+    }
+  });
+
   it("reads the client address from the proxy headers", () => {
     const at = (headers: Record<string, string>) => clientAddress(post({}, headers));
     expect(at({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" })).toBe("1.1.1.1");
@@ -526,6 +613,19 @@ describe("classifyError", () => {
     expect(classifyError(named("X", { statusCode: 402 })).message).toContain("free credits");
     expect(classifyError(named("TimeoutError")).status).toBe(504);
     expect(classifyError(new Error("?")).code).toBe("upstream");
+    // A spent gateway budget, however the SDK wraps the 402.
+    const budget = classifyError(
+      named("GatewayInternalServerError", {
+        statusCode: 500,
+        message: "Project budget exceeded. Current spend: $5.00, limit: $5.00.",
+      }),
+    );
+    expect(budget.code).toBe("busy");
+    expect(budget.message).toContain("spending limit");
+    expect(
+      classifyError(named("X", { responseBody: '{"error":{"type":"quota_for_entity_exceeded"}}' }))
+        .message,
+    ).toContain("spending limit");
     const known = new ExerciseError("input", "no", 400);
     expect(classifyError(known)).toBe(known);
   });

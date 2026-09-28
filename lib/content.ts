@@ -21,6 +21,19 @@ import matter from "gray-matter";
 import { frontmatterSchema, type Frontmatter } from "./schema";
 import { TOPIC_SLUGS } from "./topics";
 
+/** A front matter language whose engine would run code: refused. */
+function noCodeFrontmatter(): never {
+  throw new Error("JavaScript front matter isn't allowed: use YAML");
+}
+
+/**
+ * `gray-matter` with YAML (and JSON) front matter only. By default a `---js` block is
+ * evaluated with `eval`, which would make any content file code that runs at build.
+ */
+export function parseMatter(raw: string): matter.GrayMatterFile<string> {
+  return matter(raw, { engines: { js: noCodeFrontmatter, javascript: noCodeFrontmatter } });
+}
+
 /** Metadata for one cheatsheet, as listed on topic, directory and index pages. */
 export interface Sheet {
   /** Topic slug, i.e. the folder under `content/`. */
@@ -130,7 +143,7 @@ function readFrontmatter(fullPath: string): Frontmatter {
       `Cannot read ${fullPath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const parsed = frontmatterSchema.safeParse(matter(raw).data);
+  const parsed = frontmatterSchema.safeParse(parseMatter(raw).data);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid frontmatter in ${fullPath}: ${issues}`);
@@ -448,7 +461,7 @@ export function readSheetBody(sheet: SheetRef, root: string = CONTENT_ROOT): str
     throw new Error(`Invalid sheet path: ${segments.join("/")}`);
   }
   const raw = fs.readFileSync(`${path.join(root, ...segments)}.mdx`, "utf8");
-  return matter(raw).content;
+  return parseMatter(raw).content;
 }
 
 /**

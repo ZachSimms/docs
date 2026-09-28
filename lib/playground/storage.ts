@@ -18,8 +18,15 @@ export const PROJECT_KEY_PREFIX = "playground:v1:project:";
 /** Key of the preferences object. */
 export const PREFS_KEY = "playground:v1:prefs";
 
-/** Stored strings longer than this are ignored without parsing (JSON overhead on top of the byte limit). */
-const MAX_STORED_CHARS = PROJECT_LIMITS.maxBytes * 3;
+/** Key of the mark a web preview leaves while it loads (see {@link markPreviewPending}). */
+export const PREVIEW_PENDING_KEY = "playground:v1:preview-pending";
+
+/**
+ * Stored strings longer than this are ignored without parsing. JSON can spell one byte of a
+ * file as six characters (`\u0001`), so a project within the byte limit fits, with room for
+ * the JSON around it.
+ */
+const MAX_STORED_CHARS = PROJECT_LIMITS.maxBytes * 6 + 64 * 1024;
 
 /** What the playground shows: projects of files, or generated exercises with hidden tests. */
 export type PlaygroundMode = "code" | "exercise";
@@ -139,6 +146,45 @@ export function saveProject(
   storage: Storage | null = defaultStorage(),
 ): boolean {
   return writeJson(storage, PROJECT_KEY_PREFIX + language, project);
+}
+
+/**
+ * Mark a web preview as loading. The mark is cleared once the preview has run for a moment
+ * ({@link clearPreviewPending}); if it is still there on the next visit, the preview froze the
+ * tab (code the loop guards can't reach), and it isn't loaded again by itself.
+ *
+ * @param token - The preview's run token.
+ */
+export function markPreviewPending(
+  token: string,
+  storage: Storage | null = defaultStorage(),
+): void {
+  try {
+    storage?.setItem(PREVIEW_PENDING_KEY, token);
+  } catch {
+    // Without storage there is no reload to protect.
+  }
+}
+
+/** Clear the mark {@link markPreviewPending} left for `token` (a newer preview's is kept). */
+export function clearPreviewPending(
+  token: string,
+  storage: Storage | null = defaultStorage(),
+): void {
+  try {
+    if (storage?.getItem(PREVIEW_PENDING_KEY) === token) storage.removeItem(PREVIEW_PENDING_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/** Whether a preview's mark was left behind: the last preview froze the tab. */
+export function previewFroze(storage: Storage | null = defaultStorage()): boolean {
+  try {
+    return Boolean(storage?.getItem(PREVIEW_PENDING_KEY));
+  } catch {
+    return false;
+  }
 }
 
 /** Project types that no longer exist, whose saved projects are removed on load. */
