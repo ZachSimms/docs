@@ -23,6 +23,7 @@ export async function POST(request: Request): Promise<Response> {
       system: codeSystemPrompt(exercise.language),
       prompt: repairPrompt(exercise, failures),
       name: "exercise",
+      signal: request.signal,
     });
     const repaired: CodeExercise = { ...exercise, ...normalizeCodeExercise(output), model };
     return Response.json(repaired);

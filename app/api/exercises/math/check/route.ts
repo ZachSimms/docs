@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
       system: MATH_CHECK_SYSTEM,
       prompt: mathCheckPrompt(input),
       name: "verdict",
+      signal: request.signal,
       maxOutputTokens: 6000,
     });
     return Response.json(output);

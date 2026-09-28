@@ -436,9 +436,17 @@ the paid tier (the monthly free credit stops); set a budget in the dashboard.
 When something fails, the message in the page includes what the gateway said (status and message),
 and the full error is in the deployment's function logs.
 
-**Abuse.** The routes accept only same-origin POSTs of at most 64 KB that match their schema, and allow
-20 generations and 60 reviews or checks per client per 10 minutes. That limit is in memory, so per server
-instance: the gateway budget is the real ceiling.
+**Abuse.** The routes accept only JSON POSTs of at most 64 KB that match their schema and carry this
+site's `Origin` (a browser's `fetch` always does; `curl` and scripts that don't forge it are refused).
+Per client (an IPv6 client is its /64 network), each instance allows 20 generations and 60 reviews or checks
+per 10 minutes, and 60 and 300 a day; across all clients, 300 generations and 900 reviews or checks an hour.
+A model call stops when the browser goes away. `EXERCISES_DISABLED=1` switches the API off (503) without a
+code change. All of that is in memory, so per server instance, and headers can be forged: **the real ceiling
+is an AI Gateway budget.** Set a project budget with a daily refresh (Vercel dashboard → AI Gateway →
+Budgets → Projects, or `vercel ai-gateway budgets set project <name> --limit 5 --refresh-period daily`) and,
+if the key is an API key, a budget on the key too; leave auto top-up off. Once a budget is spent, the gateway
+refuses requests (HTTP 402) and the page says the generator has reached its spending limit. Preview
+deployments spend from the same project budget: turn on Deployment Protection for them.
 
 ## Runtime notes
 

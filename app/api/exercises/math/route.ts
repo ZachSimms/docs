@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
       system: MATH_SYSTEM,
       prompt: mathPrompt(input),
       name: "problem",
+      signal: request.signal,
       maxOutputTokens: 12_000,
     });
     const problem: MathProblem = {
