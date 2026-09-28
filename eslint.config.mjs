@@ -19,8 +19,6 @@ const eslintConfig = defineConfig([
     // eve's build output and local state (`eve build`, `eve dev`).
     ".eve/**",
     ".output/**",
-    // The private agents package: its own dependencies and typecheck (see ops/package.json).
-    "ops/**",
   ]),
 ]);
 
