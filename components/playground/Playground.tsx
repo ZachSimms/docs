@@ -42,7 +42,13 @@ import {
   setOpen,
   updateFile,
 } from "@/lib/playground/project";
-import { isHelpShortcut, isZenShortcut, type TourStep } from "@/lib/playground/shortcuts";
+import {
+  EXERCISE_TOUR_STEPS,
+  isHelpShortcut,
+  isZenShortcut,
+  TOUR_STEPS,
+  type TourStep,
+} from "@/lib/playground/shortcuts";
 import { loadPrefs, savePrefs, type PlaygroundMode, type Prefs } from "@/lib/playground/storage";
 import {
   isSheetUrl,
@@ -141,7 +147,10 @@ export function Playground() {
   /** Counts docs requests, so a repeat request (after the last was shown and cleared) is new. */
   const docRequests = useRef(0);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [touring, setTouring] = useState(false);
+  /** The tour being shown: the playground's, or the exercise mode's. */
+  const [touring, setTouring] = useState<PlaygroundMode | null>(null);
+  /** The exercise mode's "How it works" card, reopened after it was dismissed. */
+  const [introOpen, setIntroOpen] = useState(false);
   /** Preview beside the editor for `.md` files (always on in the Markdown project). */
   const [mdPreview, setMdPreview] = useState(true);
   const editor = useRef<EditorHandle | null>(null);
@@ -352,13 +361,18 @@ export function Playground() {
 
   const startTour = () => {
     setHelpOpen(false);
-    // The tour walks through the project controls.
-    if (exerciseMode) chooseMode("code");
-    updatePrefs({ welcomed: true, zen: false });
-    setTouring(true);
+    setIntroOpen(false);
+    if (exerciseMode) {
+      // The exercise tour points into the exercise panel: make sure it is showing.
+      updatePrefs({ exerciseWelcomed: true, zen: false, treeOpen: true });
+      setTouring("exercise");
+    } else {
+      updatePrefs({ welcomed: true, zen: false });
+      setTouring("code");
+    }
   };
 
-  const endTour = useCallback(() => setTouring(false), []);
+  const endTour = useCallback(() => setTouring(null), []);
 
   const isMarkdownFile = modeForPath(project.open) === "markdown";
   const showMdPreview = isMarkdownFile && (spec.runner === "markdown" || mdPreview);
@@ -465,6 +479,12 @@ export function Playground() {
             <>
               <ExercisePanel
                 session={session}
+                intro={!prefs.exerciseWelcomed || introOpen}
+                onIntro={(show) => {
+                  setIntroOpen(show);
+                  if (!show) updatePrefs({ exerciseWelcomed: true });
+                }}
+                onTour={startTour}
                 onHide={() =>
                   pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false })
                 }
@@ -742,9 +762,22 @@ export function Playground() {
         visible={coarse && editorFocused && pane === "code"}
       />
       {helpOpen && (
-        <HelpPanel open spec={spec} onClose={() => setHelpOpen(false)} onTour={startTour} />
+        <HelpPanel
+          open
+          spec={spec}
+          mode={prefs.mode}
+          onClose={() => setHelpOpen(false)}
+          onTour={startTour}
+        />
       )}
-      {touring && <Tour onPane={setPane} onDone={endTour} />}
+      {touring && (
+        <Tour
+          key={touring}
+          steps={touring === "exercise" ? EXERCISE_TOUR_STEPS : TOUR_STEPS}
+          onPane={setPane}
+          onDone={endTour}
+        />
+      )}
       <div className="pg-frames">{runState.frames}</div>
     </div>
   );

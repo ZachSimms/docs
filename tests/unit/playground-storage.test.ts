@@ -93,6 +93,9 @@ describe("prefs", () => {
     expect(loadPrefs(store).layout.brief).toBe(1000); // clamped to the panel's maximum
     store.setItem(PREFS_KEY, JSON.stringify({ mode: "karaoke" }));
     expect(loadPrefs(store).mode).toBe("code");
+    expect(loadPrefs(store).exerciseWelcomed).toBe(false);
+    store.setItem(PREFS_KEY, JSON.stringify({ exerciseWelcomed: true }));
+    expect(loadPrefs(store).exerciseWelcomed).toBe(true);
   });
 
   it("returns defaults when empty or invalid, and round-trips valid prefs", () => {

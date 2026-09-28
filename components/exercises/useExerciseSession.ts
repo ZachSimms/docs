@@ -34,6 +34,7 @@ import {
   EMPTY_CODE_STORE,
   STORE_KEYS,
   codeStore,
+  forget,
   omitKeys,
   remember,
   type CodeStore,
@@ -305,6 +306,20 @@ export function useExerciseSession(run: PlaygroundRun, options: SessionOptions) 
     cancelDownload: () => setAskDownload(false),
     cancel,
     select: (id: string) => setStore((s) => ({ ...s, currentId: id })),
+    /** Remove exercises from the recent list, with their code and progress. */
+    remove: (ids: readonly string[] | "all") => {
+      setStore((s) => {
+        const next = forget(s.exercises, s.currentId, ids);
+        return {
+          ...s,
+          exercises: next.items,
+          currentId: next.currentId,
+          drafts: omitKeys(s.drafts, next.removed),
+          progress: omitKeys(s.progress, next.removed),
+        };
+      });
+      setViews((all) => omitKeys(all, ids === "all" ? Object.keys(all) : ids));
+    },
     setCode: (value: string) => {
       if (!exercise) return;
       const id = exercise.id;

@@ -4,7 +4,8 @@
  * Client component. Each step outlines its target (found by selector) and
  * shows a card next to it; on phones the card is a bottom sheet and the step
  * switches to the pane that holds the target. → or Enter: next, ←: back,
- * Esc: skip. Steps whose target isn't on screen are skipped over.
+ * Esc: skip. A step whose target isn't on screen (the exercise mode's brief before there is an
+ * exercise) shows its card in the middle of the viewport, without a mark.
  */
 
 "use client";
@@ -18,6 +19,8 @@ interface TourProps {
   onPane(pane: TourStep["pane"]): void;
   /** The tour ended (finished or skipped). */
   onDone(): void;
+  /** The steps: the playground's own by default (the exercise mode has its own). */
+  steps?: readonly TourStep[];
 }
 
 /** The target's box, or `null` when it isn't rendered or visible. */
@@ -61,12 +64,12 @@ export function placeCard(
 }
 
 /** Render the current step. */
-export function Tour({ onPane, onDone }: TourProps) {
+export function Tour({ onPane, onDone, steps = TOUR_STEPS }: TourProps) {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const card = useRef<HTMLDivElement>(null);
-  const step = TOUR_STEPS[index]!;
+  const step = steps[index]!;
 
   // Switch pane for the step, then measure its target once the layout has settled.
   useLayoutEffect(() => {
@@ -80,15 +83,21 @@ export function Tour({ onPane, onDone }: TourProps) {
     };
   }, [step, onPane]);
 
-  // Place the card once its size is known.
+  // Place the card once its size is known: by its target, or centered when there is none.
   useLayoutEffect(() => {
     const el = card.current;
-    if (!el || !rect) return setPosition(null);
+    if (!el) return setPosition(null);
     const { width, height } = el.getBoundingClientRect();
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
     setPosition(
-      placeCard(rect, { width, height }, { width: window.innerWidth, height: window.innerHeight }),
+      rect
+        ? placeCard(rect, { width, height }, viewport)
+        : {
+            left: Math.max(8, (viewport.width - width) / 2),
+            top: Math.max(8, (viewport.height - height) / 2),
+          },
     );
-  }, [rect]);
+  }, [rect, index]);
 
   useEffect(() => {
     card.current?.focus();
@@ -98,10 +107,10 @@ export function Tour({ onPane, onDone }: TourProps) {
     (delta: 1 | -1) => {
       const next = index + delta;
       if (next < 0) return;
-      if (next >= TOUR_STEPS.length) onDone();
+      if (next >= steps.length) onDone();
       else setIndex(next);
     },
-    [index, onDone],
+    [index, onDone, steps.length],
   );
 
   return (
@@ -142,7 +151,7 @@ export function Tour({ onPane, onDone }: TourProps) {
         }}
       >
         <p className="pg-muted">
-          {index + 1} / {TOUR_STEPS.length}
+          {index + 1} / {steps.length}
         </p>
         <h2 id="pg-tour-title">{step.title}</h2>
         <p id="pg-tour-body">{step.body}</p>
@@ -157,7 +166,7 @@ export function Tour({ onPane, onDone }: TourProps) {
               </button>
             )}{" "}
             <button type="button" className="link" onClick={() => go(1)}>
-              <i>{index === TOUR_STEPS.length - 1 ? "done" : "next →"}</i>
+              <i>{index === steps.length - 1 ? "done" : "next →"}</i>
             </button>
           </span>
         </p>

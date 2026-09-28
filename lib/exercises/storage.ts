@@ -135,3 +135,30 @@ export function omitKeys<V>(record: Record<string, V>, keys: readonly string[]):
   for (const key of keys) delete out[key];
   return out;
 }
+
+/**
+ * Remove items from a recent list, and pick what is current afterward: the same item if it
+ * stays, else the one that took the removed current item's place (or the one before it, at the
+ * end of the list), else nothing.
+ *
+ * @param items - The recent list, newest first.
+ * @param currentId - The open item's id.
+ * @param ids - The ids to remove; every id when `"all"`.
+ */
+export function forget<T extends { id: string }>(
+  items: readonly T[],
+  currentId: string | null,
+  ids: readonly string[] | "all",
+): { items: T[]; currentId: string | null; removed: string[] } {
+  const gone = new Set(ids === "all" ? items.map((i) => i.id) : ids);
+  const kept = items.filter((i) => !gone.has(i.id));
+  const removed = items.filter((i) => gone.has(i.id)).map((i) => i.id);
+  if (currentId === null || !gone.has(currentId)) return { items: kept, currentId, removed };
+  const at = items.findIndex((i) => i.id === currentId);
+  const after = items.slice(at + 1).find((i) => !gone.has(i.id));
+  const before = items
+    .slice(0, at)
+    .reverse()
+    .find((i) => !gone.has(i.id));
+  return { items: kept, currentId: (after ?? before)?.id ?? null, removed };
+}

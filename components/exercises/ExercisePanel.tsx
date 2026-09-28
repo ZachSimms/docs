@@ -20,6 +20,7 @@ import {
   type CodeLanguage,
 } from "@/lib/exercises/options";
 import type { CodeStore } from "@/lib/exercises/storage";
+import { RecentList } from "./RecentList";
 import { RichText } from "./RichText";
 import type { ExerciseSession } from "./useExerciseSession";
 import "./exercises.css";
@@ -79,10 +80,50 @@ interface ExercisePanelProps {
   readonly session: ExerciseSession;
   /** Hide the panel (the playground's `«`). */
   onHide(): void;
+  /** Show the "How it works" card (first visit, or asked for). */
+  readonly intro: boolean;
+  /** Show or hide the card; hiding it for good is the playground's business. */
+  onIntro(show: boolean): void;
+  /** Start the exercise tour. */
+  onTour(): void;
+}
+
+/** The "How it works" card: what the mode does, in the order you use it. */
+function Intro({ onClose, onTour }: { onClose(): void; onTour(): void }) {
+  return (
+    <section className="ex-note ex-intro" data-kind="ok" aria-labelledby="ex-intro-title">
+      <p className="ex-note-title" id="ex-intro-title">
+        How exercises work
+      </p>
+      <ol>
+        <li>
+          <strong>Ask.</strong> Describe what you want to practice, or pick a theme, difficulty and
+          language, then generate. An AI writes a task with hidden tests, and checks those tests
+          against its own solution before you see them.
+        </li>
+        <li>
+          <strong>Read.</strong> The task, its requirements and hints appear here; the starter code
+          opens in the editor.
+        </li>
+        <li>
+          <strong>Code and test.</strong> Write your solution and press ▶ Run tests (⌘↵). The tests
+          run in your browser; each one says why it failed and what your code printed.
+        </li>
+        <li>
+          <strong>Submit.</strong> When the tests pass, Submit asks the AI to review what tests
+          can&apos;t check (did you use a class, is it clean) and marks the exercise passed.
+        </li>
+      </ol>
+      <p>
+        Your exercises and code stay in this browser (Recent).{" "}
+        <Action onClick={onTour}>take the tour</Action> <Action onClick={onClose}>got it</Action>
+      </p>
+    </section>
+  );
 }
 
 /** The form, the current exercise and the recent list. */
-export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
+export function ExercisePanel({ session, onHide, intro, onIntro, onTour }: ExercisePanelProps) {
   const { store, form, exercise, progress, view, busy } = session;
   // With an exercise open the form folds away; generating or an empty list keeps it open.
   const formOpen = !exercise || busy !== null || session.askDownload;
@@ -96,6 +137,7 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
   const requestForm = (
     <form
       className="ex-form"
+      data-tour="exercise-form"
       onSubmit={(event) => {
         event.preventDefault();
         if (!busy) session.generate();
@@ -233,6 +275,14 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
         <span>Exercise</span>
         <button
           type="button"
+          className="link ex-howto"
+          aria-expanded={intro}
+          onClick={() => onIntro(!intro)}
+        >
+          <i>how it works</i>
+        </button>
+        <button
+          type="button"
           className="link"
           aria-label="Hide the exercise panel"
           title="Hide the exercise panel"
@@ -242,6 +292,7 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
         </button>
       </div>
       <div className="pg-exercise-body">
+        {intro && <Intro onClose={() => onIntro(false)} onTour={onTour} />}
         {formOpen ? (
           requestForm
         ) : (
@@ -260,7 +311,7 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
         )}
 
         {exercise ? (
-          <article className="ex-exercise" aria-labelledby="ex-title">
+          <article className="ex-exercise" aria-labelledby="ex-title" data-tour="exercise-brief">
             <h2 id="ex-title">
               {exercise.title}
               {progress?.passed && <span className="ex-ok"> ✓</span>}
@@ -370,47 +421,38 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
             )}
           </article>
         ) : (
-          !busy && (
+          !busy &&
+          !intro && (
             <p className="ex-label">
-              Describe what you want to practice, or pick a theme, then generate. You write the
-              solution in the editor; hidden tests check it in your browser (▶ Run tests, ⌘↵), and
-              Submit adds a review of what tests can&apos;t check.
+              No exercise yet: ask for one above.{" "}
+              <Action onClick={() => onIntro(true)}>how it works</Action>
             </p>
           )
         )}
 
-        {store.exercises.length > 0 && (
-          <section aria-labelledby="ex-recent">
-            <h3 id="ex-recent">Recent</h3>
-            <ol className="ex-recent">
-              {store.exercises.map((ex, i) => {
-                const p = store.progress[ex.id];
-                return (
-                  <li key={ex.id}>
-                    <span className="ex-label">{String(i).padStart(2, "0")}. </span>
-                    <button
-                      type="button"
-                      className="link"
-                      aria-current={ex.id === store.currentId ? "true" : undefined}
-                      disabled={session.working}
-                      onClick={() => session.select(ex.id)}
-                    >
-                      <i>{ex.title}</i>
-                    </button>{" "}
-                    <span className="ex-label">
-                      {optionLabel(CODE_LANGUAGES, ex.language)} · {ex.difficulty}
-                    </span>{" "}
-                    {p?.passed ? (
-                      <span className="ex-ok">✓ passed</span>
-                    ) : p?.best ? (
-                      <span className="ex-label">{p.best} tests</span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
-        )}
+        <div data-tour="exercise-recent">
+          <RecentList
+            items={store.exercises.map((ex) => {
+              const p = store.progress[ex.id];
+              return {
+                id: ex.id,
+                title: ex.title,
+                detail: `${optionLabel(CODE_LANGUAGES, ex.language)} · ${ex.difficulty}`,
+                status: p?.passed ? (
+                  <span className="ex-ok">✓ passed</span>
+                ) : p?.best ? (
+                  <span className="ex-label">{p.best} tests</span>
+                ) : null,
+              };
+            })}
+            currentId={store.currentId}
+            disabled={session.working}
+            heading="h3"
+            noun="exercise"
+            onSelect={session.select}
+            onRemove={session.remove}
+          />
+        </div>
       </div>
     </div>
   );

@@ -36,6 +36,8 @@ export interface Prefs {
   readonly zen: boolean;
   /** Whether the first-visit welcome card was dismissed (or the tour taken). */
   readonly welcomed: boolean;
+  /** The same for the exercise mode's "How it works" card. */
+  readonly exerciseWelcomed: boolean;
   /** Soft-wrap long lines in the editor. */
   readonly wrap: boolean;
   /** The stdin box per language. */
@@ -53,6 +55,7 @@ export const DEFAULT_PREFS: Prefs = {
   layout: DEFAULT_LAYOUT,
   zen: false,
   welcomed: false,
+  exerciseWelcomed: false,
   wrap: false,
   stdin: {},
   treeOpen: true,
@@ -65,6 +68,7 @@ const prefsSchema = z.object({
   layout: layoutSchema,
   zen: z.boolean().catch(DEFAULT_PREFS.zen),
   welcomed: z.boolean().catch(DEFAULT_PREFS.welcomed),
+  exerciseWelcomed: z.boolean().catch(DEFAULT_PREFS.exerciseWelcomed),
   wrap: z.boolean().catch(DEFAULT_PREFS.wrap),
   stdin: z
     .partialRecord(z.enum(LANGUAGE_IDS), z.string().max(64 * 1024))

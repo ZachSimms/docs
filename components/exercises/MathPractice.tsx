@@ -19,11 +19,13 @@ import type { MathProblem, MathVerdict } from "@/lib/exercises/schema";
 import {
   EMPTY_MATH_STORE,
   STORE_KEYS,
+  forget,
   mathStore,
   omitKeys,
   remember,
   type MathStore,
 } from "@/lib/exercises/storage";
+import { RecentList } from "./RecentList";
 import { RichText } from "./RichText";
 import { useStore } from "./useStore";
 import "./exercises.css";
@@ -250,39 +252,89 @@ export function MathPractice() {
         )
       )}
 
-      {store.problems.length > 0 && (
-        <section aria-labelledby="mx-recent">
-          <h2 id="mx-recent">Recent</h2>
-          <ol className="ex-recent">
-            {store.problems.map((p, i) => {
-              const progress = store.progress[p.id];
-              return (
-                <li key={p.id}>
-                  <span className="ex-label">{String(i).padStart(2, "0")}. </span>
-                  <button
-                    type="button"
-                    className="link"
-                    aria-current={p.id === store.currentId ? "true" : undefined}
-                    disabled={busy !== null}
-                    onClick={() => setStore((s) => ({ ...s, currentId: p.id }))}
-                  >
-                    <i>{p.title}</i>
-                  </button>{" "}
-                  <span className="ex-label">{p.difficulty}</span>{" "}
-                  {progress?.solved ? (
-                    <span className="ex-ok">✓ solved</span>
-                  ) : progress && progress.attempts > 0 ? (
-                    <span className="ex-label">
-                      {progress.attempts} {progress.attempts === 1 ? "try" : "tries"}
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
+      <RecentList
+        items={store.problems.map((p) => {
+          const progress = store.progress[p.id];
+          return {
+            id: p.id,
+            title: p.title,
+            detail: p.difficulty,
+            status: progress?.solved ? (
+              <span className="ex-ok">✓ solved</span>
+            ) : progress && progress.attempts > 0 ? (
+              <span className="ex-label">
+                {progress.attempts} {progress.attempts === 1 ? "try" : "tries"}
+              </span>
+            ) : null,
+          };
+        })}
+        currentId={store.currentId}
+        disabled={busy !== null}
+        heading="h2"
+        noun="problem"
+        onSelect={(id) => setStore((s) => ({ ...s, currentId: id }))}
+        onRemove={(ids) =>
+          setStore((s) => {
+            const next = forget(s.problems, s.currentId, ids);
+            return {
+              ...s,
+              problems: next.items,
+              currentId: next.currentId,
+              progress: omitKeys(s.progress, next.removed),
+            };
+          })
+        }
+      />
     </div>
+  );
+}
+
+/** What can be typed in the answer box, beside it, for the moment someone wonders. */
+function AnswerHelp() {
+  return (
+    <details className="ex-answer-help">
+      <summary className="ex-label">how to type answers</summary>
+      <table>
+        <tbody>
+          <tr>
+            <td>fractions, decimals, percents</td>
+            <td>
+              <code>3/4</code> <code>0.75</code> <code>75%</code>
+            </td>
+          </tr>
+          <tr>
+            <td>roots, π, powers</td>
+            <td>
+              <code>2√3</code> <code>sqrt(2)/2</code> <code>2pi</code> <code>2^10</code>
+            </td>
+          </tr>
+          <tr>
+            <td>several answers, any order</td>
+            <td>
+              <code>x = 2, x = -3</code> <code>2 or -3</code> <code>±√2</code>
+            </td>
+          </tr>
+          <tr>
+            <td>LaTeX works too</td>
+            <td>
+              <code>
+                \frac{"{"}1{"}"}
+                {"{"}3{"}"}
+              </code>{" "}
+              <code>
+                \sqrt{"{"}2{"}"}
+              </code>
+            </td>
+          </tr>
+          <tr>
+            <td>expressions, words</td>
+            <td>
+              <code>2x + 1</code>, <code>(1, 3]</code>: checked by the AI
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </details>
   );
 }
 
@@ -409,6 +461,7 @@ function ProblemView({ problem, progress, locked, onAttempt, onNext }: ProblemVi
               : "can't read that as a number: it will be checked by the model"
             : " "}
         </p>
+        <AnswerHelp />
         <div className="ex-actions">
           <Action onClick={() => setShowWorking((w) => !w)}>
             {showWorking ? "Hide working" : "Add working (optional)"}

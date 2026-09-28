@@ -62,6 +62,12 @@ test.describe("playground exercises", () => {
     );
     await expect(page.getByRole("navigation", { name: "Exercise" })).toBeVisible();
 
+    // The first visit explains the mode; once dismissed, the card stays away.
+    const intro = page.getByRole("region", { name: "How exercises work" });
+    await expect(intro).toBeVisible();
+    await intro.getByRole("button", { name: "got it" }).click();
+    await expect(intro).toHaveCount(0);
+
     // Switching back to projects shows the file tree and drops the query; the choice is kept.
     await page.getByRole("button", { name: "Projects" }).click();
     await expect(page).toHaveURL(/\/playground\/$/);
@@ -74,6 +80,7 @@ test.describe("playground exercises", () => {
       "aria-pressed",
       "true",
     );
+    await expect(intro).toHaveCount(0);
   });
 
   test("without a gateway key, the API says how to set it up", async ({ request }) => {

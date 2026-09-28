@@ -57,7 +57,7 @@ export function PlaygroundToolbar(props: PlaygroundToolbarProps) {
         ../
       </DottedLink>
       <h1 className="pg-title">Playground</h1>
-      <span className="pg-modes" role="group" aria-label="Mode">
+      <span className="pg-modes" role="group" aria-label="Mode" data-tour="mode">
         {MODES.map((m) => (
           <button
             key={m.id}
@@ -78,6 +78,7 @@ export function PlaygroundToolbar(props: PlaygroundToolbarProps) {
           <button
             type="button"
             className="link pg-run"
+            data-tour="run"
             onClick={props.onRun}
             disabled={running || !props.canRunTests}
             aria-keyshortcuts="Meta+Enter Control+Enter"

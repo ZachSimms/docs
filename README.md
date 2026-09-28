@@ -330,7 +330,12 @@ Two generators share one pipeline:
   rendered with raw HTML escaped and then sanitized with DOMPurify. A review can't pass while a test fails.
   The learner's request, code and working are quoted to the model as data.
 - **Memory.** The last 12 exercises and problems, your code for each and your progress stay in
-  `localStorage` (the `Recent` list).
+  `localStorage` (the `Recent` list); `×` removes one with its work, `clear all` (asks first) removes
+  them all.
+- **Getting started.** The exercise mode opens with a "How it works" card on the first visit (again from
+  `how it works` in the panel), offers an exercise tour on the real controls, and F1 help describes the
+  mode being shown. The math sheet starts with a four-step "How it works", and "how to type answers"
+  under the answer box lists the accepted formats.
 
 ### Setup: Vercel AI Gateway
 

@@ -4,9 +4,9 @@
  * the math sheet, with `fetch` stubbed and the sandbox runner replaced: the real ones are
  * covered by the harness tests and the e2e suite.
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { parseHarnessOutput, resultMark, type HarnessReport } from "@/lib/exercises/harness";
 import {
   EMPTY_CODE_STORE,
@@ -14,6 +14,7 @@ import {
   MAX_KEPT,
   STORE_KEYS,
   codeStore,
+  forget,
   loadStore,
   omitKeys,
   remember,
@@ -58,6 +59,9 @@ const { useExerciseSession } = await import("@/components/exercises/useExerciseS
 const { ExercisePanel } = await import("@/components/exercises/ExercisePanel");
 const { ExerciseResults } = await import("@/components/exercises/ExerciseResults");
 
+/** Tours started from the intro card. */
+const tours: string[] = [];
+
 /** Whether Python's download counts as approved, and what was approved during a test. */
 let pythonApproved = true;
 const approvals: string[] = [];
@@ -66,14 +70,21 @@ const approvals: string[] = [];
  * The playground's exercise mode without the playground: the panel, a textarea for the editor,
  * the toolbar's Run tests and Submit, and the results pane, over one session.
  */
-function ExerciseMode() {
+function ExerciseMode({ intro: initialIntro = false }: { intro?: boolean }) {
+  const [intro, setIntro] = useState(initialIntro);
   const session = useExerciseSession({} as PlaygroundRun, {
     approved: (id) => id !== "python" || pythonApproved,
     approve: (id) => void approvals.push(id),
   });
   return (
     <>
-      <ExercisePanel session={session} onHide={() => undefined} />
+      <ExercisePanel
+        session={session}
+        onHide={() => undefined}
+        intro={intro}
+        onIntro={setIntro}
+        onTour={() => void tours.push("exercise")}
+      />
       {session.exercise && (
         <textarea
           aria-label="Code editor"
@@ -103,6 +114,7 @@ const posted: { path: string; body: unknown }[] = [];
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
+  tours.length = 0;
   pythonApproved = true;
   approvals.length = 0;
   localStorage.clear();
@@ -125,6 +137,24 @@ afterEach(() => {
 });
 
 describe("storage", () => {
+  it("forgets items and keeps a sensible current one", () => {
+    const items = ["a", "b", "c", "d"].map((id) => ({ id }));
+    expect(forget(items, "b", ["b"])).toEqual({
+      items: [{ id: "a" }, { id: "c" }, { id: "d" }],
+      currentId: "c", // the next one takes its place
+      removed: ["b"],
+    });
+    expect(forget(items, "d", ["d"]).currentId).toBe("c"); // at the end: the one before
+    expect(forget(items, "b", ["a"]).currentId).toBe("b"); // untouched
+    expect(forget(items, "b", ["b", "c", "d"]).currentId).toBe("a");
+    expect(forget(items, "a", "all")).toEqual({
+      items: [],
+      currentId: null,
+      removed: ["a", "b", "c", "d"],
+    });
+    expect(forget(items, null, ["x"]).removed).toEqual([]);
+  });
+
   it("falls back to the empty store for missing, broken or invalid data", () => {
     expect(loadStore(STORE_KEYS.code, codeStore, EMPTY_CODE_STORE)).toBe(EMPTY_CODE_STORE);
     localStorage.setItem(STORE_KEYS.code, "{not json");
@@ -407,6 +437,55 @@ describe("the playground's exercise mode", () => {
     expect(screen.getByLabelText("What do you want to practice?")).toHaveValue(suggestions[0]);
   });
 
+  it("removes one exercise with its work, opening the next", () => {
+    const other = { ...STACK_EXERCISE, id: "other", title: "Another one" };
+    saveStore(STORE_KEYS.code, {
+      ...EMPTY_CODE_STORE,
+      currentId: STACK_EXERCISE.id,
+      exercises: [STACK_EXERCISE, other],
+      drafts: { [STACK_EXERCISE.id]: "// mine" },
+      progress: { [STACK_EXERCISE.id]: { passed: true } },
+    });
+    render(<ExerciseMode />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Undo stack" }));
+    expect(screen.getByRole("heading", { name: "Another one" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo stack" })).toBeNull();
+  });
+
+  it("clears every exercise after a confirmation", async () => {
+    saveStore(STORE_KEYS.code, {
+      ...EMPTY_CODE_STORE,
+      currentId: STACK_EXERCISE.id,
+      exercises: [STACK_EXERCISE, { ...STACK_EXERCISE, id: "b", title: "B" }],
+    });
+    render(<ExerciseMode />);
+    fireEvent.click(screen.getByRole("button", { name: "clear all" }));
+    const confirm = screen.getByRole("group", { name: "Clear all exercises" });
+    expect(confirm).toHaveTextContent("remove all 2 exercises");
+    fireEvent.click(within(confirm).getByRole("button", { name: "no" }));
+    expect(screen.getByRole("heading", { name: "Recent" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "clear all" }));
+    fireEvent.click(screen.getByRole("button", { name: "yes" }));
+    expect(screen.queryByRole("heading", { name: "Recent" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Undo stack" })).toBeNull();
+    await act(() => new Promise((r) => setTimeout(r, 350)));
+    const saved = loadStore(STORE_KEYS.code, codeStore, EMPTY_CODE_STORE);
+    expect(saved).toMatchObject({ exercises: [], currentId: null, drafts: {}, progress: {} });
+  });
+
+  it("explains how exercises work, on request, with a way into the tour", () => {
+    render(<ExerciseMode intro />);
+    const card = screen.getByRole("region", { name: "How exercises work" });
+    expect(card).toHaveTextContent("Run tests");
+    fireEvent.click(within(card).getByRole("button", { name: "take the tour" }));
+    expect(tours).toEqual(["exercise"]);
+    fireEvent.click(within(card).getByRole("button", { name: "got it" }));
+    expect(screen.queryByRole("region", { name: "How exercises work" })).toBeNull();
+    // Back from the panel's bar, or from the empty state.
+    fireEvent.click(screen.getAllByRole("button", { name: "how it works" })[0]!);
+    expect(screen.getByRole("region", { name: "How exercises work" })).toBeInTheDocument();
+  });
+
   it("reveals hints one at a time and the solution after a confirmation", async () => {
     saveStore(STORE_KEYS.code, {
       ...EMPTY_CODE_STORE,
@@ -470,6 +549,27 @@ describe("MathPractice", () => {
     expect(screen.getByText(/checked by the model/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check" }));
     expect(await screen.findByText("Equivalent.")).toBeInTheDocument();
+  });
+
+  it("removes problems one by one or all at once, and explains answer formats", () => {
+    const other = { ...QUADRATIC_PROBLEM, id: "other", title: "Other problem" };
+    saveStore(STORE_KEYS.math, {
+      ...EMPTY_MATH_STORE,
+      currentId: QUADRATIC_PROBLEM.id,
+      problems: [QUADRATIC_PROBLEM, other],
+      progress: { [QUADRATIC_PROBLEM.id]: { solved: true, attempts: 1 } },
+    });
+    render(<MathPractice />);
+    expect(screen.getByText("how to type answers")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `Remove ${QUADRATIC_PROBLEM.title}` }));
+    expect(screen.getByRole("heading", { name: "Other problem" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "clear all" }));
+    expect(screen.getByRole("group", { name: "Clear all problems" })).toHaveTextContent(
+      "remove all 1 problem and",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "yes" }));
+    expect(screen.queryByRole("heading", { name: "Other problem" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Recent" })).toBeNull();
   });
 
   it("shows hints and the worked solution", () => {
