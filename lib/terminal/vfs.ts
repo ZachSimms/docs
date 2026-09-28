@@ -286,9 +286,11 @@ export function complete(
   commands: readonly string[],
   anchors: readonly string[] = [],
 ): Completion {
-  const start = line.search(/\S+$/);
-  const word = start === -1 ? "" : line.slice(start);
-  const head = start === -1 ? line : line.slice(0, start);
+  // The last word, found by scanning back: `line.search(/\S+$/)` is quadratic on a long word.
+  let start = line.length;
+  while (start > 0 && /\S/.test(line[start - 1])) start--;
+  const word = line.slice(start);
+  const head = line.slice(0, start);
   const unchanged = { line, choices: [] };
 
   // The first word is a command.

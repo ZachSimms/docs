@@ -138,6 +138,17 @@ describe("complete", () => {
   const commands = ["cat", "cd", "clear", "ls"];
   const python = () => node("docs/python");
 
+  it("takes linear time on a very long word", () => {
+    const long = "a".repeat(200_000);
+    const started = performance.now();
+    expect(complete(fs, fs.root, `${long} `, commands).line).toBe(`${long} `);
+    expect(complete(fs, fs.root, `cd ${long}`, commands)).toEqual({
+      line: `cd ${long}`,
+      choices: [],
+    });
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it("completes command names, listing the choices when ambiguous", () => {
     expect(complete(fs, fs.root, "l", commands)).toEqual({ line: "ls ", choices: [] });
     expect(complete(fs, fs.root, "c", commands)).toEqual({

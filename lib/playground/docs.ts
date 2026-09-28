@@ -51,7 +51,11 @@ const manifestSchema = z.object({
       name: z.string(),
       release: z.string().nullable(),
       mtime: z.number().int(),
-      home: z.string().url().nullable(),
+      home: z
+        .string()
+        .url()
+        .refine((url) => url.startsWith("https://"), "https only")
+        .nullable(),
       attribution: z.string(),
     }),
   ),

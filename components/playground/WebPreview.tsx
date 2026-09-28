@@ -7,6 +7,11 @@
  * shown in an `<iframe sandbox="allow-scripts allow-forms" srcdoc>`, an opaque origin. Its
  * console output reaches the page only through `acceptFrameMessage` (right
  * frame, current token, valid shape).
+ *
+ * Code the loop guards can't reach (an `onerror` handler, `eval`, a catastrophic regex) can
+ * still freeze the tab, and the draft is saved, so it would freeze again on every visit. A
+ * mark in storage covers that: set as a preview loads, cleared once it has run for a moment.
+ * If it is still there when the playground opens, the preview waits for Run.
  */
 
 "use client";
@@ -17,6 +22,7 @@ import type { Stream } from "@/lib/playground/output";
 import type { Project } from "@/lib/playground/project";
 import { acceptFrameMessage, newRunToken } from "@/lib/playground/runtime/protocol";
 import { buildPreviewSrcDoc } from "@/lib/playground/runtime/web-preview";
+import { clearPreviewPending, markPreviewPending, previewFroze } from "@/lib/playground/storage";
 import { PREVIEW_SANDBOX_FLAGS } from "./useSandboxFrame";
 
 /**
@@ -28,6 +34,9 @@ const loadCompiler = () =>
 
 /** Wait this long after the last keystroke before refreshing. */
 export const PREVIEW_DEBOUNCE_MS = 500;
+
+/** How long a preview runs after loading before it counts as not having frozen the tab. */
+export const PREVIEW_SETTLE_MS = 3000;
 
 /** Props for {@link WebPreview}. */
 interface WebPreviewProps {
@@ -50,6 +59,9 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
   const callbacks = useRef({ onReload, onOutput });
   const [doc, setDoc] = useState<string>("");
   const lastRefresh = useRef(refreshKey);
+  /** Whether previews wait for Run, after one froze the tab; `null` until first checked. */
+  const paused = useRef<boolean | null>(null);
+  const [pausedNote, setPausedNote] = useState(false);
 
   useEffect(() => {
     callbacks.current = { onReload, onOutput };
@@ -62,6 +74,10 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
     let canceled = false;
     const handle = setTimeout(
       () => {
+        if (paused.current === null) paused.current = previewFroze();
+        if (immediate) paused.current = false;
+        setPausedNote(paused.current);
+        if (paused.current) return;
         const runToken = newRunToken();
         loadCompiler()
           .then(([{ transpile }, { addLoopGuards }]) =>
@@ -74,6 +90,7 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
             token.current = runToken;
             urls.current = linked;
             callbacks.current.onReload();
+            markPreviewPending(runToken);
             setDoc(buildPreviewSrcDoc(html, runToken));
           })
           .catch((error: unknown) => {
@@ -109,7 +126,11 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
       {resizer}
       <div className="pg-bar">
         <span>Preview</span>
-        <span className="pg-status">updates as you type</span>
+        <span className="pg-status">
+          {pausedNote
+            ? "paused: the last preview froze the page. ▶ Run to try again"
+            : "updates as you type"}
+        </span>
       </div>
       <iframe
         ref={frame}
@@ -117,6 +138,11 @@ export function WebPreview({ project, refreshKey, onReload, onOutput, resizer }:
         srcDoc={doc}
         title={`Preview of ${project.entry}`}
         className="pg-preview-frame"
+        onLoad={() => {
+          // Still running a few seconds after loading: it didn't freeze the tab on the way in.
+          const loaded = token.current;
+          if (loaded) setTimeout(() => clearPreviewPending(loaded), PREVIEW_SETTLE_MS);
+        }}
       />
     </section>
   );

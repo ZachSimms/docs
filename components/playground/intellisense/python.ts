@@ -228,7 +228,14 @@ export function pythonService(): Promise<PythonService> {
         signatureHelp(),
         serverDiagnostics(),
       ],
-      sanitizeHTML: (html) => purify.sanitize(html, { FORBID_TAGS: ["style", "form", "img"] }),
+      // In the playground's own page: no named elements that could shadow globals, and
+      // links to the web only.
+      sanitizeHTML: (html) =>
+        purify.sanitize(html, {
+          FORBID_TAGS: ["style", "form", "img"],
+          SANITIZE_NAMED_PROPS: true,
+          ALLOWED_URI_REGEXP: /^(?:https:|#)/i,
+        }),
       notificationHandlers: {
         "textDocument/publishDiagnostics": (
           _client,

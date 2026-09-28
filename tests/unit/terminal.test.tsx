@@ -21,7 +21,8 @@ const { OPEN_TERMINAL_EVENT, OpenTerminalOnArrival, TerminalLink } =
 const { default: TerminalPage } = await import("@/app/terminal/page");
 const { resetTerminalCache, SITE_TREE_URL } = await import("@/lib/terminal/client");
 const { buildFs } = await import("@/lib/terminal/vfs");
-const { resetSourceCache } = await import("@/components/SourcePane");
+const { renderedHtml, resetSourceCache } = await import("@/components/SourcePane");
+const { isSitePath } = await import("@/lib/site");
 
 const originalFetch = globalThis.fetch;
 let requested: string[] = [];
@@ -371,6 +372,42 @@ describe("Terminal", () => {
     });
   });
 
+  it("never fetches a stored split that points off the site", async () => {
+    for (const href of [
+      "https://attacker.example/p",
+      "//attacker.example/p",
+      "/\\attacker.example/p",
+    ]) {
+      sessionStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          open: true,
+          max: false,
+          entries: [],
+          pane: { follow: false, mode: "rendered", path: "~", href },
+        }),
+      );
+      const { unmount } = render(<Terminal />);
+      await act(async () => {});
+      expect(screen.queryByRole("region", { name: "Markdown split" })).toBeNull();
+      unmount();
+    }
+    expect(requested.filter((url) => url.includes("attacker"))).toEqual([]);
+  });
+
+  it("drops a stored session with malformed output rather than crashing", async () => {
+    for (const out of [[null], [{ text: 1 }], [{ text: "x", href: "javascript:alert(1)" }]]) {
+      sessionStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ open: true, max: false, entries: [{ id: 1, out }] }),
+      );
+      const { unmount } = render(<Terminal />);
+      // The stored session was refused: the terminal starts closed.
+      expect(screen.queryByRole("region", { name: "Terminal" })).toBeNull();
+      unmount();
+    }
+  });
+
   it("the split says when a page cannot load", async () => {
     sessionStorage.setItem(
       SESSION_KEY,
@@ -385,6 +422,34 @@ describe("Terminal", () => {
     expect(await screen.findByText("could not load /source/x.md")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "rendered" }));
     expect(await screen.findByText("could not load /x/")).toBeInTheDocument();
+  });
+});
+
+describe("renderedHtml", () => {
+  it("drops scripts, ids and inline event handlers", () => {
+    const main = document.createElement("main");
+    main.innerHTML = `<h1 id="t" onclick="x()">T</h1><img src="x" onerror="x()"><a href="/a/" onmouseover="x()">a</a><script>x()</script>`;
+    const html = renderedHtml(main);
+    expect(html).not.toMatch(/\son\w+=/i);
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain('id="t"');
+    expect(html).toContain('href="/a/"');
+  });
+});
+
+describe("isSitePath", () => {
+  it("accepts this site's paths only", () => {
+    for (const ok of ["/", "/docs/", "/python/fastapi/#x", "/source/x.md"])
+      expect(isSitePath(ok)).toBe(true);
+    for (const bad of [
+      "",
+      "docs/",
+      "//evil.example/",
+      "/\\evil.example/",
+      "https://evil.example/",
+      "javascript:alert(1)",
+    ])
+      expect(isSitePath(bad)).toBe(false);
   });
 });
 

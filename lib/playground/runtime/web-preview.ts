@@ -10,6 +10,7 @@
  */
 
 import { formatConsoleArgs } from "./format";
+import { firstTag } from "../tags";
 
 /** The global the preview's loop guards call (see `loop-guard.ts`); returns `true` or throws. */
 export const LOOP_GUARD = "__playgroundLoopGuard";
@@ -92,14 +93,10 @@ export function buildPreviewSrcDoc(html: string, token: string): string {
     `(${previewShim.toString()})(${JSON.stringify(token)}, ${formatConsoleArgs.toString()});` +
       `globalThis[${JSON.stringify(LOOP_GUARD)}] = (${createLoopGuard.toString()})(${LOOP_LIMIT_MS});`,
   )}</script>`;
-  const head = /<head\b[^>]*>/i.exec(html);
-  if (head)
-    return (
-      html.slice(0, head.index + head[0].length) + shim + html.slice(head.index + head[0].length)
-    );
-  const doctype = /<!doctype[^>]*>/i.exec(html);
-  if (doctype) {
-    const end = doctype.index + doctype[0].length;
+  // Scanned, not matched with `/<head\b[^>]*>/i`: that is quadratic on unclosed tags.
+  const tag = firstTag(html, /<head\b/i) ?? firstTag(html, /<!doctype/i);
+  if (tag) {
+    const end = tag.index + tag.text.length;
     return html.slice(0, end) + shim + html.slice(end);
   }
   return `<!doctype html>${shim}${html}`;

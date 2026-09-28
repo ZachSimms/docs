@@ -18,6 +18,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { isSitePath } from "@/lib/site";
 import { loadPageMain } from "@/lib/terminal/client";
 import { classifyLines } from "@/lib/terminal/markdown-lines";
 import type { SourceMode } from "@/lib/terminal/shell";
@@ -27,9 +28,10 @@ const cache = new Map<string, Promise<string | null>>();
 
 /** The text of a source, or `null` when it cannot be loaded. */
 function loadSource(url: string): Promise<string | null> {
+  if (!isSitePath(url)) return Promise.resolve(null);
   const cached = cache.get(url);
   if (cached) return cached;
-  const loading = fetch(url)
+  const loading = fetch(url, { mode: "same-origin" })
     .then((res) => (res.ok ? res.text() : null))
     .catch(() => null)
     .then((text) => {
@@ -52,6 +54,10 @@ export function resetSourceCache(): void {
 export function renderedHtml(main: Element): string {
   const copy = main.cloneNode(true) as Element;
   copy.querySelectorAll("script").forEach((el) => el.remove());
+  // Inline handlers would run once inserted; the site's pages carry none, so drop any.
+  copy.querySelectorAll("*").forEach((el) => {
+    for (const { name } of [...el.attributes]) if (/^on/i.test(name)) el.removeAttribute(name);
+  });
   copy.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
   return copy.innerHTML;
 }

@@ -6,6 +6,7 @@ import {
   buildCppRequest,
   buildRustRequest,
   buildWandboxRequest,
+  isEnvFile,
   parseCompilerExplorer,
   parseRustPlayground,
   parseWandbox,
@@ -36,6 +37,28 @@ const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(path.join(__dirname, "..", "fixtures", "playground", name), "utf8"));
 
 describe("request builders", () => {
+  it("never sends .env files to a compile service", () => {
+    const project = {
+      ...TEMPLATES.cpp,
+      files: {
+        ...TEMPLATES.cpp.files,
+        ".env": "API_KEY=secret",
+        "config/.env.local": "TOKEN=secret",
+      },
+    };
+    const ce = buildCppRequest(project, "") as { body: CeBody };
+    const wandbox = buildWandboxRequest(project, "") as {
+      body: { codes: { file: string; code: string }[] };
+    };
+    expect(JSON.stringify(ce.body)).not.toContain("secret");
+    expect(JSON.stringify(wandbox.body)).not.toContain("secret");
+    expect(ce.body.files.map((f) => f.filename)).toContain("main.cpp");
+    expect(isEnvFile(".env")).toBe(true);
+    expect(isEnvFile("a/.env.production")).toBe(true);
+    expect(isEnvFile("env.cpp")).toBe(false);
+    expect(isEnvFile("a.env.h")).toBe(false);
+  });
+
   it("sends C++ projects to the CMake endpoint with every file and a generated build file", () => {
     const { url, body } = buildCppRequest(TEMPLATES.cpp, "21") as { url: string; body: CeBody };
     expect(url).toBe("https://godbolt.org/api/compiler/g162/cmake");

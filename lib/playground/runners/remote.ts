@@ -97,11 +97,22 @@ function ceOptions(userArguments: string, stdin: string, extra: Record<string, u
 }
 
 /**
+ * Whether a project file is a `.env` file (`.env`, `.env.local`, in any folder): it may hold
+ * the reader's keys, and a C/C++ build has no use for it, so it never leaves the browser.
+ */
+export function isEnvFile(path: string): boolean {
+  return /(?:^|\/)\.env(?:\.[^/]*)?$/.test(path);
+}
+
+/** The project's paths that are sent to a compile service: all but `.env` files. */
+const uploadedPaths = (project: Project) => Object.keys(project.files).filter((p) => !isEnvFile(p));
+
+/**
  * Build a Compiler Explorer CMake request for a C/C++ project. A project
  * without its own `CMakeLists.txt` gets a generated one.
  */
 export function buildCppRequest(project: Project, stdin: string): RemoteRequest {
-  const paths = Object.keys(project.files);
+  const paths = uploadedPaths(project);
   const cmake = project.files[CMAKE_FILE] ?? generateCMakeLists(paths);
   const files = paths
     .filter((p) => p !== CMAKE_FILE)
@@ -180,7 +191,7 @@ const wandboxResponse = z.object({
 
 /** Build a Wandbox request: the entry as `code`, the rest as `codes`, extra sources and include dirs as flags. */
 export function buildWandboxRequest(project: Project, stdin: string): RemoteRequest {
-  const others = Object.keys(project.files).filter((p) => p !== project.entry && p !== CMAKE_FILE);
+  const others = uploadedPaths(project).filter((p) => p !== project.entry && p !== CMAKE_FILE);
   const sources = others.filter((p) => /\.(?:cpp|cc|cxx|c)$/i.test(p));
   const includeDirs = [
     ...new Set(others.filter((p) => /\.(?:h|hh|hpp|hxx)$/i.test(p)).map((p) => dirname(p) || ".")),

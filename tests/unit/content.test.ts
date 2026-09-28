@@ -13,6 +13,7 @@ import {
   listGroupSheets,
   listSheets,
   listTopicEntries,
+  parseMatter,
   readSheetBody,
   sheetHref,
 } from "@/lib/content";
@@ -228,5 +229,18 @@ describe("directories (groups)", () => {
 
   it("validates index.mdx frontmatter", () => {
     expect(() => listTopicEntries("badindex", badGroupsRoot)).toThrow(/index\.mdx.*title/);
+  });
+});
+
+describe("parseMatter", () => {
+  it("reads YAML front matter and refuses JavaScript, without running it", () => {
+    expect(parseMatter("---\ntitle: Hi\n---\nBody\n").data).toEqual({ title: "Hi" });
+    const g = globalThis as { PWNED?: unknown };
+    for (const lang of ["js", "javascript"]) {
+      expect(() =>
+        parseMatter(`---${lang}\n{ title: (globalThis.PWNED = 1, "x") }\n---\n`),
+      ).toThrow(/JavaScript front matter/);
+    }
+    expect(g.PWNED).toBeUndefined();
   });
 });
