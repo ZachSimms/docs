@@ -111,6 +111,10 @@ export interface Involvement {
 export const RESUME = {
   /** A PDF under `public/` (e.g. `/docs/resume.pdf`), linked as "Download PDF"; undefined hides the link. */
   pdf: undefined as string | undefined,
+  /** Whether `/resume/` lists each job's `points` under it. Hidden for now (2026-09-28); the data stays. */
+  showJobPoints: false as boolean,
+  /** Whether `/resume/` shows the Skills section. Hidden for now (2026-09-28); the data stays. */
+  showSkills: false as boolean,
   education: [
     {
       school: "University of Nebraska Omaha",

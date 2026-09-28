@@ -2019,13 +2019,16 @@ test.describe("split layout", () => {
       "Experience",
       "Projects",
       "University activities",
-      "Skills",
     ]);
     await expect(page.locator("main")).toContainText(
       "Science Applications International Corporation",
     );
     await expect(page.locator("main")).not.toContainText("[");
-    await expect(page.locator("main")).toContainText("ensured monitoring with Splunk");
+    // Jobs show only role, company and dates for now: no bullet points, and no skills section.
+    await expect(page.locator("main .entry")).not.toHaveCount(0);
+    await expect(page.locator("main .entry ul")).toHaveCount(0);
+    await expect(page.locator("main")).not.toContainText("ensured monitoring with Splunk");
+    await expect(page.locator("main .skills")).toHaveCount(0);
     // No PDF is published for now, so there is no download link and the old file is gone.
     await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
     const response = await page.request.get("/docs/ZachSimms_Resume_Updated.pdf");

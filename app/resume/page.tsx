@@ -1,7 +1,8 @@
 /**
  * @file `/resume/`: the resume from `lib/profile.ts`, in the PDF's order (education,
  * experience, projects, university activities, skills), with a link to the PDF when one is set.
- * Sections without entries are left out.
+ * Sections without entries are left out, and so are job points and skills while
+ * `RESUME.showJobPoints` / `RESUME.showSkills` are off.
  */
 import type { Metadata } from "next";
 import { DottedLink } from "@/components/DottedLink";
@@ -78,11 +79,13 @@ export default function ResumePage() {
                 </span>
                 <span className="dim">{span(job.start, job.end)}</span>
               </p>
-              <ul>
-                {job.points.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
+              {RESUME.showJobPoints && (
+                <ul>
+                  {job.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </section>
@@ -128,7 +131,7 @@ export default function ResumePage() {
         </section>
       )}
 
-      {(tools.length > 0 || languages.length > 0) && (
+      {RESUME.showSkills && (tools.length > 0 || languages.length > 0) && (
         <section className="block">
           <h2 className="rule">Skills</h2>
           <div className="skills">
