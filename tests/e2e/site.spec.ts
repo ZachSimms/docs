@@ -766,7 +766,8 @@ test.describe("typescript topic and directories", () => {
   test("every reference sheet renders with a table of contents that fits its rail", async ({
     page,
   }) => {
-    test.setTimeout(240_000);
+    // Visits every sheet in turn (177 of them); slow when the whole suite runs in parallel.
+    test.setTimeout(360_000);
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.goto("/sheets/");
     const hrefs = await page
