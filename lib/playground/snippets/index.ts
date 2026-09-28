@@ -8,8 +8,10 @@
  * sets that fit it ({@link SNIPPETS_FOR}); the tab starts on the set that
  * matches the open file ({@link defaultSnippetSet}).
  *
- * Snippets are complete programs (or files) wherever the language allows, so
- * they run as pasted. They are checked by `tests/unit/playground-snippets.test.ts`.
+ * Snippets are outlines: the structure of a construct (a class, a try/catch,
+ * an async function) with placeholders (`// ...`, `pass`, `todo!()`) for the
+ * reader's own code. Hello world stays a runnable program. Every outline
+ * parses; see `tests/unit/playground-snippets.test.ts`.
  */
 
 import type { EditorMode, LanguageId } from "../languages";
@@ -68,85 +70,85 @@ export const SNIPPET_SETS: Readonly<Record<SnippetSetId, SnippetSetInfo>> = {
     id: "javascript",
     label: "JavaScript",
     mode: "javascript",
-    note: "Each snippet is a whole script: paste it into main.js, or take the lines you need.",
+    note: "Outlines: paste one in and fill in the // ... parts.",
   },
   typescript: {
     id: "typescript",
     label: "TypeScript",
     mode: "typescript",
-    note: "Each snippet is a whole script and type-checks under strict mode.",
+    note: "Outlines: paste one in and fill in the // ... parts.",
   },
   python: {
     id: "python",
     label: "Python",
     mode: "python",
-    note: "Each snippet is a whole script for Python 3.14: paste it into main.py.",
+    note: "Outlines for Python 3.14: replace each ... with your code.",
   },
   cpp: {
     id: "cpp",
     label: "C++",
     mode: "cpp",
-    note: "Each snippet is a whole C++23 program: paste it over main.cpp, or take the parts you need.",
+    note: "Outlines for C++23: fill in the // ... parts; statements go inside a function.",
   },
   rust: {
     id: "rust",
     label: "Rust",
     mode: "rust",
-    note: "Each snippet is a whole program (edition 2024, standard library only): paste it over src/main.rs.",
+    note: "Outlines for edition 2024: replace each todo!() and // ... with your code.",
   },
   gdscript: {
     id: "gdscript",
     label: "GDScript",
     mode: "gdscript",
-    note: "Each snippet is a whole script for Godot 4 (extends Node, so _ready() runs): paste it over main.gd.",
+    note: "Outlines for Godot 4: replace each pass with your code.",
   },
   html: {
     id: "html",
     label: "HTML",
     mode: "html",
-    note: "Markup for index.html.",
+    note: "Outlines for index.html: fill in the <!-- ... --> parts.",
   },
   css: {
     id: "css",
     label: "CSS",
     mode: "css",
-    note: "Rules for your stylesheet.",
+    note: "Outlines for your stylesheet: fill in the /* ... */ parts.",
   },
   tailwind: {
     id: "tailwind",
     label: "Tailwind CSS",
     mode: "html",
-    note: "Tailwind 4 from its browser build: add the Setup snippet's script tag to index.html first.",
+    note: "Tailwind 4 outlines: add the Setup snippet's script tag to index.html first.",
   },
   dom: {
     id: "dom",
     label: "DOM (browser)",
     mode: "javascript",
-    note: "Browser scripts; each is valid JavaScript and TypeScript.",
+    note: "Browser outlines; valid in JavaScript and TypeScript files.",
   },
   react: {
     id: "react",
     label: "React",
     mode: "tsx",
-    note: "Components in TSX: paste one into App.tsx, or into a file of its own and import it.",
+    note: 'TSX outlines: import the hooks you use from "react".',
   },
   bun: {
     id: "bun",
     label: "Bun",
     mode: "typescript",
-    note: "Bun's APIs as the playground emulates them (Bun.serve, Bun.file, Bun.env).",
+    note: "Outlines for the APIs the playground emulates (Bun.serve, Bun.file, Bun.env).",
   },
   hono: {
     id: "hono",
     label: "Hono",
     mode: "typescript",
-    note: "Hono apps: each ends in export default app.",
+    note: "Outlines for a Hono app (src/index.ts ends in export default app).",
   },
   markdown: {
     id: "markdown",
     label: "Markdown",
     mode: "markdown",
-    note: "GitHub Flavored Markdown, as the preview renders it.",
+    note: "GitHub Flavored Markdown outlines.",
   },
 };
 

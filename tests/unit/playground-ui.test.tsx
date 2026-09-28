@@ -405,14 +405,14 @@ describe("ReferencePanel", () => {
       // One set for a Python project: no set picker
       expect(screen.queryByRole("combobox", { name: "Snippet language" })).toBeNull();
       fireEvent.change(screen.getByRole("searchbox", { name: "Filter snippets" }), {
-        target: { value: "lambda" },
+        target: { value: "try" },
       });
       expect(screen.getAllByRole("heading", { level: 3 })[0]).toHaveTextContent(
-        "Lambdas & closures",
+        "try / except / else / finally",
       );
-      fireEvent.click(screen.getByRole("button", { name: "Copy Lambdas & closures" }));
+      fireEvent.click(screen.getByRole("button", { name: "Copy try / except / else / finally" }));
       await waitFor(() => expect(written).toHaveLength(1));
-      expect(written[0]).toStartWith("from collections.abc import Callable\n");
+      expect(written[0]).toStartWith("try:\n    ...  # code that might raise\n");
       expect(await screen.findByText("copied")).toBeInTheDocument();
     });
 

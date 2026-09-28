@@ -1,114 +1,74 @@
-/** @file Markdown snippets (see `./index.ts`). */
+/** @file Markdown outlines (see `./index.ts`). */
 
 import type { Snippet } from "./index";
 
 export const SNIPPETS: readonly Snippet[] = [
   {
     id: "hello",
-    title: "Document skeleton",
-    note: "A title, an intro, sections: the hello world of a README.",
+    title: "README outline",
     file: "README.md",
     keywords: "hello world readme headings title document boilerplate starter",
     code: `# Project name
 
-One or two sentences on what this is and who it's for.
+<!-- one or two sentences: what it is -->
 
 ## Getting started
 
-1. Install it.
-2. Run it.
-
 ## Usage
 
-Explain the common case first, then the rest.
-
 ## License
-
-MIT
 `,
   },
   {
     id: "text",
-    title: "Text, links & images",
-    note: "Emphasis, inline code, links, images, line breaks, rules.",
-    keywords: "bold italic strikethrough code link image url autolink line break horizontal rule",
-    code: `Text can be **bold**, *italic*, ***both***, ~~struck through~~ or \`inline code\`.
+    title: "Links & images",
+    keywords: "link image url bold italic code",
+    code: `[link text](https://example.com)
 
-A [link](https://example.com "optional title"), an autolink https://example.com,
-and a [reference link][docs].
-
-[docs]: https://developer.mozilla.org/
-
-![Alt text for the image](https://picsum.photos/200/100)
-
-End a line with two spaces
-to break it without a new paragraph.
-
----
-
-A backslash shows a character literally: \\*not italic\\*.
+![alt text](path/to/image.png)
 `,
   },
   {
     id: "lists",
-    title: "Lists & task lists",
-    note: "Bulleted, numbered, nested, and GitHub-style checkboxes.",
-    keywords: "list bullet numbered ordered unordered nested task checkbox todo",
-    code: `- A bullet
-- Another
-  - Nested (indent two spaces)
-  - Again
+    title: "Lists & task list",
+    keywords: "list bullet numbered nested task checkbox todo",
+    code: `- item
+  - nested item
 
-1. First
-2. Second
-3. Third
+1. step
+2. step
 
-- [x] A finished task
-- [ ] An open task
+- [ ] task
+- [x] done
 `,
   },
   {
     id: "code",
-    title: "Code blocks",
-    note: "Fenced code with a language for highlighting.",
-    keywords: "code block fence fenced syntax highlighting backticks",
-    code: `Inline: run \`npm install\`.
-
-\`\`\`js
-function greet(name) {
-  return \`Hello, \${name}!\`;
-}
-\`\`\`
-
-\`\`\`python
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
+    title: "Code block",
+    keywords: "code block fence fenced syntax highlighting",
+    code: `\`\`\`language
+code
 \`\`\`
 `,
   },
   {
     id: "table",
-    title: "Tables",
-    note: "Pipes and dashes; colons set the alignment.",
-    keywords: "table columns rows alignment pipe gfm",
-    code: `| Left      | Center | Right |
-| :-------- | :----: | ----: |
-| apples    |   3    | $1.20 |
-| pears     |   12   | $4.80 |
+    title: "Table",
+    keywords: "table columns rows alignment",
+    code: `| Column | Column |
+| ------ | -----: |
+| cell   |   cell |
 `,
   },
   {
     id: "quotes",
-    title: "Quotes & footnotes",
-    note: "Blockquotes (nested too) and GitHub-style footnotes.",
-    keywords: "blockquote quote footnote note citation",
-    code: `> A blockquote.
->
-> > Nested inside it.
+    title: "Quote & footnote",
+    keywords: "blockquote quote footnote",
+    code: `> quote
 
-Here is a claim that needs a source.[^1]
+text[^1]
 
-[^1]: The footnote text appears at the end of the document.
+[^1]: footnote
 `,
   },
 ];

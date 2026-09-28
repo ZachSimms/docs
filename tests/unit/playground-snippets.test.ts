@@ -108,16 +108,15 @@ describe("filterSnippets", () => {
     expect(lambda[0].id).toBe("arrow");
     const tryCatch = filterSnippets(js, "TRY catch");
     expect(tryCatch[0].id).toBe("errors");
-    // "Promise.all" is only in the async snippet's code
-    expect(filterSnippets(js, "promise.all").map((s) => s.id)).toEqual(["async"]);
+    // "Promise.all" (with the dot) is only in one snippet's code
+    expect(filterSnippets(js, "promise.all").map((s) => s.id)).toEqual(["promise-all"]);
     expect(filterSnippets(js, "class zzz")).toEqual([]);
   });
 
   it("puts title matches before note and keyword matches", () => {
-    // The Layout snippet's note mentions "a card grid"; the Card snippet is named for it.
+    // The Responsive grid snippet's keywords mention cards; the Card snippet is named for it.
     const card = filterSnippets(all.get("tailwind")!, "card").map((s) => s.id);
-    expect(card[0]).toBe("card");
-    expect(card).toContain("layout");
+    expect(card).toEqual(["card", "grid"]);
   });
 });
 
