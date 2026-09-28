@@ -153,7 +153,7 @@ describe("Page", () => {
     expect(container.querySelectorAll('a[href="/physics/"]')).toHaveLength(2);
   });
 
-  it("adds Search and theme links to every footer", () => {
+  it("adds Search and Terminal to every footer", () => {
     const { container } = render(
       <Page title="X" footer={{ href: "/", label: "../" }}>
         <p />
@@ -162,7 +162,7 @@ describe("Page", () => {
     const labels = [...container.querySelectorAll("footer a i, footer button i")].map(
       (i) => i.textContent,
     );
-    expect(labels).toEqual(["../", "Search"]);
+    expect(labels).toEqual(["../", "Search", "Terminal"]);
   });
 
   it("Search footer link dispatches the open-search event", () => {

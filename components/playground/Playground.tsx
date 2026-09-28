@@ -352,6 +352,16 @@ export function Playground() {
     return null;
   };
 
+  // The Snippets tab's "insert": at the cursor in the open file, then back to the code (on phones too).
+  const insertSnippet = (code: string): boolean => {
+    const handle = editor.current;
+    if (!handle) return false;
+    handle.insert(code);
+    handle.focus();
+    setPane("code");
+    return true;
+  };
+
   const reset = () => {
     runState.stop();
     runState.clear();
@@ -719,8 +729,11 @@ export function Playground() {
         {refsMounted && (
           <ReferencePanel
             hidden={!showRefs}
-            language={language}
-            suggestions={spec.refs}
+            // Docs, sheets and snippets follow the editor: the exercise's language in exercise mode.
+            language={exercise ? exercise.language : language}
+            mode={modeForPath(exercise ? exerciseFile : project.open)}
+            onInsert={insertSnippet}
+            suggestions={exercise ? getLanguage(exercise.language).refs : spec.refs}
             width={prefs.layout.refs}
             onWidth={setSize("refs")}
             onClose={() => (setRefsOpen(false), pane === "refs" && setPane("code"))}
