@@ -800,3 +800,23 @@ describe("writing/nonfiction/technical-writing", () => {
     expect(tabs).toContain(">>> apply_coupon(");
   });
 });
+
+describe("aviation/msfs-2024 cockpit images", () => {
+  /** The least number of cockpit images each aircraft sheet shows next to its procedures. */
+  const MIN_IMAGES: Readonly<Record<string, number>> = {
+    "cessna-172": 4,
+    "cessna-172-classic": 4,
+    "cirrus-sr22": 6,
+    "vision-jet": 6,
+    longitude: 8,
+  };
+
+  for (const [slug, min] of Object.entries(MIN_IMAGES)) {
+    it(`${slug} shows at least ${min} images from public/images/aviation/${slug}/`, () => {
+      const body = readSheetBody({ topic: "aviation", group: "msfs-2024", slug });
+      const srcs = [...body.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)].map((m) => m[1] ?? "");
+      expect(srcs.length).toBeGreaterThanOrEqual(min);
+      for (const src of srcs) expect(src).toStartWith(`/images/aviation/${slug}/`);
+    });
+  }
+});

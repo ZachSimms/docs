@@ -5,14 +5,17 @@ order: 5
 ---
 
 The MSFS 2024 Cirrus Vision Jet: a single-engine, single-pilot personal jet with autothrottle, a whole-airplane
-parachute and Safe Return emergency autoland. It is free in every edition. Limits come from the SF50 type certificate
-(FAA A00018CH, mirrored by EASA.IM.A.615); other numbers come from Cirrus and published pilot reports, because the
-SF50 flight manual isn't public. Speeds are KIAS unless marked. Editions, the EFB, SimBrief, the checklist panel and
-key bindings are in [sim basics](/aviation/msfs-2024/sim-basics/); radio calls are in [ATC comms](/aviation/atc-comms/);
-the piston sibling is the [SR22T](/aviation/msfs-2024/cirrus-sr22/).
+parachute and Safe Return emergency autoland. It is free in every edition. Limits and procedures come from the Cirrus
+Airplane Flight Manual (AFM, P/N 31452-001) and Pilot's Information Manual (PIM, P/N 31453-001). That AFM covers
+earlier serials with Perspective Touch avionics and an FL280 ceiling. Where the G2 in the sim differs (FL310, more
+cabin pressure, Safe Return), the sheet uses the type certificate (FAA A00018CH, mirrored by EASA.IM.A.615) and notes
+the difference. Cruise and fuel numbers for the G2 come from Cirrus and pilot reports. Speeds are KIAS unless marked.
+Editions, the EFB, SimBrief, the checklist panel and key bindings are in [sim basics](/aviation/msfs-2024/sim-basics/);
+radio calls are in [ATC comms](/aviation/atc-comms/); the piston sibling is the
+[SR22T](/aviation/msfs-2024/cirrus-sr22/).
 
-<Note kind="warning">For the simulator only. These checklists are condensed paraphrases built from limits and pilot
-reports, not the Cirrus AFM. Never use them to fly a real airplane.</Note>
+<Note kind="warning">For the simulator only. These checklists are condensed paraphrases of a Cirrus AFM for other
+serials, mixed with sim flows, not the AFM itself. Never use them to fly a real airplane.</Note>
 
 ## Profile
 
@@ -21,18 +24,19 @@ Cirrus has since moved on to the G2+ (2021) and G3 (2026), so current Cirrus spe
 
 | Item | Value | Notes and source |
 | :--- | :--- | :--- |
-| role | single-engine very light jet, pressurized, retractable gear | certified for one pilot |
-| engine | Williams FJ33-5A turbofan, 1,846 lb takeoff thrust | TCDS; takeoff thrust limited to 5 min |
-| seats | up to 7, minimum crew 1 | TCDS |
-| max takeoff weight | 6,000 lb; ramp 6,040, landing 5,550, zero fuel 4,900 | TCDS |
-| usable fuel | 2,000 lb (296 US gal of Jet A) | Cirrus spec page; Wikipedia (G2) |
-| typical burn | about 60–64 gal/h (400–430 lb/h) at FL310 | Aviation Week and AOPA pilot reports |
+| role | single-engine very light jet, pressurized, retractable gear | certified for one pilot (AFM §2) |
+| engine | Williams FJ33-5A turbofan, 1,846 lb takeoff thrust | TCDS; AFM §1; takeoff thrust limited to 5 min |
+| seats | up to 7 (pilot and 6), minimum crew 1 | TCDS; AFM §2 |
+| max takeoff weight | 6,000 lb; ramp 6,040, landing 5,550, zero fuel 4,900 | TCDS; AFM §2 |
+| usable fuel | 296 US gal (2,001 lb) of Jet A, 148 per wing | AFM §2; max imbalance 15 gal |
+| typical burn | about 60–64 gal/h (400–430 lb/h) at FL310 | Aviation Week and AOPA pilot reports (G2)[^1] |
 | cruise | about 305 KTAS at FL310; about 311–313 KTAS max cruise lower down[^1] | AOPA (G2); FlightFX manual |
-| ceiling | FL310 (31,000 ft); FL280 on early serials | TCDS: S/N 0008, 0089, 0094 and on |
+| ceiling | FL310 (31,000 ft) on the G2; FL280 on earlier serials | TCDS; AFM §2 gives FL280 for its serials[^5] |
 | range | about 1,100–1,275 NM, depending on load and speed[^2] | AOPA (G2); Cirrus |
-| pressurization | 7.1 psi differential: 8,000 ft cabin at FL310 | AOPA (G2 change from 6.4 psi) |
+| pressurization | 7.1 psi differential: 8,000 ft cabin at FL310 | AOPA (G2); AFM §2 gives 6.4 psid for FL280 serials |
+| airports | elevation up to 10,000 ft; tailwind up to 10 kt | AFM §2 |
 | MSFS edition | Standard (so in every edition) | first-party aircraft list; Fly Away Simulation; MSFS Addons |
-| avionics | Cirrus Perspective Touch+ (Garmin G3000-based), autothrottle, ESP, Safe Return | two touch controllers |
+| avionics | Cirrus Perspective Touch+ (Garmin G3000-based), autothrottle, ESP, Safe Return | touch controllers under the displays |
 
 **KTAS** is true airspeed. **FL310** is flight level 310: 31,000 ft on the standard altimeter setting (29.92 inHg),
 used from 18,000 ft up. **ESP** (electronic stability and protection) nudges the controls back when you exceed bank,
@@ -40,41 +44,58 @@ pitch or speed limits.
 
 ## Speeds
 
-Limits are from the TCDS. Takeoff and landing speeds depend on weight and are not published outside the AFM. Take them
-from the EFB takeoff and landing performance (added in Sim Update 2); the table gives representative values from pilot
-reports, clearly labeled.
+Limits are from AFM §2 and match the TCDS. Takeoff and landing speeds are from AFM §4; the EFB's takeoff and landing
+performance (added in Sim Update 2) gives numbers for your weight.
 
 | Speed | KIAS | Meaning and notes |
 | :--- | :--- | :--- |
 | Vmo | 250 | maximum operating speed (red and white "barber pole" on the tape) |
 | Mmo | 0.53 Mach | maximum operating Mach number; limits you before 250 KIAS up high |
-| Vo | 150 | operating maneuvering speed: full control inputs only below this |
-| Vfe 50% | 190 | max speed with flaps 50% |
-| Vfe 100% | 150 | max speed with flaps 100% |
+| Vo | 150 | operating maneuvering speed: full control inputs only below this; also the descent limit in turbulence |
+| Vfe 50% | 190 | max speed with flaps 50% (15°); no flaps above 17,500 ft |
+| Vfe 100% | 150 | max speed with flaps 100% (39°) |
 | Vlo extend / Vle | 210 | max speed to lower the gear, and with the gear down |
 | Vlo retract | 150 | max speed to raise the gear |
-| Vr (representative) | 85–90 | rotate; 85 at 5,958 lb (Aviation Week), 90 quoted by AOPA[^3] |
-| flaps up (representative) | 115 | flaps 50% → 0 after takeoff (Aviation Week; other reports agree) |
-| stall, full flaps | 67 | Wikipedia; FlightFX manual |
-| approach | 140 by the initial fix | Cirrus technique: 140 KIAS and flaps 50%, then gear down and flaps 100% by the final fix |
-| Vref (representative) | 75–85 | threshold speed; fly Vref + 10 on final[^3] |
-| CAPS | 135 | max parachute deployment speed; the autopilot slows the jet to it if you pull faster |
+| Vr | 85 | rotate, then 10° nose up (AFM §4)[^3] |
+| Vx, flaps 50% | 91 | best angle of climb with gear up, flaps 50%; the go-around target (AFM §5) |
+| flaps up | 115 | flaps 50% → UP after takeoff, clear of obstacles (AFM §4) |
+| climb | about 190 falling to 140 | MCT climb schedule: about 175–190 KIAS low, 140 KIAS by FL280 (AFM §5 tables) |
+| approach | 140 | flaps 50% for the approach (AFM §4) |
+| Vref, flaps 100% | 71–89 | 71 at 4,000 lb up to 85 at 5,500 lb and 89 at 6,000 lb; fly Vref + 10 on final (AFM §4) |
+| Vref, flaps 50% | 82–100 | same weights; 96 at 5,500 lb |
+| stall, full flaps | 67 KCAS | at 6,000 lb, wings level, idle; 60 at 4,800 lb (AFM §5) |
+| best glide | 114 / 104 / 93 | at 6,000 / 5,000 / 4,000 lb, gear and flaps up (AFM §3) |
+| minimum maneuvering | Vref + 20 / + 15 / + 10 | flaps UP / 50% / 100%, for up to 40° of bank (AFM §2) |
+| icing | 160 | minimum speed in icing conditions, clean (except climb, approach and landing) |
+| CAPS | 135 KIAS and 145 KTAS | whichever is lower; pulled faster, the autopilot slows the jet first (AFM §3) |
 
-**Vref** is the reference landing speed at the threshold, usually 1.3 × the stall speed in landing configuration.
+**Vref** is the reference landing speed at the 50-ft point, 1.3 × the stall speed; the green donut on the airspeed tape
+shows it for your configuration. Flaps UP, Vref is 89–109 KIAS; with an iced airframe Vref rises by about 15–30 kt and
+you land with flaps 50% (AFM §4 table).
 
 ## Cockpit & avionics
+
+The drawings come from Cirrus manuals for earlier serials; the G2 in the sim keeps the general layout and adds
+Perspective Touch+, the autothrottle and Safe Return, so details may differ.
+
+![Instrument panel overview: 6 PFD and 11 MFD across the top, 16, 18 and 19 the three touch controllers below them, 4 the bolster switch panel forward of touch controller 1, 2 the engine start controls left of the PFD, 7 the CAPS T-handle and 9 the emergency panel in the ceiling, 17 the parking brake](/images/aviation/vision-jet/instrument-panel.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 3-2 (1 of 2), © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
+![Center console: 1 the AFCS mode controller (autopilot keys), 2 the thrust lever, 3 the FUEL CONTROL selector, 4 the manual pitch trim wheel, 5 the throttle friction lock, 6 the flap selector](/images/aviation/vision-jet/center-console.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 3-2 (2 of 2), © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 | Where | What's there |
 | :--- | :--- |
 | two 14-inch displays, landscape | PFD (flight instruments) on the left, MFD (map, engine and pressurization gauges) on the right |
-| center, below the displays | two GTC touch controllers (Garmin Touch Controller): radios, flight plan, PROC, PERF, systems |
-| autopilot mode controller | the usual Garmin modes: AP, FD, HDG, NAV, APR, ALT, VS, FLC, VNV |
-| single throttle | TO at the top, a snap-to MCT (maximum continuous thrust) position, IDLE (FlightFX manual) |
-| A/T and TOGA | an autothrottle arm control and a TOGA button (used in the reported flows below) |
-| engine controls | ENGINE knob OFF → RUN, then a START button (FlightFX manual) |
-| ceiling, between the front seats | CAPS T-handle between the crew oxygen masks (FLYER); the red Safe Return button is also in the ceiling[^4] |
+| below the displays | GTC touch controllers (Garmin Touch Controller), three on these serials: PFD, MFD or radio controller; GTC 1 becomes the standby display (PIM ch. 3) |
+| center, between the displays | DISPLAY BACKUP button, BARO knob and the landing gear handle (PIM ch. 3) |
+| bolster, below the panel in front of GTC 1 | BAT, GEN, lights, oxygen, BLEED/FRESH, probe heat and ice protection rocker switches |
+| left of the PFD | ENGINE knob (OFF, RUN) and ENGINE START/STOP button (PIM ch. 9) |
+| center console | autopilot mode controller, thrust lever (IDLE, MCT detent, T/O stop) with the TO/GA switch on it, FUEL CONTROL selector (LEFT, AUTO, RIGHT), pitch trim wheel, flap selector (UP, 50%, 100%) |
+| side sticks | 4-way trim switch and the red AP DISC button, which also interrupts ESP and the stick pusher (PIM ch. 17) |
+| ceiling, between the front seats | CAPS T-handle and the emergency panel: fire controls, CABIN PRESSURE DUMP, EMER BATT, ELT, mask mic switches; on the G2, the red Safe Return button[^4] |
 
-Autothrottle (A/T) modes on the real G2 and in the sim:
+Autothrottle (A/T) modes on the real G2 and in the sim (the AFM for earlier serials has no autothrottle steps):
 
 | Mode | Does |
 | :--- | :--- |
@@ -83,79 +104,113 @@ Autothrottle (A/T) modes on the real G2 and in the sim:
 | MCT | throttle "snaps" to maximum continuous thrust so you don't over-temp the engine (FlightFX manual) |
 | protection | A/T prevents over- and under-speeds together with ESP |
 
-There are **no speedbrakes**: the gear (below 210 KIAS) and flaps are the only drag. Plan descents early.
+There are **no speedbrakes**: the gear (below 210 KIAS) and flaps (below 190 KIAS and 17,500 ft) are the only drag.
+Plan descents early.
 
 ## Normal procedures
 
-Condensed from the TCDS limits, Cirrus technique in pilot reports and forum-shared flows for the sim; forum items are
-marked "(reported)". There is no official manual for the 2024 version: FlightFX points 2024 users to the Microsoft
-forums.
+Condensed from AFM 31452-001 §4, in its order, with sim items marked "(reported)" or "(sim)". There is no official
+manual for the 2024 version: FlightFX points 2024 users to the Microsoft forums.
 
 ### Preflight
 
+![FUEL CONTROL selector on the center console with LEFT, AUTO and RIGHT positions: test LEFT and RIGHT during preflight, then leave it in AUTO](/images/aviation/vision-jet/fuel-selector.webp)
+*Image: Cirrus Aircraft, Vision SF50 AFM (P/N 31452-001) fig. 2-19, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| weight and balance | EFB: takeoff ≤ 6,000 lb, zero fuel ≤ 4,900 lb, landing ≤ 5,550 lb, baggage ≤ 300 lb combined |
-| fuel | up to 2,000 lb; plan about 400–430 lb/h up high plus reserve |
-| flight plan | destination loaded in the FMS: the pressurization schedule reads the destination elevation from it |
+| weight and balance | EFB: takeoff ≤ 6,000 lb, zero fuel ≤ 4,900 lb, landing ≤ 5,550 lb, baggage ≤ 300 lb |
+| fuel | up to 2,001 lb; plan about 400–430 lb/h up high plus reserve; tanks within 15 gal of each other |
+| flight plan | destination loaded: the avionics hand its field elevation to the pressurization controller (PIM ch. 14) |
 | EFB performance | takeoff and landing data for the runway; note Vr and Vref |
+| cabin (AFM) | gear handle DOWN, bolster switches and ENGINE knob OFF, FUEL CONTROL AUTO |
+| power-up test | BAT 2 ON (PFD, GTC 1 and 2 light), then BAT 1 ON (MFD, GTC 3); oxygen, probe heat and lights checked |
+| autopilot and fuel test | AP on, then AP DISC; FUEL CONTROL LEFT, RIGHT, back to AUTO, with no FUEL VALVE messages |
 
 ### Before start
 
+![Bolster switch panel under touch controller 1: BAT 2, BAT 1, GEN 1 and GEN 2 on the left, then STROBE, LAND, ICE, MASTER OXYGEN, BLEED/FRESH AIR, PROBE HEAT and the ice protection switches; batteries and generators ON before start](/images/aviation/vision-jet/switch-panel.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 3-1, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| battery, avionics | ON; displays up |
-| parking brake | set |
-| door, belts | closed, fastened |
+| door | latched |
+| parking brake | as required |
+| BAT 1 and BAT 2 | ON; displays up |
+| GEN 1 and GEN 2 | ON |
+| FADEC | active channel shown under the % thrust gauge |
 | CAS | review the crew alerting messages (CAS: the white, amber and red text list) |
 
 ### Engine start
 
+![Engine start controls left of the PFD: 1 the ENGINE START/STOP button, 2 the ENGINE knob with OFF and RUN; turn the knob to RUN, then press the button](/images/aviation/vision-jet/engine-start-controls.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 9-3, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| throttle | IDLE |
-| ENGINE knob | RUN |
-| START button | press; the FADEC (full-authority digital engine control) runs the start |
-| engine | watch N1, N2 and ITT (turbine temperature) rise and settle; CAS clear |
-| generator, lights | on as needed |
+| strobe lights | ON |
+| thrust lever | IDLE; brakes held |
+| ENGINE knob | RUN; the electric fuel pump runs (FUEL PUMP ON message) |
+| ENGINE START/STOP button | press; the FADEC (full-authority digital engine control) runs the start |
+| abort if | ITT past red line, no N1 by 25% N2, no light-off within 8 s, or low oil pressure: knob OFF, then hold the button 15–30 s |
+| engine | watch N1, N2 and ITT (turbine temperature) rise and settle; EIS normal |
+| after start | ECS set, avionics initialized, CAPS pin removed and stowed, passengers briefed |
+| BLEED switch | BLEED, once the batteries have been on 2 min or more |
 
 ### Before taxi / taxi
 
+![Flap selector on the center console, right of the thrust lever: UP, 50% (190 KIAS) and 100% (150 KIAS); set 50% before taxi](/images/aviation/vision-jet/flap-selector.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 5-2, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| altitude preselect | first cleared altitude (reported flow: set it before takeoff) |
-| heading | sync the bug to the runway heading |
+| radios, ATIS, clearance | set and obtained; altimeter and transponder set |
+| altitude preselect, heading | first cleared altitude; heading bug synced to the runway |
+| flight controls, trim | free and correct; trim checked |
 | flaps | 50% |
-| trim | in the takeoff band (about +4° reported) |
+| TO/GA | press the switch on the thrust lever: the flight director shows 10° nose up |
+| emergency bus check | GEN 1, GEN 2 and BAT 2 OFF, emergency bus ≥ 23.3 V, then all ON again |
 | taxi | parking brake off, brakes checked, idle thrust is plenty |
 
 ### Before takeoff
 
+![Manual pitch trim wheel placard on the center console: roll the wheel toward DWN for nose down, toward UP for nose up; set the trim pointer in the green takeoff band](/images/aviation/vision-jet/pitch-trim.webp)
+*Image: Cirrus Aircraft, Vision SF50 AFM (P/N 31452-001) fig. 2-17, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| EFB speeds | Vr and flaps 50% confirmed |
-| autothrottle | armed |
-| TOGA | pressed on the runway (takeoff/go-around: flight director shows the takeoff pitch) |
+| briefing | departure briefed; Vr and flaps 50% confirmed |
+| probe heat | ON (5 min on the ground above 41 °F) |
+| ice protection | ENGINE as required, WING/STAB OFF |
+| trim | pointer in the green takeoff band (5.5° nose up); outside it, TAKEOFF PITCH TRIM warns |
+| flaps | 50% |
+| engine | oil above 50 °F; a warm engine idles at least 2 min before takeoff |
+| autothrottle | armed (G2 and sim; not in the AFM for earlier serials) |
 | transponder, lights | ALT; landing, strobe, nav ON |
 
 ### Takeoff
 
+![Thrust lever positions: TO for takeoff and go-around, the MCT detent for maximum continuous thrust, and IDLE for flight and ground idle](/images/aviation/vision-jet/thrust-lever.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 9-2, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| throttle | full forward to TO |
-| rotate | at Vr (85–90), to about 5° first, then follow the flight director |
-| gear | UP with positive rate, below 150 KIAS |
-| flaps | UP at 115 KIAS |
-| thrust | back to MCT when safe; takeoff thrust is limited to 5 min |
-| autopilot | ON after about 400–500 ft AGL (reported) |
+| thrust lever | T/O with the brakes held; N1 on the blue "T" bug, engine gauges normal, then release |
+| rotate | at 85 KIAS to 10° nose up |
+| gear | UP with a positive rate of climb, below 150 KIAS |
+| flaps | UP at 115 KIAS, clear of obstacles |
+| airspeed | per the climb tables (see Speeds) |
+| autopilot | ON no lower than 400 ft AGL (AFM minimum use height) |
 
 ### Climb
 
 | Item | Action / value |
 | :--- | :--- |
-| mode | FLC or VNV, with the A/T in FMS |
-| heavy climb | about 28 min to FL310 at 5,958 lb, ISA+15 (Aviation Week) |
-| cabin | pressurization is automatic; watch the cabin altitude on the MFD |
+| thrust lever | MCT: takeoff thrust is limited to 5 min, and Cirrus asks for MCT within 2 min if practical |
+| mode | FLC or VNV, with the A/T in FMS (sim) |
+| climb time | about 21 min, 32 gal and 68 NM to FL280 at 6,000 lb, ISA (AFM §5); about 28 min to FL310 heavy on a hot day (Aviation Week, G2) |
+| engine, cabin | monitor; pressurization is automatic, watch the cabin altitude on the MFD |
+| ice protection | as required |
 | altimeter | set standard (29.92) passing 18,000 ft |
 
 ### Cruise
@@ -163,54 +218,89 @@ forums.
 | Item | Action / value |
 | :--- | :--- |
 | level | FL280–FL310 for best range |
+| thrust, ice protection | as required |
 | speed | about 305 KTAS at FL310 on 60–64 gal/h; Mmo 0.53 is the limit up high |
 | cabin | about 8,000 ft at FL310 |
-| fuel | compare FMS fuel at destination with your reserve |
+| EIS and fuel | monitor; compare FMS fuel at destination with your reserve |
 
 ### Descent
 
 | Item | Action / value |
 | :--- | :--- |
 | plan | start early: no speedbrakes; the FMS top of descent plus the 3-to-1 rule |
-| mode | VNV with the A/T in FMS, or FLC with power back |
-| speed | at or under 250 KIAS; 250 or less below 10,000 ft (ATC speed rule) |
+| speed | AFM descent tables use Mach 0.51 / 245 KIAS; 250 or less below 10,000 ft (ATC speed rule) |
+| mode | VNV with the A/T in FMS, or FLC with power back (sim) |
+| landing field elevation | checked (it drives the cabin schedule) |
 | extra drag | gear down below 210 KIAS if you are high |
 | altimeter | local setting at 18,000 ft |
+| seats, belts, brake pressure | secured; checked |
 
 ### Approach
 
 | Item | Action / value |
 | :--- | :--- |
-| by the initial fix | 140 KIAS, flaps 50% |
-| approach | loaded and activated; APR armed; minimums set |
-| by the final fix | gear down, flaps 100% (≤ 150 KIAS), Vref + 10 |
-| pattern | Cirrus recommends 1,500 ft AGL for the traffic pattern |
+| briefing | approach loaded, activated and briefed; APR armed; minimums set |
+| seats | all upright |
+| ice protection, lights | as required |
+| flaps | 50% |
+| airspeed | 140 KIAS |
+| pattern | Cirrus recommends 1,500 ft AGL for the traffic pattern (FAA FSB report) |
+
+### Before landing
+
+![Center instrument panel between the PFD and MFD: 4 the landing gear handle, with GEAR UP (Vlo retract 150 KIAS) above it and GEAR DOWN (Vlo extend 210 KIAS) below; lower it and check three green DN on the EIS](/images/aviation/vision-jet/gear-handle.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 3-3, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
+| Item | Action / value |
+| :--- | :--- |
+| landing gear | DOWN and locked (three green) |
+| flaps | as required |
+| cabin differential | about 0 psi |
+| windshield ice protection | OFF (the fluid blocks the view) |
+| autopilot | OFF |
+| airspeed | Vref to Vref + 10 |
 
 ### Landing
 
 | Item | Action / value |
 | :--- | :--- |
-| autopilot | expect it to disconnect by 400 ft AGL; hand-fly the last part (reported) |
-| over the threshold | Vref, throttle to IDLE |
+| flaps | 100%; 50% if the airframe is iced or the crosswind is over 15 kt |
+| final | Vref + 10; add half the gust factor in gusts, 5 kt more in a crosswind |
+| over the threshold | Vref, thrust lever as required; don't prolong the flare |
 | touchdown | mains first, then brakes |
-| go-around | generic: TOGA, full thrust, pitch to the flight director, flaps 50%, gear up with positive rate |
+
+### Go-around
+
+| Item | Action / value |
+| :--- | :--- |
+| thrust lever | T/O |
+| TO/GA switch | press |
+| pitch | 7° nose up |
+| flaps | 50% |
+| gear | UP with a positive rate of climb |
+| airspeed | Vx (91 KIAS); flaps UP at 115 KIAS clear of obstacles, then a normal climb |
 
 ### After landing
 
 | Item | Action / value |
 | :--- | :--- |
 | flaps | UP |
+| ice protection | WING/STAB OFF, ENGINE as required, probe heat OFF |
 | lights, transponder | taxi light; transponder STBY |
-| A/T | disarmed |
+| A/T | disarmed (sim) |
+| brakes | checked |
 
 ### Shutdown
 
 | Item | Action / value |
 | :--- | :--- |
-| parking brake | set |
-| throttle | IDLE |
-| ENGINE knob | OFF |
-| avionics, battery | OFF |
+| cool-down | 2 min at ground idle first |
+| thrust lever | IDLE |
+| ENGINE IPS, BLEED, oxygen, lights | OFF, FRESH, OFF, OFF |
+| GEN 1 and GEN 2 | OFF |
+| ENGINE knob | OFF, then press the ENGINE START/STOP button; wait for N2 below 24% |
+| CAPS pin | replaced |
+| BAT 1 and BAT 2 | OFF; parking brake as required |
 
 ## Flying it in the sim
 
@@ -221,13 +311,13 @@ A typical IFR flight. Load the plan as in [sim basics](/aviation/msfs-2024/sim-b
 | :--- | :--- |
 | 1. plan | EFB or SimBrief plan sent to the avionics; check it on the GTC Flight Plan page |
 | 2. performance | EFB takeoff data for Vr; GTC PERF for weights if shown |
-| 3. departure | GTC PROC: departure; altitude preselect set; heading synced |
-| 4. takeoff | flaps 50%, A/T armed, TOGA, full thrust, rotate, gear up, flaps up at 115 |
-| 5. climb | AP on; FLC or VNV; A/T FMS; MCT once clean |
+| 3. departure | GTC PROC: departure; altitude preselect set; heading synced; TO/GA pressed |
+| 4. takeoff | flaps 50%, trim in the green band, A/T armed, thrust T/O, rotate at 85, gear up, flaps up at 115 |
+| 5. climb | AP on above 400 ft; FLC or VNV; A/T FMS; MCT |
 | 6. cruise | FL280–FL310; A/T holds the FMS or manual speed |
 | 7. descent | arrival and approach loaded early; preselect the lower altitude; VNV |
-| 8. approach | 140 KIAS and flaps 50% by the initial fix; APR; gear and flaps 100% by the final fix |
-| 9. landing | hand-fly from 400 ft; Vref + 10 on final, Vref at the threshold |
+| 8. approach | 140 KIAS and flaps 50%; APR; gear down, then flaps 100% and Vref + 10 on final |
+| 9. landing | AP off before landing; Vref at the threshold |
 
 Autopilot modes:
 
@@ -240,42 +330,73 @@ Autopilot modes:
 | VS | holds a vertical speed |
 | FLC | flight level change: holds an airspeed by pitch while the A/T sets power |
 | VNV | follows the FMS vertical path and altitude constraints (VNAV) |
+| LVL | levels the wings and stops any climb or descent: the button passengers are briefed on (AFM §10) |
+
+Autopilot limits (AFM §2):
+
+| Limit | Value |
+| :--- | :--- |
+| minimum speed | 105 KIAS clean, 95 with flaps 50%, 85 with flaps 100% |
+| maximum speed | 250 KIAS / Mach 0.53 clean, 210 gear down, 190 flaps 50%, 150 flaps 100% |
+| minimum use height | 400 ft AGL after takeoff; 1,000 ft en route; 200 ft or DA on a GS or GP approach; 400 ft or MDA otherwise |
+| overspeed protection | above 253 KIAS or Mach 0.54 the autopilot pitches up (MAXSPD on the PFD) (PIM ch. 17) |
 
 Flight-level change: set the new level, press FLC, and the A/T moves the throttle to climb or descent power. For a
 descent, the rule of thumb is 3 NM per 1,000 ft: FL310 to 3,000 ft needs about 84 NM.
 
 ## Emergencies
 
-The SF50's emergency checklists are in the AFM, which isn't public. Items marked "generic" are standard jet technique,
-not Cirrus text.
+Condensed from AFM 31452-001 §3 (emergency) and §10 (CAPS guidance). The AFM marks memory items; the red CAS messages
+each have their own checklist there.
+
+![Overhead emergency panel: 1 the guarded ENGINE FIRE ACKNOWLEDGE switch, 2 the two PUSH TO DISCHARGE buttons, the CABIN PRESSURE DUMP button, EMER BATT, the ELT switch, MASK MIC switches and the CAPS placard (pull the handle down steadily with both hands)](/images/aviation/vision-jet/emergency-panel.webp)
+*Image: Cirrus Aircraft, Vision SF50 Pilot's Information Manual (P/N 31453-001) fig. 9-4, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 | Emergency | What to do |
 | :--- | :--- |
-| engine failure below 600 ft AGL | do **not** pull CAPS; land ahead with little maneuvering; no turn back (Cirrus strategy per the FAA FSB report) |
-| engine failure 600–2,000 ft AGL | pull CAPS immediately |
-| engine failure above 2,000 ft AGL | you have time: glide toward an airport and try a restart, or pull CAPS |
-| engine fire | generic: throttle IDLE, ENGINE knob OFF, then land at once or CAPS; follow the CAS checklist |
-| depressurization (CABIN ALTITUDE alert) | generic: oxygen mask, emergency descent to 10,000 ft or the minimum safe altitude, squawk 7700 |
-| emergency descent | throttle IDLE, gear down below 210 KIAS for drag, up to 250 KIAS / Mach 0.53 |
-| electrical | generic: follow the CAS message's checklist; shed load; land as soon as practical |
+| rejected takeoff | maximum braking without skidding, thrust IDLE; don't set the parking brake; brakes need a cool-down |
+| engine problem below Vr | as above, plus ENGINE knob OFF and press the button; on fire, the ground fire drill below |
+| engine failure after takeoff, low | 100 KIAS, gear and flaps as required, land straight ahead turning only to miss obstacles; if time, knob OFF, CABIN PRESSURE DUMP, GENs and BATs OFF |
+| engine failure below 600 ft AGL | land straight ahead if practicable; if not, pull CAPS at once (AFM §10) |
+| engine failure 600–2,000 ft AGL | pull CAPS immediately (AFM §10) |
+| engine failure above 2,000 ft AGL | pitch for 120–200 KIAS, turn toward a landing site, masks on above 15,000 ft; air start if the engine looks safe; by 1,000 ft AGL, either the landing is assured or you pull CAPS |
+| air start | 120–200 KIAS below 18,000 ft; thrust IDLE, GENs OFF, fuel to the other tank; knob OFF and press the button; wait for N2 below 24% (16% is better); knob RUN, press the button; GENs ON if it runs |
+| engine fire in flight | thrust IDLE, pitch for about 120 KIAS, wait 15 s; still on: lift the guard and toggle ENGINE FIRE ACKNOWLEDGE, push one PUSH TO DISCHARGE, mask 100%, knob OFF and press the button, GENs OFF, land without power or pull CAPS |
+| fire warning goes out by itself | probably a bleed leak: least thrust needed, land as soon as possible, BLEED to FRESH |
+| engine fire on the ground | ENGINE FIRE ACKNOWLEDGE toggled, a PUSH TO DISCHARGE button, knob OFF and press the button, evacuate |
+| cabin altitude high | masks 100%, BLEED verified, mic to MASK MIC, emergency descent as needed, check passenger oxygen, squawk 7700 |
+| emergency descent | AP DISC, thrust IDLE, pitch about 20° nose down, accelerate up to 250 KIAS / Mach 0.53 (150 in turbulence) |
+| both generators out (EMER BUS VOLTS) | GENs OFF, interior lights OFF, BATs ON, EMER BATT ON, land as soon as possible; about 60 min of battery; no autopilot, MFD or GTC 3, gear by alternate extension |
+| stall warning or stick pusher | lower the angle of attack, thrust T/O; don't fight the pusher |
+| gear won't come down | below 210 KIAS: LANDING GEAR HYD breaker (B4) out, handle DOWN, pull the alternate extension handle to its stop, check three green |
 
 For the radio side (Mayday, 7700, lost comms), see [emergencies and lost comms](/aviation/atc-comms/emergencies-lost-comms/).
+
+Gliding (AFM §3): best glide is 114 KIAS at 6,000 lb, 104 at 5,000 lb and 93 at 4,000 lb (the clean green donut),
+and the glide ratio is about 14.7 to 1, roughly 2.4 NM per 1,000 ft. For a power-off landing, fly high key at
+3,000 ft AGL (115–130 KIAS), low key at 1,500 ft (120), base at 1,000 ft (120). Keep at least 110 KIAS until short
+final, and lower the gear and flaps only once the landing is assured.
 
 ### CAPS
 
 | Item | Value |
 | :--- | :--- |
 | what | Cirrus Airframe Parachute System: a rocket pulls a parachute out of the nose and the jet descends under it |
-| handle | the CAPS T-handle in the ceiling |
-| max speed | 135 KIAS; pulled faster, the autopilot idles the engine and pitches up (up to 60°, usually about 30°) to slow down |
-| timing | canopy out and stable within about 15–30 s of the pull |
-| descent | about 1,560 fpm under the canopy (Twin & Turbine) |
-| altitude rule | never below 600 ft AGL; 600–2,000 ft after an engine failure; above 2,000 ft by choice |
+| handle | the CAPS T-handle in the ceiling console, next to the emergency panel (PIM fig. 3-2) |
+| max speed | below 135 KIAS and 145 KTAS, whichever is lower (higher up, true airspeed is the tighter limit) |
+| pulled fast | the autopilot's CAPS mode levels the wings, pitches up and idles the engine to slow down: about 15–24 s from 250 KIAS; it deploys after about 30 s whatever the speed. Don't press AP DISC (AFM §3) |
+| no CAPS autopilot | with a CAPS AUTOPILOT INOP message, slow down yourself and set IDLE before you pull |
+| altitude | no minimum set; horizontal deployments lost under 600 ft; above 1,000 ft AGL is advisable (AFM §10) |
+| descent | about 1,560 fpm under the canopy; touchdown is like a drop from about 10.5 ft (AFM §10) |
+| after the pull | masks 100% above 15,000 ft; ENGINE FIRE ACKNOWLEDGE toggled (shuts off the fuel); ELT on; gear UP; after radio calls, BAT and GEN OFF below 15,000 ft; loose items secured, belts tight, brace; out upwind once stopped |
+| gear | leave it UP: a CAPS landing with the gear down may puncture a fuel tank (AFM §10) |
 | in the sim | the handle works and deploys a canopy in community videos (reported) |
 
 ### Safe Return (emergency autoland)
 
-**Safe Return** is Cirrus's name for Garmin Emergency Autoland: the airplane lands itself when the pilot can't.
+**Safe Return** is Cirrus's name for Garmin Emergency Autoland: the airplane lands itself when the pilot can't. It is a
+G2 feature, so the AFM for earlier serials doesn't cover it; the notes below are from Cirrus, AOPA and the FAA FSB
+report.
 
 | Item | Value |
 | :--- | :--- |
@@ -287,10 +408,13 @@ For the radio side (Mayday, 7700, lost comms), see [emergencies and lost comms](
 
 ### Emergency descent mode
 
-**EDM** (emergency descent mode) is the Garmin feature that dives the jet to breathable air if you don't touch the
-controls or panel for a while at high altitude, as in hypoxia. If you still don't respond after the descent, Safe
-Return takes over. The exact thresholds are in the AFM and aren't public, and whether the sim models EDM is not
-verified: don't rely on it.
+**EDM** (emergency descent mode) dives the jet to breathable air after a loss of cabin pressure (PIM ch. 17). It
+works only with the autopilot already on. It starts when you are at or above 14,900 ft, the CABIN ALTITUDE HIGH warning
+has been on for 15 s, and no manual cabin dump is in progress. The red AUTO DESCENT warning sounds and EDM shows above
+the airspeed tape. The autopilot sets 14,000 ft and a target 10 kt below the speed limit, idles the thrust, then levels
+at 14,000 ft and sets about 83% N1. Only AP DISC cancels it, and the CABIN PRESSURE DUMP button disables it. On the G2,
+Safe Return follows if the pilot still doesn't respond (FSB report). Whether the sim models EDM is not verified: don't
+rely on it.
 
 ## Sim quirks
 
@@ -300,12 +424,12 @@ Official items come from Microsoft's release notes; the rest are forum reports, 
 | :--- | :--- |
 | autothrottle oscillated around the target speed | retuned in Sim Update 3 (20 August 2025) |
 | FADEC entered start modes after fuel starvation | fixed in SU3 |
-| electric fuel pump latched on spuriously | less sensitive since SU3 |
+| electric fuel pump latched on spuriously | less sensitive since SU3; on the real jet, FUEL CONTROL to LEFT or RIGHT and back to AUTO clears the latch (PIM ch. 10) |
 | no EFB takeoff and landing performance | added in SU2 (15 May 2025) |
 | EFB holding speed schedule | added in SU5 (30 April 2026) |
 | no EFB tablet in the cockpit | added in SU6 (13 August 2026) |
 | Safe Return poor at choosing airports | improved in SU6 |
-| autopilot drops out at about 400 ft on approach with no aural warning | (reported); the disconnect matches the real minimum, the silence doesn't |
+| autopilot drops out at about 400 ft on approach with no aural warning | (reported); the AFM's minimum use height is 400 ft only for non-precision modes (200 ft or DA on GS or GP), and it has you turn the AP off before landing anyway |
 | onboard checklist and preflight fire and stall tests missing | (reported) |
 | fewer systems than FlightFX's MSFS 2020 payware version | (reported); FlightFX doesn't support the 2024 default |
 | no official 2024 manual | (reported); the FlightFX 2020 manual is the closest |
@@ -317,15 +441,18 @@ Official items come from Microsoft's release notes; the rest are forum reports, 
 From a parking spot, engine off.
 
 ```text
-Battery + avionics ON, parking brake SET, door closed
+Gear handle DOWN, FUEL CONTROL AUTO, door latched
+BAT 1 + BAT 2 ON, GEN 1 + GEN 2 ON
 EFB: weights, fuel, plan -> avionics; note Vr
-Throttle IDLE, ENGINE knob RUN, press START
-Watch N1/ITT settle; CAS clean
-Altitude preselect, heading sync, flaps 50%, trim takeoff
+Strobes ON, thrust IDLE, brakes held
+ENGINE knob RUN, press ENGINE START/STOP
+Watch N1/N2/ITT settle; CAS clean
+CAPS pin out; BLEED switch to BLEED
+Altitude preselect, heading sync, flaps 50%
+Trim in the green band; TO/GA (FD 10 deg)
 Taxi; on the runway: lights, transponder ALT
-Arm A/T, press TOGA, throttle full forward
-Rotate 85-90 KIAS, gear up, flaps up at 115, MCT
-AP on after ~500 ft
+Arm A/T, thrust T/O, rotate 85, pitch 10 deg
+Gear up, flaps up at 115, MCT, AP on above 400 ft
 ```
 
 ### Quick IFR setup
@@ -337,10 +464,10 @@ EFB -> send to avionics; GTC Flight Plan: check it
 GTC PROC: departure; preselect first altitude
 Takeoff with TOGA + A/T; AP on, NAV + FLC (A/T FMS)
 Cruise FL280-FL310
-40+ NM before the 3-to-1 point: arrival + approach loaded
+40+ NM before the 3-to-1 point: arrival + approach
 Preselect lower altitude, VNV
-140 KIAS + flaps 50% by the IAF; APR
-Gear down, flaps 100% by the FAF; Vref + 10
+140 KIAS + flaps 50% for the approach; APR
+Gear down, flaps 100%, Vref + 10; AP off to land
 ```
 
 ### Autoland demo (Safe Return)
@@ -357,13 +484,16 @@ To cancel at any time: press AP or the AP disconnect
 
 ### Engine-out decision drill
 
-Practice the CAPS altitude rules. Fail the engine in the sim's [failures menu](/aviation/msfs-2024/sim-basics/#failures).
+Practice the CAPS altitude rules from AFM §10. Fail the engine in the sim's
+[failures menu](/aviation/msfs-2024/sim-basics/#failures).
 
 ```text
-Failure below 600 ft AGL  -> land ahead, no CAPS, no turn back
-Failure 600-2,000 ft AGL  -> pull CAPS now
-Failure above 2,000 ft    -> glide to an airport, try a restart,
-                             or slow to <= 135 KIAS and pull
+Below 600 ft AGL  -> land ahead; CAPS if you can't
+600-2,000 ft AGL  -> pull CAPS now
+Above 2,000 ft    -> 120-200 KIAS, air start below
+                     18,000 ft, glide to a runway
+By 1,000 ft AGL   -> landing assured, or CAPS
+CAPS: under 135 KIAS/145 KTAS, IDLE, gear UP
 ```
 
 ### Early descent without speedbrakes
@@ -371,14 +501,16 @@ Failure above 2,000 ft    -> glide to an airport, try a restart,
 When ATC keeps you high.
 
 ```text
-Throttle IDLE (A/T off, or MAN at a low speed)
+Thrust IDLE (A/T off, or MAN at a low speed)
 Below 210 KIAS: gear DOWN for drag
-Below 190 KIAS: flaps 50%
+Below 190 KIAS and 17,500 ft: flaps 50%
 Ask ATC for lower early; no spoilers to save you
 ```
 
 ## References
 
+- Cirrus Aircraft, *FAA Approved Airplane Flight Manual for the Cirrus Vision SF50*, aircraft serials with Cirrus Perspective Touch avionics and FL280 maximum operating altitude, P/N 31452-001, Reissue A with Revision A1 (4 February 2022) and temporary revisions TAFM 22-01, 22-03, 23-02 and 23-03: limitations, emergency and normal procedures, performance tables, CAPS guidance
+- Cirrus Aircraft, *Pilot's Information Manual for the Cirrus Vision SF50*, aircraft serials SF50-0005 and subsequent, P/N 31453-001, Revision 5 (22 January 2026): cockpit layout, systems, EDM, CAPS autopilot mode; source of most figures
 - [EASA TCDS IM.A.615, Cirrus SF50, Issue 6 (1 June 2026)](https://www.easa.europa.eu/en/document-library/type-certificates/aircraft-cs-25-cs-22-cs-23-cs-vla-cs-lsa/easaima615-cirrus): speed limits, weights, thrust, altitudes, Safe Return approval; it cites FAA TCDS A00018CH
 - [FAA TCDS database (A00018CH)](https://drs.faa.gov/browse/TCDSMODEL/doctypeDetails): the primary type certificate
 - [FAA Flight Standardization Board report, SF50, Rev 4 draft](https://www.faa.gov/aircraft/draft_docs/fsb/FSBR_SF50_Rev_4_Draft.pdf): FL280 vs FL310 serials, CAPS altitude strategy, EAL and EDM, pattern altitude
@@ -396,13 +528,19 @@ Ask ATC for lower early; no spoilers to save you
 - [Wikipedia: Cirrus Vision SF50](https://en.wikipedia.org/wiki/Cirrus_Vision_SF50): generation history, G2 specifications
 
 [^1]: AOPA's G2 report gives 305 KTAS at FL310 on 64 gal/h and 313 KTAS at FL270 on 76 gal/h; FlightFX's G2 manual
-    gives 311 KTAS max cruise; Cirrus now lists 317 KTAS for the G3. Aviation Week's flight saw 60 gal/h at FL310.
+    gives 311 KTAS max cruise; Cirrus now lists 317 KTAS for the G3. Aviation Week's flight saw 60 gal/h at FL310. The
+    AFM for FL280 serials gives 304 KTAS on 69 gal/h at FL280, ISA, 6,000 lb and maximum continuous thrust, or
+    232 KTAS on 47 gal/h at maximum-range cruise (AFM §5).
 
 [^2]: AOPA gives about 1,100–1,275 NM for the G2; Wikipedia says over 1,200 NM; Cirrus lists 1,275 NM max range for
     the current jet.
 
-[^3]: These depend on weight. Aviation Week rotated at 85 KIAS at 5,958 lb and flew Vref 75 + 10 at a lighter landing
-    weight; AOPA quotes Vr 90 and Vref 85; Wikipedia gives Vref 83 or lower. Use the EFB numbers for your weight.
+[^3]: The AFM gives a single Vr of 85 KIAS. Aviation Week rotated at 85 KIAS at 5,958 lb; AOPA quotes Vr 90 and Vref 85
+    for the G2. Use the EFB numbers for your weight in the sim.
 
 [^4]: AOPA (2020) describes the Safe Return button as a red recessed button in the cabin ceiling reachable from the
     front seats; Cirrus's Safe Return page places it above the second-row seats.
+
+[^5]: The AFM used here (P/N 31452-001) is for serials limited to FL280 with a 6.4 psid cabin. The TCDS lists
+    FL310 for serial 0008, 0089, 0094 and on, and the G2 raised the cabin differential to 7.1 psi. This sheet keeps the
+    G2 values the sim models; the AFM's speed and weight limits match the TCDS.

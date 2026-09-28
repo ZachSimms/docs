@@ -2073,6 +2073,47 @@ test.describe("split layout", () => {
   });
 });
 
+test.describe("aviation cockpit images", () => {
+  test("aircraft sheets show their cockpit images, loaded and within a phone's width", async ({
+    page,
+  }) => {
+    // Ten page loads, each optimizing up to 13 images on first request.
+    test.setTimeout(120_000);
+    for (const slug of [
+      "cessna-172",
+      "cessna-172-classic",
+      "cirrus-sr22",
+      "vision-jet",
+      "longitude",
+    ]) {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`/aviation/msfs-2024/${slug}/`);
+        const images = page.locator(`main img[src*="aviation"]`);
+        expect(await images.count(), slug).toBeGreaterThanOrEqual(4);
+        const problems = await images.evaluateAll(async (imgs) => {
+          const out: string[] = [];
+          const all = imgs as HTMLImageElement[];
+          for (const img of all) img.loading = "eager";
+          await Promise.all(all.map((img) => img.decode().catch(() => undefined)));
+          for (const img of all) {
+            if (img.naturalWidth === 0) out.push(`${img.currentSrc} did not load`);
+            if (img.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+              out.push(`${img.currentSrc} overflows`);
+            if ((img.alt ?? "").length <= 10) out.push(`${img.currentSrc} has no alt text`);
+          }
+          return out;
+        });
+        expect(problems, `${slug} at ${width}px`).toEqual([]);
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        );
+        expect(overflow, `${slug} at ${width}px`).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+});
+
 test.describe("home keys and zen mode", () => {
   test("zen mode widens the sheet to 88ch and loosens its lines, without overlap or overflow", async ({
     page,

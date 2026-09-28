@@ -5,8 +5,10 @@ order: 4
 ---
 
 The MSFS 2024 Cirrus SR22T: a turbocharged four-plus-one-seat piston single with Perspective+ glass and a whole-airplane
-parachute. Numbers come from the FAA type certificate (TCDS A00009CH) and the SR22T POH, speeds are in KIAS (knots
-indicated airspeed) unless marked, and the sim's own quirks are listed separately. Editions, the EFB, SimBrief, the
+parachute. Numbers come from the FAA type certificate (TCDS A00009CH) and the SR22T POH (P/N 13772-005). The
+procedures follow that POH and were checked against Cirrus's SR22 Perspective+ POH (P/N 13772-006) and abbreviated
+checklist (P/N 13728-014). Speeds are in KIAS (knots indicated airspeed) unless marked, and the sim's own quirks are
+listed separately. Editions, the EFB, SimBrief, the
 checklist panel and key bindings are in [sim basics](/aviation/msfs-2024/sim-basics/). Radio calls are in
 [ATC comms](/aviation/atc-comms/). For a simpler trainer first, see the [Cessna 172](/aviation/msfs-2024/cessna-172/).
 
@@ -74,13 +76,18 @@ are the reference. Nobody has published a speed-by-speed comparison; treat any g
 
 ## Cockpit & avionics
 
+![Cirrus SR22 cockpit drawing: PFD (20) and MFD (3) side by side, bolster switch panel (18) under the PFD, ignition key (19) at the far left, keypad and autopilot on the center stack (15), flap control (10) below it, power and fuel controls (13) on the console, CAPS handle cover (1) in the ceiling](/images/aviation/cirrus-sr22/instrument-panel.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-4, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Where | What's there |
 | :--- | :--- |
-| panel, left | PFD (primary flight display: attitude, speed, altitude, HSI), ignition key |
+| panel, left | PFD (primary flight display: attitude, speed, altitude, HSI); ignition key switch at the far left |
 | panel, right | MFD (multi-function display: map, engine page, flight plan, checklists, weight and balance) |
-| bolster (lip under the panel) | BAT 1, BAT 2, ALT 1, ALT 2 and AVIONICS master switches; pitot heat; lights; ice protection; standby instruments below it |
-| center console | FMS keypad (alphanumeric), autopilot mode buttons, audio panel, power lever, mixture, fuel selector |
-| center console, bottom of the vertical part | airfoil-shaped FLAPS switch with detents at UP, 50% and 100% |
+| bolster (lip under the panel) | BAT 2, BAT 1, ALT 1, ALT 2 and AVIONICS master switches; NAV, STROBE and LAND lights; pitot heat; ice protection; panel and instrument dimmers |
+| under the panel, left | parking brake handle |
+| center stack | FMS keyboard (alphanumeric), GMC 707 autopilot mode controller, audio panel |
+| center console | power lever, mixture, friction knob, fuel pump switch, fuel selector (LEFT, RIGHT, OFF); alternate air knob on the left side |
+| center stack, bottom | airfoil-shaped FLAPS switch with detents at UP, 50% and 100% and a light at each position |
 | ceiling, above the pilot's right shoulder | red CAPS activation T-handle under a cover |
 
 Perspective+ features the sim models (Working Title, SU14): stabilized-approach alerts, a full-screen engine page with
@@ -99,101 +106,164 @@ checklists, and TKS anti-ice fluid flow (TKS: fluid "weeping wing" ice protectio
 
 ## Normal procedures
 
-Condensed from the POH flows and adapted to what the sim models. The in-sim checklist panel has the full list; the sim
-skips some walkaround items.
+Condensed from the SR22T POH (P/N 13772-005) section 4, in its order, and adapted to what the sim models. Every phase
+was checked against the non-turbo SR22 Perspective+ POH (P/N 13772-006, serials 4435 and on) section 4 and its
+abbreviated checklist (P/N 13728-014). The in-sim checklist panel has the full list; the sim skips some walkaround
+items.
+
+| Phase | SR22T POH 13772-005 §4 | Perspective+ POH 13772-006 §4 | Checklist 13728-014 |
+| :--- | :--- | :--- | :--- |
+| preflight | pp. 4-4 to 4-8 | pp. 4-4 to 4-9 | N-3 to N-6 |
+| before start, engine start | pp. 4-9 to 4-11 | pp. 4-10 to 4-12 | N-10 |
+| before taxi, taxi | p. 4-12 | pp. 4-12, 4-13 | N-11 |
+| before takeoff | pp. 4-13 to 4-15 | pp. 4-14 to 4-16 | N-12, N-13 |
+| takeoff, climb | pp. 4-16 to 4-20 | pp. 4-16 to 4-18 | N-14 |
+| cruise | pp. 4-21, 4-22 | pp. 4-19, 4-20 | N-17 |
+| descent, approach | p. 4-23 | p. 4-21 | N-18, N-19 |
+| landing, go-around | pp. 4-24 to 4-26 | pp. 4-21 to 4-23 | N-19 |
+| after landing, shutdown | pp. 4-26, 4-27 | p. 4-23 | N-20 |
+
+Where the non-turbo Perspective+ book differs from the SR22T the sim models:
+
+| Item | SR22T (13772-005) | Non-turbo SR22 (13772-006) |
+| :--- | :--- | :--- |
+| engine | TSIO-550-K, 315 hp at 2,500 RPM, 36.0 inHg for takeoff | IO-550-N, 310 hp at 2,700 RPM (§1) |
+| fuel pump switch | BOOST and HIGH BOOST/PRIME | BOOST and PRIME (§7) |
+| after start | lean for peak RPM and keep it for taxi | no leaning step |
+| takeoff mixture | always FULL RICH: the turbo holds 36 inHg at any field | as required, to a fuel-flow target by altitude (p. 4-16) |
+| rotate, obstacle speed | 77–80, 85 KIAS | 73–76, 84 KIAS |
+| climb | 120 KIAS at full power; Vy 103 | 110–120 KIAS; Vy 108 at sea level, 99 at 10,000 ft |
+| cruise leaning | to the cyan target at 30.5 inHg or less, or 50–75 °F lean of peak TIT | by EGT: 75 °F rich of peak (best power) or 50 °F lean of peak (best economy) |
+| shutdown | cycle the ignition to prove the magnetos ground | no ignition-cycle step |
+| engine failure in flight | switch tanks, ignition BOTH, pump BOOST, power ½, mixture from cutoff slowly forward | mixture as required, pump BOOST, switch tanks, alternate air ON, ignition L, R, BOTH (§3 p. 3-12) |
+| glide | about 8.6:1 | about 8.8:1 (fig. 3-1) |
 
 ### Preflight
+
+![Recommended walk-around route for the SR22: start in the cabin (1), then the left fuselage and tail (2, 3), the right side and right wing (4 to 7), the nose and propeller (8 to 10) and the left wing (11 to 13)](/images/aviation/cirrus-sr22/walk-around.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 4-1, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 | Item | Action / value |
 | :--- | :--- |
 | weight and balance | EFB weights: takeoff ≤ 3,600 lb, zero fuel ≤ 3,400 lb, baggage ≤ 130 lb |
-| fuel | up to 92 gal usable; note both tanks; select the fullest |
-| oxygen | plan it for cabin altitudes above 12,500 ft for over 30 min, and always above 14,000 ft (14 CFR 91.211) |
-| flaps | run to 100%, check the light, back up |
-| CAPS handle | safety pin removed (real preflight item) |
-| stall warning, lights | test |
+| cabin power | AVIONICS OFF; BAT 2 ON: PFD comes on, essential bus 23–25 V, flap light out; BAT 1 ON, avionics fan audible |
+| oxygen | masks and flow checked; plan it above 12,500 ft cabin altitude for over 30 min, always above 14,000 ft (14 CFR 91.211) |
+| lights, stall warning | check the lights; test the stall horn (suction on the stall-warning inlet) |
+| fuel | check quantity (up to 92 gal usable); select the fullest tank |
+| flaps | 100%, check the position light on |
+| switches | BAT 1 and BAT 2 OFF; circuit breakers in; fire extinguisher and egress hammer on board |
+| CAPS handle | safety pin removed |
+| walk-around | the 13 stations above: drain and sample the fuel (4 wing drains, gascolator), oil 6–8 qt, pitot cover off, propeller condition |
 
 ### Before start
 
+![Bolster switch panel below the displays: BAT 2, BAT 1, ALT 1, ALT 2 and AVIONICS master switches (3 to 7), then NAV, STROBE and LAND light switches (8 to 10); before start turn both BATs and the strobes on, leave the ALTs and AVIONICS off](/images/aviation/cirrus-sr22/switch-panel.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-12, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| doors, belts, seats | closed and secure |
-| brakes | hold or parking brake set |
-| BAT 1, BAT 2 | ON; check the essential bus voltage on the PFD |
-| ALT 1, ALT 2 | OFF until the engine runs (keeps the starter load down) |
-| AVIONICS | OFF until after start |
+| preflight, weight and balance | done; within limits |
+| passengers | briefed: belts, doors, egress hammer, oxygen, CAPS; CAPS pin removed |
+| seats, belts, harnesses | seats locked, belts secure and not twisted |
+| brakes | hold |
+| BAT 1, BAT 2 | ON; check volts |
 | strobes | ON |
+| ALT 1, ALT 2, AVIONICS | stay OFF until the engine runs (keeps the starter load down) |
 
 ### Engine start
+
+![SR22 center console, non-turbo drawing: power lever (8), mixture (10) with its CUTOFF stop, friction knob (9), fuel pump switch and the fuel selector below; set mixture FULL RICH and power FULL FORWARD, then open the power lever about ¼ inch to start](/images/aviation/cirrus-sr22/engine-controls.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-7, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 | Item | Action / value |
 | :--- | :--- |
 | mixture | FULL RICH |
 | power lever | FULL FORWARD |
-| fuel pump | cold engine: HIGH BOOST/PRIME 2–3 s, then BOOST; warm engine: skip the prime |
-| power lever | back to about ¼ inch open |
+| fuel pump | BOOST; first start of the day or cold: HIGH BOOST/PRIME for about 2 s first; warm engine: no prime |
 | prop area | clear |
+| power lever | open about ¼ inch |
 | ignition key | START; release when it runs; crank ≤ 10 s, then 20 s rest |
-| mixture | lean until RPM peaks; leave it there for taxi |
-| power | about 1,000 RPM |
+| mixture | lean until RPM peaks; leave it there for taxi and run-up |
+| power | back to about 1,000 RPM |
 | oil pressure | rising within 30 s (60 s when very cold), else shut down |
-| ALT 1, ALT 2, AVIONICS | ON; check amps |
+| ALT 1, ALT 2, AVIONICS | ON |
+| engine, amps | monitor the engine page; check the ammeter |
+
+Flooded (weak firing, black smoke): pump OFF, mixture full lean, power full open, crank; when it fires, release the key,
+pull the power back and slowly enrich.
 
 ### Before taxi / taxi
+
+![SR22 PFD layout: airspeed tape on the left, attitude in the center, altitude and vertical speed on the right, HSI below; while taxiing, check the HSI heading turns the right way and the attitude stays steady](/images/aviation/cirrus-sr22/pfd.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-5, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 | Item | Action / value |
 | :--- | :--- |
 | flaps | UP |
-| avionics | flight plan, frequencies, transponder code, altimeter |
+| radios, avionics | flight plan, frequencies, transponder code, altimeter |
+| cabin heat, defrost | as needed |
 | fuel selector | switch tanks (proves the other tank feeds) |
-| parking brake | release; test brakes |
+| parking brake | release; test the brakes |
 | taxi power | ≤ 1,000 RPM on hard surfaces; control speed with power, not brakes |
-| instruments in turns | HSI and heading turn correctly, attitude steady, turn needle deflects |
+| instruments in turns | HSI and heading turn correctly, attitude steady, turn rate shown |
 
 ### Before takeoff
 
+![Flap control at the bottom of the center stack: the airfoil-shaped lever at the right of the panel moves between UP, 50% and 100%; set 50% for takeoff and check the matching position light](/images/aviation/cirrus-sr22/flap-switch.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-4, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
-| doors, belts | latched, secure; CAPS pin removed |
-| fuel | fullest tank, pump BOOST, mixture FULL RICH (the turbo holds 36 inHg at any field elevation) |
-| flaps | 50% |
-| transponder, nav | ALT; departure loaded; autopilot checked, then disconnected |
+| doors, CAPS, belts | latched; CAPS pin removed; belts and harnesses secure |
+| air conditioner | as desired, never RECIRC in flight |
+| fuel | confirm quantity; fullest tank; pump BOOST; mixture FULL RICH (the turbo holds 36 inHg at any field elevation) |
+| flaps | 50%; check the light |
+| transponder, autopilot, nav | set; autopilot checked; departure loaded |
 | run-up | brakes held, 1,700 RPM |
-| alternators | both ALT cautions out, both show positive amps |
-| magnetos | R then L: drop ≤ 150 RPM each, difference ≤ 75 RPM |
-| back to 1,000 RPM | instruments and altimeter set; controls free and correct; trim at takeoff mark |
+| alternators | pitot heat, nav lights and landing light ON as a load; both ALT cautions out, both show positive amps; voltage good |
 | pitot heat | ON in visible moisture or at 5 °C (41 °F) or colder |
+| magnetos | R then L, back to BOTH each time: drop ≤ 150 RPM each, difference ≤ 75 RPM |
+| back to 1,000 RPM | engine parameters good; instruments, HSI and altimeter set; controls free and correct; trim at takeoff |
+| autopilot | disconnect |
 
 ### Takeoff
 
+![SR22 MFD engine page, non-turbo drawing: percent power (1), RPM (3), manifold pressure (5) and oil (6) gauges across the top, CHT (2) and EGT (4) bars below; at full power the SR22T shows about 36 inHg and 2,500 RPM](/images/aviation/cirrus-sr22/engine-instruments.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-7, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
+| brakes | release; steer with rudder (the real nosewheel castors; brakes steer at low speed) |
 | power | full forward: about 36.0 inHg and 2,500 RPM, fuel flow in the green arc |
 | MAP check | up to 37.0 inHg is fine with cold oil; above 37.0, pull back |
-| steering | rudder only (the real nosewheel castors; brakes steer at low speed) |
 | rotate | 77–80 KIAS |
 | flaps | UP at 90 KIAS |
-| short field | hold brakes, full power, release, rotate 77, climb at 85 over the obstacle |
+| short field | flaps 50%, hold brakes, full power, check the engine, release, rotate 77, climb at 85 over the obstacle |
 
 ### Climb
 
 | Item | Action / value |
 | :--- | :--- |
-| full-power climb | 120 KIAS, full power, mixture keeping fuel flow in the green arc, pump BOOST |
+| oxygen | as required |
+| full-power climb | 120 KIAS, full power, flaps up, mixture keeping fuel flow in the green arc, pump BOOST |
 | max climb | Vy 103 (Vx 88 for obstacles), briefly: slow climbs heat the cylinders |
 | CHT | keep the hottest ≤ 420 °F by lowering the nose; 460 °F is the red line |
-| cruise climb (lean of peak) | 30.5 inHg, lean to the cyan target, ≥ 120 KIAS (130–140 gives 600–700 fpm) |
+| cruise climb (lean of peak) | 30.5 inHg, lean to the cyan target, ≥ 120 KIAS, pump BOOST (130–140 KIAS gives 600–700 fpm) |
 | above 18,000 ft | hot fuel may vapor-lock: HIGH BOOST/PRIME if fuel flow wobbles |
 
 ### Cruise
 
+![MFD fuel-flow gauge (1) with the fuel quantity and fuel calculation boxes below: in cruise, lean until the needle sits on the cyan target cue, then watch fuel remaining, range and the tank balance](/images/aviation/cirrus-sr22/fuel-flow.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-9, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
+
 | Item | Action / value |
 | :--- | :--- |
+| oxygen, altitude | as required; cruise altitude established |
 | power | 30.5 inHg or less (leaning is approved only at or below 30.5) |
+| fuel pump | BOOST for 30 min after level-off, then OFF or as needed; BOOST for maneuvers and every tank switch |
 | mixture | lean to the cyan target fuel flow (lean of peak), or 50–75 °F lean of peak TIT |
 | CHT | ≤ 420 °F; 0.5 gal/h leaner cuts CHT about 15 °F |
-| fuel pump | BOOST for 30 min after level-off, then OFF or as needed |
-| fuel balance | swap tanks regularly; FUEL IMBALANCE appears over 12 gal difference |
+| fuel balance | swap tanks regularly: FUEL IMBALANCE advisory over 8 gal, caution over 10, warning over 12 |
 | high altitude | MAP never below 15 inHg above 18,000 ft |
 
 **Lean of peak (LOP)**: leaner than the mixture giving peak exhaust temperature; cooler and more economical, slightly
@@ -203,21 +273,24 @@ slower.
 
 | Item | Action / value |
 | :--- | :--- |
+| oxygen | as required |
 | ATIS, altimeter | get the weather, set the altimeter |
+| landing light | ON |
+| fuel system | check tank and pump |
 | power | as needed; rapid descent: smoothly to 18–20 inHg |
 | mixture | as needed; keep CHT ≥ 240 °F, avoid long idle |
-| landing light | ON |
+| brake pressure | check |
 | speed | ≤ 176 KIAS (Vno) in any turbulence |
 
 ### Approach
 
 | Item | Action / value |
 | :--- | :--- |
+| belts | secure |
 | fuel pump | BOOST |
 | mixture | FULL RICH |
 | flaps 50% | below 150 KIAS; fly 85–90 |
-| approach | loaded and activated; minimums set; belts secure |
-| autopilot | APR armed or as required |
+| approach, autopilot | loaded and activated; minimums set; APR armed or as required |
 
 ### Landing
 
@@ -226,6 +299,7 @@ slower.
 | flaps 100% | below 110 KIAS |
 | final speed | 80–85 KIAS (79 short field) |
 | touchdown | power off, mains first, lower the nose gently |
+| short field | power to idle once clear of obstacles; after touchdown, maximum braking |
 | go-around | AP off, full power, flaps 50%, 80–85 KIAS; flaps UP once clear of obstacles |
 
 ### After landing
@@ -234,10 +308,10 @@ slower.
 | :--- | :--- |
 | power | 1,000 RPM |
 | fuel pump | OFF (or BOOST) |
-| mixture | lean for best idle |
+| mixture | lean for best idle RPM |
 | flaps | UP |
 | transponder | STBY |
-| pitot heat, lights | OFF / as required |
+| lights, pitot heat | as required / OFF |
 
 ### Shutdown
 
@@ -247,10 +321,14 @@ slower.
 | power lever | IDLE |
 | ignition | briefly cycle through OFF: the engine should stumble (proves both magnetos ground) |
 | mixture | CUTOFF |
-| switches | avionics, alternators, batteries OFF; key OFF |
-| ELT | transmit light out; parking brake set |
+| switches | all OFF (avionics, alternators, batteries, lights); key OFF |
+| ELT | transmit light out |
+| chocks, tie-downs, pitot cover | as required |
 
 ## Flying it in the sim
+
+![Perspective+ FMS keyboard on the center stack: FPL (23) for the flight plan, PROC (26) for procedures, Direct-to (24), the FMS knob (29), COM and NAV tuning keys and XPDR (30) for the transponder](/images/aviation/cirrus-sr22/fms-keyboard.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-18, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 A typical IFR trip in the SR22T. Plan and send the route from the EFB or SimBrief as in
 [sim basics](/aviation/msfs-2024/sim-basics/#flight-planning-efb-and-simbrief); the clearance and radio calls are in
@@ -267,7 +345,7 @@ A typical IFR trip in the SR22T. Plan and send the route from the EFB or SimBrie
 | 7. descent | set the lower altitude first, then VNV follows the computed path (VNAV: vertical navigation) |
 | 8. approach | activate the approach, APR, slow to 90–95, then configure |
 
-Autopilot (GFC 700) modes on the mode buttons:
+Autopilot (GFC 700) modes on the GMC 707 mode controller:
 
 | Mode | Does |
 | :--- | :--- |
@@ -290,34 +368,52 @@ Tips:
 
 ## Emergencies
 
-Paraphrased from the POH. The POH sections 3 and 10 are the full reference.
+Paraphrased from the SR22T POH (13772-005) section 3 and checked against the Perspective+ POH (13772-006) section 3
+(pp. 3-11 to 3-43), section 3A for cautions (pp. 3A-9 to 3A-14) and section 10 for CAPS (pp. 10-5 to 10-8). Rows
+marked "turbo only" exist only in the SR22T book. Those POH sections are the full reference.
 
 | Emergency | Memory items and notes |
 | :--- | :--- |
-| engine failure on takeoff | best glide or landing speed; mixture CUTOFF, fuel OFF, ignition OFF; flaps as needed; land ahead |
+| engine failure on takeoff | best glide or landing speed; mixture CUTOFF, fuel selector OFF, ignition OFF; flaps as needed; if time allows: power IDLE, pump OFF, belts, BAT and ALT switches OFF last (the PFD goes dark) |
 | engine failure below 500 ft AGL | land straight ahead, turning only to miss obstacles |
 | engine failure 500–2,000 ft AGL | CAPS is most likely the safest option |
 | engine failure in flight | 92 KIAS; switch tanks; ignition BOTH; pump BOOST; power ½; mixture from cutoff, slowly forward; no restart → CAPS or forced landing |
-| engine fire in flight | mixture CUTOFF, pump OFF, fuel OFF, cabin air OFF, power IDLE, ignition OFF; land as soon as possible; no restart |
-| engine fire during start | mixture CUTOFF, pump OFF, fuel OFF, power forward, keep cranking to suck the fire in |
+| engine airstart | BAT switches ON, power ½ inch, mixture rich as needed, switch tanks, ignition BOTH, pump BOOST, ALT switches OFF, starter only if the prop has stopped, power up slowly, ALT switches ON |
+| forced landing without power | 92 KIAS; Mayday on 121.5, squawk 7700; power IDLE, mixture CUTOFF, fuel OFF, ignition OFF, pump OFF; flaps 100% once the field is made; belts; BAT and ALT OFF |
+| partial power loss | pump BOOST, switch tanks, check the mixture, sweep the power lever, alternate air ON, ignition BOTH then L then R; land as soon as practicable |
+| sudden loss of MAP (turbo only) | power to the minimum for level flight, mixture for 1,300–1,400 °F EGT, descend to a safe altitude, divert, land as soon as possible; watch oil pressure |
+| MAN PRESSURE warning (turbo only) | power below 36.5 inHg; surging → 30.5 inHg or less, fuel flow at the top of the green arc |
+| TIT warning (turbo only) | mixture to the top of the green arc, ignition on BOTH; still high → less power, land as soon as practicable |
+| OIL PRESS warning | check the gauge; low or high → minimum power for level flight, land as soon as possible, expect the engine to quit |
+| engine fire in flight | mixture CUTOFF, pump OFF, fuel OFF, cabin airflow OFF, power IDLE, ignition OFF; land as soon as possible; no restart |
+| engine fire during start | mixture CUTOFF, pump OFF, fuel OFF, power forward, keep cranking to pull the fire into the engine |
+| cabin fire | BAT 1, ALT 1, ALT 2 OFF as needed (BAT 2 keeps the PFD about 30 min), fire extinguisher, AVIONICS and other switches OFF; land as soon as possible |
 | emergency descent | power IDLE, mixture as needed, up to 205 KIAS (176 in turbulence) |
-| alternator failure (ALT 1 or 2 caution) | cycle that ALT switch once; still failed → leave it OFF, shed electrical load, follow the in-sim checklist |
-| high bus voltage (M BUS warning, over 32 V) | cycle the ALT switch; still high → that ALT OFF |
-| low fuel (FUEL QTY) | ≤ 9 gal left: land as soon as practical |
-| fuel imbalance | over 12 gal: pump BOOST, select the fuller tank |
+| spin, or an unusual attitude after a stall | CAPS at once; no other spin recovery is approved |
+| alternator failure (ALT 1 or 2 caution) | check and set its breaker, cycle the switch once; no reset → that ALT OFF; ALT 1 lost → shed non-essential load; avoid IMC and night |
+| high bus voltage (M BUS warning, over 32 V) | cycle that ALT switch; still over 32 V → that ALT OFF, and don't reset it |
+| ESS BUS warning, under 24.5 V | both alternators failed: run both ALT procedures, shed load (landing light, pitot heat, lights, COM 2), land as soon as practicable on battery |
+| low fuel | 9 gal or less in total (FUEL QTY in the SR22T book, FUEL LOW TOTAL in the Perspective+ book): land as soon as practicable |
+| FUEL LOW LEFT or RIGHT (Perspective+ book) | under 1 gal in that tank: pump BOOST, select the other tank |
+| fuel imbalance | warning over 12 gal: pump BOOST, select the fuller tank |
 
 ### CAPS deployment
+
+![CAPS activation handle cover (1) in the cabin ceiling above the pilot's right shoulder: remove the cover, then pull the red T-handle straight down with both hands](/images/aviation/cirrus-sr22/caps-handle.webp)
+*Image: Cirrus Aircraft, SR22 Perspective+ POH/AFM (P/N 13772-006) fig. 7-4, © Cirrus Aircraft, all rights reserved, reproduced for reference.*
 
 **CAPS** (Cirrus Airframe Parachute System) lowers the whole airplane under a parachute.
 
 | Item | Value |
 | :--- | :--- |
-| handle | ceiling, behind the cover over the pilot's right shoulder: remove the cover, pull the T-handle straight down with both hands, steady like a chin-up (a jerk makes it heavier) |
+| handle | remove the cover, pull the T-handle straight down with both hands, steady like a chin-up (a jerk makes it heavier) |
 | max demonstrated speed | 140 KIAS (Vpd); slow down first if you can, but pull regardless if ground impact is imminent |
 | altitude | no minimum is set; altitude loss from level flight has been under 400 ft; aim for ≥ 2,000 ft AGL |
+| attitude | wings level and upright if at all possible |
 | mandatory | any spin, at any altitude |
 | other cases | midair collision, structural failure, loss of control, no landing surface, pilot incapacitation |
-| after the pull | mixture CUTOFF, fuel OFF, pump OFF, masters OFF after radio calls, ignition OFF, ELT ON, belts tight, brace; get out and move upwind |
+| after the pull | mixture CUTOFF, fuel OFF, pump OFF, masters OFF after radio calls, ignition OFF, ELT ON, belts tight, loose items secured, brace; get out and move upwind |
+| descent | under 1,700 fpm, drifting with the surface wind (POH 13772-006 p. 10-8) |
 | touchdown | about like a drop from 13 ft; the airframe is likely written off |
 
 ### Safe Return and autoland
@@ -355,7 +451,7 @@ Start from a parking spot with everything off.
 ```text
 BAT 1, BAT 2 ON ........... check volts; strobes ON
 Mixture FULL RICH, power FULL FWD
-Fuel pump PRIME 2-3 s (cold) -> BOOST
+Pump HIGH BOOST/PRIME 2 s (cold) -> BOOST
 Power 1/4 in open, key START
 Lean for peak RPM, 1,000 RPM, oil pressure up
 ALT 1, ALT 2, AVIONICS ON
@@ -412,14 +508,16 @@ To see the sim's parachute, not a technique to copy.
 ```text
 Level at 5,000 ft AGL or higher, slow to about 100 KIAS
 Ceiling: remove cover, pull the red T-handle
-Mixture CUTOFF, fuel OFF, masters OFF
+Mixture CUTOFF, fuel OFF, pump OFF, masters OFF
 Watch the descent rate (compare with Sim quirks)
 ```
 
 ## References
 
 - [FAA TCDS A00009CH, Revision 25 (26 December 2025): SR20, SR22, SR22T](https://drs.faa.gov/browse/TCDSMODEL/doctypeDetails): engine, speed limits, weights, fuel, altitude; read from the [copy hosted by a flight school](https://takeflightsandiego.com/assets/documents/Cirrus%20TCDS%20All%20Models.pdf)
-- [Cirrus SR22T POH and AFM, P/N 13772-005, S/N 0442 and on](https://befa.org/wp-content/uploads/2021/04/POH-Cirrus-SR22T-1.pdf): limitations, emergency, normal procedures, performance tables, CAPS guidance
+- [Cirrus SR22T POH and AFM, P/N 13772-005, S/N 0442 and on](https://befa.org/wp-content/uploads/2021/04/POH-Cirrus-SR22T-1.pdf): limitations, emergency, normal procedures, performance tables, CAPS guidance; the turbo-specific numbers and the procedure order
+- Cirrus Aircraft, Pilot's Operating Handbook and FAA Approved Airplane Flight Manual for the SR22, serials 4435 and on with Cirrus Perspective+, P/N 13772-006, Reissue A, Revision A1 (9 November 2021): non-turbo SR22; sections 3, 3A, 4 and 10 checked against every procedure here; section 7 figures reproduced above. Not publicly posted.
+- Cirrus Aircraft, Abbreviated Checklist for SR22 serials 4435 and on with Cirrus Perspective+, P/N 13728-014 (9 November 2021): normal, abnormal and emergency checklists derived from P/N 13772-006. Not publicly posted.
 - [Cirrus Aircraft: SR22T specifications](https://cirrusaircraft.com/aircraft/sr22t/): current-model cruise, range and useful load
 - [Garmin: Cirrus Perspective cockpit reference guide](https://static.garmin.com/pumac/CirrusPerspectiveSystemSoftware0764.08_CockpitReferenceGuide.pdf): autopilot modes (LVL), FMS keys, pages
 - [FSElite: Cirrus SR22T G6 for MSFS in Sim Update 14](https://fselite.net/content/cirrus-sr22t-g6-for-msfs-coming-in-sim-update-14/): the G6 rebuild, Perspective+ features, TKS
@@ -434,4 +532,5 @@ Watch the descent rate (compare with Sim quirks)
 [^1]: Cirrus's spec page quotes 1,021 NM for the current SR22T, at 55% power. The 812 NM above is the POH table for
     85% power at 25,000 ft after a full-power climb, keeping a 45-minute IFR reserve.
 
-[^2]: The POH glide chart gives about 8.6:1; some secondary summaries of the POH say 8.8:1. Both use 92 KIAS.
+[^2]: The SR22T POH (13772-005 §3) gives about 8.6:1 and 14.2 NM from 10,000 ft AGL. The non-turbo SR22
+    Perspective+ POH (13772-006 fig. 3-1) gives 8.8:1 and 14.5 NM. Both use 92 KIAS.
