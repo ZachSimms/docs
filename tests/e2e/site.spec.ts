@@ -323,6 +323,136 @@ test.describe("search palette", () => {
   });
 });
 
+test.describe("terminal", () => {
+  /** Type a command at the prompt and run it. */
+  async function run(page: Page, command: string) {
+    const input = page.getByRole("textbox", { name: "Command" });
+    await input.fill(command);
+    await input.press("Enter");
+  }
+
+  test("` opens it; cd, ls, toc and cat walk the site; the prompt follows the page", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await hydrated(page);
+    await page.keyboard.press("`");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    await expect(terminal).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Command" })).toBeFocused();
+    const log = terminal.getByRole("log");
+
+    await run(page, "ls");
+    await expect(log.getByRole("link", { name: "docs/" })).toHaveAttribute("href", "/docs/");
+
+    await run(page, "cd docs/python/overview");
+    await expect(page).toHaveURL(/\/python\/overview\/$/);
+    await expect(terminal).toContainText("terminal · ~/docs/python/overview");
+
+    await run(page, "cat");
+    await expect(log).toContainText("# Overview");
+
+    // Tab completes; a page's name alone goes there.
+    const input = page.getByRole("textbox", { name: "Command" });
+    await input.fill("cd ../fas");
+    await input.press("Tab");
+    await expect(input).toHaveValue("cd ../fastapi ");
+    await input.press("Enter");
+    await expect(page).toHaveURL(/\/python\/fastapi\/$/);
+
+    await run(page, "toc");
+    await expect(log).toContainText(/fastapi\$ toc00\. /);
+    await run(page, "cd 0");
+    await expect(page).toHaveURL(/\/python\/fastapi\/#.+$/);
+
+    // Leaving by a link moves the prompt too, and Esc hides the terminal.
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await expect(terminal).toHaveCount(0);
+    await page.goto("/docs/");
+    await hydrated(page);
+    await page.locator("footer").getByRole("button", { name: /terminal/i }).click();
+    await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
+  });
+
+  test("md splits the terminal, rendered or raw, follows cd, and serves the raw file", async ({
+    page,
+  }) => {
+    await page.goto("/python/overview/");
+    await hydrated(page);
+    const before = (await page.locator("main").boundingBox())!;
+    await page.keyboard.press("`");
+    await run(page, "md");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    const split = terminal.getByRole("region", { name: "Markdown split" });
+    await expect(split).toContainText("~/docs/python/overview · follows cd");
+    // Rendered by default; --raw for the Markdown.
+    await expect(split.locator(".source-rendered h1")).toHaveText("Overview");
+    await run(page, "md --raw");
+    await expect(split.locator(".src-line").first()).toHaveText("1---");
+    await expect(split.locator(".src-heading").first()).toContainText("## ");
+
+    // The split is inside the terminal: the shell on the left, the page untouched above.
+    const shellBox = (await terminal.locator(".terminal-screen").boundingBox())!;
+    const splitBox = (await split.boundingBox())!;
+    const termBox = (await terminal.boundingBox())!;
+    expect(shellBox.x + shellBox.width).toBeLessThanOrEqual(splitBox.x + 1);
+    expect(splitBox.y).toBeGreaterThanOrEqual(termBox.y);
+    expect((await page.locator("main").boundingBox())!.width).toBe(before.width);
+
+    await run(page, "md -R");
+    await expect(split.locator(".source-rendered h1")).toHaveText("Overview");
+    await expect(split.getByRole("button", { name: "rendered" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await run(page, "cd ../fastapi");
+    await expect(page).toHaveURL(/\/python\/fastapi\/$/);
+    await expect(split).toContainText("~/docs/python/fastapi");
+    await expect(split.locator(".source-rendered h1")).toHaveText("FastAPI");
+    await split.getByRole("button", { name: "raw" }).click();
+    await expect(split).toContainText("title: FastAPI");
+
+    const raw = await page.request.get("/source/python/fastapi.md");
+    expect(raw.headers()["content-type"]).toContain("text/markdown");
+    expect(await raw.text()).toContain("title: FastAPI");
+    expect((await page.request.get("/source/python/_nope.md")).status()).toBe(404);
+
+    await run(page, "md -c");
+    await expect(split).toHaveCount(0);
+  });
+
+  test("/terminal/ opens it full screen, by URL or by the link on /info/, and cd keeps it so", async ({
+    page,
+  }) => {
+    await page.goto("/terminal/");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    await expect(terminal).toHaveAttribute("data-size", "max");
+    await expect(page.getByRole("textbox", { name: "Command" })).toBeFocused();
+    await expect(terminal).toContainText("terminal · ~");
+
+    await run(page, "cd docs");
+    await expect(page).toHaveURL(/\/docs\/$/);
+    await expect(terminal).toHaveAttribute("data-size", "max");
+    await expect(terminal).toContainText("terminal · ~/docs");
+
+    // Esc on /terminal/ shows the page beneath, which reopens it.
+    await page.goto("/terminal/");
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveCount(0);
+    await page.getByRole("button", { name: /open the terminal/i }).click();
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
+
+    // Arriving by a link (a client-side navigation) opens it full screen too.
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await page.goto("/info/");
+    await hydrated(page);
+    await page.getByRole("link", { name: "Terminal" }).click();
+    await expect(page).toHaveURL(/\/terminal\/$/);
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
+  });
+});
+
 test.describe("dark mode", () => {
   test("toggle switches the palette, persists across reload, and switches back", async ({
     page,
@@ -2019,13 +2149,16 @@ test.describe("split layout", () => {
       "Experience",
       "Projects",
       "University activities",
-      "Skills",
     ]);
     await expect(page.locator("main")).toContainText(
       "Science Applications International Corporation",
     );
     await expect(page.locator("main")).not.toContainText("[");
-    await expect(page.locator("main")).toContainText("ensured monitoring with Splunk");
+    // Jobs show only role, company and dates for now: no bullet points, and no skills section.
+    await expect(page.locator("main .entry")).not.toHaveCount(0);
+    await expect(page.locator("main .entry ul")).toHaveCount(0);
+    await expect(page.locator("main")).not.toContainText("ensured monitoring with Splunk");
+    await expect(page.locator("main .skills")).toHaveCount(0);
     // No PDF is published for now, so there is no download link and the old file is gone.
     await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
     const response = await page.request.get("/docs/ZachSimms_Resume_Updated.pdf");
