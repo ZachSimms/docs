@@ -811,12 +811,14 @@ test.describe("mdx showcase", () => {
   test("the Math topic exists", async ({ page }) => {
     await page.goto("/math/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Math");
-    await expect(topicEntries(page)).toHaveCount(5);
-    // Frontmatter `order` puts the fundamentals first; numbering runs 00. from the top.
-    await expect(topicEntries(page).first()).toHaveText("Math fundamentals");
+    await expect(topicEntries(page)).toHaveCount(6);
+    // Frontmatter `order` puts the practice problems first, then the fundamentals; numbering
+    // runs 00. from the top.
+    await expect(topicEntries(page).first()).toHaveText("Practice problems");
+    await expect(topicEntries(page).nth(1)).toHaveText("Math fundamentals");
     await expect(page.locator("main nav[data-menu] span").first()).toHaveText("00.");
-    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("04.");
-    await topicEntries(page).first().click();
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("05.");
+    await topicEntries(page).nth(1).click();
     await expect(page).toHaveURL(/\/math\/math-fundamentals\/$/);
     const display = page.locator("main .katex-display");
     expect(await display.count()).toBeGreaterThanOrEqual(4);

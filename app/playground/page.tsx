@@ -14,7 +14,7 @@ import "./playground.css";
 export const metadata: Metadata = {
   title: "Playground",
   description:
-    "Write and run C++, Rust, Python, JavaScript, TypeScript, HTML/CSS and GDScript projects in the browser, with the reference sheets beside the code.",
+    "Write and run C++, Rust, Python, JavaScript, TypeScript, HTML/CSS and GDScript projects in the browser, or solve AI-generated exercises checked by hidden tests, with the reference sheets beside the code.",
 };
 
 /** Keyboard-aware viewport for phones. */
