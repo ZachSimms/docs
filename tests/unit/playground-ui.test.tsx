@@ -374,6 +374,80 @@ describe("ReferencePanel", () => {
     expect(screen.queryByTitle("Tailwind CSS docs")).toBeNull();
     expect(shown.length).toBeGreaterThan(0);
   });
+
+  describe("Snippets tab", () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    afterEach(() => {
+      if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    });
+
+    /** Replace the clipboard with one that records (or refuses) writes. */
+    function mockClipboard(refuse = false): string[] {
+      const written: string[] = [];
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            if (refuse) throw new DOMException("denied", "NotAllowedError");
+            written.push(text);
+          },
+        },
+      });
+      return written;
+    }
+
+    it("shows the project's snippets, filters them, and copies one", async () => {
+      const written = mockClipboard();
+      render(<ReferencePanel {...props} mode="python" />);
+      fireEvent.click(screen.getByRole("tab", { name: "Snippets" }));
+      expect(await screen.findByRole("heading", { name: "00. Hello world" })).toBeInTheDocument();
+      // One set for a Python project: no set picker
+      expect(screen.queryByRole("combobox", { name: "Snippet language" })).toBeNull();
+      fireEvent.change(screen.getByRole("searchbox", { name: "Filter snippets" }), {
+        target: { value: "try" },
+      });
+      expect(screen.getAllByRole("heading", { level: 3 })[0]).toHaveTextContent(
+        "try / except / else / finally",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Copy try / except / else / finally" }));
+      await waitFor(() => expect(written).toHaveLength(1));
+      expect(written[0]).toStartWith("try:\n    ...  # code that might raise\n");
+      expect(await screen.findByText("copied")).toBeInTheDocument();
+    });
+
+    it("starts on the open file's language, switches sets, and inserts at the cursor", async () => {
+      const inserted: string[] = [];
+      render(
+        <ReferencePanel
+          {...props}
+          language="web"
+          mode="css"
+          onInsert={(code) => (inserted.push(code), true)}
+        />,
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "Snippets" }));
+      const picker = screen.getByRole("combobox", { name: "Snippet language" });
+      expect(picker).toHaveValue("css");
+      expect(await screen.findByRole("heading", { name: /Base styles/ })).toBeInTheDocument();
+      fireEvent.change(picker, { target: { value: "html" } });
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Insert Page boilerplate at the cursor" }),
+      );
+      expect(inserted).toHaveLength(1);
+      expect(inserted[0]).toStartWith("<!doctype html>");
+      expect(screen.getByText("inserted")).toBeInTheDocument();
+    });
+
+    it("selects the code when the clipboard is refused", async () => {
+      mockClipboard(true);
+      render(<ReferencePanel {...props} language="rust" mode="rust" />);
+      fireEvent.click(screen.getByRole("tab", { name: "Snippets" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Copy Hello world" }));
+      expect(await screen.findByText(/press ⌘C/)).toBeInTheDocument();
+      expect(window.getSelection()?.toString()).toContain('println!("Hello, world!");');
+    });
+  });
 });
 
 describe("SymbolRow", () => {

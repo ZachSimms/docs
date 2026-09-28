@@ -172,8 +172,8 @@ not kebab-case fails the build.
 - **Playground** (`/playground/`, in the section list): a browser IDE for C++, Rust, Python,
   JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, GDScript and Markdown. Each
   is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
-  intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets or the official docs
-  (MDN and others) beside the code. See [Playground](#playground).
+  intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets, the official docs
+  (MDN and others) or copy-ready code snippets beside the code. See [Playground](#playground).
 - **Images**: put files under `public/images/<topic>/` and reference them as
   `![alt](/images/<topic>/name.png)`. Dimensions are read at build time and rendered through `next/image`;
   remote URLs fall back to a lazy plain `<img>`.
@@ -304,6 +304,18 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
   Bun; Node) through [DevDocs](https://devdocs.io/). Pages are sanitized with DOMPurify and shown in a
   scriptless frame with a `default-src 'none'` CSP, with their license and "via DevDocs"; links inside a
   docset open in the panel. Hono and Tailwind docs are framed from their own sites. `bun scripts/build-docs-manifest.ts` refreshes the committed docset list.
+- **Snippets:** the reference panel's **Snippets** tab holds code outlines for the current project: the structure of
+  a construct with placeholders (`// ...`, `pass`, `todo!()`, `<!-- ... -->`) for your own logic. JavaScript, TypeScript,
+  Python, C++, Rust and GDScript each have hello world (a runnable program), variables, functions, arrow functions
+  (lambdas and closures where the language calls them that), if/else, switch or match, loops, collections, classes and
+  subclasses, exception handling (try/catch, or `Result` and error codes where the language has no exceptions), async
+  and modules; there are sets for HTML, CSS, Tailwind CSS, the DOM, React, Bun, Hono and Markdown too. A project with
+  several sets (HTML/CSS/JS, HTML/CSS/TS, React, Bun + Hono) has a picker, and the tab starts on the set written in the
+  open file's language. The Tailwind set uses Tailwind 4's browser build (its Setup snippet adds the script tag to
+  `index.html`), so it needs no build step. Type to filter (`lambda`, `try`, `await`…; title matches first); **copy**
+  puts an outline on the clipboard (or selects it if the clipboard is refused), **insert** puts it at the editor's
+  cursor. Every outline parses as pasted. They live in `lib/playground/snippets/`, one module per set, each loaded the
+  first time it's shown, and are highlighted with the editor's own parsers.
 - **Layout:** every pane edge is a drag handle (keyboard too: arrows, Shift for bigger steps, Home/End, Enter or
   double-click to reset), remembered per browser. Zen mode keeps only the code, the output and Refs.
 - **Help:** `?` (or `F1`) opens the getting-started help; a first-visit card offers a 1-minute tour of the

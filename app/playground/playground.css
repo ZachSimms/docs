@@ -647,6 +647,90 @@ body:has(.playground) .theme-toggle-rail {
   padding: 0.5em 1ch;
 }
 
+/* ---- Snippets tab: copy-ready code ---- */
+
+.pg-snippet-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em 1.5ch;
+  margin-bottom: 0.75em;
+}
+
+.pg-snippet {
+  margin: 0 0 1.25em;
+  scroll-margin-top: 0.5em;
+}
+
+.pg-snippet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 1.5ch;
+}
+
+.pg-snippet-head h3 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: bold;
+}
+
+.pg-refs-list .pg-snippet-note {
+  margin: 0.15em 0 0.4em;
+  opacity: 0.75;
+}
+
+.pg-snippet-status {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.playground pre.pg-snippet-code {
+  margin: 0;
+  padding: 0.5em 1ch;
+  overflow: auto;
+  max-height: 28em;
+  background: var(--pre-bg);
+  border: 1px dotted var(--pre-border);
+  font-size: var(--pg-code-size, 14px);
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+/* The site's `pre code { display: grid }` expects Shiki's one-span-per-line markup; keep text flow. */
+.playground pre.pg-snippet-code code {
+  display: block;
+  white-space: pre;
+}
+
+.pg-tok-kw,
+.pg-tok-tag {
+  color: var(--graph-3);
+}
+
+.pg-tok-tag {
+  font-weight: bold;
+}
+
+.pg-tok-str {
+  color: var(--graph-2);
+}
+
+.pg-tok-num,
+.pg-tok-fn,
+.pg-tok-attr {
+  color: var(--graph-0);
+}
+
+.pg-tok-type,
+.pg-tok-meta {
+  color: var(--graph-1);
+}
+
+.pg-tok-comment {
+  color: var(--dot-mobile);
+  font-style: italic;
+}
+
 /* ---- Hidden sandboxes, phone tab bar, symbol row ---- */
 
 .pg-frames .pg-sandbox {
