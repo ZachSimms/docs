@@ -9,10 +9,15 @@
  * Code blocks go through `rehype-pretty-code` (Shiki underneath): fences accept
  * `title="…"`, `{1,3-5}` line ranges and `showLineNumbers`; the dual theme is
  * emitted as `--shiki-light` / `--shiki-dark` variables that the CSS switches.
+ *
+ * `withEve` mounts the eve agent in `agent/`: in development it starts `eve dev` beside
+ * Next and rewrites `/eve/v1/*` to it; on Vercel the agent deploys as a separate service
+ * of the same project.
  */
 import path from "node:path";
 import type { NextConfig } from "next";
 import createMDX from "@next/mdx";
+import { withEve } from "eve/next";
 
 const nextConfig: NextConfig = {
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
@@ -125,4 +130,5 @@ const withMDX = createMDX({
   },
 });
 
-export default withMDX(nextConfig);
+// eve serves the agent in `agent/` as its own service, proxied at the same-origin `/eve/v1/*`.
+export default withEve(withMDX(nextConfig));

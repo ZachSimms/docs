@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "public/playground/godot/**",
     // Copied from the browser-basedpyright package (scripts/copy-pyright.ts).
     "public/playground/pyright/**",
+    // eve's build output and local state (`eve build`, `eve dev`).
+    ".eve/**",
+    ".output/**",
   ]),
 ]);
 

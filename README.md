@@ -13,15 +13,15 @@ breadcrumbs and `../` remain.
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3+ (package manager, script runner, unit test runner, dev runtime)
-- Node.js 24 (used under the hood by `next build`, `next start` and Playwright; see "Runtime notes")
+- [Bun](https://bun.sh) 1.3+ (package manager, script runner, unit test runner)
+- Node.js 24 (runs `next dev`, `next build`, `next start`, the eve agent and Playwright; see "Runtime notes")
 
 ## Commands
 
 | Command                              | What it does                                               |
 | ------------------------------------ | ---------------------------------------------------------- |
 | `bun install`                        | install dependencies                                       |
-| `bun run dev`                        | dev server on the Bun runtime, http://localhost:3000       |
+| `bun run dev`                        | dev server (and the eve agent), http://localhost:3000      |
 | `bun run build`                      | production build (static)                                  |
 | `bun run start`                      | serve the production build                                 |
 | `bun test`                           | unit tests (Bun test runner + happy-dom + Testing Library) |
@@ -92,8 +92,8 @@ the home page:
 ---
 title: A post
 date: 2026-09-27
-summary: One or two sentences for the excerpt.   # optional
-tags: [notes]                                    # optional
+summary: One or two sentences for the excerpt. # optional
+tags: [notes] # optional
 ---
 ```
 
@@ -114,18 +114,18 @@ not kebab-case fails the build.
   path: `~` is home, `~/docs/python` a topic, `~/docs/python/language/strings` a sheet, `~/projects`
   the projects (links). The prompt follows the page you are on, however you got there.
 
-  | Command | Does |
-  | ------- | ---- |
-  | `ls [-l] [path]` | list a directory as `00. name/  Title` rows (names are links); on a page, its sections |
-  | `cd [path \| #heading \| -]` | go there; no path is home, `-` the last page, a number that row of the listing just printed; `..` is the site's `../` |
-  | `open <path>` | same as `cd`; projects that live elsewhere open in a new tab |
-  | `tree [-L n] [path]` | the pages below a directory (two levels unless `-L`) |
-  | `toc [path]` | a page's `##`/`###` sections; `cd #id` or `cd <number>` scrolls to one |
-  | `cat [path]` | print a page as text: headings, lists, code, tables, LaTeX source for math |
-  | `md [--raw \| --rendered] [-c] [path]` | split the terminal: the page rendered (the default, or `--rendered`, `-R`) or its MDX source (`--raw`, `-r`) beside the shell; follows each `cd` (a path pins one page, `-c` closes) |
-  | `find <words>` / `grep <words>` | pages by name and title / the full-text search index, numbered |
-  | `pwd`, `back`, `forward`, `scroll [top\|bottom\|up\|down]` | where you are; the browser's buttons; the page |
-  | `theme [light\|dark]`, `zen [on\|off]`, `search`, `whoami`, `history`, `clear`, `max`, `exit`, `help` | the rest of the site's controls |
+  | Command                                                                                               | Does                                                                                                                                                                                 |
+  | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `ls [-l] [path]`                                                                                      | list a directory as `00. name/  Title` rows (names are links); on a page, its sections                                                                                               |
+  | `cd [path \| #heading \| -]`                                                                          | go there; no path is home, `-` the last page, a number that row of the listing just printed; `..` is the site's `../`                                                                |
+  | `open <path>`                                                                                         | same as `cd`; projects that live elsewhere open in a new tab                                                                                                                         |
+  | `tree [-L n] [path]`                                                                                  | the pages below a directory (two levels unless `-L`)                                                                                                                                 |
+  | `toc [path]`                                                                                          | a page's `##`/`###` sections; `cd #id` or `cd <number>` scrolls to one                                                                                                               |
+  | `cat [path]`                                                                                          | print a page as text: headings, lists, code, tables, LaTeX source for math                                                                                                           |
+  | `md [--raw \| --rendered] [-c] [path]`                                                                | split the terminal: the page rendered (the default, or `--rendered`, `-R`) or its MDX source (`--raw`, `-r`) beside the shell; follows each `cd` (a path pins one page, `-c` closes) |
+  | `find <words>` / `grep <words>`                                                                       | pages by name and title / the full-text search index, numbered                                                                                                                       |
+  | `pwd`, `back`, `forward`, `scroll [top\|bottom\|up\|down]`                                            | where you are; the browser's buttons; the page                                                                                                                                       |
+  | `theme [light\|dark]`, `zen [on\|off]`, `search`, `whoami`, `history`, `clear`, `max`, `exit`, `help` | the rest of the site's controls                                                                                                                                                      |
 
   `Tab` completes commands, paths and `#headings` (when several match, they are listed), `↑`/`↓`
   recall history, `Ctrl+L` clears, `Ctrl+C` cancels, `Ctrl+U` empties the line, `Esc` hides it.
@@ -150,6 +150,7 @@ not kebab-case fails the build.
   `/site-tree.json`, built with the site (`lib/terminal/tree.ts`); the shell
   (`lib/terminal/shell.ts`) is plain TypeScript behind a small host interface, so the renderer
   (`components/Terminal.tsx`) could be swapped for a VT emulator without touching a command.
+
 - **Syntax highlighting**: fenced code blocks are tokenized at build time by Shiki (GitHub light/dark
   themes, switched by CSS). Add a language after the opening fence: ` ```python `.
 - **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
@@ -186,68 +187,68 @@ not kebab-case fails the build.
 
 Available in every sheet without an import. All are rendered in the site's own idiom (no Fumadocs UI).
 
-| Syntax                                                                  | Renders                                                          |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| ` ```python title="x.py" {2,4-5} showLineNumbers `                      | titled code box, highlighted lines, line numbers                 |
-| `<Note kind="tip">…</Note>`                                             | aside with a dotted rule and a label                             |
-| `<Callout type="warn" title="…">…</Callout>`                            | same, `info` / `warn` / `error`; warn and error get a solid rule |
-| `<Tabs items={["a","b"]} persist="key"><Tab>…</Tab><Tab>…</Tab></Tabs>` | switchable panels; `persist` syncs and remembers                 |
-| `<Steps><Step title="…">…</Step></Steps>`                               | `01.` `02.` numbered procedure                                   |
-| `<Cards><Card title href description /></Cards>`                        | `> title` links with descriptions                                |
-| ` ```tree title="…" ` fence with a 2-space outline                       | directory tree with guide lines (`dir/` bold, `# comment` dim)  |
-| `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />` | color chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`) |
-| ` ```html demo height=160 ` fence                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)  |
-| ` ```html demo tailwind ` fence                                         | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
-| `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`        | inline SVG diagram that follows the theme (`.d-*` accent classes) |
-| `<YouTube id="…" title="…" channel="…" start={30} />`                   | click-to-play 16:9 embed (youtube-nocookie), caption link; bad ids fail build  |
-| `<Graph title="…" curves={[{ fn: "nlogn", label: "O(n log n)" }]} domain={[0, 16]} range={[0, 70]} />` | SVG function plot from the `lib/graph.ts` catalog (math functions plus `log2`, `nlogn`, `pow2` for Big-O); `a·f(b(x − h)) + k` transforms |
-| `import X from "./_partial.mdx"` then `<X />`                           | include another file; `_`-prefixed files never become pages      |
-| `##` / `###` headings                                                   | table of contents in the right margin (wide viewports)           |
+| Syntax                                                                                                 | Renders                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ` ```python title="x.py" {2,4-5} showLineNumbers `                                                     | titled code box, highlighted lines, line numbers                                                                                                                        |
+| `<Note kind="tip">…</Note>`                                                                            | aside with a dotted rule and a label                                                                                                                                    |
+| `<Callout type="warn" title="…">…</Callout>`                                                           | same, `info` / `warn` / `error`; warn and error get a solid rule                                                                                                        |
+| `<Tabs items={["a","b"]} persist="key"><Tab>…</Tab><Tab>…</Tab></Tabs>`                                | switchable panels; `persist` syncs and remembers                                                                                                                        |
+| `<Steps><Step title="…">…</Step></Steps>`                                                              | `01.` `02.` numbered procedure                                                                                                                                          |
+| `<Cards><Card title href description /></Cards>`                                                       | `> title` links with descriptions                                                                                                                                       |
+| ` ```tree title="…" ` fence with a 2-space outline                                                     | directory tree with guide lines (`dir/` bold, `# comment` dim)                                                                                                          |
+| `<Swatches colors={[…]} weights={[60,30,10]} />`, `<Scale hue chroma />`, `<Contrast fg bg />`         | color chips, tonal scale, WCAG contrast (build-time, `lib/color.ts`)                                                                                                    |
+| ` ```html demo height=160 ` fence                                                                      | code box plus the live result in a sandboxed iframe (`<Demo>`)                                                                                                          |
+| ` ```html demo tailwind ` fence                                                                        | same, with the snippet's classes compiled by Tailwind v4 at build time; a `<style>` block may hold `@theme`/`@utility`/`@keyframes`, and `dark:` follows the site theme |
+| `<Diagram src="/images/diagrams/x.svg" label="…" caption="…" />`                                       | inline SVG diagram that follows the theme (`.d-*` accent classes)                                                                                                       |
+| `<YouTube id="…" title="…" channel="…" start={30} />`                                                  | click-to-play 16:9 embed (youtube-nocookie), caption link; bad ids fail build                                                                                           |
+| `<Graph title="…" curves={[{ fn: "nlogn", label: "O(n log n)" }]} domain={[0, 16]} range={[0, 70]} />` | SVG function plot from the `lib/graph.ts` catalog (math functions plus `log2`, `nlogn`, `pow2` for Big-O); `a·f(b(x − h)) + k` transforms                               |
+| `import X from "./_partial.mdx"` then `<X />`                                                          | include another file; `_`-prefixed files never become pages                                                                                                             |
+| `##` / `###` headings                                                                                  | table of contents in the right margin (wide viewports)                                                                                                                  |
 
 ## Keyboard
 
-| Key | Where | Does |
-| --- | ----- | ---- |
-| `⌘K` / `/` | anywhere | open search |
-| `` ` `` | anywhere | open (or focus) the terminal; `Esc` inside it hides it |
-| `d` | anywhere | toggle light/dark theme |
-| `z` | sheets and posts | zen mode: only the sheet, with its contents on the left |
-| `p` `r` `b` `g` | home | open Projects, Resume, Blog, Docs |
-| `Esc` / `←` / `h` | any page but home | go up a level (`../`); `Esc` closes search first; the parent list highlights the row you left |
-| `↑` `↓` / `j` `k` | list pages | move the `>` highlight (hover works too); on a topic page it runs through every directory's sheets, and on `/docs/` through the topic cards |
-| `Enter` / `→` / `l` | list pages | open the highlighted row: into a topic, a directory or a sheet |
-| double-tap left edge | touch, any page but home | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables) |
-| double-tap right edge | touch, list pages | same as `→`: open the highlighted row; nothing if no row is highlighted |
-| `⌘↵` / `Ctrl+↵` | playground editor | run the project |
-| `⌘↵` / `Ctrl+↵` | playground exercise mode: editor; request box | run the tests; generate |
-| `⌘K` | playground | search sheets and open the result in the reference panel |
-| `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree | move, fold/unfold, open, rename, delete (asks first) |
-| right-click, `Shift+F10`, Menu key | playground file tree | file menu: rename, delete, set as entry, new file/folder here, copy path, preview, download (a file; a folder or the whole project as `.zip`) |
-| `⌘⌥Z` / `Ctrl+Alt+Z` | playground | zen mode (only the code, output and Refs); `Esc` outside the editor leaves it |
-| `F1` / `⌘/` | playground | help: getting started, shortcuts, and the 1-minute tour |
+| Key                                      | Where                                         | Does                                                                                                                                          |
+| ---------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `⌘K` / `/`                               | anywhere                                      | open search                                                                                                                                   |
+| `` ` ``                                  | anywhere                                      | open (or focus) the terminal; `Esc` inside it hides it                                                                                        |
+| `d`                                      | anywhere                                      | toggle light/dark theme                                                                                                                       |
+| `z`                                      | sheets and posts                              | zen mode: only the sheet, with its contents on the left                                                                                       |
+| `p` `r` `b` `g`                          | home                                          | open Projects, Resume, Blog, Docs                                                                                                             |
+| `Esc` / `←` / `h`                        | any page but home                             | go up a level (`../`); `Esc` closes search first; the parent list highlights the row you left                                                 |
+| `↑` `↓` / `j` `k`                        | list pages                                    | move the `>` highlight (hover works too); on a topic page it runs through every directory's sheets, and on `/docs/` through the topic cards   |
+| `Enter` / `→` / `l`                      | list pages                                    | open the highlighted row: into a topic, a directory or a sheet                                                                                |
+| double-tap left edge                     | touch, any page but home                      | same as `←`: up a level (the outer quarter of the screen; not on links, code or tables)                                                       |
+| double-tap right edge                    | touch, list pages                             | same as `→`: open the highlighted row; nothing if no row is highlighted                                                                       |
+| `⌘↵` / `Ctrl+↵`                          | playground editor                             | run the project                                                                                                                               |
+| `⌘↵` / `Ctrl+↵`                          | playground exercise mode: editor; request box | run the tests; generate                                                                                                                       |
+| `⌘K`                                     | playground                                    | search sheets and open the result in the reference panel                                                                                      |
+| `↑` `↓` `←` `→`, `Enter`, `F2`, `Delete` | playground file tree                          | move, fold/unfold, open, rename, delete (asks first)                                                                                          |
+| right-click, `Shift+F10`, Menu key       | playground file tree                          | file menu: rename, delete, set as entry, new file/folder here, copy path, preview, download (a file; a folder or the whole project as `.zip`) |
+| `⌘⌥Z` / `Ctrl+Alt+Z`                     | playground                                    | zen mode (only the code, output and Refs); `Esc` outside the editor leaves it                                                                 |
+| `F1` / `⌘/`                              | playground                                    | help: getting started, shortcuts, and the 1-minute tour                                                                                       |
 
 ## Site map
 
-| Route                    | Content                                                                  |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `/`                      | introduction, sections with their keys, tonight's moon (or the sun)      |
-| `/projects/`             | every project as a card                                                  |
-| `/blog/`                 | the latest post as an excerpt, then every post by year                   |
-| `/blog/<slug>/`          | one post                                                                 |
-| `/resume/`               | experience, projects, education, skills                                  |
-| `/docs/`                 | the twenty-two topics as cards (number, sheet count), recently added     |
-| `/sheets/`               | every sheet across topics, newest first, as `NN. topic/slug`             |
-| `/<topic>/`              | that topic's directories, each unfolded with its sheets, and loose sheets |
-| `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                             |
-| `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                             |
-| `/info/`                 | about, and links to the sheet list and the terminal                      |
-| `/terminal/`             | the terminal, full screen (bookmarkable)                                 |
-| `/source/<path>.md`      | a sheet's, directory's or post's MDX source, as plain text               |
-| `/site-tree.json`        | every page as a tree, for the terminal (built with the site)             |
-| `/playground/`           | the in-browser IDE                                                       |
-| `/playground/?mode=exercise` | the playground's exercise mode (`/exercises/` redirects here)        |
-| `/math/practice/`        | AI-generated math problems with answer checking (a sheet of Math)        |
-| `/api/exercises/…`       | the model calls behind both (POST), and `status/` (GET, see below)       |
+| Route                        | Content                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `/`                          | introduction, sections with their keys, tonight's moon (or the sun)       |
+| `/projects/`                 | every project as a card                                                   |
+| `/blog/`                     | the latest post as an excerpt, then every post by year                    |
+| `/blog/<slug>/`              | one post                                                                  |
+| `/resume/`                   | experience, projects, education, skills                                   |
+| `/docs/`                     | the twenty-two topics as cards (number, sheet count), recently added      |
+| `/sheets/`                   | every sheet across topics, newest first, as `NN. topic/slug`              |
+| `/<topic>/`                  | that topic's directories, each unfolded with its sheets, and loose sheets |
+| `/<topic>/<slug>/`           | one sheet, or a directory's intro and sheets                              |
+| `/<topic>/<dir>/<slug>/`     | one sheet inside a directory                                              |
+| `/info/`                     | about, and links to the sheet list and the terminal                       |
+| `/terminal/`                 | the terminal, full screen (bookmarkable)                                  |
+| `/source/<path>.md`          | a sheet's, directory's or post's MDX source, as plain text                |
+| `/site-tree.json`            | every page as a tree, for the terminal (built with the site)              |
+| `/playground/`               | the in-browser IDE                                                        |
+| `/playground/?mode=exercise` | the playground's exercise mode (`/exercises/` redirects here)             |
+| `/math/practice/`            | AI-generated math problems with answer checking (a sheet of Math)         |
+| `/api/exercises/…`           | the model calls behind both (POST), and `status/` (GET, see below)        |
 
 Sheet URLs did not move when the site gained its other sections: the topic list moved from `/` to
 `/docs/`, and `../` from a topic now leads there.
@@ -265,13 +266,13 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 - Client components: `SearchPalette.tsx`, `SearchLink.tsx`, `ThemeToggle.tsx`, `useMenu.ts` (the keyboard/mouse
   menu behind `NumberedList.tsx`, `TopicCards.tsx` and `TopicIndex.tsx`), `ParentLink.tsx` (pinned `../`,
   Esc/←/h), `NavScroller.tsx` (keeps the current page visible in the navigation), `Toc.tsx`, `Tabs.tsx`
-- `components/FileTree.tsx` + `lib/file-tree.ts` + `lib/remark-file-tree.ts` (```` ```tree ```` fences)
+- `components/FileTree.tsx` + `lib/file-tree.ts` + `lib/remark-file-tree.ts` (` ```tree ` fences)
 - `components/Swatches.tsx` + `lib/color.ts` (color chips), `components/Demo.tsx` + `lib/remark-demo.ts`
-  (```` ```html demo ```` fences), `components/Diagram.tsx` + `lib/diagram.ts` (SVGs in `public/images/diagrams/`)
+  (` ```html demo ` fences), `components/Diagram.tsx` + `lib/diagram.ts` (SVGs in `public/images/diagrams/`)
 - `lib/search.ts` (index builder), `lib/search-rank.ts` (isomorphic ranking), `lib/theme.ts`, `lib/images.ts`,
   `lib/keys.ts` (keyboard shortcuts), `lib/toc.ts`
 - `mdx-components.tsx` maps MDX `a` and `img` to the house style; inline code is styled by CSS
-- `lib/tailwind-demo.ts` + `components/TailwindDemo.tsx` (```` ```html demo tailwind ```` fences)
+- `lib/tailwind-demo.ts` + `components/TailwindDemo.tsx` (` ```html demo tailwind ` fences)
 - Playground: `app/playground/` (routes + `playground.css`), `components/playground/` (UI, editor, sandbox frames,
   `intellisense/` workers and editor extensions), `lib/playground/` (project model, languages, linker, runners,
   sandbox runtime, docs, hover data), `playground/godot-runner/` (Godot project behind the GDScript runner),
@@ -286,19 +287,19 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 
 ## Playground
 
-| Language | Runs | Notes |
-| -------- | ---- | ----- |
-| JavaScript, TypeScript | a Web Worker inside a sandboxed frame | TS types are stripped by Sucrase, not checked; bare imports load from esm.sh |
-| HTML/CSS/JS | a sandboxed live preview | stylesheets and module scripts are linked from the project's files |
-| Python | Pyodide 314 (CPython 3.14) in a worker inside the sandbox | ≈ 6 MB from jsDelivr on the first run (asked first); numpy/pandas load on import; stdin box |
-| C++ | Compiler Explorer (CMake, g++ 16.2, C++23), falling back to Wandbox | code is sent to godbolt.org and logged there for 32 days; stdin box |
-| Rust | Compiler Explorer (rustc 1.98, edition 2024), falling back to the Rust Playground | `mod x;` files are inlined into one crate; errors point back at the file |
-| GDScript | a self-hosted Godot 4.7 web build in a sandboxed frame | ≈ 10 MB on the first run; `preload("res://…")` works across files, `class_name` globals don't |
-| HTML/CSS/TS | the sandboxed live preview | module scripts in TypeScript, types stripped |
-| React | the sandboxed live preview, TSX via Sucrase | packages from esm.sh at the `package.json` versions, all on one React (19.3) |
-| Bun | a worker with Bun's APIs **emulated** (not real Bun) | `Bun.serve`, `Bun.file`/`write` (in memory), `Bun.env` from `.env`; no `Bun.spawn`, `Bun.$`, `bun:sqlite`; requests come from the HTTP panel and never leave the browser |
-| Bun + Hono | the same, with real Hono (4.13) from esm.sh | `export default app` or `Bun.serve({ fetch: app.fetch })` |
-| Markdown | nothing runs | GFM preview beside the editor (raw HTML is escaped); `.md` files in any project get the preview too |
+| Language               | Runs                                                                              | Notes                                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| JavaScript, TypeScript | a Web Worker inside a sandboxed frame                                             | TS types are stripped by Sucrase, not checked; bare imports load from esm.sh                                                                                             |
+| HTML/CSS/JS            | a sandboxed live preview                                                          | stylesheets and module scripts are linked from the project's files                                                                                                       |
+| Python                 | Pyodide 314 (CPython 3.14) in a worker inside the sandbox                         | ≈ 6 MB from jsDelivr on the first run (asked first); numpy/pandas load on import; stdin box                                                                              |
+| C++                    | Compiler Explorer (CMake, g++ 16.2, C++23), falling back to Wandbox               | code is sent to godbolt.org and logged there for 32 days; stdin box                                                                                                      |
+| Rust                   | Compiler Explorer (rustc 1.98, edition 2024), falling back to the Rust Playground | `mod x;` files are inlined into one crate; errors point back at the file                                                                                                 |
+| GDScript               | a self-hosted Godot 4.7 web build in a sandboxed frame                            | ≈ 10 MB on the first run; `preload("res://…")` works across files, `class_name` globals don't                                                                            |
+| HTML/CSS/TS            | the sandboxed live preview                                                        | module scripts in TypeScript, types stripped                                                                                                                             |
+| React                  | the sandboxed live preview, TSX via Sucrase                                       | packages from esm.sh at the `package.json` versions, all on one React (19.3)                                                                                             |
+| Bun                    | a worker with Bun's APIs **emulated** (not real Bun)                              | `Bun.serve`, `Bun.file`/`write` (in memory), `Bun.env` from `.env`; no `Bun.spawn`, `Bun.$`, `bun:sqlite`; requests come from the HTTP panel and never leave the browser |
+| Bun + Hono             | the same, with real Hono (4.13) from esm.sh                                       | `export default app` or `Bun.serve({ fetch: app.fetch })`                                                                                                                |
+| Markdown               | nothing runs                                                                      | GFM preview beside the editor (raw HTML is escaped); `.md` files in any project get the preview too                                                                      |
 
 - **Intellisense:** hover, completions and diagnostics, loaded when the editor is first focused.
   - JS/TS projects: a TypeScript 6.0 language service in a worker (npm alias `typescript-ls`, so the repo's own
@@ -351,11 +352,11 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 
 Two generators share one pipeline:
 
-| | Coding (playground, `Exercises` mode) | Math (`/math/practice/`) |
-| --- | --- | --- |
-| You choose | a request in your words ("I need to practice linked lists"), theme, difficulty, language (Python, JavaScript, TypeScript), exercise or mini-project | a request, area, difficulty |
-| The model writes | a brief, requirements, starter code, 3–15 hidden tests, hints and a reference solution | a problem (Markdown + KaTeX), the answer format, the answer, hints and a worked solution |
-| Checked by | the hidden tests, run in the playground's sandbox in your browser, then a model review of the requirements tests can't check ("uses a class") | numbers locally and instantly (`3/4`, `2√3`, `x = 2, x = -3`, any order); expressions, text and "explain my mistake" by the model, with your working |
+|                  | Coding (playground, `Exercises` mode)                                                                                                               | Math (`/math/practice/`)                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| You choose       | a request in your words ("I need to practice linked lists"), theme, difficulty, language (Python, JavaScript, TypeScript), exercise or mini-project | a request, area, difficulty                                                                                                                          |
+| The model writes | a brief, requirements, starter code, 3–15 hidden tests, hints and a reference solution                                                              | a problem (Markdown + KaTeX), the answer format, the answer, hints and a worked solution                                                             |
+| Checked by       | the hidden tests, run in the playground's sandbox in your browser, then a model review of the requirements tests can't check ("uses a class")       | numbers locally and instantly (`3/4`, `2√3`, `x = 2, x = -3`, any order); expressions, text and "explain my mistake" by the model, with your working |
 
 - **In the playground.** The `Projects` / `Exercises` switch in the toolbar (or `?mode=exercise`)
   swaps the file tree for the exercise panel (request form, brief, requirements, hints, recent exercises;
@@ -364,9 +365,9 @@ Two generators share one pipeline:
   for a review; `Reset` restores the starter code. The reference panel works as in project mode; on
   phones the panes are `Code`, `Task`, `Tests` and `Refs`. Python asks before its first download, as in
   project mode. The chosen mode is remembered.
-- **Themes.** Grouped as *practical programs* (data wrangling, parsing, domain models, state machines
-  and game logic, simulations, formatted output, utilities, design patterns), *language skills* (including
-  async code in JS/TS and TypeScript types) and *algorithms and data structures*; each tells the model what
+- **Themes.** Grouped as _practical programs_ (data wrangling, parsing, domain models, state machines
+  and game logic, simulations, formatted output, utilities, design patterns), _language skills_ (including
+  async code in JS/TS and TypeScript types) and _algorithms and data structures_; each tells the model what
   kind of scenario to write (`lib/exercises/options.ts`). "Any" with no request draws a theme: practical
   programs half the time, language skills 30%, DS&A 20%. The prompt asks for realistic tasks unless the
   theme or request is algorithmic, and for time, randomness and waiting to be passed in so tests control them.
@@ -400,12 +401,12 @@ The API routes call the model through the [Vercel AI Gateway](https://vercel.com
 [AI SDK](https://ai-sdk.dev) (`generateText` with `Output.object`), asking the gateway for the fastest
 provider serving the model (`sort: "tps"`).
 
-| Variable | Meaning |
-| -------- | ------- |
-| `AI_GATEWAY_API_KEY` | a gateway key (Vercel dashboard → AI Gateway → API keys). Not needed on Vercel deployments, which authenticate with the project's OIDC token automatically; for local development either set the key in `.env.local` or run `vercel env pull` |
-| `EXERCISE_MODEL` | the model id, default `openai/gpt-oss-120b` |
-| `EXERCISE_REASONING` | how hard the model thinks: `none`, `minimal`, `low` (default), `medium` or `high`. Lower is faster; the self-check catches the mistakes that costs |
-| `EXERCISE_FALLBACK_MODELS` | optional comma-separated model ids the gateway tries, in order, when the first fails or is rate limited |
+| Variable                   | Meaning                                                                                                                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_GATEWAY_API_KEY`       | a gateway key (Vercel dashboard → AI Gateway → API keys). Not needed on Vercel deployments, which authenticate with the project's OIDC token automatically; for local development either set the key in `.env.local` or run `vercel env pull` |
+| `EXERCISE_MODEL`           | the model id, default `openai/gpt-oss-120b`                                                                                                                                                                                                   |
+| `EXERCISE_REASONING`       | how hard the model thinks: `none`, `minimal`, `low` (default), `medium` or `high`. Lower is faster; the self-check catches the mistakes that costs                                                                                            |
+| `EXERCISE_FALLBACK_MODELS` | optional comma-separated model ids the gateway tries, in order, when the first fails or is rate limited                                                                                                                                       |
 
 Without credentials the pages still load, and generating says what to set (HTTP 503).
 
@@ -444,7 +445,26 @@ instance: the gateway budget is the real ceiling.
 
 `bun --bun next build` and `bun --bun next start` currently fail with Bun 1.3.10 and Next 16.3.4
 (`Expected CommonJS module to have a function wrapper` while loading Next's compiled server runtime).
-Those two scripts therefore run Next's binary on Node, launched by Bun. `next dev` works on the Bun runtime.
+Those two scripts therefore run Next's binary on Node, launched by Bun. `next dev` runs on Node too: it
+starts the eve agent's dev server with its own runtime, and eve 0.67 fails on Bun 1.3.11 (it imports
+`findPackageJSON` from `node:module`, which Bun doesn't implement).
+
+## Agent (eve, spike)
+
+`agent/` is an [eve](https://eve.dev/docs) agent, mounted by `withEve` in `next.config.ts` at the same-origin
+`/eve/v1/*` routes; on Vercel it deploys as a separate service of this project. `agent/instructions.md` is its
+prompt, `agent/agent.ts` its model (through the AI Gateway, like the exercises), and each file in
+`agent/tools/` one tool; tools can import from `lib/` with the `@/` alias.
+
+- `bun run dev` starts `eve dev` beside Next. `curl -X POST localhost:3000/eve/v1/session/ -H 'content-type: application/json' -d '{"message":"hi"}'`
+  answers with a session id; `GET /eve/v1/session/<id>/stream/` streams its events. Model calls need the
+  gateway credentials described under "Setup: Vercel AI Gateway".
+- Routes are fail-closed outside local development (per eve's docs): a deployment answers 401 until
+  `agent/channels/eve.ts` configures an authenticator.
+- `trailingSlash: true` redirects `/eve/v1/session` to `/eve/v1/session/` (308) before the proxy; clients
+  follow it, at the cost of a round trip.
+- Locally, `next start` serves the site but not the agent (`/eve/*` answers 500): `withEve` starts the
+  built agent from Next's `rewrites()`, which Next 16.3 doesn't call again at start. Use `bun run dev`.
 
 ## Credits
 
@@ -484,8 +504,8 @@ Those two scripts therefore run Next's binary on Node, launched by Bun. `next de
   (MIT). Each page and hover names its source and license (`public/playground/docs-manifest.json`).
 - **Aviation images** (cockpit figures next to the MSFS 2024 procedures; each is also credited under the
   image in its sheet):
-  - **Microsoft Flight Simulator content** (`public/images/aviation/longitude/`), from Working Title's *Cessna
-    Model 700 Operator's Guide* on flightsimulator.com. Microsoft Flight Simulator © Microsoft Corporation. Zach's
+  - **Microsoft Flight Simulator content** (`public/images/aviation/longitude/`), from Working Title's _Cessna
+    Model 700 Operator's Guide_ on flightsimulator.com. Microsoft Flight Simulator © Microsoft Corporation. Zach's
     Docs was created under Microsoft's "Game Content Usage Rules" using assets from Microsoft Flight Simulator, and
     it is not endorsed by or affiliated with Microsoft. See the
     [Game Content Usage Rules](https://www.xbox.com/en-US/developers/rules).
