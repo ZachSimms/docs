@@ -374,6 +374,37 @@ test.describe("terminal", () => {
     await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
   });
 
+  test("md shows a sheet's Markdown beside it, follows cd, and serves the raw file", async ({
+    page,
+  }) => {
+    await page.goto("/python/overview/");
+    await hydrated(page);
+    await page.keyboard.press("`");
+    await run(page, "md");
+    const pane = page.getByRole("complementary", { name: "Markdown source" });
+    await expect(pane).toContainText("md · ~/docs/python/overview · follows cd");
+    await expect(pane.locator(".src-line").first()).toHaveText("1---");
+    await expect(pane.locator(".src-heading").first()).toContainText("## ");
+
+    // Docked: the page and the pane share the width above the terminal.
+    const paneBox = (await pane.boundingBox())!;
+    const main = (await page.locator("main").boundingBox())!;
+    expect(main.x + main.width).toBeLessThanOrEqual(paneBox.x + 1);
+
+    await run(page, "cd ../fastapi");
+    await expect(page).toHaveURL(/\/python\/fastapi\/$/);
+    await expect(pane).toContainText("md · ~/docs/python/fastapi");
+    await expect(pane).toContainText("title: FastAPI");
+
+    const raw = await page.request.get("/source/python/fastapi.md");
+    expect(raw.headers()["content-type"]).toContain("text/markdown");
+    expect(await raw.text()).toContain("title: FastAPI");
+    expect((await page.request.get("/source/python/_nope.md")).status()).toBe(404);
+
+    await run(page, "md -c");
+    await expect(pane).toHaveCount(0);
+  });
+
   test("/terminal/ opens it full screen, by URL or by the link on /info/, and cd keeps it so", async ({
     page,
   }) => {

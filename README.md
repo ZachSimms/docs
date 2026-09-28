@@ -122,6 +122,7 @@ not kebab-case fails the build.
   | `tree [-L n] [path]` | the pages below a directory (two levels unless `-L`) |
   | `toc [path]` | a page's `##`/`###` sections; `cd #id` or `cd <number>` scrolls to one |
   | `cat [path]` | print a page as text: headings, lists, code, tables, LaTeX source for math |
+  | `md [-c] [path]` | the page's MDX source in a pane beside it; follows each `cd` (a path pins one page, `-c` closes) |
   | `find <words>` / `grep <words>` | pages by name and title / the full-text search index, numbered |
   | `pwd`, `back`, `forward`, `scroll [top\|bottom\|up\|down]` | where you are; the browser's buttons; the page |
   | `theme [light\|dark]`, `zen [on\|off]`, `search`, `whoami`, `history`, `clear`, `max`, `exit`, `help` | the rest of the site's controls |
@@ -133,7 +134,15 @@ not kebab-case fails the build.
   (`cd /python/overview/`). Lines typed while a slow command runs wait their turn. `max` (or
   the `max` control) covers the window; on phones it always does. `/terminal/` (linked from
   `/info/`) opens it full screen on arrival and after a reload, so the site can be bookmarked
-  as a shell; `Esc` there shows a page with a button to reopen it. The scrollback survives
+  as a shell; `Esc` there shows a page with a button to reopen it.
+
+  `md` splits the window: docked, the page reflows into the left half and the Markdown takes the
+  right half above the terminal; full screen, the terminal takes the left half. The pane numbers
+  the lines, dims the frontmatter, imports and fences, bolds headings, and links the `raw` file.
+  Sheets, directories (their `index.mdx`) and posts have a source, served as it is on disk at
+  `/source/<topic>/[<directory>/]<slug>.md` (`/source/blog/<slug>.md` for posts), prerendered by
+  `app/source/[...path]/route.ts`; only listed sources exist, so drafts and partials are never
+  served. On phones the pane covers the screen and `close` returns to the terminal. The scrollback survives
   reloads (`sessionStorage`), the history lives in `localStorage`. The filesystem is
   `/site-tree.json`, built with the site (`lib/terminal/tree.ts`); the shell
   (`lib/terminal/shell.ts`) is plain TypeScript behind a small host interface, so the renderer
@@ -225,6 +234,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                             |
 | `/info/`                 | about, and links to the sheet list and the terminal                      |
 | `/terminal/`             | the terminal, full screen (bookmarkable)                                 |
+| `/source/<path>.md`      | a sheet's, directory's or post's MDX source, as plain text               |
 | `/site-tree.json`        | every page as a tree, for the terminal (built with the site)             |
 | `/playground/`           | the in-browser IDE                                                       |
 

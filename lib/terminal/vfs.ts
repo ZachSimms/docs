@@ -33,6 +33,8 @@ export interface TreeNode {
   readonly date?: string;
   /** A description (projects) or a summary (posts). */
   readonly note?: string;
+  /** URL of the page's MDX source (sheets, directories, posts), for `md`. */
+  readonly source?: string;
   /** In display order; present on every `dir`. */
   readonly children?: readonly TreeNode[];
 }
@@ -63,6 +65,7 @@ export interface FsNode {
   readonly kind: NodeKind;
   readonly date?: string;
   readonly note?: string;
+  readonly source?: string;
   /** `null` for home. */
   readonly parent: FsNode | null;
   /** Empty for pages and links. */
@@ -99,6 +102,7 @@ function isTreeNode(value: unknown): value is TreeNode {
     KINDS.includes(node.kind as string) &&
     (node.date === undefined || typeof node.date === "string") &&
     (node.note === undefined || typeof node.note === "string") &&
+    (node.source === undefined || typeof node.source === "string") &&
     (node.children === undefined ||
       (Array.isArray(node.children) && node.children.every(isTreeNode)))
   );
@@ -143,6 +147,7 @@ export function buildFs(tree: SiteTree): Fs {
       kind: node.kind,
       ...(node.date === undefined ? {} : { date: node.date }),
       ...(node.note === undefined ? {} : { note: node.note }),
+      ...(node.source === undefined ? {} : { source: node.source }),
       parent,
       children,
     };

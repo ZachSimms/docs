@@ -50,6 +50,13 @@ interface Target {
 /** Where `scroll` moves the page. */
 export type ScrollTo = "top" | "bottom" | "up" | "down";
 
+/**
+ * What the Markdown pane shows: the source of whatever page the shell is on (`follow`,
+ * so it changes with every `cd`), or one page's, pinned.
+ */
+export type SourceView =
+  { readonly follow: true } | { readonly follow: false; readonly node: FsNode };
+
 /** A result of the full-text search that `grep` prints. */
 export interface SearchResult {
   readonly url: string;
@@ -82,6 +89,8 @@ export interface Host {
   search(query: string): Promise<SearchResult[]>;
   /** Open the ⌘K palette. */
   openSearch(): void;
+  /** Show a page's Markdown source in the pane beside the page, or close it (`null`). */
+  showSource(view: SourceView | null): void;
   /** Commands entered so far, oldest first. */
   history(): readonly string[];
   clear(): void;
@@ -646,6 +655,36 @@ export class Shell {
           const on = state === undefined ? !current : state === "on";
           host.setZen(on);
           return ok([line(`zen: ${on ? "on" : "off"}`, "dim")]);
+        },
+      },
+      md: {
+        usage: "md [-c] [path]",
+        summary:
+          "the page's Markdown in a pane beside it, following each cd (a path pins one; -c closes)",
+        run: (args) => {
+          const { flags, rest } = parseFlags(args);
+          if (flags.has("c")) {
+            host.showSource(null);
+            return ok();
+          }
+          if (rest[0] === undefined) {
+            host.showSource({ follow: true });
+            return this.cwdNode.source
+              ? ok()
+              : ok([
+                  line(
+                    `md: ${pathOf(this.cwdNode)} has no Markdown; the pane shows each sheet you cd to`,
+                    "dim",
+                  ),
+                ]);
+          }
+          const node = this.resolve(rest[0]);
+          if (!node) return fail(`md: no such page: ${rest[0]}`);
+          if (!node.source) {
+            return fail(`md: ${pathOf(node)} has no Markdown (sheets, directories and posts do)`);
+          }
+          host.showSource({ follow: false, node });
+          return ok();
         },
       },
       search: {

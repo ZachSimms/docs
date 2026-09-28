@@ -1960,3 +1960,109 @@ body[data-terminal="max"] {
 html[data-embed] .terminal {
   display: none;
 }
+
+/* Markdown pane (components/SourcePane.tsx, the terminal's `md`): the page's MDX source in the right
+   half of the window, above the docked terminal. The page reflows into the left half; a full-screen
+   terminal moves over to it. */
+.source-pane {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  width: 50vw;
+  background: var(--bg);
+  color: var(--fg);
+  border-left: 1px dotted var(--fg);
+}
+
+body[data-terminal="docked"] .source-pane {
+  bottom: 42vh;
+}
+
+body[data-source][data-terminal="docked"] {
+  padding-right: 50vw;
+}
+
+body[data-source] .terminal[data-size="max"] {
+  right: 50vw;
+}
+
+.source-pane .terminal-bar {
+  padding-left: 2ch;
+  padding-right: 2ch;
+}
+
+.source-body {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 2ch calc(var(--lh) / 2);
+}
+
+.source-body pre {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  white-space: normal;
+}
+
+/* One grid row per source line: the number, then the text wrapping beside it. */
+.src-line {
+  display: grid;
+  grid-template-columns: 5ch minmax(0, 1fr);
+}
+
+.src-line > span:last-child {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.src-num {
+  padding-right: 1ch;
+  text-align: right;
+  color: var(--dim);
+  user-select: none;
+}
+
+.src-meta,
+.src-fence {
+  color: var(--dim);
+}
+
+.src-heading {
+  font-weight: bold;
+}
+
+.src-jsx {
+  color: var(--graph-3);
+}
+
+@media (max-width: 600px) {
+  /* Phones: the pane covers the screen, over the terminal; `close` goes back to it. */
+  body[data-terminal] .source-pane {
+    inset: 0;
+    z-index: 10;
+    width: auto;
+    border-left: 0;
+  }
+
+  body[data-source][data-terminal] {
+    padding-right: 0;
+  }
+
+  body[data-source] .terminal[data-size] {
+    right: 0;
+  }
+
+  .source-pane .terminal-bar {
+    padding: 1em 1em 0.5em;
+  }
+
+  .source-body {
+    padding: 0 1em;
+  }
+}

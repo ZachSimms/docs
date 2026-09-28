@@ -60,6 +60,10 @@ function fakeHost(calls: Calls, options: Partial<Host> & { showingHref?: string 
               { url: "/gone/", title: "Gone" },
             ],
     openSearch: () => calls.other.push("search"),
+    showSource: (view) =>
+      calls.other.push(
+        view === null ? "md close" : view.follow ? "md follow" : `md ${view.node.name}`,
+      ),
     history: () => ["ls", "cd docs"],
     clear: () => calls.other.push("clear"),
     close: () => calls.other.push("close"),
@@ -320,6 +324,22 @@ describe("Shell", () => {
     ]);
     expect(plain(await shell.run("toc projects/repo"))).toEqual(["toc: repo is another site"]);
     expect(plain(await shell.run("toc nope"))).toEqual(["toc: no such page: nope"]);
+  });
+
+  it("opens the Markdown pane: following cd, pinned to a page, or closed", async () => {
+    await shell.run("cd docs/python/overview");
+    expect(await shell.run("md")).toEqual([]);
+    await shell.run("md ~/docs/python/overview; md -c");
+    expect(calls.other).toEqual(["md follow", "md overview", "md close"]);
+    expect(plain(await shell.run("md .."))).toEqual([
+      "md: ~/docs/python has no Markdown (sheets, directories and posts do)",
+    ]);
+    expect(plain(await shell.run("md nope"))).toEqual(["md: no such page: nope"]);
+    await shell.run("cd ~");
+    expect(plain(await shell.run("md"))).toEqual([
+      "md: ~ has no Markdown; the pane shows each sheet you cd to",
+    ]);
+    expect(calls.other.at(-1)).toBe("md follow");
   });
 
   it("drives the browser: back, forward, scroll, search, clear, max, exit", async () => {

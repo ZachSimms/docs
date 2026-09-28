@@ -8,6 +8,9 @@
  * demand so pages carry none of it until then) and fetches `/site-tree.json`; the
  * commands live in `lib/terminal/shell.ts` and reach the page through `makeHost`.
  *
+ * `md` opens the Markdown pane (`SourcePane`) beside the page; it follows `cd` unless
+ * pinned to a path, and closes with the terminal's other state saved.
+ *
  * The prompt follows the page being read (`usePathname`), so clicking a link, `Esc` or
  * the browser's back button moves it too. Output links are the site's own dotted links.
  * The scrollback and open state survive reloads in `sessionStorage`; the command
@@ -34,6 +37,7 @@ import type { Fs } from "@/lib/terminal/vfs";
 import { TERMINAL_PATH } from "@/lib/site";
 import { EMBED_ATTRIBUTE } from "@/lib/theme";
 import { DottedLink } from "./DottedLink";
+import { SourcePane } from "./SourcePane";
 import { OPEN_TERMINAL_EVENT, type OpenTerminalOptions } from "./TerminalLink";
 
 /** The terminal's runtime, loaded on first open. */
@@ -55,11 +59,21 @@ type Entry =
   | { readonly id: number; readonly path: string; readonly command: string }
   | { readonly id: number; readonly out: OutputLine };
 
+/**
+ * The Markdown pane: following the shell (the source of each page it `cd`s to), or
+ * pinned to one page's source.
+ */
+type Pane =
+  | { readonly follow: true }
+  | { readonly follow: false; readonly path: string; readonly source: string };
+
 /** What survives a reload. */
 interface Session {
   readonly open: boolean;
   readonly max: boolean;
   readonly entries: readonly Entry[];
+  /** Absent in sessions saved before the pane existed. */
+  readonly pane?: Pane | null;
 }
 
 /** The tree's lifecycle inside the component. */
@@ -68,13 +82,23 @@ type FsState = { status: "idle" | "error" } | { status: "ready"; fs: Fs };
 /** Nothing stored: closed, docked, empty. */
 const EMPTY_SESSION: Session = { open: false, max: false, entries: [] };
 
+/** Whether stored JSON is a pane state. */
+function isPane(value: unknown): value is Pane {
+  if (typeof value !== "object" || value === null) return false;
+  const { follow, path, source } = value as Record<string, unknown>;
+  return (
+    follow === true || (follow === false && typeof path === "string" && typeof source === "string")
+  );
+}
+
 /** Whether stored JSON is a session this version can use. */
 function isSession(value: unknown): value is Session {
   if (typeof value !== "object" || value === null) return false;
-  const { open, max, entries } = value as Record<string, unknown>;
+  const { open, max, entries, pane } = value as Record<string, unknown>;
   return (
     typeof open === "boolean" &&
     typeof max === "boolean" &&
+    (pane === undefined || pane === null || isPane(pane)) &&
     Array.isArray(entries) &&
     entries.every(
       (entry: unknown) =>
@@ -150,25 +174,34 @@ function useHydrated(): boolean {
   );
 }
 
-/** The prompt's path, as a store the component subscribes to: the shell moves it. */
-class PathStore {
-  private path = "~";
+/** Where the shell is: the prompt's path, and the page's Markdown source if it has one. */
+interface Place {
+  readonly path: string;
+  readonly source?: string;
+}
+
+/** Home, before the tree arrives (and on the server). */
+const HOME: Place = { path: "~" };
+
+/** The shell's place, as a store the component subscribes to: the shell moves it. */
+class PlaceStore {
+  private place: Place = HOME;
   private readonly listeners = new Set<() => void>();
-  readonly get = (): string => this.path;
+  readonly get = (): Place => this.place;
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
-  set(path: string): void {
-    if (path === this.path) return;
-    this.path = path;
+  set(place: Place): void {
+    if (place.path === this.place.path && place.source === this.place.source) return;
+    this.place = place;
     this.listeners.forEach((listener) => listener());
   }
 }
 
-/** Server snapshot of the prompt. */
-function homePath(): string {
-  return "~";
+/** Server snapshot of the place. */
+function homePlace(): Place {
+  return HOME;
 }
 
 /** One line of output, links rendered as the site's dotted links. */
@@ -213,8 +246,10 @@ export function Terminal() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [fsState, setFsState] = useState<FsState>({ status: "idle" });
-  const [pathStore] = useState(() => new PathStore());
-  const path = useSyncExternalStore(pathStore.subscribe, pathStore.get, homePath);
+  const [pane, setPane] = useState<Pane | null>(session.pane ?? null);
+  const [placeStore] = useState(() => new PlaceStore());
+  const place = useSyncExternalStore(placeStore.subscribe, placeStore.get, homePlace);
+  const path = place.path;
 
   const shellRef = useRef<Shell | null>(null);
   const runtimeRef = useRef<Runtime | null>(null);
@@ -262,6 +297,14 @@ export function Terminal() {
           router: () => routerRef.current,
           history,
           clear: () => setEntries([]),
+          showSource: (view) =>
+            setPane(
+              view === null
+                ? null
+                : view.follow
+                  ? { follow: true }
+                  : { follow: false, path: pathOf(view.node), source: view.node.source ?? "" },
+            ),
           close: () => setOpen(false),
           toggleMax: () => {
             const next = !maxRef.current;
@@ -271,8 +314,10 @@ export function Terminal() {
           },
         });
         const start = nodeForHref(fs, window.location.pathname) ?? fs.root;
-        pathStore.set(pathOf(start));
-        shellRef.current = new Shell(fs, host, start, (node) => pathStore.set(pathOf(node)));
+        const placeOf = (node: typeof start): Place =>
+          node.source ? { path: pathOf(node), source: node.source } : { path: pathOf(node) };
+        placeStore.set(placeOf(start));
+        shellRef.current = new Shell(fs, host, start, (node) => placeStore.set(placeOf(node)));
         runtimeRef.current = runtime;
         setFsState({ status: "ready", fs });
       })
@@ -280,7 +325,7 @@ export function Terminal() {
       .finally(() => {
         loadingRef.current = false;
       });
-  }, [history, pathStore]);
+  }, [history, placeStore]);
 
   /** Open (or focus) the terminal; `maximize` also makes it full screen. */
   const show = useCallback(
@@ -349,8 +394,15 @@ export function Terminal() {
   // Remember the session; keep the newest output in view.
   useEffect(() => {
     if (!isEmbedded())
-      store(() => sessionStorage, SESSION_KEY, { open, max, entries } satisfies Session);
-  }, [open, max, entries]);
+      store(() => sessionStorage, SESSION_KEY, { open, max, entries, pane } satisfies Session);
+  }, [open, max, entries, pane]);
+
+  // With the Markdown pane open, the page (docked) or the terminal (full screen) takes the left half.
+  useEffect(() => {
+    if (!open || !hydrated || !pane) return;
+    document.body.setAttribute("data-source", "");
+    return () => document.body.removeAttribute("data-source");
+  }, [open, hydrated, pane]);
   useEffect(() => {
     const screen = screenRef.current;
     if (screen) screen.scrollTop = screen.scrollHeight;
@@ -373,7 +425,7 @@ export function Terminal() {
    */
   const execute = async (command: string) => {
     const shell = shellRef.current;
-    print([{ path: pathStore.get(), command }]);
+    print([{ path: placeStore.get().path, command }]);
     if (!shell || command.trim() === "") return;
     const run = ++runRef.current;
     runningRef.current = true;
@@ -460,78 +512,88 @@ export function Terminal() {
   if (!hydrated || !open) return null;
 
   return (
-    <section className="terminal" data-size={max ? "max" : "docked"} aria-label="Terminal">
-      <div className="terminal-bar">
-        <span className="t-dim">terminal · {path}</span>
-        <span>
-          <button
-            type="button"
-            className="link terminal-max"
-            aria-pressed={max}
-            aria-label={max ? "Dock the terminal" : "Full screen terminal"}
-            onClick={() => setMax(!max)}
-          >
-            <i>{max ? "dock" : "max"}</i>
-          </button>
-          <span className="terminal-max">{"  "}</span>
-          <button type="button" className="link" aria-label="Hide the terminal" onClick={hide}>
-            <i>esc</i>
-          </button>
-        </span>
-      </div>
-      <div
-        ref={screenRef}
-        className="terminal-screen"
-        onClick={() => {
-          // A click that is not a selection puts the caret back in the prompt.
-          if (window.getSelection()?.isCollapsed ?? true) inputRef.current?.focus();
-        }}
-      >
-        <div id={LOG_ID} role="log" aria-live="polite" aria-label="Terminal output">
-          {entries.length === 0 && (
-            <div className="terminal-line t-dim">
-              The site as a shell. Try ls, cd docs, tree, grep &lt;words&gt; or help.
-            </div>
-          )}
-          {entries.map((entry) =>
-            "out" in entry ? (
-              <Output key={entry.id} line={entry.out} />
-            ) : (
-              <div key={entry.id} className="terminal-line">
-                <Prompt path={entry.path} />
-                {entry.command}
-              </div>
-            ),
-          )}
-          {(fsState.status === "idle" || busy) && (
-            <div className="terminal-line t-dim">{busy ? "…" : "loading…"}</div>
-          )}
-          {fsState.status === "error" && (
-            <div className="terminal-line t-error">site tree unavailable; esc and ` to retry</div>
-          )}
+    <>
+      {pane && (
+        <SourcePane
+          url={pane.follow ? place.source : pane.source}
+          path={pane.follow ? place.path : pane.path}
+          follow={pane.follow}
+          onClose={() => setPane(null)}
+        />
+      )}
+      <section className="terminal" data-size={max ? "max" : "docked"} aria-label="Terminal">
+        <div className="terminal-bar">
+          <span className="t-dim">terminal · {path}</span>
+          <span>
+            <button
+              type="button"
+              className="link terminal-max"
+              aria-pressed={max}
+              aria-label={max ? "Dock the terminal" : "Full screen terminal"}
+              onClick={() => setMax(!max)}
+            >
+              <i>{max ? "dock" : "max"}</i>
+            </button>
+            <span className="terminal-max">{"  "}</span>
+            <button type="button" className="link" aria-label="Hide the terminal" onClick={hide}>
+              <i>esc</i>
+            </button>
+          </span>
         </div>
-        <label className="terminal-line terminal-input">
-          <Prompt path={path} />
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(event) => {
-              setInput(event.target.value);
-              recallRef.current = null;
-            }}
-            onKeyDown={onKeyDown}
-            aria-label="Command"
-            aria-describedby={LOG_ID}
-            aria-busy={busy}
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="go"
-          />
-        </label>
-      </div>
-    </section>
+        <div
+          ref={screenRef}
+          className="terminal-screen"
+          onClick={() => {
+            // A click that is not a selection puts the caret back in the prompt.
+            if (window.getSelection()?.isCollapsed ?? true) inputRef.current?.focus();
+          }}
+        >
+          <div id={LOG_ID} role="log" aria-live="polite" aria-label="Terminal output">
+            {entries.length === 0 && (
+              <div className="terminal-line t-dim">
+                The site as a shell. Try ls, cd docs, tree, grep &lt;words&gt; or help.
+              </div>
+            )}
+            {entries.map((entry) =>
+              "out" in entry ? (
+                <Output key={entry.id} line={entry.out} />
+              ) : (
+                <div key={entry.id} className="terminal-line">
+                  <Prompt path={entry.path} />
+                  {entry.command}
+                </div>
+              ),
+            )}
+            {(fsState.status === "idle" || busy) && (
+              <div className="terminal-line t-dim">{busy ? "…" : "loading…"}</div>
+            )}
+            {fsState.status === "error" && (
+              <div className="terminal-line t-error">site tree unavailable; esc and ` to retry</div>
+            )}
+          </div>
+          <label className="terminal-line terminal-input">
+            <Prompt path={path} />
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(event) => {
+                setInput(event.target.value);
+                recallRef.current = null;
+              }}
+              onKeyDown={onKeyDown}
+              aria-label="Command"
+              aria-describedby={LOG_ID}
+              aria-busy={busy}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="go"
+            />
+          </label>
+        </div>
+      </section>
+    </>
   );
 }

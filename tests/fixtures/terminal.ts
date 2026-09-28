@@ -52,6 +52,7 @@ export const TREE: SiteTree = {
                 href: "/python/overview/",
                 kind: "page",
                 date: "2026-01-01",
+                source: "/source/python/overview.md",
               },
               { name: "fastapi", title: "FastAPI", href: "/python/fastapi/", kind: "page" },
             ],

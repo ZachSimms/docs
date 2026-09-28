@@ -7,13 +7,15 @@
  *
  * The tree follows the site's own levels, not its URLs: `~/docs/python/overview` is
  * `/python/overview/`, because `../` from a topic leads to `/docs/`. Every node carries
- * its `href`, so the terminal can map the page being read back to its place in the tree.
+ * its `href`, so the terminal can map the page being read back to its place in the tree,
+ * and pages written in MDX carry their `source` for the `md` pane.
  */
 
 import { CONTENT_ROOT, groupHref, listGroupSheets, listTopicEntries, sheetHref } from "../content";
 import { listPosts, postHref, POSTS_ROOT } from "../posts";
 import { listProjects, PROFILE } from "../profile";
 import { SECTIONS } from "../sections";
+import { groupSourceHref, postSourceHref, sheetSourceHref } from "./source";
 import { TOPICS, type Topic } from "../topics";
 import type { SiteTree, TreeNode } from "./vfs";
 
@@ -56,6 +58,7 @@ function topicNode({ slug, name }: Topic, content: string): TreeNode {
           href: sheetHref(entry),
           kind: "page",
           date: entry.date,
+          source: sheetSourceHref(entry),
         };
       }
       return {
@@ -64,12 +67,14 @@ function topicNode({ slug, name }: Topic, content: string): TreeNode {
         href: groupHref(entry),
         kind: "dir",
         date: entry.date,
+        source: groupSourceHref(entry),
         children: listGroupSheets(slug, entry.slug, content).map((sheet) => ({
           name: sheet.slug,
           title: sheet.title,
           href: sheetHref(sheet),
           kind: "page" as const,
           date: sheet.date,
+          source: sheetSourceHref(sheet),
         })),
       };
     }),
@@ -96,6 +101,7 @@ function sectionChildren(key: string, roots: Required<TreeRoots>): TreeNode[] | 
         href: postHref(post),
         kind: "page" as const,
         date: post.date,
+        source: postSourceHref(post),
         ...(post.summary ? { note: post.summary } : {}),
       }));
     case "docs":

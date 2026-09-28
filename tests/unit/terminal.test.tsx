@@ -1,5 +1,5 @@
 /** Unit tests for the terminal component and its host, with `next/navigation` and `fetch` mocked. */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { TREE } from "../fixtures/terminal";
 
@@ -21,6 +21,7 @@ const { OPEN_TERMINAL_EVENT, OpenTerminalOnArrival, TerminalLink } =
 const { default: TerminalPage } = await import("@/app/terminal/page");
 const { resetTerminalCache, SITE_TREE_URL } = await import("@/lib/terminal/client");
 const { buildFs } = await import("@/lib/terminal/vfs");
+const { resetSourceCache } = await import("@/components/SourcePane");
 
 const originalFetch = globalThis.fetch;
 let requested: string[] = [];
@@ -37,6 +38,7 @@ beforeEach(() => {
   treeStatus = 200;
   releasePage = null;
   resetTerminalCache();
+  resetSourceCache();
   sessionStorage.clear();
   localStorage.clear();
   document.documentElement.removeAttribute("data-embed");
@@ -47,6 +49,11 @@ beforeEach(() => {
       return new Response(JSON.stringify(TREE), {
         status: treeStatus,
         headers: { "content-type": "application/json" },
+      });
+    }
+    if (url === "/source/python/overview.md") {
+      return new Response("---\ntitle: Overview\n---\n\n## Lists\n", {
+        headers: { "content-type": "text/markdown" },
       });
     }
     if (url === "/python/overview/") {
@@ -283,6 +290,63 @@ describe("Terminal", () => {
     fireEvent.click(screen.getByRole("button", { name: /open the terminal/i }));
     expect(screen.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
   });
+
+  it("md shows the Markdown beside the page, following cd unless pinned, and remembers it", async () => {
+    const input = await openTerminal();
+    await enter(input, "cd docs/python/overview");
+    await enter(input, "md");
+    const pane = await screen.findByRole("complementary", { name: "Markdown source" });
+    expect(pane).toHaveTextContent("md · ~/docs/python/overview · follows cd");
+    await waitFor(() => expect(pane.querySelector(".src-heading")).toHaveTextContent("## Lists"));
+    expect(pane.querySelectorAll(".src-meta")).toHaveLength(3);
+    expect(within(pane).getByRole("link", { name: "raw" })).toHaveAttribute(
+      "href",
+      "/source/python/overview.md",
+    );
+    expect(document.body).toHaveAttribute("data-source");
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "{}");
+    expect(saved.pane).toEqual({ follow: true });
+
+    // Following: a page without Markdown says so.
+    await enter(input, "cd ~");
+    expect(pane).toHaveTextContent("No Markdown here");
+
+    // Pinned: it stays on its page as the shell moves.
+    await enter(input, "md docs/python/overview");
+    await enter(input, "cd docs");
+    expect(pane).toHaveTextContent("md · ~/docs/python/overview");
+    expect(pane).not.toHaveTextContent("follows cd");
+
+    await enter(input, "md -c");
+    expect(screen.queryByRole("complementary", { name: "Markdown source" })).toBeNull();
+    expect(document.body).not.toHaveAttribute("data-source");
+    await enter(input, "md ~/docs/python/overview");
+    fireEvent.click(await screen.findByRole("button", { name: "Close the Markdown pane" }));
+    expect(screen.queryByRole("complementary", { name: "Markdown source" })).toBeNull();
+  });
+
+  it("the pane says when a source cannot load", async () => {
+    const input = await openTerminal();
+    const tree = buildFs(TREE);
+    expect(tree.byHref.get("/python/fastapi/")?.source).toBeUndefined();
+    await enter(input, "cd docs/python/overview && md");
+    const pane = await screen.findByRole("complementary", { name: "Markdown source" });
+    await waitFor(() => expect(pane).toHaveTextContent("## Lists"));
+    // A pinned source that fails (a stale session, a missing file).
+    fireEvent.click(within(pane).getByRole("button", { name: "Close the Markdown pane" }));
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        open: true,
+        max: false,
+        entries: [],
+        pane: { follow: false, path: "~/x", source: "/source/x.md" },
+      }),
+    );
+    document.body.innerHTML = "";
+    render(<Terminal />);
+    expect(await screen.findByText("could not load /source/x.md")).toBeInTheDocument();
+  });
 });
 
 describe("makeHost", () => {
@@ -293,6 +357,7 @@ describe("makeHost", () => {
     clear: () => {},
     close: () => {},
     toggleMax: () => false,
+    showSource: () => {},
   });
   const fs = buildFs(TREE);
   const overview = fs.byHref.get("/python/overview/")!;

@@ -62,6 +62,10 @@ describe("buildSiteTree", () => {
       ["a", "/epsilon/grp/a/"],
     ]);
     expect(at(epsilon, "empty").children).toEqual([]);
+    expect(grp.source).toBe("/source/epsilon/grp/index.md");
+    expect(at(grp, "a").source).toBe("/source/epsilon/grp/a.md");
+    expect(at(epsilon, "loose").source).toBe("/source/epsilon/loose.md");
+    expect(at(tree.root, "docs", "epsilon")).not.toHaveProperty("source");
     expect(at(epsilon, "loose")).toMatchObject({ href: "/epsilon/loose/", title: "Loose sheet" });
   });
 
@@ -75,6 +79,7 @@ describe("buildSiteTree", () => {
       note: "The first post.",
     });
     expect(at(blog, "older")).not.toHaveProperty("note");
+    expect(at(blog, "older").source).toBe("/source/blog/older.md");
   });
 
   it("lists projects as links: a page of the site, a live URL or the source", () => {

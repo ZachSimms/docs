@@ -60,6 +60,7 @@ export interface HostDeps {
   clear(): void;
   close(): void;
   toggleMax(): boolean;
+  showSource: Host["showSource"];
 }
 
 /** The shell's view of the browser: router, DOM, theme, zen, search and the component. */
@@ -113,5 +114,6 @@ export function makeHost(deps: HostDeps): Host {
     clear: deps.clear,
     close: deps.close,
     toggleMax: deps.toggleMax,
+    showSource: deps.showSource,
   };
 }
