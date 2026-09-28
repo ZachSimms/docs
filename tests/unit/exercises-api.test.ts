@@ -28,8 +28,15 @@ const { POST: repairCode } = await import("@/app/api/exercises/code/repair/route
 const { POST: review } = await import("@/app/api/exercises/code/review/route");
 const { POST: generateMath } = await import("@/app/api/exercises/math/route");
 const { POST: checkMath } = await import("@/app/api/exercises/math/check/route");
-const { classifyError, modelConfig, gatewayConfigured, DEFAULT_MODEL, ExerciseError } =
-  await import("@/lib/exercises/ai");
+const { GET: status } = await import("@/app/api/exercises/status/route");
+const {
+  classifyError,
+  modelConfig,
+  gatewayConfigured,
+  whereRunning,
+  DEFAULT_MODEL,
+  ExerciseError,
+} = await import("@/lib/exercises/ai");
 const { allow, resetRateLimits, RATE_LIMITS, clientAddress } =
   await import("@/lib/exercises/guard");
 const { normalizeCodeExercise, normalizeMathProblem, normalizeReview, stripFence } =
@@ -326,6 +333,54 @@ describe("configuration", () => {
     expect(gatewayConfigured({ AI_GATEWAY_API_KEY: " " })).toBe(false);
     expect(gatewayConfigured({ AI_GATEWAY_API_KEY: "k" })).toBe(true);
     expect(gatewayConfigured({ VERCEL_OIDC_TOKEN: "t" })).toBe(true);
+  });
+
+  it("lets a Vercel deployment try OIDC, whose token comes with the request, not the environment", () => {
+    expect(gatewayConfigured({ VERCEL: "1" })).toBe(true);
+    expect(whereRunning({ VERCEL: "1", VERCEL_ENV: "preview" })).toBe(
+      'the Vercel "preview" environment',
+    );
+    expect(whereRunning({})).toBe("this server");
+  });
+
+  it("explains a missing or rejected credential", () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    const missing = classifyError(
+      Object.assign(new Error("x"), { name: "GatewayAuthenticationError" }),
+    );
+    expect(missing.message).toContain("AI_GATEWAY_API_KEY isn't set there");
+    expect(missing.message).toContain("/api/exercises/status/");
+    process.env.AI_GATEWAY_API_KEY = "stale";
+    const rejected = classifyError(Object.assign(new Error("x"), { statusCode: 401 }));
+    expect(rejected.message).toContain("rejected the AI_GATEWAY_API_KEY");
+  });
+});
+
+describe("GET /api/exercises/status/", () => {
+  /** A GET with the given headers (a plain object, like `post`). */
+  const get = (headers: Record<string, string> = {}) =>
+    ({
+      headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
+    }) as unknown as Request;
+
+  it("reports what the deployment sees, without secrets", async () => {
+    process.env.AI_GATEWAY_API_KEY = "secret-key";
+    const body = await status(get()).json();
+    expect(body).toMatchObject({
+      ready: true,
+      auth: "api-key",
+      apiKey: true,
+      model: DEFAULT_MODEL,
+    });
+    expect(JSON.stringify(body)).not.toContain("secret-key");
+  });
+
+  it("sees the OIDC token Vercel sends with the request", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    expect(await status(get()).json()).toMatchObject({ ready: false, auth: "none" });
+    const body = await status(get({ "x-vercel-oidc-token": "t0ken" })).json();
+    expect(body).toMatchObject({ ready: true, auth: "oidc", oidc: true });
+    expect(JSON.stringify(body)).not.toContain("t0ken");
   });
 });
 

@@ -201,7 +201,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/playground/`           | the in-browser IDE                                                       |
 | `/exercises/`            | AI-generated coding exercises, checked by hidden tests and a review      |
 | `/math/practice/`        | AI-generated math problems with answer checking (a sheet of Math)        |
-| `/api/exercises/…`       | the model calls behind both (POST only; see below)                       |
+| `/api/exercises/…`       | the model calls behind both (POST), and `status/` (GET, see below)       |
 
 Sheet URLs did not move when the site gained its other sections: the topic list moved from `/` to
 `/docs/`, and `../` from a topic now leads there.
@@ -324,6 +324,20 @@ The API routes call the model through the [Vercel AI Gateway](https://vercel.com
 | `EXERCISE_FALLBACK_MODELS` | optional comma-separated model ids the gateway tries, in order, when the first fails or is rate limited |
 
 Without credentials the pages still load, and generating says what to set (HTTP 503).
+
+**Checking a deployment.** `GET /api/exercises/status/` reports, without secrets, what that deployment
+sees: `{ ready, auth: "api-key" | "oidc" | "none", vercelEnv, model }`. If `apiKey` is `false`:
+
+- A **shared** (team-level) variable only reaches projects it is **linked** to: Team Settings →
+  Environment Variables → the variable's `⋯` → Edit → Link to Projects (or, in the project, Settings →
+  Environment Variables → Link Shared Environment Variables).
+- It only applies to the **environments** ticked for it: a pull request's deployment is **Preview**.
+- Variables are read when a deployment is built: **redeploy** after adding or changing one.
+- `bun run dev` doesn't see Vercel's variables: put the key in `.env.local`, or run `vercel env pull`.
+
+With no key at all, deployments can still authenticate with the project's OIDC token when OIDC is
+enabled for the project (see [Vercel's OIDC guide](https://vercel.com/docs/ai-gateway/authentication-and-byok/oidc));
+`auth` then reads `"oidc"`.
 
 **Cost.** The gateway's free tier gives monthly credits for a subset of models, and a few models are priced
 at $0 (`poolside/laguna-s-2.1-free` at the time of writing: listed at

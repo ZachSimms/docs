@@ -3,8 +3,9 @@
  * from what can go wrong to what the learner is told.
  *
  * The AI SDK routes a plain `"creator/model"` id through the gateway, which authenticates
- * with `AI_GATEWAY_API_KEY`, or on Vercel deployments with the project's OIDC token
- * (`VERCEL_OIDC_TOKEN`, provided automatically). The model is `EXERCISE_MODEL`, with
+ * with `AI_GATEWAY_API_KEY`, or else with the Vercel project's OIDC token: on a deployment
+ * that arrives with each request (the `x-vercel-oidc-token` header, read by `@vercel/oidc`),
+ * locally it is `VERCEL_OIDC_TOKEN` from `vercel env pull`. The model is `EXERCISE_MODEL`, with
  * optional comma-separated `EXERCISE_FALLBACK_MODELS` that the gateway tries in order when
  * the first one fails or is rate limited.
  *
@@ -36,9 +37,23 @@ export function modelConfig(env: Record<string, string | undefined> = process.en
   return { model, fallbacks };
 }
 
-/** Whether the gateway has credentials (an API key, or the OIDC token on Vercel). */
+/**
+ * Whether the gateway may have credentials: an API key, a pulled OIDC token, or a Vercel
+ * deployment (`VERCEL=1`), whose OIDC token comes with each request rather than from the
+ * environment, so only the gateway itself can tell (a failure is then explained by
+ * {@link classifyError}).
+ */
 export function gatewayConfigured(env: Record<string, string | undefined> = process.env): boolean {
-  return Boolean(env.AI_GATEWAY_API_KEY?.trim() || env.VERCEL_OIDC_TOKEN?.trim());
+  return Boolean(
+    env.AI_GATEWAY_API_KEY?.trim() || env.VERCEL_OIDC_TOKEN?.trim() || env.VERCEL === "1",
+  );
+}
+
+/** Where this server runs, for error messages: `the Vercel "preview" environment`, `this server`. */
+export function whereRunning(env: Record<string, string | undefined> = process.env): string {
+  return env.VERCEL === "1"
+    ? `the Vercel "${env.VERCEL_ENV ?? "unknown"}" environment`
+    : "this server";
 }
 
 /** A failure with a message fit for the learner and a status code for the response. */
@@ -78,9 +93,12 @@ export function classifyError(error: unknown): ExerciseError {
     const name = typeof e.name === "string" ? e.name : "";
     const status = typeof e.statusCode === "number" ? e.statusCode : undefined;
     if (name === "GatewayAuthenticationError" || status === 401) {
+      const hasKey = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
       return new ExerciseError(
         "config",
-        "The AI Gateway rejected the credentials. Check AI_GATEWAY_API_KEY (or the project's OIDC token on Vercel).",
+        hasKey
+          ? `The AI Gateway rejected the AI_GATEWAY_API_KEY in ${whereRunning()}: check that it is a current AI Gateway key.`
+          : `The AI Gateway has no credentials in ${whereRunning()}: AI_GATEWAY_API_KEY isn't set there and no OIDC token came with the request. See /api/exercises/status/ and the README.`,
         503,
       );
     }
@@ -144,7 +162,7 @@ export async function generate<T>(options: {
   if (!gatewayConfigured()) {
     throw new ExerciseError(
       "config",
-      "The exercise generator isn't set up: add an AI Gateway key (AI_GATEWAY_API_KEY) to the environment. See the README.",
+      `The exercise generator isn't set up: AI_GATEWAY_API_KEY isn't set in ${whereRunning()}. Add it to .env.local (or run \`vercel env pull\`) and restart. See the README.`,
       503,
     );
   }
