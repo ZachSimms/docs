@@ -131,7 +131,9 @@ not kebab-case fails the build.
   Lines chain with `;` and `&&`, words take quotes, and a page's name alone goes there (like zsh's
   `AUTO_CD`). A path also matches a title (`cd FastAPI`), a number (`cd docs/0`) or a URL
   (`cd /python/overview/`). Lines typed while a slow command runs wait their turn. `max` (or
-  the `max` control) covers the window; on phones it always does. The scrollback survives
+  the `max` control) covers the window; on phones it always does. `/terminal/` (linked from
+  `/info/`) opens it full screen on arrival and after a reload, so the site can be bookmarked
+  as a shell; `Esc` there shows a page with a button to reopen it. The scrollback survives
   reloads (`sessionStorage`), the history lives in `localStorage`. The filesystem is
   `/site-tree.json`, built with the site (`lib/terminal/tree.ts`); the shell
   (`lib/terminal/shell.ts`) is plain TypeScript behind a small host interface, so the renderer
@@ -221,7 +223,8 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/`              | that topic's directories, each unfolded with its sheets, and loose sheets |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                             |
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                             |
-| `/info/`                 | about                                                                    |
+| `/info/`                 | about, and links to the sheet list and the terminal                      |
+| `/terminal/`             | the terminal, full screen (bookmarkable)                                 |
 | `/site-tree.json`        | every page as a tree, for the terminal (built with the site)             |
 | `/playground/`           | the in-browser IDE                                                       |
 

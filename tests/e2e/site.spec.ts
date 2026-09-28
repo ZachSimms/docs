@@ -373,6 +373,36 @@ test.describe("terminal", () => {
     await page.locator("footer").getByRole("button", { name: /terminal/i }).click();
     await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
   });
+
+  test("/terminal/ opens it full screen, by URL or by the link on /info/, and cd keeps it so", async ({
+    page,
+  }) => {
+    await page.goto("/terminal/");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    await expect(terminal).toHaveAttribute("data-size", "max");
+    await expect(page.getByRole("textbox", { name: "Command" })).toBeFocused();
+    await expect(terminal).toContainText("terminal · ~");
+
+    await run(page, "cd docs");
+    await expect(page).toHaveURL(/\/docs\/$/);
+    await expect(terminal).toHaveAttribute("data-size", "max");
+    await expect(terminal).toContainText("terminal · ~/docs");
+
+    // Esc on /terminal/ shows the page beneath, which reopens it.
+    await page.goto("/terminal/");
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveCount(0);
+    await page.getByRole("button", { name: /open the terminal/i }).click();
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
+
+    // Arriving by a link (a client-side navigation) opens it full screen too.
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await page.goto("/info/");
+    await hydrated(page);
+    await page.getByRole("link", { name: "Terminal" }).click();
+    await expect(page).toHaveURL(/\/terminal\/$/);
+    await expect(page.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
+  });
 });
 
 test.describe("dark mode", () => {

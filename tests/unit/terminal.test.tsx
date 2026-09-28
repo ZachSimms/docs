@@ -16,7 +16,9 @@ mock.module("next/navigation", () => ({
 
 const { Terminal, SESSION_KEY, HISTORY_KEY } = await import("@/components/Terminal");
 const { makeHost } = await import("@/lib/terminal/host");
-const { OPEN_TERMINAL_EVENT, TerminalLink } = await import("@/components/TerminalLink");
+const { OPEN_TERMINAL_EVENT, OpenTerminalOnArrival, TerminalLink } =
+  await import("@/components/TerminalLink");
+const { default: TerminalPage } = await import("@/app/terminal/page");
 const { resetTerminalCache, SITE_TREE_URL } = await import("@/lib/terminal/client");
 const { buildFs } = await import("@/lib/terminal/vfs");
 
@@ -245,6 +247,42 @@ describe("Terminal", () => {
     pressBacktick();
     expect(await screen.findByText(/site tree unavailable/)).toBeInTheDocument();
   });
+
+  it("opens full screen on /terminal/, before any key is pressed", async () => {
+    window.history.replaceState(null, "", "/terminal/");
+    try {
+      render(<Terminal />);
+      const terminal = await screen.findByRole("region", { name: "Terminal" });
+      expect(terminal).toHaveAttribute("data-size", "max");
+      expect(screen.getByRole("textbox", { name: "Command" })).toHaveFocus();
+      await waitFor(() => expect(requested).toEqual([SITE_TREE_URL]));
+      expect(document.body).toHaveAttribute("data-terminal", "max");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("opens full screen when asked by /terminal/'s opener or a full-screen control", async () => {
+    render(
+      <>
+        <Terminal />
+        <TerminalLink />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^terminal/i }));
+    expect(await screen.findByRole("region", { name: "Terminal" })).toHaveAttribute(
+      "data-size",
+      "docked",
+    );
+    render(<OpenTerminalOnArrival />);
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dock the terminal" }));
+    render(<TerminalLink label="Open the terminal" max />);
+    fireEvent.click(screen.getByRole("button", { name: /open the terminal/i }));
+    expect(screen.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
+  });
 });
 
 describe("makeHost", () => {
@@ -307,5 +345,14 @@ describe("makeHost", () => {
     window.scrollBy = scrollBy;
     expect(scrolled.slice(0, 3)).toEqual(["to 0", "by 1", "by -1"]);
     expect(scrolled).toHaveLength(4);
+  });
+});
+
+describe("/terminal/", () => {
+  it("says what the terminal is and offers to reopen it full screen", () => {
+    render(<TerminalPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Terminal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open the terminal/i })).toBeInTheDocument();
+    expect(document.querySelector(".keys")?.textContent).toContain("grep <words>");
   });
 });

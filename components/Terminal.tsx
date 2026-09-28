@@ -4,7 +4,7 @@
  * Client component mounted once in the root layout, so it stays open, with its
  * scrollback, while `cd` moves the page behind it. It opens on `` ` `` (when no field
  * has focus) or the `open-terminal` event fired by the "Terminal" controls, and hides on
- * `Esc` or `exit`. The first open loads the shell (`lib/terminal/host.ts`, imported on
+ * `Esc` or `exit`. On `/terminal/` it starts full screen. The first open loads the shell (`lib/terminal/host.ts`, imported on
  * demand so pages carry none of it until then) and fetches `/site-tree.json`; the
  * commands live in `lib/terminal/shell.ts` and reach the page through `makeHost`.
  *
@@ -31,9 +31,10 @@ import {
 import { TERMINAL_KEY, isPlainKey } from "@/lib/keys";
 import type { OutputLine, Shell } from "@/lib/terminal/shell";
 import type { Fs } from "@/lib/terminal/vfs";
+import { TERMINAL_PATH } from "@/lib/site";
 import { EMBED_ATTRIBUTE } from "@/lib/theme";
 import { DottedLink } from "./DottedLink";
-import { OPEN_TERMINAL_EVENT } from "./TerminalLink";
+import { OPEN_TERMINAL_EVENT, type OpenTerminalOptions } from "./TerminalLink";
 
 /** The terminal's runtime, loaded on first open. */
 type Runtime = typeof import("@/lib/terminal/host");
@@ -104,6 +105,14 @@ function readSession(): Session {
   } catch {
     return EMPTY_SESSION;
   }
+}
+
+/** The session to start with: the stored one, opened full screen on `/terminal/`. */
+function initialSession(): Session {
+  const session = readSession();
+  const arrived =
+    typeof window !== "undefined" && !isEmbedded() && window.location.pathname === TERMINAL_PATH;
+  return arrived ? { ...session, open: true, max: true } : session;
 }
 
 /** The stored command history, oldest first. */
@@ -197,7 +206,7 @@ export function Terminal() {
   const router = useRouter();
   const pathname = usePathname();
   const hydrated = useHydrated();
-  const [session] = useState(readSession);
+  const [session] = useState(initialSession);
   const [open, setOpen] = useState(session.open);
   const [max, setMax] = useState(session.max);
   const [entries, setEntries] = useState<readonly Entry[]>(session.entries);
@@ -273,13 +282,21 @@ export function Terminal() {
       });
   }, [history, pathStore]);
 
-  const show = useCallback(() => {
-    if (isEmbedded()) return;
-    if (!open) openerRef.current = document.activeElement;
-    setOpen(true);
-    ensureFs();
-    inputRef.current?.focus();
-  }, [ensureFs, open]);
+  /** Open (or focus) the terminal; `maximize` also makes it full screen. */
+  const show = useCallback(
+    (maximize = false) => {
+      if (isEmbedded()) return;
+      if (!open) openerRef.current = document.activeElement;
+      setOpen(true);
+      if (maximize) {
+        maxRef.current = true;
+        setMax(true);
+      }
+      ensureFs();
+      inputRef.current?.focus();
+    },
+    [ensureFs, open],
+  );
 
   const hide = useCallback(() => {
     setOpen(false);
@@ -297,11 +314,15 @@ export function Terminal() {
       event.preventDefault();
       show();
     };
+    const onOpen = (event: Event) => {
+      const detail = event instanceof CustomEvent ? (event.detail as OpenTerminalOptions) : null;
+      show(detail?.max === true);
+    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener(OPEN_TERMINAL_EVENT, show);
+    window.addEventListener(OPEN_TERMINAL_EVENT, onOpen);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener(OPEN_TERMINAL_EVENT, show);
+      window.removeEventListener(OPEN_TERMINAL_EVENT, onOpen);
     };
   }, [show]);
 
@@ -316,12 +337,14 @@ export function Terminal() {
   }, [pathname]);
 
   // While open, the page makes room for it (docked) or is covered (full screen); focus the prompt.
+  // (It renders nothing until hydrated, so a terminal restored open, or opened by
+  // `/terminal/`, only has a prompt to focus once `hydrated` flips.)
   useEffect(() => {
-    if (!open) return;
+    if (!open || !hydrated) return;
     document.body.setAttribute("data-terminal", max ? "max" : "docked");
     inputRef.current?.focus();
     return () => document.body.removeAttribute("data-terminal");
-  }, [open, max]);
+  }, [open, max, hydrated]);
 
   // Remember the session; keep the newest output in view.
   useEffect(() => {
@@ -331,7 +354,7 @@ export function Terminal() {
   useEffect(() => {
     const screen = screenRef.current;
     if (screen) screen.scrollTop = screen.scrollHeight;
-  }, [entries, open, fsState]);
+  }, [entries, open, fsState, hydrated]);
 
   const fs = fsState.status === "ready" ? fsState.fs : null;
 
