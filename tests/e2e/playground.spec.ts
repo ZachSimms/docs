@@ -227,6 +227,23 @@ test.describe("playground: reference panel", () => {
     await expect(page).toHaveURL(/\/playground\/$/);
     await expect(page.locator(".pg-refs-frame")).toHaveAttribute("src", /\/game-dev\/godot\//);
   });
+
+  test("Snippets: a snippet inserted over the code runs as is", async ({ page }) => {
+    await openPlayground(page, "javascript");
+    await page.getByRole("button", { name: /Refs/ }).click();
+    await page.getByRole("tab", { name: "Snippets" }).click();
+    await page.getByRole("searchbox", { name: "Filter snippets" }).fill("arrow");
+    await expect(page.locator(".pg-snippet h3").first()).toHaveText("00. Arrow functions");
+    // Highlighted with the editor's parser
+    await expect(page.locator(".pg-snippet-code .pg-tok-kw").first()).toBeVisible();
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.getByRole("button", { name: "Insert Arrow functions at the cursor" }).click();
+    await expect(page.locator(".cm-content")).toContainText("const square = (x) => x * x;");
+    await run(page);
+    await expect(output(page)).toContainText("16 10 { x: 1, y: 2 }");
+    await expect(output(page)).toContainText("[ 2, 4, 6 ] [ 2, 4 ] 10 2 3");
+  });
 });
 
 test.describe("playground: official docs", () => {

@@ -285,6 +285,16 @@ export function Playground() {
     return null;
   };
 
+  // The Snippets tab's "insert": at the cursor in the open file, then back to the code (on phones too).
+  const insertSnippet = (code: string): boolean => {
+    const handle = editor.current;
+    if (!handle) return false;
+    handle.insert(code);
+    handle.focus();
+    setPane("code");
+    return true;
+  };
+
   const reset = () => {
     runState.stop();
     runState.clear();
@@ -569,6 +579,8 @@ export function Playground() {
           <ReferencePanel
             hidden={!showRefs}
             language={language}
+            mode={modeForPath(project.open)}
+            onInsert={insertSnippet}
             suggestions={spec.refs}
             width={prefs.layout.refs}
             onWidth={setSize("refs")}

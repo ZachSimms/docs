@@ -131,8 +131,8 @@ not kebab-case fails the build.
 - **Playground** (`/playground/`, in the section list): a browser IDE for C++, Rust, Python,
   JavaScript, TypeScript, HTML/CSS/JS, HTML/CSS/TS, React, Bun, Bun + Hono, GDScript and Markdown. Each
   is a project of files and folders (imports, modules, headers), saved in `localStorage`, with hover
-  intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets or the official docs
-  (MDN and others) beside the code. See [Playground](#playground).
+  intellisense. A reference panel (`Refs`, or `⌘K` on that page) shows the site's sheets, the official docs
+  (MDN and others) or copy-ready code snippets beside the code. See [Playground](#playground).
 - **Images**: put files under `public/images/<topic>/` and reference them as
   `![alt](/images/<topic>/name.png)`. Dimensions are read at build time and rendered through `next/image`;
   remote URLs fall back to a lazy plain `<img>`.
@@ -259,6 +259,15 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
   Bun; Node) through [DevDocs](https://devdocs.io/). Pages are sanitized with DOMPurify and shown in a
   scriptless frame with a `default-src 'none'` CSP, with their license and "via DevDocs"; links inside a
   docset open in the panel. Hono and Tailwind docs are framed from their own sites. `bun scripts/build-docs-manifest.ts` refreshes the committed docset list.
+- **Snippets:** the reference panel's **Snippets** tab holds copy-ready code for the current project: hello world,
+  variables, functions, arrow functions (lambdas and closures where the language calls them that), conditionals and
+  loops, collections, classes, exception handling, async and modules for JavaScript, TypeScript, Python, C++, Rust
+  and GDScript; plus sets for HTML, CSS, the DOM, React, Bun, Hono and Markdown. A project with several sets (HTML/CSS/JS,
+  React, Bun + Hono) has a picker, and the tab starts on the set written in the open file's language. Type to filter
+  (`lambda`, `try`, `await`…); **copy** puts a snippet on the clipboard (or selects it if the clipboard is refused),
+  **insert** puts it at the editor's cursor (select all first to replace the file). Snippets are whole programs where the
+  language allows, so they run as pasted. They live in `lib/playground/snippets/`, one module per set, each loaded
+  the first time it's shown, and are highlighted with the editor's own parsers.
 - **Layout:** every pane edge is a drag handle (keyboard too: arrows, Shift for bigger steps, Home/End, Enter or
   double-click to reset), remembered per browser. Zen mode keeps only the code, the output and Refs.
 - **Help:** `?` (or `F1`) opens the getting-started help; a first-visit card offers a 1-minute tour of the

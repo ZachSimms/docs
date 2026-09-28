@@ -8,7 +8,8 @@
  * frame follows the playground's theme. ⌘K on the playground opens sheets
  * here too: the palette dispatches `open-reference`, the playground passes it
  * in as `requested`. The Docs tab ({@link DocsTab}) searches the official
- * references for the current project instead.
+ * references for the current project instead, and the Snippets tab
+ * ({@link SnippetsTab}) holds copy-ready code for it.
  */
 
 "use client";
@@ -16,10 +17,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { BreakablePath } from "@/components/BreakablePath";
 import { DocsTab } from "@/components/playground/DocsTab";
+import { SnippetsTab } from "@/components/playground/SnippetsTab";
 import { Splitter } from "@/components/playground/Splitter";
 import { useTheme } from "@/components/useTheme";
 import { padNumber } from "@/lib/format";
-import type { LanguageId, SheetRef } from "@/lib/playground/languages";
+import type { EditorMode, LanguageId, SheetRef } from "@/lib/playground/languages";
 import { isSheetUrl, type DocRequest } from "@/lib/reference-panel";
 import { loadSearchIndex } from "@/lib/search-index-client";
 import { docPath, rankSearch, type SearchDoc } from "@/lib/search-rank";
@@ -28,16 +30,21 @@ import { docPath, rankSearch, type SearchDoc } from "@/lib/search-rank";
 const RESULT_LIMIT = 12;
 
 /** The panel's tabs. */
-type RefsTab = "sheets" | "docs";
+type RefsTab = "sheets" | "docs" | "snippets";
 const TABS: readonly { id: RefsTab; label: string }[] = [
   { id: "sheets", label: "Sheets" },
   { id: "docs", label: "Docs" },
+  { id: "snippets", label: "Snippets" },
 ];
 
 /** Props for {@link ReferencePanel}. */
 interface ReferencePanelProps {
-  /** The current project type (picks the official docs). */
+  /** The current project type (picks the official docs and the snippets). */
   language: LanguageId;
+  /** The open file's editor mode (picks the snippet set shown first). */
+  mode?: EditorMode;
+  /** Insert a snippet at the editor's cursor; `false` if it couldn't. */
+  onInsert?(code: string): boolean;
   /** Suggestions for the current language. */
   suggestions: readonly SheetRef[];
   width: number;
@@ -56,6 +63,8 @@ interface ReferencePanelProps {
 /** Render the panel. */
 export function ReferencePanel({
   language,
+  mode = "text",
+  onInsert,
   suggestions,
   width,
   onWidth,
@@ -168,6 +177,8 @@ export function ReferencePanel({
       </div>
       {tab === "docs" ? (
         <DocsTab language={language} requested={requestedDoc} onShown={onDocShown} />
+      ) : tab === "snippets" ? (
+        <SnippetsTab language={language} mode={mode} onInsert={onInsert} />
       ) : (
         <div className="pg-refs-body">
           <div className="pg-bar">
