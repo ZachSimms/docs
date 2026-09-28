@@ -47,6 +47,8 @@ const { allow, resetRateLimits, RATE_LIMITS, clientAddress } =
 const { normalizeCodeExercise, normalizeMathProblem, normalizeReview, stripFence } =
   await import("@/lib/exercises/normalize");
 const prompts = await import("@/lib/exercises/prompts");
+const options = await import("@/lib/exercises/options");
+const { codeGenerateRequest } = await import("@/lib/exercises/schema");
 
 /**
  * A POST to one of the routes, from the same origin unless `headers` say otherwise.
@@ -335,6 +337,91 @@ describe("POST /api/exercises/code/", () => {
   });
 });
 
+describe("variety beyond data structures", () => {
+  /** A deterministic source of numbers in [0, 1) (a linear congruential generator). */
+  const seeded = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32;
+
+  it("draws mostly practical programs for Any, and DS&A only sometimes", () => {
+    const random = seeded(42);
+    const groups: Record<string, number> = {};
+    for (let i = 0; i < 10_000; i++) {
+      const theme = options.pickTheme("javascript", random);
+      const group = options.themeSpec(theme).group ?? "none";
+      groups[group] = (groups[group] ?? 0) + 1;
+    }
+    expect(groups.none).toBeUndefined(); // never "Any" itself
+    expect(groups.practical / 10_000).toBeCloseTo(0.5, 1);
+    expect(groups.language / 10_000).toBeCloseTo(0.3, 1);
+    expect(groups.dsa / 10_000).toBeCloseTo(0.2, 1);
+  });
+
+  it("only draws themes that fit the language", () => {
+    const random = seeded(7);
+    for (let i = 0; i < 2_000; i++) {
+      expect(options.themeFitsLanguage(options.pickTheme("python", random), "python")).toBe(true);
+    }
+    expect(options.themeFitsLanguage("async", "python")).toBe(false);
+    expect(options.themeFitsLanguage("async", "javascript")).toBe(true);
+    expect(options.themeFitsLanguage("types", "javascript")).toBe(false);
+    expect(options.themeFitsLanguage("types", "typescript")).toBe(true);
+    // Edge rolls stay in range.
+    expect(options.themeSpec(options.pickTheme("typescript", () => 0.999_999)).group).toBe("dsa");
+    expect(options.themeSpec(options.pickTheme("typescript", () => 0)).group).toBe("practical");
+  });
+
+  it("offers at least as many themes outside DS&A as in it, and keeps every stored id", () => {
+    const count = (group: string) => options.CODE_THEMES.filter((t) => t.group === group).length;
+    expect(count("practical") + count("language")).toBeGreaterThan(2 * count("dsa"));
+    for (const id of ["basics", "strings", "linked-lists", "parsing", "errors", "iterators"]) {
+      expect(options.CODE_THEME_IDS as readonly string[]).toContain(id);
+    }
+  });
+
+  it("rejects a theme the language doesn't have", async () => {
+    expect(codeGenerateRequest.safeParse({ theme: "async", language: "python" }).success).toBe(
+      false,
+    );
+    const response = await generateCode(post({ theme: "types", language: "javascript" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("theme");
+  });
+
+  it("draws a theme when Any comes with nothing written, and records it", async () => {
+    next = () => specOf(LINKED_LIST_EXERCISE);
+    const exercise = await (await generateCode(post({ language: "python" }))).json();
+    expect(exercise.theme).not.toBe("any");
+    expect(String(calls[0].prompt)).toContain("Theme: ");
+    expect(String(calls[0].prompt)).toContain(", for example ");
+  });
+
+  it("leaves Any to the learner's request when there is one", async () => {
+    next = () => specOf(LINKED_LIST_EXERCISE);
+    const exercise = await (
+      await generateCode(post({ request: "a bowling score calculator" }))
+    ).json();
+    expect(exercise.theme).toBe("any");
+    expect(String(calls[0].prompt)).not.toContain("Theme: ");
+  });
+
+  it("asks for realistic, controllable tasks", () => {
+    const system = prompts.codeSystemPrompt("javascript");
+    expect(system).toContain("Prefer a realistic scenario and a practical task");
+    expect(system).toContain(
+      "takes it as a parameter (a now() function, a seed, a delay function)",
+    );
+    const prompt = prompts.codePrompt({
+      request: "",
+      theme: "domain-modeling",
+      difficulty: "advanced",
+      language: "python",
+      size: "exercise",
+      avoid: [],
+    });
+    expect(prompt).toContain("shopping cart with discounts and tax");
+    expect(prompt).not.toContain("interview");
+  });
+});
+
 describe("the other routes", () => {
   it("repairs an exercise, keeping its id and request", async () => {
     next = () => ({ ...specOf(LINKED_LIST_EXERCISE), title: "Fixed" });
@@ -606,7 +693,7 @@ describe("prompts", () => {
       avoid: ["Old one"],
     });
     expect(prompt).toContain("### Part 1");
-    expect(prompt).toContain("Theme: Classes and object-oriented design.");
+    expect(prompt).toContain("Theme: Classes and object-oriented design, for example classes");
     expect(prompt).toContain('"Old one"');
     expect(prompt).not.toContain('"""');
   });

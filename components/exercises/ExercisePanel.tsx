@@ -7,24 +7,35 @@
 
 "use client";
 
+import { useState } from "react";
 import {
   CODE_LANGUAGES,
   CODE_THEMES,
   DIFFICULTIES,
+  EXAMPLE_REQUESTS,
   SIZES,
+  THEME_GROUPS,
   optionLabel,
+  themeFitsLanguage,
+  type CodeLanguage,
 } from "@/lib/exercises/options";
 import type { CodeStore } from "@/lib/exercises/storage";
 import { RichText } from "./RichText";
 import type { ExerciseSession } from "./useExerciseSession";
 import "./exercises.css";
 
-/** Requests to try, one click away. */
-const EXAMPLES = [
-  "I want an exercise for classes",
-  "I need to practice linked lists",
-  "a bank account with deposits and overdraft rules",
-];
+/** How many suggested requests show at a time. */
+const EXAMPLE_COUNT = 3;
+
+/** A few suggested requests, drawn at random so they vary between visits. */
+function drawExamples(random: () => number = Math.random): string[] {
+  const pool = [...EXAMPLE_REQUESTS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, EXAMPLE_COUNT);
+}
 
 /** Status text with a spinner. */
 export function Busy({ label }: { label: string }) {
@@ -76,6 +87,11 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
   // With an exercise open the form folds away; generating or an empty list keeps it open.
   const formOpen = !exercise || busy !== null || session.askDownload;
   const setForm = (patch: Partial<CodeStore["form"]>) => session.setForm(patch);
+  // Drawn once per mount; the panel renders client-side only, so there is no hydration to match.
+  const [examples] = useState(drawExamples);
+  /** Themes shown for the chosen language, by group ("Any" first, on its own). */
+  const themesIn = (group: string | null) =>
+    CODE_THEMES.filter((t) => t.group === group && themeFitsLanguage(t.id, form.language));
 
   const requestForm = (
     <form
@@ -94,7 +110,7 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
           rows={2}
           maxLength={500}
           value={form.request}
-          placeholder="e.g. I need to practice linked lists"
+          placeholder="e.g. a shopping cart with discount codes and tax"
           onChange={(event) => setForm({ request: event.target.value })}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -105,7 +121,7 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
         />
         <p className="ex-label ex-examples">
           try:{" "}
-          {EXAMPLES.map((example, i) => (
+          {examples.map((example, i) => (
             <span key={example}>
               {i > 0 && " · "}
               <button type="button" className="link" onClick={() => setForm({ request: example })}>
@@ -124,10 +140,19 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
               setForm({ theme: event.target.value as CodeStore["form"]["theme"] })
             }
           >
-            {CODE_THEMES.map((t) => (
+            {themesIn(null).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
               </option>
+            ))}
+            {THEME_GROUPS.map((group) => (
+              <optgroup key={group.id} label={group.label}>
+                {themesIn(group.id).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
@@ -150,9 +175,13 @@ export function ExercisePanel({ session, onHide }: ExercisePanelProps) {
           <span className="ex-label">Language</span>
           <select
             value={form.language}
-            onChange={(event) =>
-              setForm({ language: event.target.value as CodeStore["form"]["language"] })
-            }
+            onChange={(event) => {
+              const language = event.target.value as CodeLanguage;
+              // Async and TypeScript types don't exist in every language: fall back to "Any".
+              setForm(
+                themeFitsLanguage(form.theme, language) ? { language } : { language, theme: "any" },
+              );
+            }}
           >
             {CODE_LANGUAGES.map((l) => (
               <option key={l.id} value={l.id}>

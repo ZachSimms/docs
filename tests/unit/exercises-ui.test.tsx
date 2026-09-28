@@ -378,6 +378,35 @@ describe("the playground's exercise mode", () => {
     expect(screen.getByLabelText("Code editor")).toHaveValue("// my other draft");
   });
 
+  it("groups the themes, hides the ones the language lacks, and falls back to Any", () => {
+    render(<ExerciseMode />);
+    const theme = screen.getByLabelText("Theme") as HTMLSelectElement;
+    const groups = [...theme.querySelectorAll("optgroup")].map((g) => g.label);
+    expect(groups).toEqual([
+      "Practical programs",
+      "Language skills",
+      "Algorithms and data structures",
+    ]);
+    const labels = () => [...theme.options].map((o) => o.textContent);
+    expect(labels()).not.toContain("Async code and promises"); // Python by default
+    fireEvent.change(screen.getByLabelText("Language"), { target: { value: "typescript" } });
+    expect(labels()).toContain("Async code and promises");
+    expect(labels()).toContain("TypeScript types (generics, unions)");
+    fireEvent.change(theme, { target: { value: "types" } });
+    fireEvent.change(screen.getByLabelText("Language"), { target: { value: "javascript" } });
+    expect(theme.value).toBe("any");
+  });
+
+  it("suggests a few varied requests", () => {
+    render(<ExerciseMode />);
+    const suggestions = [...document.querySelectorAll(".ex-examples button")].map(
+      (b) => b.textContent,
+    );
+    expect(suggestions).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: suggestions[0]! }));
+    expect(screen.getByLabelText("What do you want to practice?")).toHaveValue(suggestions[0]);
+  });
+
   it("reveals hints one at a time and the solution after a confirmation", async () => {
     saveStore(STORE_KEYS.code, {
       ...EMPTY_CODE_STORE,

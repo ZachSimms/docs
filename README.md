@@ -307,6 +307,12 @@ Two generators share one pipeline:
   for a review; `Reset` restores the starter code. The reference panel works as in project mode; on
   phones the panes are `Code`, `Task`, `Tests` and `Refs`. Python asks before its first download, as in
   project mode. The chosen mode is remembered.
+- **Themes.** Grouped as *practical programs* (data wrangling, parsing, domain models, state machines
+  and game logic, simulations, formatted output, utilities, design patterns), *language skills* (including
+  async code in JS/TS and TypeScript types) and *algorithms and data structures*; each tells the model what
+  kind of scenario to write (`lib/exercises/options.ts`). "Any" with no request draws a theme: practical
+  programs half the time, language skills 30%, DS&A 20%. The prompt asks for realistic tasks unless the
+  theme or request is algorithmic, and for time, randomness and waiting to be passed in so tests control them.
 - **Self-check.** Before a coding exercise is shown, its reference solution runs against its own tests. If
   any fail, the model is asked once to repair it; one that still disagrees is shown with a warning, since
   a failing test could be the test's fault. If the sandbox can't start at all (offline), nothing is

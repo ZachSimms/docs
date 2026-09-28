@@ -14,6 +14,7 @@ import {
   DIFFICULTY_IDS,
   MATH_AREA_IDS,
   SIZE_IDS,
+  themeFitsLanguage,
 } from "./options";
 
 /** A string of at most `max` characters, with a description for the model. */
@@ -62,15 +63,20 @@ export const codeExerciseSpec = z.object({
 export type CodeExerciseSpec = z.infer<typeof codeExerciseSpec>;
 
 /** What the learner asked for. */
-export const codeGenerateRequest = z.object({
-  request: z.string().trim().max(500).default(""),
-  theme: z.enum(CODE_THEME_IDS).default("any"),
-  difficulty: z.enum(DIFFICULTY_IDS).default("beginner"),
-  language: z.enum(CODE_LANGUAGE_IDS).default("python"),
-  size: z.enum(SIZE_IDS).default("exercise"),
-  /** Titles of recent exercises, so the next one is different. */
-  avoid: z.array(z.string().max(80)).max(10).default([]),
-});
+export const codeGenerateRequest = z
+  .object({
+    request: z.string().trim().max(500).default(""),
+    theme: z.enum(CODE_THEME_IDS).default("any"),
+    difficulty: z.enum(DIFFICULTY_IDS).default("beginner"),
+    language: z.enum(CODE_LANGUAGE_IDS).default("python"),
+    size: z.enum(SIZE_IDS).default("exercise"),
+    /** Titles of recent exercises, so the next one is different. */
+    avoid: z.array(z.string().max(80)).max(10).default([]),
+  })
+  .refine((input) => themeFitsLanguage(input.theme, input.language), {
+    message: "that theme isn't available in this language",
+    path: ["theme"],
+  });
 
 /** What the learner asked for. */
 export type CodeGenerateRequest = z.infer<typeof codeGenerateRequest>;
