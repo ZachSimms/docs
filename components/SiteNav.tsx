@@ -16,6 +16,7 @@ import { TOPICS } from "@/lib/topics";
 import { DottedLink } from "./DottedLink";
 import { NavScroller } from "./NavScroller";
 import { SearchLink } from "./SearchLink";
+import { TerminalLink } from "./TerminalLink";
 
 /** Where in the docs a page sits; each level unfolds the tree one step further. */
 export interface DocsLocation {
@@ -122,7 +123,7 @@ function DocsTree({ topic, group, sheet }: DocsLocation) {
 
 /**
  * Render `<aside>`: the site name, the numbered sections (the current one marked, the
- * docs tree under Docs when inside a topic), then GitHub and Search.
+ * docs tree under Docs when inside a topic), then GitHub, Search and Terminal.
  */
 export function SiteNav({ section, docs }: SiteNavProps) {
   const inTopic = docs?.topic !== undefined;
@@ -163,6 +164,9 @@ export function SiteNav({ section, docs }: SiteNavProps) {
         <br />
         <SearchLink />
         <span className="dim"> ⌘K</span>
+        <br />
+        <TerminalLink />
+        <span className="dim"> `</span>
       </p>
       <NavScroller />
     </aside>

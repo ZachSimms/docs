@@ -323,6 +323,58 @@ test.describe("search palette", () => {
   });
 });
 
+test.describe("terminal", () => {
+  /** Type a command at the prompt and run it. */
+  async function run(page: Page, command: string) {
+    const input = page.getByRole("textbox", { name: "Command" });
+    await input.fill(command);
+    await input.press("Enter");
+  }
+
+  test("` opens it; cd, ls, toc and cat walk the site; the prompt follows the page", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await hydrated(page);
+    await page.keyboard.press("`");
+    const terminal = page.getByRole("region", { name: "Terminal" });
+    await expect(terminal).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Command" })).toBeFocused();
+    const log = terminal.getByRole("log");
+
+    await run(page, "ls");
+    await expect(log.getByRole("link", { name: "docs/" })).toHaveAttribute("href", "/docs/");
+
+    await run(page, "cd docs/python/overview");
+    await expect(page).toHaveURL(/\/python\/overview\/$/);
+    await expect(terminal).toContainText("terminal · ~/docs/python/overview");
+
+    await run(page, "cat");
+    await expect(log).toContainText("# Overview");
+
+    // Tab completes; a page's name alone goes there.
+    const input = page.getByRole("textbox", { name: "Command" });
+    await input.fill("cd ../fas");
+    await input.press("Tab");
+    await expect(input).toHaveValue("cd ../fastapi ");
+    await input.press("Enter");
+    await expect(page).toHaveURL(/\/python\/fastapi\/$/);
+
+    await run(page, "toc");
+    await expect(log).toContainText(/fastapi\$ toc00\. /);
+    await run(page, "cd 0");
+    await expect(page).toHaveURL(/\/python\/fastapi\/#.+$/);
+
+    // Leaving by a link moves the prompt too, and Esc hides the terminal.
+    await page.getByRole("textbox", { name: "Command" }).press("Escape");
+    await expect(terminal).toHaveCount(0);
+    await page.goto("/docs/");
+    await hydrated(page);
+    await page.locator("footer").getByRole("button", { name: /terminal/i }).click();
+    await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
+  });
+});
+
 test.describe("dark mode", () => {
   test("toggle switches the palette, persists across reload, and switches back", async ({
     page,

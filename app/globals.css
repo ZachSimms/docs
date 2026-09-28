@@ -1834,3 +1834,129 @@ html[data-embed] .split > .split-main {
 html[data-embed] body {
   padding: 1.25em 1.25em 0;
 }
+
+/* Terminal (components/Terminal.tsx): the site as a shell, docked along the bottom of the window,
+   or covering it (`max`, and always on phones). It sits under the search palette (z-index 10). */
+.terminal {
+  --term-height: 42vh;
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  height: var(--term-height);
+  background: var(--bg);
+  color: var(--fg);
+  border-top: 1px dotted var(--fg);
+}
+
+.terminal[data-size="max"] {
+  inset: 0;
+  height: auto;
+  border-top: 0;
+}
+
+.terminal-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  padding: 0.25em 2em;
+  white-space: nowrap;
+}
+
+.terminal-bar > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-screen {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 2em calc(var(--lh) / 2);
+}
+
+/* Output keeps its columns (`ls`, `tree`) and wraps long lines rather than scrolling sideways,
+   hanging past a row's `00. ` so a wrapped title never runs back under the numbers. */
+.terminal-line {
+  min-height: var(--lh);
+  padding-left: 4ch;
+  text-indent: -4ch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal .t-dim {
+  color: var(--dim);
+}
+
+.terminal .t-error {
+  color: var(--graph-1);
+}
+
+.terminal .t-strong {
+  font-weight: bold;
+}
+
+.terminal-input {
+  display: flex;
+  padding-left: 0;
+  text-indent: 0;
+}
+
+.terminal-prompt {
+  white-space: pre;
+}
+
+.terminal-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  caret-color: currentColor;
+}
+
+/* Docked, the page scrolls clear of it; full screen, the page behind stays still. */
+body[data-terminal="docked"] {
+  padding-bottom: calc(42vh + var(--lh));
+}
+
+body[data-terminal="max"] {
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .terminal {
+    inset: 0;
+    height: auto;
+    border-top: 0;
+  }
+
+  /* Clear the top bar's theme toggle, as the search palette does. */
+  .terminal-bar {
+    padding: 1em 2em 0.5em;
+  }
+
+  /* Always full screen on phones, so there is nothing to toggle (beats `button.link`). */
+  .terminal .terminal-max {
+    display: none;
+  }
+
+  .terminal-bar,
+  .terminal-screen {
+    padding-left: 1em;
+    padding-right: 1em;
+  }
+
+  body[data-terminal] {
+    overflow: hidden;
+  }
+}
+
+html[data-embed] .terminal {
+  display: none;
+}

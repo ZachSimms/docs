@@ -1,7 +1,7 @@
 /**
  * @file Root layout: `<html>`/`<body>`, global CSS, metadata,
- * the inline theme bootstrap script, the fixed theme toggle, the ⌘K palette and
- * the touch edge gestures.
+ * the inline theme bootstrap script, the fixed theme toggle, the ⌘K palette, the
+ * terminal and the touch edge gestures.
  *
  * `suppressHydrationWarning` on `<html>` is required because the inline script
  * may add `data-theme` (and, inside the playground's reference panel,
@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { SearchPalette } from "@/components/SearchPalette";
 import { TapNav } from "@/components/TapNav";
+import { Terminal } from "@/components/Terminal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
 import { EMBED_INIT_SCRIPT, THEME_INIT_SCRIPT, ZEN_INIT_SCRIPT } from "@/lib/theme";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT + EMBED_INIT_SCRIPT + ZEN_INIT_SCRIPT }} />
         <ThemeToggle />
         {children}
+        <Terminal />
         <SearchPalette />
         <TapNav />
       </body>
