@@ -323,7 +323,7 @@ export function Terminal() {
           showSource: (view) =>
             setPane((current) => {
               if (view === null) return null;
-              const mode = view.mode ?? current?.mode ?? "raw";
+              const mode = view.mode ?? current?.mode ?? "rendered";
               const { target } = view;
               if (target === undefined)
                 return current ? { ...current, mode } : { follow: true, mode };

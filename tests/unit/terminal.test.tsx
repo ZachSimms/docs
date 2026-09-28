@@ -295,10 +295,10 @@ describe("Terminal", () => {
     expect(screen.getByRole("region", { name: "Terminal" })).toHaveAttribute("data-size", "max");
   });
 
-  it("md splits the terminal, not the page: raw Markdown that follows cd unless pinned", async () => {
+  it("md --raw splits the terminal, not the page: Markdown that follows cd unless pinned", async () => {
     const input = await openTerminal();
     await enter(input, "cd docs/python/overview");
-    await enter(input, "md");
+    await enter(input, "md --raw");
     const terminal = screen.getByRole("region", { name: "Terminal" });
     const split = await within(terminal).findByRole("region", { name: "Markdown split" });
     expect(terminal).toHaveAttribute("data-split");
@@ -323,7 +323,7 @@ describe("Terminal", () => {
     expect(split).toHaveTextContent("No Markdown here");
 
     // Pinned: it stays on its page as the shell moves.
-    await enter(input, "md ~/docs/python/overview");
+    await enter(input, "md -r ~/docs/python/overview");
     await enter(input, "cd docs");
     expect(split).toHaveTextContent("~/docs/python/overview");
     expect(split).not.toHaveTextContent("follows cd");
@@ -331,16 +331,16 @@ describe("Terminal", () => {
     await enter(input, "md -c");
     expect(screen.queryByRole("region", { name: "Markdown split" })).toBeNull();
     expect(terminal).not.toHaveAttribute("data-split");
-    await enter(input, "md ~/docs/python/overview");
+    await enter(input, "md -r ~/docs/python/overview");
     fireEvent.click(await screen.findByRole("button", { name: "Close the split" }));
     expect(screen.queryByRole("region", { name: "Markdown split" })).toBeNull();
     expect(input).toHaveFocus();
   });
 
-  it("md --rendered shows the page as rendered, without scripts or ids, links navigating", async () => {
+  it("md shows the page rendered by default, without scripts or ids, links navigating", async () => {
     const input = await openTerminal();
     await enter(input, "cd docs/python/fastapi");
-    await enter(input, "md --rendered");
+    await enter(input, "md");
     const split = await screen.findByRole("region", { name: "Markdown split" });
     const rendered = await waitFor(() => {
       const el = split.querySelector(".source-rendered");

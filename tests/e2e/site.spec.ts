@@ -374,7 +374,7 @@ test.describe("terminal", () => {
     await expect(page.getByRole("region", { name: "Terminal" })).toContainText("terminal · ~/docs");
   });
 
-  test("md splits the terminal, raw or rendered, follows cd, and serves the raw file", async ({
+  test("md splits the terminal, rendered or raw, follows cd, and serves the raw file", async ({
     page,
   }) => {
     await page.goto("/python/overview/");
@@ -385,6 +385,9 @@ test.describe("terminal", () => {
     const terminal = page.getByRole("region", { name: "Terminal" });
     const split = terminal.getByRole("region", { name: "Markdown split" });
     await expect(split).toContainText("~/docs/python/overview · follows cd");
+    // Rendered by default; --raw for the Markdown.
+    await expect(split.locator(".source-rendered h1")).toHaveText("Overview");
+    await run(page, "md --raw");
     await expect(split.locator(".src-line").first()).toHaveText("1---");
     await expect(split.locator(".src-heading").first()).toContainText("## ");
 
@@ -396,7 +399,7 @@ test.describe("terminal", () => {
     expect(splitBox.y).toBeGreaterThanOrEqual(termBox.y);
     expect((await page.locator("main").boundingBox())!.width).toBe(before.width);
 
-    await run(page, "md --rendered");
+    await run(page, "md -R");
     await expect(split.locator(".source-rendered h1")).toHaveText("Overview");
     await expect(split.getByRole("button", { name: "rendered" })).toHaveAttribute(
       "aria-pressed",

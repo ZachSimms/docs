@@ -127,6 +127,8 @@ const FIND_LIMIT = 40;
 const GREP_LIMIT = 20;
 /** How deep `tree` goes without `-L`. */
 const TREE_DEPTH = 2;
+/** What `md` shows without `--raw` or `--rendered`. */
+export const DEFAULT_MD_MODE: SourceMode = "rendered";
 /** `md`'s long options, as their short letters. */
 const MD_FLAGS: Readonly<Record<string, string>> = {
   "--raw": "r",
@@ -679,7 +681,7 @@ export class Shell {
       md: {
         usage: "md [--raw | --rendered] [-c] [path]",
         summary:
-          "split the terminal: the page's Markdown (--raw, -r) or the page rendered (--rendered, -R); follows cd unless given a path; -c closes",
+          "split the terminal: the page rendered (the default, or --rendered, -R) or its Markdown (--raw, -r); follows cd unless given a path; -c closes",
         run: (args) => {
           const { flags, rest } = parseFlags(args, [], MD_FLAGS);
           const unknown = [...flags.keys()].find((flag) => !"rRc".includes(flag));
@@ -698,8 +700,8 @@ export class Shell {
               ? "rendered"
               : undefined;
           if (rest[0] === undefined) {
-            // A mode alone switches the split's mode; plain `md` follows the shell.
-            host.showSource(mode ? { mode } : { target: "follow" });
+            // A mode alone switches the open split's mode; plain `md` follows the shell, rendered.
+            host.showSource(mode ? { mode } : { target: "follow", mode: DEFAULT_MD_MODE });
             return ok();
           }
           const node = this.resolve(rest[0]);
@@ -707,12 +709,12 @@ export class Shell {
           if (isExternal(node.href) || node.kind === "link") {
             return fail(`md: ${pathOf(node)} is a link, not a page of this site`);
           }
-          if (mode !== "rendered" && !node.source) {
+          if (mode === "raw" && !node.source) {
             return fail(
-              `md: ${pathOf(node)} has no Markdown (sheets, directories and posts do); md --rendered ${rest[0]} shows it rendered`,
+              `md: ${pathOf(node)} has no Markdown (sheets, directories and posts do); md ${rest[0]} shows it rendered`,
             );
           }
-          host.showSource({ target: node, ...(mode ? { mode } : {}) });
+          host.showSource({ target: node, mode: mode ?? DEFAULT_MD_MODE });
           return ok();
         },
       },

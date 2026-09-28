@@ -328,11 +328,16 @@ describe("Shell", () => {
     expect(plain(await shell.run("toc nope"))).toEqual(["toc: no such page: nope"]);
   });
 
-  it("md splits the terminal: following cd, pinned to a page, or closed", async () => {
+  it("md splits the terminal, rendered by default: following cd, pinned to a page, or closed", async () => {
     await shell.run("cd docs/python/overview");
     expect(await shell.run("md")).toEqual([]);
     await shell.run("md ~/docs/python/overview; md -c; md --close");
-    expect(calls.other).toEqual(["md follow", "md overview", "md close", "md close"]);
+    expect(calls.other).toEqual([
+      "md follow rendered",
+      "md overview rendered",
+      "md close",
+      "md close",
+    ]);
     expect(plain(await shell.run("md nope"))).toEqual(["md: no such page: nope"]);
     expect(plain(await shell.run("md ~/projects/repo"))).toEqual([
       "md: ~/projects/repo is a link, not a page of this site",
@@ -348,11 +353,11 @@ describe("Shell", () => {
       "md overview rendered",
       "md overview raw",
     ]);
-    // A page without Markdown can still be shown rendered.
-    expect(plain(await shell.run("md .."))).toEqual([
-      "md: ~/docs/python has no Markdown (sheets, directories and posts do); md --rendered .. shows it rendered",
+    // A page without Markdown has no raw view, but shows rendered (the default).
+    expect(plain(await shell.run("md --raw .."))).toEqual([
+      "md: ~/docs/python has no Markdown (sheets, directories and posts do); md .. shows it rendered",
     ]);
-    await shell.run("md --rendered ..");
+    await shell.run("md ..");
     expect(calls.other.at(-1)).toBe("md python rendered");
     expect(plain(await shell.run("md -r -R"))).toEqual(["md: --raw or --rendered, not both"]);
     expect(plain(await shell.run("md -x"))).toEqual([
