@@ -4,7 +4,7 @@
  * `@next/mdx` calls {@link useMDXComponents} for every compiled MDX file, so
  * the mappings here apply to every cheatsheet. Anchors and images are routed
  * through the site's components; the authoring components (`<Note>`, `<Callout>`,
- * `<Tabs>`, `<Steps>`, `<Cards>`, `<FileTree>`) are available without an import.
+ * `<Tabs>`, `<Steps>`, `<Cards>`, `<FileTree>`, `<MathPractice>`) are available without an import.
  * Inline code is styled purely by CSS (`:not(pre) > code`) because Shiki
  * rewrites fenced blocks and a class-based detector would misfire.
  */
@@ -17,6 +17,7 @@ import { Callout } from "@/components/Callout";
 import { Card, Cards } from "@/components/Cards";
 import { Demo } from "@/components/Demo";
 import { Diagram } from "@/components/Diagram";
+import { MathPracticeLoader } from "@/components/exercises/ExercisesLoader";
 import { FileTree } from "@/components/FileTree";
 import { Graph, Graphs } from "@/components/Graph";
 import { Note } from "@/components/Note";
@@ -50,7 +51,8 @@ function MdxAnchor({
  * `Steps`/`Step`, `Cards`/`Card`, `FileTree` for directory layouts,
  * `Graph` for function plots, `Swatches`/`Scale`/`Contrast` for colors,
  * `Demo` for live HTML/CSS (inserted by `lib/remark-demo.ts`), `Diagram`
- * for inline SVG diagrams and `YouTube` for embedded videos.
+ * for inline SVG diagrams, `YouTube` for embedded videos and `MathPractice` for the
+ * generated math problems (`content/math/practice.mdx`).
  */
 const defaults: MDXComponents = {
   a: MdxAnchor,
@@ -72,6 +74,7 @@ const defaults: MDXComponents = {
   Demo,
   Diagram,
   YouTube,
+  MathPractice: MathPracticeLoader,
 };
 
 /**

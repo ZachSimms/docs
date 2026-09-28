@@ -710,8 +710,12 @@ const MATHS_SHEETS = [
 ];
 
 describe("content/math", () => {
-  it("lists its sheets in order, with the coming-soon overview last", () => {
-    expect(listTopicEntries("math").map((e) => e.slug)).toEqual([...MATHS_SHEETS, "overview"]);
+  it("lists practice problems first, then its sheets in order, with the coming-soon overview last", () => {
+    expect(listTopicEntries("math").map((e) => e.slug)).toEqual([
+      "practice",
+      ...MATHS_SHEETS,
+      "overview",
+    ]);
   });
 
   for (const slug of MATHS_SHEETS) {

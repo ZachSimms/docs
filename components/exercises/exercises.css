@@ -1,0 +1,339 @@
+/* Exercise generators (/exercises/ and /math/practice/): the site's monospace idiom, dotted rules,
+   link-styled buttons. Colors come from globals.css, so both themes follow the site. */
+
+.ex {
+  --ex-rule: 1px dotted var(--pre-border);
+  --ex-ok: #1a7f37;
+  --ex-bad: #cf222e;
+  --ex-warn: #9a6700;
+}
+
+:root[data-theme="dark"] .ex {
+  --ex-ok: #3fb950;
+  --ex-bad: #f85149;
+  --ex-warn: #d29922;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ex {
+    --ex-ok: #3fb950;
+    --ex-bad: #f85149;
+    --ex-warn: #d29922;
+  }
+}
+
+.ex button {
+  font: inherit;
+  color: inherit;
+  /* A link-styled button that wraps (the "try:" suggestions on phones) reads like a link. */
+  text-align: left;
+}
+
+.ex button.link:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ex :is(select, input, textarea) {
+  font: inherit;
+  color: inherit;
+  background: var(--pre-bg);
+  border: 1px dotted var(--dot-mobile);
+  border-radius: 2px;
+  padding: 0.2em 0.6ch;
+  max-width: 100%;
+}
+
+.ex :is(input, textarea, select):focus-visible,
+.ex button:focus-visible {
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
+}
+
+.ex textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* The request form. */
+.ex-form {
+  margin-bottom: var(--lh);
+}
+
+.ex-form label {
+  display: block;
+}
+
+.ex-field {
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+.ex-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16ch, 1fr));
+  gap: calc(var(--lh) / 2) 2ch;
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+.ex-options select {
+  width: 100%;
+}
+
+.ex-label {
+  color: var(--dim);
+}
+
+/* A line of link-styled actions, with the status after them. */
+.ex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25em 2ch;
+  margin-bottom: var(--lh);
+}
+
+.ex-actions .ex-primary i {
+  font-weight: bold;
+}
+
+.ex-status {
+  color: var(--dim);
+}
+
+.ex-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 0.75ch;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.75;
+  animation: ex-spin 0.8s linear infinite;
+}
+
+@keyframes ex-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-spinner {
+    animation: none;
+    border-style: dotted;
+    border-right-color: currentColor;
+  }
+}
+
+/* Boxed notes: errors, warnings, verdicts. */
+.ex-note {
+  border-left: 2px solid currentColor;
+  padding: 0.1em 0 0.1em 1.5ch;
+  margin-bottom: var(--lh);
+}
+
+.ex-note > :last-child {
+  margin-bottom: 0;
+}
+
+.ex-note[data-kind="error"] {
+  border-color: var(--ex-bad);
+}
+
+.ex-note[data-kind="warn"] {
+  border-color: var(--ex-warn);
+}
+
+.ex-note[data-kind="ok"] {
+  border-color: var(--ex-ok);
+}
+
+.ex-note-title {
+  font-weight: bold;
+}
+
+[data-kind="ok"] > .ex-note-title,
+.ex-ok {
+  color: var(--ex-ok);
+}
+
+[data-kind="error"] > .ex-note-title,
+.ex-bad {
+  color: var(--ex-bad);
+}
+
+[data-kind="warn"] > .ex-note-title,
+.ex-warn {
+  color: var(--ex-warn);
+}
+
+/* The exercise itself. */
+.ex-exercise {
+  border-top: var(--ex-rule);
+  padding-top: var(--lh);
+}
+
+.ex-exercise h2 {
+  margin-top: 0;
+}
+
+.ex-meta {
+  color: var(--dim);
+  margin-bottom: var(--lh);
+}
+
+.ex-divider {
+  border: 0;
+  border-top: var(--ex-rule);
+  margin: var(--lh) 0;
+}
+
+/* Markdown from the model. */
+div.rich {
+  margin-bottom: var(--lh);
+}
+
+.rich > :last-child {
+  margin-bottom: 0;
+}
+
+.rich h3,
+.rich h4 {
+  font-size: 1em;
+  margin: var(--lh) 0 calc(var(--lh) / 2);
+}
+
+.rich pre {
+  white-space: pre;
+}
+
+.rich .katex-display {
+  margin: 0 0 var(--lh);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+
+/* A checklist: requirements and test results. */
+.ex-checks {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--lh);
+}
+
+/* Undo the site's hanging bullet indent (ul li { text-indent: -2ch }): the mark is its own column. */
+.ex-checks li,
+.ex-recent li {
+  text-indent: 0;
+}
+
+.ex-checks > li {
+  display: grid;
+  grid-template-columns: 3ch minmax(0, 1fr);
+  margin-bottom: 0.35em;
+}
+
+.ex-checks > li::before {
+  content: none;
+}
+
+.ex-mark {
+  font-weight: bold;
+}
+
+.ex-detail {
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ex-checks details {
+  margin: 0.25em 0 0;
+}
+
+.ex-checks details pre {
+  margin: 0.25em 0 0;
+  font-size: 0.9em;
+}
+
+/* The editor. */
+.ex-editor {
+  --pg-code-size: 14px;
+  height: min(28rem, 60vh);
+  margin-bottom: calc(var(--lh) / 2);
+  border: 1px solid var(--pre-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ex-editor .pg-editor,
+.ex-editor .pg-editor .cm-editor {
+  height: 100%;
+}
+
+@media (pointer: coarse) {
+  .ex-editor {
+    --pg-code-size: 16px;
+  }
+}
+
+.ex-file {
+  color: var(--dim);
+  margin-bottom: 0.25em;
+}
+
+/* Recent exercises. */
+.ex-recent {
+  list-style: none;
+  padding: 0;
+  margin-left: 0;
+}
+
+.ex-recent li::before {
+  content: none;
+}
+
+.ex-recent li {
+  margin-bottom: 0.35em;
+}
+
+.ex-recent [aria-current="true"] i {
+  border-bottom-style: solid;
+  font-weight: bold;
+}
+
+/* Math: the answer row. */
+.ex-answer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em 1ch;
+  align-items: center;
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+.ex-answer input {
+  flex: 1 1 24ch;
+  min-width: 0;
+}
+
+.ex-preview {
+  color: var(--dim);
+  min-height: var(--lh);
+  margin-bottom: calc(var(--lh) / 2);
+}
+
+/* The sandbox that runs the tests: out of sight but not display:none (like the playground's). */
+.ex-hidden-frames .pg-sandbox {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
