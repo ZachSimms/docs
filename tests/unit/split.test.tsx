@@ -26,7 +26,7 @@ const active = () =>
 afterEach(() => forgetCameFrom());
 
 describe("sections", () => {
-  it("lists the eight sections, numbered down from 08.", () => {
+  it("lists the seven sections, numbered down from 07.", () => {
     expect(SECTIONS.map((s) => s.label)).toEqual([
       "Home",
       "Projects",
@@ -34,11 +34,10 @@ describe("sections", () => {
       "Resume",
       "Docs",
       "Playground",
-      "Exercises",
       "Info",
     ]);
     expect(SECTIONS.every((s) => s.href.startsWith("/") && s.href.endsWith("/"))).toBe(true);
-    expect(sectionNumber("home")).toBe(8);
+    expect(sectionNumber("home")).toBe(7);
     expect(sectionNumber("info")).toBe(1);
   });
 });

@@ -17,7 +17,7 @@ import { Callout } from "@/components/Callout";
 import { Card, Cards } from "@/components/Cards";
 import { Demo } from "@/components/Demo";
 import { Diagram } from "@/components/Diagram";
-import { MathPracticeLoader } from "@/components/exercises/ExercisesLoader";
+import { MathPracticeLoader } from "@/components/exercises/MathPracticeLoader";
 import { FileTree } from "@/components/FileTree";
 import { Graph, Graphs } from "@/components/Graph";
 import { Note } from "@/components/Note";

@@ -79,12 +79,15 @@ function specOf(exercise: typeof LINKED_LIST_EXERCISE) {
   return { title, summary, brief, requirements, starterCode, tests, hints, solution, concepts };
 }
 
+/** A model without schema-constrained output (like every free model at the time of writing). */
+const FREE_MODEL = "poolside/laguna-s-2.1-free";
+
 /**
  * The gateway's model catalog, as `fetch` serves it in these tests: `supported_parameters` per
  * model id, `null` for a model that doesn't exist; anything else fails like a network error.
  */
 const CATALOG: Record<string, string[] | null> = {
-  [DEFAULT_MODEL]: ["max_tokens", "tools", "reasoning"],
+  [FREE_MODEL]: ["max_tokens", "tools", "reasoning"],
   "openai/gpt-oss-120b": ["max_tokens", "response_format", "structured_outputs"],
   "a/one": ["response_format"],
   "b/two": ["response_format"],
@@ -149,10 +152,19 @@ describe("POST /api/exercises/code/", () => {
     expect(call.model).toBe(DEFAULT_MODEL);
     expect(String(call.system)).toContain("assert_equal(actual, expected");
     expect(String(call.prompt)).toContain('"""\nI need to practice linked lists\n"""');
-    // The default (free) model has no schema-constrained output: the schema goes in the prompt.
-    expect(call.output).toBeUndefined();
-    expect(String(call.system)).toContain("It must validate against this JSON Schema");
-    expect(String(call.system)).toContain('"starterCode"');
+    // The default model follows a schema exactly, reasons briefly, and goes to the fastest provider.
+    expect(call.output).toBeDefined();
+    expect(call.reasoning).toBe("low");
+    expect(call.providerOptions).toEqual({ gateway: { sort: "tps" } });
+  });
+
+  it("puts the schema in the prompt for a model without constrained output", async () => {
+    process.env.EXERCISE_MODEL = FREE_MODEL;
+    next = () => specOf(LINKED_LIST_EXERCISE);
+    expect((await generateCode(post({}))).status).toBe(200);
+    expect(calls[0].output).toBeUndefined();
+    expect(String(calls[0].system)).toContain("It must validate against this JSON Schema");
+    expect(String(calls[0].system)).toContain('"starterCode"');
   });
 
   it("uses the configured model and passes fallbacks to the gateway", async () => {
@@ -161,7 +173,9 @@ describe("POST /api/exercises/code/", () => {
     next = () => specOf(LINKED_LIST_EXERCISE);
     await generateCode(post({}));
     expect(calls[0].model).toBe("openai/gpt-oss-120b");
-    expect(calls[0].providerOptions).toEqual({ gateway: { models: ["a/one", "b/two"] } });
+    expect(calls[0].providerOptions).toEqual({
+      gateway: { sort: "tps", models: ["a/one", "b/two"] },
+    });
     expect(calls[0].output).toBeDefined(); // every model takes a schema: constrained output
   });
 
@@ -225,6 +239,7 @@ describe("POST /api/exercises/code/", () => {
   });
 
   it("reads JSON wrapped in prose, fences or thinking from a model without constrained output", async () => {
+    process.env.EXERCISE_MODEL = FREE_MODEL;
     const spec = specOf(LINKED_LIST_EXERCISE);
     next = () =>
       `<think>{draft}</think>Sure! Here it is:\n\`\`\`json\n${JSON.stringify(spec)}\n\`\`\`\nEnjoy.`;
@@ -235,6 +250,7 @@ describe("POST /api/exercises/code/", () => {
   });
 
   it("sends the validation errors back once, and accepts the corrected reply", async () => {
+    process.env.EXERCISE_MODEL = FREE_MODEL;
     const spec = specOf(LINKED_LIST_EXERCISE);
     let n = 0;
     next = () => (n++ === 0 ? { ...spec, tests: [] } : spec);
@@ -246,6 +262,7 @@ describe("POST /api/exercises/code/", () => {
   });
 
   it("gives up after the corrective turn with a clear message", async () => {
+    process.env.EXERCISE_MODEL = FREE_MODEL;
     next = () => "I can't do that.";
     const response = await generateCode(post({}));
     expect(response.status).toBe(502);
@@ -269,7 +286,7 @@ describe("POST /api/exercises/code/", () => {
     process.env.EXERCISE_FALLBACK_MODELS = "gone/model, free/plain";
     next = () => specOf(LINKED_LIST_EXERCISE);
     expect((await generateCode(post({}))).status).toBe(200);
-    expect(calls[0].providerOptions).toEqual({ gateway: { models: ["free/plain"] } });
+    expect(calls[0].providerOptions).toEqual({ gateway: { sort: "tps", models: ["free/plain"] } });
     expect(calls[0].output).toBeUndefined();
   });
 
@@ -445,7 +462,7 @@ describe("model catalog and JSON extraction", () => {
   it("caches what the gateway says about a model", async () => {
     expect(await modelInfo("openai/gpt-oss-120b")).toEqual({ exists: true, structured: true });
     expect(await modelInfo("openai/gpt-oss-120b")).toEqual({ exists: true, structured: true });
-    expect(await modelInfo(DEFAULT_MODEL)).toEqual({ exists: true, structured: false });
+    expect(await modelInfo(FREE_MODEL)).toEqual({ exists: true, structured: false });
     expect(await modelInfo("gone/model")).toEqual({ exists: false, structured: false });
     expect(await modelInfo("unknown/offline")).toEqual({ exists: null, structured: false });
     expect(lookups.filter((id) => id === "openai/gpt-oss-120b")).toHaveLength(1);
@@ -462,12 +479,20 @@ describe("model catalog and JSON extraction", () => {
 });
 
 describe("configuration", () => {
-  it("defaults to the free model and reads overrides", () => {
-    expect(modelConfig({})).toEqual({ model: DEFAULT_MODEL, fallbacks: [] });
-    expect(modelConfig({ EXERCISE_MODEL: " m/x ", EXERCISE_FALLBACK_MODELS: "m/y,m/x" })).toEqual({
-      model: "m/x",
-      fallbacks: ["m/y"],
+  it("defaults to gpt-oss-120b with low reasoning, and reads overrides", () => {
+    expect(modelConfig({})).toEqual({
+      model: "openai/gpt-oss-120b",
+      fallbacks: [],
+      reasoning: "low",
     });
+    expect(
+      modelConfig({
+        EXERCISE_MODEL: " m/x ",
+        EXERCISE_FALLBACK_MODELS: "m/y,m/x",
+        EXERCISE_REASONING: " High ",
+      }),
+    ).toEqual({ model: "m/x", fallbacks: ["m/y"], reasoning: "high" });
+    expect(modelConfig({ EXERCISE_REASONING: "extreme" }).reasoning).toBe("low");
   });
 
   it("accepts an API key or Vercel's OIDC token", () => {

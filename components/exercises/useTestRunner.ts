@@ -1,8 +1,9 @@
 /**
  * @file Run an exercise's tests against some code, and get the parsed report back.
  *
- * Client hook over the playground's runner (`usePlaygroundRun`): the same sandboxed frame,
- * time limits and Stop, with the harness from `lib/exercises/harness.ts` as the project.
+ * Client hook over a playground runner (`usePlaygroundRun`, shared with the playground's own
+ * runs): the same sandboxed frame, time limits and Stop, with the harness from
+ * `lib/exercises/harness.ts` as the project.
  * `runTests` resolves when the run ends (finished, failed, stopped or timed out) with the
  * {@link HarnessReport}; tests that never reported are left `null` in it.
  */
@@ -10,7 +11,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { usePlaygroundRun } from "@/components/playground/usePlaygroundRun";
+import type { PlaygroundRun } from "@/components/playground/usePlaygroundRun";
 import { buildHarness, parseHarnessOutput, type HarnessReport } from "@/lib/exercises/harness";
 import type { CodeLanguage } from "@/lib/exercises/options";
 import type { TestCase } from "@/lib/exercises/schema";
@@ -45,9 +46,12 @@ async function prepareTests(language: CodeLanguage, tests: readonly TestCase[]) 
   });
 }
 
-/** Run tests in the playground's sandbox. */
-export function useTestRunner() {
-  const run = usePlaygroundRun();
+/**
+ * Run tests in the playground's sandbox.
+ *
+ * @param run - The playground's runner; its frame must be rendered (`run.frames`).
+ */
+export function useTestRunner(run: PlaygroundRun) {
   const pending = useRef<Pending | null>(null);
   const { phase, output } = run;
 
@@ -103,7 +107,5 @@ export function useTestRunner() {
     /** The runner's short status ("loading Python…", "ran in 1.2 s · exit 0"). */
     status: run.status,
     running: phase === "running",
-    /** The hidden sandbox frame; render it somewhere in the page. */
-    frames: run.frames,
   };
 }

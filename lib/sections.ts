@@ -6,8 +6,7 @@
  */
 
 /** Key of a top-level section; pages pass one to `Page` to mark it in the navigation. */
-export type SectionKey =
-  "home" | "projects" | "blog" | "resume" | "docs" | "playground" | "exercises" | "info";
+export type SectionKey = "home" | "projects" | "blog" | "resume" | "docs" | "playground" | "info";
 
 /** One entry of the section navigation. */
 export interface Section {
@@ -29,12 +28,11 @@ export const SECTIONS: readonly Section[] = [
   { key: "resume", label: "Resume", href: "/resume/" },
   { key: "docs", label: "Docs", href: "/docs/" },
   { key: "playground", label: "Playground", href: "/playground/" },
-  { key: "exercises", label: "Exercises", href: "/exercises/" },
   { key: "info", label: "Info", href: "/info/" },
 ];
 
 /**
- * The number shown beside a section in the navigation: `08.` for the first of eight,
+ * The number shown beside a section in the navigation: `07.` for the first of seven,
  * `01.` for the last.
  *
  * @param key - The section.

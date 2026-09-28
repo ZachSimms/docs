@@ -2,7 +2,7 @@
  * @file The math problem generator (`/math/practice/`): ask for a problem, answer it, get
  * it checked, with hints and a worked solution.
  *
- * Client component, rendered client-only (see `ExercisesLoader`). Numeric answers are
+ * Client component, rendered client-only (see `MathPracticeLoader`). Numeric answers are
  * checked in the browser by `lib/exercises/math-answer.ts` (instant and free: fractions,
  * surds, π and several values in any order are understood); expressions, text answers and
  * "explain my mistake" go to the model, with the learner's working if they gave it.

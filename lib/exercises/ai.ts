@@ -22,11 +22,23 @@ import { z } from "zod";
 import type { ApiError } from "./schema";
 
 /**
- * The default model: free on the gateway's free tier at the time of writing and trained
- * for code. Free-tier models come and go; set `EXERCISE_MODEL` to change it without a
- * code change (see the README).
+ * The default model: small, cheap (about $0.004 an exercise at the time of writing), fast on
+ * the gateway's quickest providers, and able to follow a JSON schema exactly. Set
+ * `EXERCISE_MODEL` to change it without a code change (see the README).
  */
-export const DEFAULT_MODEL = "poolside/laguna-s-2.1-free";
+export const DEFAULT_MODEL = "openai/gpt-oss-120b";
+
+/** How hard the model thinks before answering; less is faster. */
+export const REASONING_LEVELS = ["none", "minimal", "low", "medium", "high"] as const;
+
+/** A level from {@link REASONING_LEVELS}. */
+export type Reasoning = (typeof REASONING_LEVELS)[number];
+
+/**
+ * The default reasoning effort. Low keeps a generation to seconds rather than a minute; the
+ * self-check (the reference solution against its own tests) catches the mistakes that costs.
+ */
+export const DEFAULT_REASONING: Reasoning = "low";
 
 /** How long one generation may take before it is abandoned. */
 export const GENERATION_TIMEOUT_MS = 100_000;
@@ -109,14 +121,16 @@ function describeIssues(error: z.ZodError): string {
 /** ANSI color codes (the gateway's errors carry some). */
 const ANSI = /\u001b\[[0-9;]*m/g;
 
-/** The configured model and fallbacks. */
+/** The configured model, fallbacks and reasoning effort (`EXERCISE_REASONING`). */
 export function modelConfig(env: Record<string, string | undefined> = process.env) {
   const model = env.EXERCISE_MODEL?.trim() || DEFAULT_MODEL;
   const fallbacks = (env.EXERCISE_FALLBACK_MODELS ?? "")
     .split(",")
     .map((m) => m.trim())
     .filter((m) => m !== "" && m !== model);
-  return { model, fallbacks };
+  const wanted = env.EXERCISE_REASONING?.trim().toLowerCase();
+  const reasoning = REASONING_LEVELS.find((level) => level === wanted) ?? DEFAULT_REASONING;
+  return { model, fallbacks, reasoning };
 }
 
 /**
@@ -275,7 +289,7 @@ export async function generate<T>(options: {
       503,
     );
   }
-  const { model, fallbacks: configured } = modelConfig();
+  const { model, fallbacks: configured, reasoning } = modelConfig();
   const [info, ...fallbackInfo] = await Promise.all([model, ...configured].map(modelInfo));
   if (info.exists === false) {
     throw new ExerciseError(
@@ -292,7 +306,11 @@ export async function generate<T>(options: {
     model,
     maxOutputTokens: options.maxOutputTokens ?? 16_000,
     maxRetries: 1,
-    providerOptions: fallbacks.length > 0 ? { gateway: { models: fallbacks } } : undefined,
+    reasoning,
+    // The fastest provider serving the model first (gpt-oss-120b is on several).
+    providerOptions: {
+      gateway: { sort: "tps" as const, ...(fallbacks.length > 0 ? { models: fallbacks } : {}) },
+    },
   };
 
   /** Schema-constrained output, for models that support it. */

@@ -1,7 +1,8 @@
 /**
- * The exercise pages in the browser: storage, the Markdown/math sanitizer, the API client,
- * and both generators' flows with `fetch` stubbed (and, for code, the sandbox runner and the
- * editor replaced: the real ones are covered by the harness tests and the e2e suite).
+ * The exercise generators in the browser: storage, the Markdown/math sanitizer, the API client,
+ * the playground's exercise mode (its panel, results and session, with a stand-in editor) and
+ * the math sheet, with `fetch` stubbed and the sandbox runner replaced: the real ones are
+ * covered by the harness tests and the e2e suite.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
@@ -19,6 +20,7 @@ import {
   saveStore,
 } from "@/lib/exercises/storage";
 import type { TestCase } from "@/lib/exercises/schema";
+import type { PlaygroundRun } from "@/components/playground/usePlaygroundRun";
 import {
   PASSING_REVIEW,
   QUADRATIC_PROBLEM,
@@ -49,29 +51,48 @@ mock.module("@/components/exercises/useTestRunner", () => ({
     stop: () => undefined,
     status: "",
     running: false,
-    frames: null,
   }),
 }));
 
-mock.module("@/components/playground/CodeEditor", () => ({
-  CodeEditor: ({
-    path,
-    value,
-    onChange,
-  }: {
-    path: string;
-    value: string;
-    onChange(p: string, v: string): void;
-  }) => (
-    <textarea
-      aria-label={`Code editor: ${path}`}
-      value={value}
-      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(path, event.target.value)}
-    />
-  ),
-}));
+const { useExerciseSession } = await import("@/components/exercises/useExerciseSession");
+const { ExercisePanel } = await import("@/components/exercises/ExercisePanel");
+const { ExerciseResults } = await import("@/components/exercises/ExerciseResults");
 
-const { CodeExercises } = await import("@/components/exercises/CodeExercises");
+/** Whether Python's download counts as approved, and what was approved during a test. */
+let pythonApproved = true;
+const approvals: string[] = [];
+
+/**
+ * The playground's exercise mode without the playground: the panel, a textarea for the editor,
+ * the toolbar's Run tests and Submit, and the results pane, over one session.
+ */
+function ExerciseMode() {
+  const session = useExerciseSession({} as PlaygroundRun, {
+    approved: (id) => id !== "python" || pythonApproved,
+    approve: (id) => void approvals.push(id),
+  });
+  return (
+    <>
+      <ExercisePanel session={session} onHide={() => undefined} />
+      {session.exercise && (
+        <textarea
+          aria-label="Code editor"
+          value={session.code}
+          onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+            session.setCode(event.target.value)
+          }
+        />
+      )}
+      <button type="button" onClick={session.runTests} disabled={session.working}>
+        Run tests
+      </button>
+      <button type="button" onClick={session.submit} disabled={session.working}>
+        Submit
+      </button>
+      <ExerciseResults session={session} />
+    </>
+  );
+}
 const { MathPractice } = await import("@/components/exercises/MathPractice");
 const { renderRichText, displayMathBlocks } = await import("@/components/exercises/RichText");
 const client = await import("@/lib/exercises/client");
@@ -82,6 +103,8 @@ const posted: { path: string; body: unknown }[] = [];
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
+  pythonApproved = true;
+  approvals.length = 0;
   localStorage.clear();
   reports.clear();
   runs.length = 0;
@@ -214,12 +237,12 @@ describe("API client", () => {
   });
 });
 
-describe("CodeExercises", () => {
+describe("the playground's exercise mode", () => {
   it("generates, verifies, runs the learner's tests and reviews", async () => {
     api["/api/exercises/code/"] = () => ({ body: STACK_EXERCISE });
     api["/api/exercises/code/review/"] = () => ({ body: PASSING_REVIEW });
     reports.set(STACK_EXERCISE.solution, (t) => reportOf(t, () => true));
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
 
     fireEvent.change(screen.getByLabelText("What do you want to practice?"), {
       target: { value: "stacks" },
@@ -232,15 +255,15 @@ describe("CodeExercises", () => {
     expect(screen.getByText("✓ tests verified against a reference solution")).toBeInTheDocument();
 
     // The starter code fails every test.
-    fireEvent.click(screen.getByRole("button", { name: /Run tests/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Run tests" }));
     await screen.findByText("0/4 passed");
     expect(screen.getAllByText(/expected 2, got 1/)).toHaveLength(4);
 
     // The solution passes, and the review passes it.
-    fireEvent.change(screen.getByLabelText("Code editor: solution.js"), {
+    fireEvent.change(screen.getByLabelText("Code editor"), {
       target: { value: STACK_EXERCISE.solution },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     await screen.findByText("Passed ✓");
     expect(screen.getByText("4/4 passed")).toBeInTheDocument();
     const review = posted.find((p) => p.path === "/api/exercises/code/review/")?.body as {
@@ -266,7 +289,7 @@ describe("CodeExercises", () => {
     api["/api/exercises/code/repair/"] = () => ({ body: STACK_EXERCISE });
     reports.set(broken.solution, (t) => reportOf(t, (i) => i !== 1));
     reports.set(STACK_EXERCISE.solution, (t) => reportOf(t, () => true));
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
     await screen.findByText("✓ tests verified against a reference solution");
     const repair = posted.find((p) => p.path === "/api/exercises/code/repair/")?.body as {
@@ -283,7 +306,7 @@ describe("CodeExercises", () => {
       body: { error: "no", code: "model" },
     });
     reports.set(broken.solution, (t) => reportOf(t, (i) => i !== 1));
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
     await screen.findByText("Some tests may be wrong");
   });
@@ -293,7 +316,7 @@ describe("CodeExercises", () => {
     reports.set(STACK_EXERCISE.solution, (t) =>
       parseHarnessOutput("Failed to fetch dynamically imported module", "t", t),
     );
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
     await screen.findByText("tests not checked");
     expect(screen.getByRole("alert")).toHaveTextContent("couldn't be checked");
@@ -308,7 +331,7 @@ describe("CodeExercises", () => {
       parseHarnessOutput("solution.js: Unexpected token (2:0)", "t", t),
     );
     reports.set(STACK_EXERCISE.solution, (t) => reportOf(t, () => true));
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
     await screen.findByText("✓ tests verified against a reference solution");
     const repair = posted.find((p) => p.path === "/api/exercises/code/repair/")?.body as {
@@ -322,9 +345,37 @@ describe("CodeExercises", () => {
       status: 503,
       body: { error: "Add AI_GATEWAY_API_KEY.", code: "config" },
     });
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Add AI_GATEWAY_API_KEY.");
+  });
+
+  it("asks before Python's first download, then generates", async () => {
+    pythonApproved = false;
+    api["/api/exercises/code/"] = () => ({ body: STACK_EXERCISE });
+    render(<ExerciseMode />);
+    fireEvent.click(screen.getByRole("button", { name: /Generate exercise/ }));
+    expect(screen.getByRole("group", { name: "Download Python" })).toBeInTheDocument();
+    expect(posted).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "download and generate" }));
+    await screen.findByRole("heading", { name: "Undo stack" });
+    expect(approvals).toEqual(["python"]);
+  });
+
+  it("folds the form away while an exercise is open, and switches between recent ones", async () => {
+    const other = { ...STACK_EXERCISE, id: "other", title: "Another one" };
+    saveStore(STORE_KEYS.code, {
+      ...EMPTY_CODE_STORE,
+      currentId: STACK_EXERCISE.id,
+      exercises: [STACK_EXERCISE, other],
+      drafts: { other: "// my other draft" },
+    });
+    render(<ExerciseMode />);
+    expect(screen.getByText("new exercise")).toBeInTheDocument();
+    expect(screen.getByLabelText("Code editor")).toHaveValue(STACK_EXERCISE.starterCode);
+    fireEvent.click(screen.getByRole("button", { name: "Another one" }));
+    expect(screen.getByRole("heading", { name: "Another one" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Code editor")).toHaveValue("// my other draft");
   });
 
   it("reveals hints one at a time and the solution after a confirmation", async () => {
@@ -333,7 +384,7 @@ describe("CodeExercises", () => {
       currentId: STACK_EXERCISE.id,
       exercises: [STACK_EXERCISE],
     });
-    render(<CodeExercises />);
+    render(<ExerciseMode />);
     fireEvent.click(screen.getByRole("button", { name: "Hint (0/1)" }));
     expect(screen.getByText(STACK_EXERCISE.hints[0])).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hint (1/1)" })).toBeDisabled();

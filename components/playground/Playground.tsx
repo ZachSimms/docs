@@ -10,13 +10,23 @@
  *   (Code, Files, Output, Refs); Run jumps to Output.
  * Zen mode (⌘⌥Z) keeps only the editor, output and reference panel.
  *
+ * Two modes (`Prefs.mode`, or `?mode=exercise` in the URL): projects of files, and exercises
+ * (`components/exercises/`), where the file tree's place holds the exercise panel (request
+ * form, brief, hints), the editor holds the solution file, the output pane shows the hidden
+ * tests' results and the review, and Run runs the tests. Both share the runner and the
+ * reference panel.
+ *
  * Security: this component never evaluates user code. Running goes through
  * `usePlaygroundRun` (sandboxed frames and remote services).
  */
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { ExercisePanel } from "@/components/exercises/ExercisePanel";
+import { ExerciseResults } from "@/components/exercises/ExerciseResults";
+import { useExerciseSession } from "@/components/exercises/useExerciseSession";
+import { solutionFile } from "@/lib/exercises/options";
 import { isTypingTarget } from "@/lib/keys";
 import { getLanguage, modeForPath, type LanguageId } from "@/lib/playground/languages";
 import { projectArchiveName } from "@/lib/playground/download";
@@ -33,7 +43,7 @@ import {
   updateFile,
 } from "@/lib/playground/project";
 import { isHelpShortcut, isZenShortcut, type TourStep } from "@/lib/playground/shortcuts";
-import { loadPrefs, savePrefs, type Prefs } from "@/lib/playground/storage";
+import { loadPrefs, savePrefs, type PlaygroundMode, type Prefs } from "@/lib/playground/storage";
 import {
   isSheetUrl,
   OPEN_DOCS_EVENT,
@@ -66,6 +76,12 @@ const PANES: readonly { id: Pane; label: string }[] = [
   { id: "refs", label: "Refs" },
 ];
 
+/** The mode a `?mode=` query asks for, if any (links from elsewhere open exercises this way). */
+function modeFromUrl(): PlaygroundMode | null {
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  return mode === "exercise" || mode === "code" ? mode : null;
+}
+
 /** Whether the primary pointer is coarse (a touch screen). */
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(false);
@@ -82,12 +98,37 @@ function useCoarsePointer(): boolean {
 
 /** Render the playground. */
 export function Playground() {
-  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
+  const [prefs, setPrefs] = useState<Prefs>(() => {
+    const loaded = loadPrefs();
+    const asked = modeFromUrl();
+    return asked ? { ...loaded, mode: asked } : loaded;
+  });
   const language = prefs.language;
   const spec = getLanguage(language);
   const { project, setProject, saveFailed } = useProjects(language);
-  const intellisense = useIntellisense(language, project.files, project.open);
   const runState = usePlaygroundRun();
+  const exerciseMode = prefs.mode === "exercise";
+  const session = useExerciseSession(runState, {
+    approved: (id) => prefs.approvedDownloads.includes(id),
+    approve: (id) =>
+      setPrefs((current) =>
+        current.approvedDownloads.includes(id)
+          ? current
+          : { ...current, approvedDownloads: [...current.approvedDownloads, id] },
+      ),
+  });
+  const exercise = exerciseMode ? session.exercise : null;
+  const exerciseFile = exercise ? solutionFile(exercise.language) : "";
+  const exerciseFiles = useMemo(
+    () => (exerciseFile ? { [exerciseFile]: session.code } : {}),
+    [exerciseFile, session.code],
+  );
+  // Intellisense follows whatever the editor shows: the project, or the exercise's solution file.
+  const intellisense = useIntellisense(
+    exercise ? exercise.language : language,
+    exercise ? exerciseFiles : project.files,
+    exercise ? exerciseFile : project.open,
+  );
   const [pane, setPane] = useState<Pane>("code");
   const [refsOpen, setRefsOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
@@ -231,6 +272,23 @@ export function Playground() {
     startRun();
   };
 
+  /** Switch between projects and exercises; the URL follows, so the mode can be linked. */
+  const chooseMode = (mode: PlaygroundMode) => {
+    runState.stop();
+    runState.clear();
+    setAskDownload(false);
+    updatePrefs({ mode });
+    const url = mode === "exercise" ? "?mode=exercise" : window.location.pathname;
+    window.history.replaceState(window.history.state, "", url);
+  };
+
+  /** Exercise mode's Run: the hidden tests against the solution file. */
+  const runTests = useCallback(() => {
+    if (!exercise || session.working) return;
+    session.runTests();
+    setPane("output");
+  }, [exercise, session]);
+
   const chooseLanguage = (id: LanguageId) => {
     runState.stop();
     runState.clear();
@@ -294,6 +352,8 @@ export function Playground() {
 
   const startTour = () => {
     setHelpOpen(false);
+    // The tour walks through the project controls.
+    if (exerciseMode) chooseMode("code");
     updatePrefs({ welcomed: true, zen: false });
     setTouring(true);
   };
@@ -335,7 +395,8 @@ export function Playground() {
       className="playground"
       data-no-tap-nav=""
       data-pane={pane}
-      data-runner={spec.runner}
+      data-mode={prefs.mode}
+      data-runner={exerciseMode ? "exercise" : spec.runner}
       data-refs={showRefs ? "open" : "closed"}
       data-tree={prefs.treeOpen ? "open" : "closed"}
       data-zen={prefs.zen ? "on" : "off"}
@@ -344,8 +405,13 @@ export function Playground() {
     >
       {prefs.zen ? (
         <div className="pg-zenbar" role="toolbar" aria-label="Zen mode">
-          <button type="button" className="link" onClick={run} disabled={isRunning}>
-            <i>▶ Run</i>
+          <button
+            type="button"
+            className="link"
+            onClick={exerciseMode ? runTests : run}
+            disabled={isRunning || (exerciseMode && !exercise)}
+          >
+            <i>{exerciseMode ? "▶ Run tests" : "▶ Run"}</i>
           </button>
           <button
             type="button"
@@ -366,15 +432,23 @@ export function Playground() {
         </div>
       ) : (
         <PlaygroundToolbar
+          mode={prefs.mode}
+          onMode={chooseMode}
+          canRunTests={exercise !== null && !session.working}
+          onSubmit={() => {
+            if (!exercise || session.working) return;
+            session.submit();
+            setPane("output");
+          }}
           spec={spec}
           running={isRunning}
           canStop={isRunning || runState.live}
           refsOpen={refsOpen}
           notice={saveFailed ? "couldn't save (storage full or disabled)" : notice}
           onLanguage={chooseLanguage}
-          onRun={run}
+          onRun={exerciseMode ? runTests : run}
           onStop={runState.stop}
-          onReset={reset}
+          onReset={exerciseMode ? session.resetCode : reset}
           onZen={toggleZen}
           onHelp={() => setHelpOpen(true)}
           onRefs={() => setRefsOpen((open) => !open)}
@@ -382,8 +456,27 @@ export function Playground() {
       )}
 
       <div className="pg-main">
-        <nav className="pg-files" aria-label="Files" data-tour="files">
-          {showTree ? (
+        <nav
+          className="pg-files"
+          aria-label={exerciseMode ? "Exercise" : "Files"}
+          data-tour="files"
+        >
+          {showTree && exerciseMode ? (
+            <>
+              <ExercisePanel
+                session={session}
+                onHide={() =>
+                  pane === "files" ? setPane("code") : updatePrefs({ treeOpen: false })
+                }
+              />
+              <Splitter
+                part="brief"
+                edge="right"
+                size={prefs.layout.brief}
+                onSize={setSize("brief")}
+              />
+            </>
+          ) : showTree ? (
             <>
               <FileTree
                 key={language}
@@ -411,8 +504,8 @@ export function Playground() {
               <button
                 type="button"
                 className="link pg-tree-show"
-                aria-label="Show files"
-                title="Show files"
+                aria-label={exerciseMode ? "Show the exercise" : "Show files"}
+                title={exerciseMode ? "Show the exercise" : "Show files"}
                 onClick={() => updatePrefs({ treeOpen: true })}
               >
                 <i>»</i>
@@ -423,32 +516,40 @@ export function Playground() {
 
         <div className="pg-work">
           <div className="pg-tabs" role="group" aria-label="Open files">
-            {project.tabs.map((tab) => (
-              <span
-                key={tab}
-                className="pg-tab"
-                data-active={tab === project.open ? "" : undefined}
-              >
-                <button
-                  type="button"
-                  aria-current={tab === project.open ? "true" : undefined}
-                  title={tab}
-                  onClick={() => openFile(tab)}
-                >
-                  {basename(tab)}
-                </button>
-                <button
-                  type="button"
-                  className="pg-tab-close"
-                  aria-label={`Close ${tab}`}
-                  onClick={() => setProject(closeTab(project, tab))}
-                >
-                  ×
+            {exerciseMode && exercise && (
+              <span className="pg-tab" data-active="">
+                <button type="button" aria-current="true" title={exerciseFile}>
+                  {exerciseFile}
                 </button>
               </span>
-            ))}
+            )}
+            {!exerciseMode &&
+              project.tabs.map((tab) => (
+                <span
+                  key={tab}
+                  className="pg-tab"
+                  data-active={tab === project.open ? "" : undefined}
+                >
+                  <button
+                    type="button"
+                    aria-current={tab === project.open ? "true" : undefined}
+                    title={tab}
+                    onClick={() => openFile(tab)}
+                  >
+                    {basename(tab)}
+                  </button>
+                  <button
+                    type="button"
+                    className="pg-tab-close"
+                    aria-label={`Close ${tab}`}
+                    onClick={() => setProject(closeTab(project, tab))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             <span className="pg-tabs-end">
-              {isMarkdownFile && spec.runner !== "markdown" && (
+              {!exerciseMode && isMarkdownFile && spec.runner !== "markdown" && (
                 <button
                   type="button"
                   className="link"
@@ -473,25 +574,52 @@ export function Playground() {
           <div
             className="pg-code"
             role="region"
-            aria-label={`Editing ${project.open}`}
+            aria-label={`Editing ${exerciseMode ? exerciseFile || "nothing yet" : project.open}`}
             data-tour="editor"
           >
-            <CodeEditor
-              path={project.open}
-              paths={Object.keys(project.files)}
-              value={code}
-              onChange={onEdit}
-              onRun={run}
-              key={`${language}:${resetKey}`}
-              wrap={prefs.wrap}
-              handleRef={editor}
-              onFocusChange={(focused) => (
-                setEditorFocused(focused),
-                focused && intellisense.arm()
-              )}
-              loadAssist={intellisense.loadAssist}
-            />
-            {showMdPreview && <MarkdownPreview source={code} path={project.open} />}
+            {exerciseMode ? (
+              exercise ? (
+                <CodeEditor
+                  key={`exercise:${exercise.id}`}
+                  path={exerciseFile}
+                  paths={[exerciseFile]}
+                  value={session.code}
+                  onChange={(_, value) => session.setCode(value)}
+                  onRun={runTests}
+                  wrap={prefs.wrap}
+                  handleRef={editor}
+                  onFocusChange={(focused) => (
+                    setEditorFocused(focused),
+                    focused && intellisense.arm()
+                  )}
+                  loadAssist={intellisense.loadAssist}
+                />
+              ) : (
+                <p className="pg-empty">
+                  {session.busy ??
+                    "Generate an exercise in the panel on the left; your code goes here."}
+                </p>
+              )
+            ) : (
+              <CodeEditor
+                path={project.open}
+                paths={Object.keys(project.files)}
+                value={code}
+                onChange={onEdit}
+                onRun={run}
+                key={`${language}:${resetKey}`}
+                wrap={prefs.wrap}
+                handleRef={editor}
+                onFocusChange={(focused) => (
+                  setEditorFocused(focused),
+                  focused && intellisense.arm()
+                )}
+                loadAssist={intellisense.loadAssist}
+              />
+            )}
+            {!exerciseMode && showMdPreview && (
+              <MarkdownPreview source={code} path={project.open} />
+            )}
           </div>
           <div className="pg-out" data-tour="output">
             <Splitter
@@ -500,7 +628,8 @@ export function Playground() {
               size={prefs.layout.output}
               onSize={setSize("output")}
             />
-            {spec.runner === "web" && (
+            {exerciseMode && <ExerciseResults session={session} />}
+            {!exerciseMode && spec.runner === "web" && (
               <WebPreview
                 project={project}
                 refreshKey={previewKey}
@@ -516,7 +645,7 @@ export function Playground() {
                 }
               />
             )}
-            {spec.runner === "bun" && (
+            {!exerciseMode && spec.runner === "bun" && (
               <HttpClient
                 key={language}
                 port={runState.served}
@@ -532,7 +661,7 @@ export function Playground() {
                 }
               />
             )}
-            {spec.runner === "godot" && (
+            {!exerciseMode && spec.runner === "godot" && (
               <section className="pg-godot" aria-label="Godot view">
                 <Splitter
                   part="godot"
@@ -549,19 +678,21 @@ export function Playground() {
                 {runState.godotFrame}
               </section>
             )}
-            <ConsolePane
-              spec={spec}
-              output={runState.output}
-              phase={runState.phase}
-              status={runState.status}
-              stdin={stdin}
-              onStdin={(value) => updatePrefs({ stdin: { ...prefs.stdin, [language]: value } })}
-              onClear={runState.clear}
-              askDownload={askDownload}
-              onApproveDownload={approveDownload}
-              onCancelDownload={() => setAskDownload(false)}
-              welcome={welcome}
-            />
+            {!exerciseMode && (
+              <ConsolePane
+                spec={spec}
+                output={runState.output}
+                phase={runState.phase}
+                status={runState.status}
+                stdin={stdin}
+                onStdin={(value) => updatePrefs({ stdin: { ...prefs.stdin, [language]: value } })}
+                onClear={runState.clear}
+                askDownload={askDownload}
+                onApproveDownload={approveDownload}
+                onCancelDownload={() => setAskDownload(false)}
+                welcome={welcome}
+              />
+            )}
           </div>
         </div>
 
@@ -590,7 +721,11 @@ export function Playground() {
             data-tour={p.id === "refs" ? "refs" : p.id === "files" ? "files" : undefined}
             onClick={() => setPane(p.id)}
           >
-            {p.label}
+            {exerciseMode && p.id === "files"
+              ? "Task"
+              : exerciseMode && p.id === "output"
+                ? "Tests"
+                : p.label}
             {p.id === "output" && unread && (
               <span className="pg-unread" aria-label="(new output)">
                 {" "}

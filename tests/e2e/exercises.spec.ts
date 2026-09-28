@@ -1,5 +1,6 @@
 /**
- * The exercise generators end to end, on the production build. The model is stubbed (`page.route`
+ * The exercise generators end to end, on the production build: the playground's exercise mode
+ * and the math practice sheet. The model is stubbed (`page.route`
  * on `/api/exercises/*`); everything else is real: the self-check, the sandboxed test runs, the
  * local answer checking, the sanitizer and storage. JavaScript exercises run with no download;
  * the Python one needs `E2E_NETWORK=1` (Pyodide comes from jsDelivr).
@@ -21,20 +22,58 @@ async function stubApi(page: Page, path: string, body: unknown, status = 200) {
   );
 }
 
+/** Open the playground in exercise mode, past the first-visit welcome. */
+async function openExercises(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("playground:v1:prefs")) {
+        localStorage.setItem("playground:v1:prefs", JSON.stringify({ welcomed: true }));
+      }
+    } catch {
+      // sandboxed frames have no storage
+    }
+  });
+  await page.goto("/playground/?mode=exercise");
+  await expect(page.getByLabel("What do you want to practice?")).toBeVisible();
+}
+
+/** The editor's contents area. */
+const editor = (page: Page) => page.locator(".pg-code .cm-content");
+
+/** The results pane's heading bar ("Tests  3/4 passed"). */
+const testsBar = (page: Page) => page.locator(".pg-results .pg-bar");
+
 /** Replace the editor's contents. */
 async function setCode(page: Page, code: string) {
-  await page.locator(".ex-editor .cm-content").click();
+  await editor(page).click();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.insertText(code);
 }
 
-test.describe("exercises", () => {
-  test("is a section of the site", async ({ page }) => {
-    await page.goto("/info/");
-    await page.locator(".site-nav").getByRole("link", { name: "Exercises" }).click();
-    await expect(page).toHaveURL(/\/exercises\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Exercises");
-    await expect(page.getByLabel("What do you want to practice?")).toBeVisible();
+test.describe("playground exercises", () => {
+  test("are a mode of the playground, which the old /exercises/ address opens", async ({
+    page,
+  }) => {
+    await page.goto("/exercises/");
+    await expect(page).toHaveURL(/\/playground\/\?mode=exercise$/);
+    await expect(page.getByRole("button", { name: "Exercises" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("navigation", { name: "Exercise" })).toBeVisible();
+
+    // Switching back to projects shows the file tree and drops the query; the choice is kept.
+    await page.getByRole("button", { name: "Projects" }).click();
+    await expect(page).toHaveURL(/\/playground\/$/);
+    await expect(page.getByRole("tree", { name: "Project files" })).toBeVisible();
+    await page.getByRole("button", { name: "Exercises" }).click();
+    await expect(page).toHaveURL(/\?mode=exercise$/);
+    await page.waitForTimeout(700); // preferences are saved after a short debounce
+    await page.goto("/playground/");
+    await expect(page.getByRole("button", { name: "Exercises" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   test("without a gateway key, the API says how to set it up", async ({ request }) => {
@@ -48,7 +87,7 @@ test.describe("exercises", () => {
     const brief = `${STACK_EXERCISE.brief}\n\nSee [MDN](https://developer.mozilla.org/) and [this](javascript:alert(1)).\n\ntext <img src=x onerror="window.pwned=1">`;
     await stubApi(page, "/api/exercises/code/", { ...STACK_EXERCISE, brief });
     await stubApi(page, "/api/exercises/code/review/", PASSING_REVIEW);
-    await page.goto("/exercises/");
+    await openExercises(page);
     await page.getByLabel("What do you want to practice?").fill("stacks");
     await page.getByLabel("Language").selectOption("javascript");
     await page.getByRole("button", { name: /Generate exercise/ }).click();
@@ -69,21 +108,22 @@ test.describe("exercises", () => {
     await expect(article.locator("img")).toHaveCount(0);
     expect(await page.evaluate(() => "pwned" in window)).toBe(false);
 
-    await page.getByRole("button", { name: /Run tests/ }).click();
-    await expect(page.getByRole("heading", { name: /Tests:/ })).toContainText("0/4 passed", {
-      timeout: 30_000,
-    });
-    await expect(page.locator(".ex-checks").last()).toContainText("Error: not implemented");
+    // The starter code, run with ⌘↵ from the editor, fails every test.
+    await expect(editor(page)).toContainText('throw new Error("not implemented")');
+    await editor(page).click();
+    await page.keyboard.press("ControlOrMeta+Enter");
+    await expect(testsBar(page)).toContainText("0/4 passed", { timeout: 30_000 });
+    await expect(page.locator(".pg-results .ex-checks")).toContainText("Error: not implemented");
 
     await setCode(page, STACK_EXERCISE.solution);
-    await page.getByRole("button", { name: "Submit for review" }).click();
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText("Passed ✓")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: /Tests:/ })).toContainText("4/4 passed");
+    await expect(testsBar(page)).toContainText("4/4 passed");
 
     // The exercise, the code and the progress are still there after a reload.
     await page.reload();
     await expect(page.getByRole("heading", { name: /Undo stack/ })).toBeVisible();
-    await expect(page.locator(".ex-editor .cm-content")).toContainText("#items = []");
+    await expect(editor(page)).toContainText("#items = []");
     await expect(page.locator(".ex-recent")).toContainText("✓ passed");
   });
 
@@ -105,7 +145,8 @@ test.describe("exercises", () => {
         body: JSON.stringify(STACK_EXERCISE),
       });
     });
-    await page.goto("/exercises/");
+    await openExercises(page);
+    await page.getByLabel("Language").selectOption("javascript");
     await page.getByRole("button", { name: /Generate exercise/ }).click();
     await expect(page.getByText("✓ tests verified against a reference solution")).toBeVisible({
       timeout: 30_000,
@@ -117,16 +158,15 @@ test.describe("exercises", () => {
     test.skip(!process.env.E2E_NETWORK, "set E2E_NETWORK=1 to download Pyodide from jsDelivr");
     test.setTimeout(180_000);
     await stubApi(page, "/api/exercises/code/", LINKED_LIST_EXERCISE);
-    await page.goto("/exercises/");
+    await openExercises(page);
     await page.getByRole("button", { name: /Generate exercise/ }).click();
+    await page.getByRole("button", { name: "download and generate" }).click();
     await expect(page.getByText("✓ tests verified against a reference solution")).toBeVisible({
       timeout: 150_000,
     });
     await setCode(page, BUGGY_LINKED_LIST);
     await page.getByRole("button", { name: /Run tests/ }).click();
-    await expect(page.getByRole("heading", { name: /Tests:/ })).toContainText("7/9 passed", {
-      timeout: 60_000,
-    });
+    await expect(testsBar(page)).toContainText("7/9 passed", { timeout: 60_000 });
   });
 });
 

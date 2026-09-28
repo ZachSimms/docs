@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /** Report the gateway configuration. */
 export function GET(request: Request): Response {
   const env = process.env;
-  const { model, fallbacks } = modelConfig(env);
+  const { model, fallbacks, reasoning } = modelConfig(env);
   const apiKey = Boolean(env.AI_GATEWAY_API_KEY?.trim());
   const oidc = Boolean(request.headers.get("x-vercel-oidc-token") || env.VERCEL_OIDC_TOKEN?.trim());
   return Response.json(
@@ -23,6 +23,7 @@ export function GET(request: Request): Response {
       vercelEnv: env.VERCEL_ENV ?? null,
       model,
       fallbacks,
+      reasoning,
     },
     { headers: { "cache-control": "no-store" } },
   );

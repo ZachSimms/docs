@@ -86,6 +86,15 @@ describe("prefs", () => {
     expect(store.getItem(`${PROJECT_KEY_PREFIX}nextjs`)).toBeNull();
   });
 
+  it("remembers the mode (projects or exercises), falling back to projects", () => {
+    expect(loadPrefs(store).mode).toBe("code");
+    store.setItem(PREFS_KEY, JSON.stringify({ mode: "exercise", layout: { brief: 5000 } }));
+    expect(loadPrefs(store).mode).toBe("exercise");
+    expect(loadPrefs(store).layout.brief).toBe(1000); // clamped to the panel's maximum
+    store.setItem(PREFS_KEY, JSON.stringify({ mode: "karaoke" }));
+    expect(loadPrefs(store).mode).toBe("code");
+  });
+
   it("returns defaults when empty or invalid, and round-trips valid prefs", () => {
     expect(loadPrefs(store)).toEqual(DEFAULT_PREFS);
     store.setItem(PREFS_KEY, JSON.stringify({ language: "cobol", layout: "wide" }));

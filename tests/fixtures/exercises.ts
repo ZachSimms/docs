@@ -196,7 +196,7 @@ class LinkedList:
   theme: "linked-lists",
   size: "exercise",
   request: "I need to practice linked lists",
-  model: "poolside/laguna-s-2.1-free",
+  model: "openai/gpt-oss-120b",
   createdAt: "2026-09-28T12:00:00.000Z",
 };
 
@@ -276,7 +276,7 @@ A product is zero when a factor is zero: $x + 3 = 0$ or $x - 2 = 0$, so $x = -3$
   area: "equations",
   difficulty: "beginner",
   request: "solving quadratics by factoring",
-  model: "poolside/laguna-s-2.1-free",
+  model: "openai/gpt-oss-120b",
   createdAt: "2026-09-28T12:00:00.000Z",
 };
 
@@ -362,6 +362,6 @@ Export a class \`Stack\` from \`solution.js\` with \`push(value)\`, \`pop()\`, \
   theme: "stacks-queues",
   size: "exercise",
   request: "",
-  model: "poolside/laguna-s-2.1-free",
+  model: "openai/gpt-oss-120b",
   createdAt: "2026-09-28T12:00:00.000Z",
 };
