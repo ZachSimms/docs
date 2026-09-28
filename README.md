@@ -262,9 +262,11 @@ The topic at `/math/` used to live at `/maths/`; old links redirect (`next.confi
 - **Snippets:** the reference panel's **Snippets** tab holds copy-ready code for the current project: hello world,
   variables, functions, arrow functions (lambdas and closures where the language calls them that), conditionals and
   loops, collections, classes, exception handling, async and modules for JavaScript, TypeScript, Python, C++, Rust
-  and GDScript; plus sets for HTML, CSS, the DOM, React, Bun, Hono and Markdown. A project with several sets (HTML/CSS/JS,
-  React, Bun + Hono) has a picker, and the tab starts on the set written in the open file's language. Type to filter
-  (`lambda`, `try`, `await`…); **copy** puts a snippet on the clipboard (or selects it if the clipboard is refused),
+  and GDScript; plus sets for HTML, CSS, Tailwind CSS, the DOM, React, Bun, Hono and Markdown. A project with several sets
+  (HTML/CSS/JS, HTML/CSS/TS, React, Bun + Hono) has a picker, and the tab starts on the set written in the open file's
+  language. The Tailwind set uses Tailwind 4's browser build (its Setup snippet adds the script tag to `index.html`), so
+  it needs no build step; `@theme`, `@utility` and dark mode go in `<style type="text/tailwindcss">`. Type to filter
+  (`lambda`, `try`, `await`…; title matches first); **copy** puts a snippet on the clipboard (or selects it if the clipboard is refused),
   **insert** puts it at the editor's cursor (select all first to replace the file). Snippets are whole programs where the
   language allows, so they run as pasted. They live in `lib/playground/snippets/`, one module per set, each loaded
   the first time it's shown, and are highlighted with the editor's own parsers.

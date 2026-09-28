@@ -25,6 +25,8 @@ export interface Snippet {
   readonly file?: string;
   /** More words the filter matches (`lambda closure`, `try catch`). */
   readonly keywords?: string;
+  /** Highlighting, when it differs from the set's (a TSX component in the Tailwind set). */
+  readonly mode?: EditorMode;
   /** The code, ending in one newline. */
   readonly code: string;
 }
@@ -39,6 +41,7 @@ export const SNIPPET_SET_IDS = [
   "gdscript",
   "html",
   "css",
+  "tailwind",
   "dom",
   "react",
   "bun",
@@ -109,6 +112,12 @@ export const SNIPPET_SETS: Readonly<Record<SnippetSetId, SnippetSetInfo>> = {
     mode: "css",
     note: "Rules for your stylesheet.",
   },
+  tailwind: {
+    id: "tailwind",
+    label: "Tailwind CSS",
+    mode: "html",
+    note: "Tailwind 4 from its browser build: add the Setup snippet's script tag to index.html first.",
+  },
   dom: {
     id: "dom",
     label: "DOM (browser)",
@@ -145,9 +154,9 @@ export const SNIPPET_SETS: Readonly<Record<SnippetSetId, SnippetSetInfo>> = {
 export const SNIPPETS_FOR: Readonly<Record<LanguageId, readonly SnippetSetId[]>> = {
   javascript: ["javascript"],
   typescript: ["typescript"],
-  web: ["html", "css", "dom", "javascript"],
-  "web-ts": ["html", "css", "dom", "typescript"],
-  react: ["react", "typescript", "css"],
+  web: ["html", "css", "tailwind", "dom", "javascript"],
+  "web-ts": ["html", "css", "tailwind", "dom", "typescript"],
+  react: ["react", "tailwind", "typescript", "css"],
   python: ["python"],
   bun: ["bun", "typescript"],
   hono: ["hono", "bun", "typescript"],
@@ -210,6 +219,8 @@ export async function loadSnippets(id: SnippetSetId): Promise<readonly Snippet[]
       return (await import("./html")).SNIPPETS;
     case "css":
       return (await import("./css")).SNIPPETS;
+    case "tailwind":
+      return (await import("./tailwind")).SNIPPETS;
     case "dom":
       return (await import("./dom")).SNIPPETS;
     case "react":
@@ -225,8 +236,9 @@ export async function loadSnippets(id: SnippetSetId): Promise<readonly Snippet[]
 
 /**
  * The snippets matching a filter: every word of `query` must appear (any case)
- * in the title, note, file name, keywords or code. Snippets whose title, note,
- * file or keywords hold every word come first; the rest keep the set's order.
+ * in the title, note, file name, keywords or code. Snippets whose title holds
+ * every word come first, then those whose title, note, file and keywords do,
+ * then code-only matches; each group keeps the set's order.
  *
  * @param snippets - A set's snippets.
  * @param query - What the reader typed; blank keeps every snippet.
@@ -234,15 +246,16 @@ export async function loadSnippets(id: SnippetSetId): Promise<readonly Snippet[]
 export function filterSnippets(snippets: readonly Snippet[], query: string): Snippet[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...snippets];
-  const about = (s: Snippet) =>
-    [s.title, s.note ?? "", s.file ?? "", s.keywords ?? ""].join(" ").toLowerCase();
-  const named: Snippet[] = [];
-  const inCode: Snippet[] = [];
+  const has = (text: string) => words.every((w) => text.includes(w));
+  const tiers: Snippet[][] = [[], [], []];
   for (const snippet of snippets) {
-    const meta = about(snippet);
-    const all = `${meta} ${snippet.code.toLowerCase()}`;
-    if (words.every((w) => meta.includes(w))) named.push(snippet);
-    else if (words.every((w) => all.includes(w))) inCode.push(snippet);
+    const title = snippet.title.toLowerCase();
+    const meta = [title, snippet.note ?? "", snippet.file ?? "", snippet.keywords ?? ""]
+      .join(" ")
+      .toLowerCase();
+    if (has(title)) tiers[0].push(snippet);
+    else if (has(meta)) tiers[1].push(snippet);
+    else if (has(`${meta} ${snippet.code.toLowerCase()}`)) tiers[2].push(snippet);
   }
-  return [...named, ...inCode];
+  return tiers.flat();
 }

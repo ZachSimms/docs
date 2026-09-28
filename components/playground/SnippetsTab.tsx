@@ -178,7 +178,7 @@ export function SnippetsTab({ language, mode, onInsert }: SnippetsTabProps) {
             setId={setId}
             index={i}
             snippet={snippet}
-            mode={info.mode}
+            mode={snippet.mode ?? info.mode}
             feedback={feedback?.id === snippet.id ? feedback.text : null}
             onCopy={copy}
             onInsert={onInsert ? insert : undefined}

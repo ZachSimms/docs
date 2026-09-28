@@ -112,6 +112,46 @@ describe("filterSnippets", () => {
     expect(filterSnippets(js, "promise.all").map((s) => s.id)).toEqual(["async"]);
     expect(filterSnippets(js, "class zzz")).toEqual([]);
   });
+
+  it("puts title matches before note and keyword matches", () => {
+    // The Layout snippet's note mentions "a card grid"; the Card snippet is named for it.
+    const card = filterSnippets(all.get("tailwind")!, "card").map((s) => s.id);
+    expect(card[0]).toBe("card");
+    expect(card).toContain("layout");
+  });
+});
+
+describe("Tailwind set", () => {
+  const tailwind = all.get("tailwind")!;
+
+  it("is offered wherever a page can load it, after the plain HTML and CSS", () => {
+    expect(SNIPPETS_FOR.web).toEqual(["html", "css", "tailwind", "dom", "javascript"]);
+    expect(SNIPPETS_FOR["web-ts"]).toContain("tailwind");
+    expect(SNIPPETS_FOR.react).toContain("tailwind");
+  });
+
+  it("starts with a whole page that loads the Tailwind 4 browser build", () => {
+    const setup = tailwind[0];
+    expect(setup.id).toBe("hello");
+    expect(setup.code).toStartWith("<!doctype html>");
+    expect(setup.code).toContain(
+      '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
+    );
+  });
+
+  it("uses no opacity utilities (Tailwind 4 removed them: write bg-black/50)", () => {
+    // Checked against the 4.3.3 browser build: bg-, text- and border-opacity-* produce no CSS.
+    // (flex-shrink-*, flex-grow, overflow-ellipsis and decoration-slice still work there.)
+    for (const s of tailwind) {
+      const removed = /\b(?:bg|text|border|divide|placeholder|ring)-opacity-\d+/.exec(s.code);
+      expect({ id: s.id, removed: removed?.[0] ?? null }).toEqual({ id: s.id, removed: null });
+    }
+  });
+
+  it("marks its React component as TSX", () => {
+    expect(tailwind.find((s) => s.id === "react")?.mode).toBe("tsx");
+    expect(tailwind.filter((s) => s.mode !== undefined).map((s) => s.id)).toEqual(["react"]);
+  });
 });
 
 describe("snippet syntax", () => {
@@ -156,10 +196,11 @@ describe("snippet syntax", () => {
       ["bun", "ts"],
       ["hono", "ts"],
       ["react", "tsx"],
+      ["tailwind", "tsx"],
     ] as const) {
-      for (const s of all.get(id)!) {
+      for (const s of all.get(id)!.filter((s) => id !== "tailwind" || s.mode === "tsx")) {
         const { diagnostics = [] } = ts.transpileModule(s.code, {
-          fileName: `main.${ext}`,
+          fileName: `main.${s.mode === "tsx" ? "tsx" : ext}`,
           reportDiagnostics: true,
           compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2023 },
         });
@@ -178,8 +219,10 @@ describe("snippet syntax", () => {
       ["bun", "ts"],
       ["hono", "ts"],
       ["react", "tsx"],
+      ["tailwind", "tsx"],
     ] as const) {
-      for (const s of all.get(id)!) expect(() => transpile(`main.${ext}`, s.code)).not.toThrow();
+      for (const s of all.get(id)!.filter((s) => id !== "tailwind" || s.mode === "tsx"))
+        expect(() => transpile(`main.${ext}`, s.code)).not.toThrow();
     }
   });
 });
