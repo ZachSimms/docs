@@ -3,7 +3,7 @@
 A Next.js 16 personal site styled after [williamjansson.com](https://williamjansson.com/) (see
 [Credits](#credits)): a home page, projects, a blog, a resume, and the references and cheatsheets
 under `/docs/`. Plain monospace, every page prerendered at build time; the only client-side code is
-search, the theme toggle, the keyboard navigation and the table-of-contents tracking.
+search, the terminal, the theme toggle, the keyboard navigation and the table-of-contents tracking.
 
 The home page is one 90ch column: name, introduction and the sections with their keys (`p` projects,
 `r` resume, `b` blog, `g` docs). Every other page but the playground uses the split layout: the site's
@@ -109,6 +109,47 @@ not kebab-case fails the build.
 - **Search**: press `⌘K` / `Ctrl+K` (or `/`, or click `Search` in the footer). The palette is a page of
   the site laid over the current one: type to filter, `↑`/`↓` to move, `Enter` to open, `Esc` to close.
   The index (`/search-index.json`) is generated at build time from titles, headings and body text.
+- **Terminal**: press `` ` `` (or click `Terminal` in the navigation or the footer) and the whole site
+  is a shell, docked along the bottom of the window while the page changes above it. Every page is a
+  path: `~` is home, `~/docs/python` a topic, `~/docs/python/language/strings` a sheet, `~/projects`
+  the projects (links). The prompt follows the page you are on, however you got there.
+
+  | Command | Does |
+  | ------- | ---- |
+  | `ls [-l] [path]` | list a directory as `00. name/  Title` rows (names are links); on a page, its sections |
+  | `cd [path \| #heading \| -]` | go there; no path is home, `-` the last page, a number that row of the listing just printed; `..` is the site's `../` |
+  | `open <path>` | same as `cd`; projects that live elsewhere open in a new tab |
+  | `tree [-L n] [path]` | the pages below a directory (two levels unless `-L`) |
+  | `toc [path]` | a page's `##`/`###` sections; `cd #id` or `cd <number>` scrolls to one |
+  | `cat [path]` | print a page as text: headings, lists, code, tables, LaTeX source for math |
+  | `md [--raw \| --rendered] [-c] [path]` | split the terminal: the page rendered (the default, or `--rendered`, `-R`) or its MDX source (`--raw`, `-r`) beside the shell; follows each `cd` (a path pins one page, `-c` closes) |
+  | `find <words>` / `grep <words>` | pages by name and title / the full-text search index, numbered |
+  | `pwd`, `back`, `forward`, `scroll [top\|bottom\|up\|down]` | where you are; the browser's buttons; the page |
+  | `theme [light\|dark]`, `zen [on\|off]`, `search`, `whoami`, `history`, `clear`, `max`, `exit`, `help` | the rest of the site's controls |
+
+  `Tab` completes commands, paths and `#headings` (when several match, they are listed), `↑`/`↓`
+  recall history, `Ctrl+L` clears, `Ctrl+C` cancels, `Ctrl+U` empties the line, `Esc` hides it.
+  Lines chain with `;` and `&&`, words take quotes, and a page's name alone goes there (like zsh's
+  `AUTO_CD`). A path also matches a title (`cd FastAPI`), a number (`cd docs/0`) or a URL
+  (`cd /python/overview/`). Lines typed while a slow command runs wait their turn. `max` (or
+  the `max` control) covers the window; on phones it always does. `/terminal/` (linked from
+  `/info/`) opens it full screen on arrival and after a reload, so the site can be bookmarked
+  as a shell; `Esc` there shows a page with a button to reopen it.
+
+  `md` splits the terminal itself, docked or full screen: the shell on the left, the page on the
+  right; the page behind the terminal never moves. By default (or with `--rendered`) it shows the
+  page as the site renders it (code, math, tables and diagrams included; links navigate as usual);
+  `--raw` shows the MDX source with line numbers (frontmatter, imports and fences dimmed, headings
+  bold). A mode flag
+  alone switches the open split, as do its `raw` / `rendered` controls; `.md` opens the file.
+  Sheets, directories (their `index.mdx`) and posts have a source, served as it is on disk at
+  `/source/<topic>/[<directory>/]<slug>.md` (`/source/blog/<slug>.md` for posts), prerendered by
+  `app/source/[...path]/route.ts`; only listed sources exist, so drafts and partials are never
+  served. On phones the split stacks, the page above the shell. The scrollback survives
+  reloads (`sessionStorage`), the history lives in `localStorage`. The filesystem is
+  `/site-tree.json`, built with the site (`lib/terminal/tree.ts`); the shell
+  (`lib/terminal/shell.ts`) is plain TypeScript behind a small host interface, so the renderer
+  (`components/Terminal.tsx`) could be swapped for a VT emulator without touching a command.
 - **Syntax highlighting**: fenced code blocks are tokenized at build time by Shiki (GitHub light/dark
   themes, switched by CSS). Add a language after the opening fence: ` ```python `.
 - **Math**: LaTeX between `$…$` (inline) or `$$…$$` (display) is typeset at build time by KaTeX,
@@ -164,6 +205,7 @@ Available in every sheet without an import. All are rendered in the site's own i
 | Key | Where | Does |
 | --- | ----- | ---- |
 | `⌘K` / `/` | anywhere | open search |
+| `` ` `` | anywhere | open (or focus) the terminal; `Esc` inside it hides it |
 | `d` | anywhere | toggle light/dark theme |
 | `z` | sheets and posts | zen mode: only the sheet, with its contents on the left |
 | `p` `r` `b` `g` | home | open Projects, Resume, Blog, Docs |
@@ -193,7 +235,10 @@ Available in every sheet without an import. All are rendered in the site's own i
 | `/<topic>/`              | that topic's directories, each unfolded with its sheets, and loose sheets |
 | `/<topic>/<slug>/`       | one sheet, or a directory's intro and sheets                             |
 | `/<topic>/<dir>/<slug>/` | one sheet inside a directory                                             |
-| `/info/`                 | about                                                                    |
+| `/info/`                 | about, and links to the sheet list and the terminal                      |
+| `/terminal/`             | the terminal, full screen (bookmarkable)                                 |
+| `/source/<path>.md`      | a sheet's, directory's or post's MDX source, as plain text               |
+| `/site-tree.json`        | every page as a tree, for the terminal (built with the site)             |
 | `/playground/`           | the in-browser IDE                                                       |
 
 Sheet URLs did not move when the site gained its other sections: the topic list moved from `/` to

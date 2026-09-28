@@ -1,12 +1,13 @@
 /**
- * @file `/info/`: a short description of the site, a link to every sheet and
- * the keyboard shortcuts.
+ * @file `/info/`: a short description of the site, links to every sheet and to the
+ * terminal, and the keyboard shortcuts.
  */
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import { DottedLink } from "@/components/DottedLink";
 import { Page } from "@/components/Page";
 import { SHORTCUT_LIST } from "@/lib/keys";
+import { TERMINAL_PATH } from "@/lib/site";
 
 /** Page title, rendered through the layout's `%s - Zach` template. */
 export const metadata: Metadata = { title: "Info" };
@@ -82,6 +83,8 @@ export default function InfoPage() {
       <p>-</p>
       <p>
         {">"} <DottedLink href="/sheets/">Sheet List</DottedLink>
+        <br />
+        {">"} <DottedLink href={TERMINAL_PATH}>Terminal</DottedLink>
       </p>
       <p>-</p>
       <p className="keys">

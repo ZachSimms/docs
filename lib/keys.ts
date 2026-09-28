@@ -1,6 +1,6 @@
 /**
  * @file Keyboard-shortcut helpers shared by the site's global key handlers:
- * the search palette (`⌘K`, `/`), the theme toggle (`d`), the parent-level
+ * the search palette (`⌘K`, `/`), the terminal (`` ` ``), the theme toggle (`d`), the parent-level
  * shortcut (`Esc`) and the list menus (`↑`/`↓`, `j`/`k`).
  *
  * Everything here is pure or reads the DOM without changing it, so it can be
@@ -20,6 +20,9 @@ export const HOME_KEYS = [
   { key: "b", label: "Blog", href: "/blog/" },
   { key: "g", label: "Docs", href: "/docs/" },
 ] as const;
+/** Opens the terminal, or focuses it when it is already open (see `Terminal`). */
+export const TERMINAL_KEY = "`";
+
 /** Key that goes up one level (`ParentLink`). */
 export const UP_KEY = "Escape";
 /** Keys that also go up one level (`ParentLink`), when focus allows it: `←` and vim-style `h`. */
@@ -43,6 +46,7 @@ export function isAnyPlainKey(event: KeyLike, keys: readonly string[]): boolean 
  */
 export const SHORTCUT_LIST: readonly (readonly [string, string])[] = [
   ["⌘K /", "search"],
+  [TERMINAL_KEY, "terminal"],
   [THEME_KEY, "toggle theme"],
   [ZEN_KEY, "zen mode, on sheets"],
   ["p r b g", "sections, from home"],

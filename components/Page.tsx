@@ -13,6 +13,7 @@ import { DottedLink } from "./DottedLink";
 import { ParentLink } from "./ParentLink";
 import { SearchLink } from "./SearchLink";
 import { SiteNav, type DocsLocation } from "./SiteNav";
+import { TerminalLink } from "./TerminalLink";
 import { ZenToggle } from "./ZenToggle";
 
 /** The primary footer link: usually `../`. */
@@ -33,7 +34,7 @@ export interface Crumb {
 interface PageProps {
   /** Rendered as the `<h1>`. */
   title: string;
-  /** Primary footer link; the Search control is always appended after it. */
+  /** Primary footer link; the Search and Terminal controls are always appended after it. */
   footer: FooterLink;
   /** An extra link between the primary link and Search. */
   secondaryFooter?: FooterLink;
@@ -151,6 +152,8 @@ export function Page({
                 </>
               )}
               <SearchLink />
+              {"  "}
+              <TerminalLink />
             </p>
           </footer>
         </div>
