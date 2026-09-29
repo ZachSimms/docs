@@ -1,7 +1,7 @@
 /**
  * @file Home page (`/`): a single column without the side navigation. The name, the
  * introduction and the sections with their shortcut keys, beside a dithered sky:
- * tonight's moon, or the sun in the dark theme (`d` switches).
+ * a ringed planet, turning.
  */
 import { HomeKeys } from "@/components/HomeKeys";
 import { Page } from "@/components/Page";

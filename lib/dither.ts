@@ -1,8 +1,8 @@
 /**
- * @file Ordered dithering and value noise: the pieces the home page's moon and sun are
- * drawn with (see `lib/sky.ts`). Any grid of ink amounts becomes one bit per cell with
- * an 8×8 Bayer matrix; the noise gives surfaces texture, in the plane or, for a surface
- * that turns, in space.
+ * @file Ordered dithering and value noise: the pieces the home page's planet is drawn
+ * with (see `lib/planet.ts`). Any grid of ink amounts becomes one bit per cell with an
+ * 8×8 Bayer matrix; the noise gives surfaces texture, in the plane or in space (where
+ * laying it round a circle makes it wrap without a seam).
  *
  * Pure and deterministic (no DOM), so every drawing is repeatable and tested directly.
  */
@@ -62,21 +62,6 @@ export function valueNoise3(x: number, y: number, z: number, seed: number): numb
     return top * (1 - sy) + bottom * sy;
   };
   return plane(z0) * (1 - sz) + plane(z0 + 1) * sz;
-}
-
-/** Four octaves of value noise, normalized back into [0, 1). */
-export function fractalNoise(x: number, y: number, seed: number): number {
-  let sum = 0;
-  let amplitude = 0.5;
-  let frequency = 1;
-  let total = 0;
-  for (let octave = 0; octave < 4; octave++) {
-    sum += amplitude * valueNoise(x * frequency, y * frequency, seed + octave);
-    total += amplitude;
-    amplitude /= 2;
-    frequency *= 2;
-  }
-  return sum / total;
 }
 
 /**

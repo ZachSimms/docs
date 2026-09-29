@@ -4,7 +4,6 @@ import {
   BAYER_8,
   bayerThreshold,
   ditherBits,
-  fractalNoise,
   fractalNoise3,
   valueNoise,
   valueNoise3,
@@ -31,10 +30,10 @@ describe("noise", () => {
     for (let i = 0; i < 200; i++) {
       const x = i * 0.37;
       const y = i * 0.61;
-      const v = fractalNoise(x, y, 7);
+      const v = valueNoise(x, y, 7);
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
-      expect(fractalNoise(x, y, 7)).toBe(v);
+      expect(valueNoise(x, y, 7)).toBe(v);
     }
     expect(valueNoise(1.5, 2.5, 7)).not.toBe(valueNoise(1.5, 2.5, 8));
   });

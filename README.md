@@ -158,14 +158,11 @@ not kebab-case fails the build.
   and footer and puts the table of contents on the left, from 900px up. From 900px up it also widens
   the sheet from 72ch to 88ch and loosens prose to 1.65 line height (code stays at 1.5). It is
   remembered in `localStorage` and restored before first paint.
-- **Sky** (home, beside the text): tonight's moon in the light theme, the sun in the dark theme
-  (`d` switches), dithered in 3px cells with an 8×8 Bayer matrix and drawn on a canvas in the text
-  color (`lib/sky.ts`, `lib/dither.ts`). The moon shows its real phase, worked out in the reader's
-  browser (phase name and percent lit, from the mean lunar month); the sun's caption counts the days
-  to the next equinox or solstice (Meeus' mean formulas). Both follow the reader's hemisphere, told
-  from the browser's time zone with no location prompt (`lib/hemisphere.ts`): from the south the
-  moon is drawn upside down and March brings the autumn equinox. On phones it follows the section
-  list.
+- **Sky** (home, beside the text): a ringed planet of dark glass and streaked light, dithered in
+  1px cells with an 8×8 Bayer matrix and drawn on a canvas in the text color (`lib/planet.ts`,
+  `lib/dither.ts`). Each ringlet turns at its own Keplerian rate, inner ones faster, and the bands
+  round the polar cap turn with the globe, redrawn 15 times a second while on screen; with reduced
+  motion asked for it holds still. On phones it follows the section list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.

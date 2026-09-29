@@ -44,7 +44,7 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("is one column: name, introduction and sections, beside tonight's moon", async ({
+  test("is one column: name, introduction and sections, beside a ringed planet", async ({
     page,
   }) => {
     await page.goto("/");
@@ -56,13 +56,10 @@ test.describe("home", () => {
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    // Beside the text: tonight's moon, dithered on a canvas, with its phase; d brings the sun.
+    // Beside the text: a ringed planet, dithered on a canvas in the text color, uncaptioned.
     const sky = page.locator("figure.sky");
     await expect(sky).toBeVisible();
-    const caption = sky.locator("figcaption");
-    await expect(caption).toHaveText(
-      /^(new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+%\s*tonight's moon; d for the sun$/,
-    );
+    await expect(sky.locator("figcaption")).toHaveCount(0);
     const inked = () =>
       sky.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
         const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
@@ -83,11 +80,9 @@ test.describe("home", () => {
     );
     expect(Math.abs(skyBox!.y - nameBox!.y)).toBeLessThan(20);
 
+    // d switches the theme; the planet is redrawn in the new text color.
     await hydrated(page);
     await page.keyboard.press("d");
-    await expect(caption).toHaveText(
-      /(equinox|solstice) (today|tomorrow|in \d+ days)\s*today's sun; d for the moon$/,
-    );
     expect(await inked()).toBeGreaterThan(0);
     await page.keyboard.press("d");
 
@@ -149,48 +144,31 @@ test.describe("home", () => {
   });
 });
 
-/** Ink in the sky canvas's left and right halves, in canvas pixels. */
-function skyHalves(page: Page) {
+/** The sky canvas's pixels, as a string to compare frames by. */
+function skyPixels(page: Page) {
   return page.locator("figure.sky canvas").evaluate((canvas: HTMLCanvasElement) => {
-    const { data, width } = canvas
-      .getContext("2d")!
-      .getImageData(0, 0, canvas.width, canvas.height);
-    const halves = { left: 0, right: 0 };
-    for (let i = 3; i < data.length; i += 4) {
-      if (data[i]! > 0) halves[((i - 3) / 4) % width < width / 2 ? "left" : "right"]++;
-    }
-    return halves;
+    const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+    return data.join();
   });
 }
 
-for (const { timeZone, hemisphere } of [
-  { timeZone: "Europe/London", hemisphere: "north" },
-  { timeZone: "Australia/Sydney", hemisphere: "south" },
-] as const) {
-  test.describe(`sky from ${timeZone}`, () => {
-    test.use({ timezoneId: timeZone });
+test.describe("sky", () => {
+  test("turns the planet's rings, and holds it still for reduced motion", async ({ page }) => {
+    await page.clock.install();
+    await page.goto("/");
+    await hydrated(page);
+    await page.clock.runFor(100);
+    const first = await skyPixels(page);
+    await page.clock.runFor(2000);
+    expect(await skyPixels(page)).not.toBe(first);
 
-    test(`draws the moon and names the season for the ${hemisphere}`, async ({ page }) => {
-      // Near first quarter (43% lit): the lit side is on the right from the north.
-      await page.clock.setFixedTime(new Date("2026-10-18T02:00:00Z"));
-      await page.goto("/");
-      await hydrated(page);
-      const caption = page.locator("figure.sky figcaption");
-      await expect(caption).toHaveText(/^first quarter, 43%/);
-      const { left, right } = await skyHalves(page);
-      // The shadow is inked densely, so the darker half is the one away from the light.
-      if (hemisphere === "north") expect(left).toBeGreaterThan(right * 1.2);
-      else expect(right).toBeGreaterThan(left * 1.2);
-
-      await page.keyboard.press("d");
-      await expect(caption).toHaveText(
-        // The solstice is Dec 21 20:53 UTC: still the 21st in London, the 22nd in Sydney.
-        hemisphere === "north" ? /^winter solstice in 64 days/ : /^summer solstice in 65 days/,
-      );
-      await page.keyboard.press("d");
-    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.clock.runFor(100);
+    const still = await skyPixels(page);
+    await page.clock.runFor(2000);
+    expect(await skyPixels(page)).toBe(still);
   });
-}
+});
 
 test.describe("navigation", () => {
   test("topic page lists its sheets and ../ returns to the docs", async ({ page }) => {
