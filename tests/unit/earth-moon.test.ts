@@ -4,7 +4,9 @@ import {
   DAY,
   ECCENTRICITY,
   MONTH,
+  OBLIQUITY,
   ORBIT,
+  POLES,
   earthCoordinates,
   landAt,
   moonAt,
@@ -15,8 +17,8 @@ import {
 import { EARTH_MAP, EARTH_MAP_COLUMNS, EARTH_MAP_ROWS } from "@/lib/earth-map";
 
 const DEG = Math.PI / 180;
-const COLUMNS = 320;
-const ROWS = 172;
+const COLUMNS = 456;
+const ROWS = 166;
 
 describe("the land map", () => {
   it("holds one bit per 2° cell, about 29% of them land", () => {
@@ -55,6 +57,19 @@ describe("the land map", () => {
 });
 
 describe("the Earth", () => {
+  it("is tilted 23.44° from the ecliptic's pole, leaning right in a level picture", () => {
+    const { earth, ecliptic } = POLES;
+    const angle = Math.acos(earth.x * ecliptic.x + earth.y * ecliptic.y + earth.z * ecliptic.z);
+    expect(angle / DEG).toBeCloseTo(23.44, 2);
+    expect(OBLIQUITY / DEG).toBeCloseTo(23.44, 2);
+    // The ecliptic lies level: its pole has no sideways lean in the picture.
+    expect(ecliptic.x).toBeCloseTo(0);
+    // So the Earth's axis shows the whole tilt (a little more, tipped toward the reader).
+    const lean = Math.atan2(earth.x, -earth.y) / DEG;
+    expect(lean).toBeGreaterThan(23.4);
+    expect(lean).toBeLessThan(25);
+  });
+
   /** The point of the Earth's near side at `(x, y)` in the picture. */
   const facing = (x: number, y: number) => ({ x, y, z: Math.sqrt(1 - x * x - y * y) });
 

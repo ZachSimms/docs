@@ -53,7 +53,7 @@ describe("SkyFigure", () => {
       const { container, unmount } = render(<SkyFigure />);
       const canvas = container.querySelector("figure.sky canvas");
       expect(canvas).toHaveAttribute("aria-hidden", "true");
-      expect(canvas).toHaveStyle({ width: "320px", aspectRatio: "320 / 172" });
+      expect(canvas).toHaveStyle({ width: "456px", aspectRatio: "456 / 166" });
       expect(container.querySelector("figcaption")).toBeNull();
       unmount();
     }

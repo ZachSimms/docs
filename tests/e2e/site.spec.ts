@@ -68,13 +68,20 @@ test.describe("home", () => {
         return count;
       });
     expect(await inked()).toBeGreaterThan(0);
-    // Floated to the right of the text, flush with the column's right edge, level with the name.
+    // Floated to the right of the text, clear of it, flush with the column's right edge, and
+    // level with the name.
     const [skyBox, mainBox, nameBox] = await Promise.all([
       sky.boundingBox(),
       page.locator("main").boundingBox(),
       page.getByRole("heading", { level: 1 }).boundingBox(),
     ]);
-    expect(skyBox!.x).toBeGreaterThan(mainBox!.x + mainBox!.width / 2);
+    const textRight = await page.locator("main > p").nth(1).evaluate((p) => {
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      return range.getBoundingClientRect().right;
+    });
+    expect(skyBox!.x).toBeGreaterThan(mainBox!.x + mainBox!.width / 3);
+    expect(skyBox!.x).toBeGreaterThan(textRight);
     expect(Math.abs(skyBox!.x + skyBox!.width - (mainBox!.x + mainBox!.width))).toBeLessThanOrEqual(
       2,
     );

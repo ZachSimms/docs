@@ -18,11 +18,11 @@ import { skyBits } from "@/lib/earth-moon";
 /** Size of one dither cell, in CSS pixels. */
 const CELL = 1;
 /**
- * Cells across and down the drawing: 320 × 172 CSS pixels, room for the Moon's orbit.
- * On a narrower screen it shrinks to fit, keeping its proportions.
+ * Cells across and down the drawing: 456 × 166 CSS pixels, the Moon's orbit seen nearly
+ * edge-on. On a narrower screen it shrinks to fit, keeping its proportions.
  */
-const COLUMNS = 320;
-const ROWS = 172;
+const COLUMNS = 456;
+const ROWS = 166;
 /** Redraws a second while turning: about a cell of movement a frame at the Earth's middle. */
 const FPS = 20;
 /** Media query for readers who ask for less motion. */

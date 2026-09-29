@@ -5,11 +5,12 @@
  * Pure (no DOM). One ray per sample, straight into the picture, meets two spheres: the
  * Earth (radius 1, at the center) and the Moon, and whichever is nearer is drawn, so the
  * Moon passes in front of the Earth and behind it. Both are lit by one sun, fixed in the
- * plane of the Earth's orbit (the ecliptic), which is seen {@link OPENING} from edge-on
- * and rises {@link TILT} to the right. The motion is the real one, compressed:
+ * plane of the Earth's orbit (the ecliptic), which lies level in the picture, seen
+ * {@link OPENING} from edge-on. The motion is the real one, compressed:
  *
- * - The Earth turns west to east on an axis tilted 23.4° from the ecliptic's pole;
- *   its land is Natural Earth's (see `lib/earth-map.ts`).
+ * - The Earth turns west to east on an axis tilted 23.4° from the ecliptic's pole, its
+ *   north pole leaning to the right, as a desk globe's does; its land is Natural Earth's
+ *   (see `lib/earth-map.ts`).
  * - The Moon goes round the same way, on an orbit inclined 5.1° to the ecliptic, and
  *   eccentric (0.055): by Kepler's second law it is fastest at perigee.
  * - The Moon keeps one face to the Earth, turning at a steady rate while its orbital
@@ -28,8 +29,6 @@ import { EARTH_MAP, EARTH_MAP_COLUMNS, EARTH_MAP_ROWS } from "./earth-map";
 /** Degrees to radians. */
 const DEG = Math.PI / 180;
 
-/** How far the ecliptic rises to the right, in the picture. */
-export const TILT = 20 * DEG;
 /** How far the ecliptic is opened from edge-on: its north pole tips toward the reader. */
 export const OPENING = 14 * DEG;
 /** The tilt of the Earth's axis from the ecliptic's pole (the obliquity). */
@@ -114,23 +113,18 @@ function coordinates(f: Frame, n: Vector): [number, number] {
   return [latitudeOf(f, n.x, n.y, n.z), longitudeOf(f, n.x, n.y, n.z)];
 }
 
-/** The ecliptic: its pole up and left, tipped toward the reader; longitude 0 to the right. */
-const ECLIPTIC = frame(
-  vector(
-    -Math.cos(OPENING) * Math.sin(TILT),
-    -Math.cos(OPENING) * Math.cos(TILT),
-    Math.sin(OPENING),
-  ),
-  vector(Math.cos(TILT), -Math.sin(TILT), 0),
-);
+/** The ecliptic, level: its pole up, tipped toward the reader; longitude 0 to the right. */
+const ECLIPTIC = frame(vector(0, -Math.cos(OPENING), Math.sin(OPENING)), vector(1, 0, 0));
 /**
- * The Earth at rest: its axis leaned toward the right, against the ecliptic's lean to
- * the left, so the globe stands nearly upright in the picture.
+ * The Earth at rest: its axis tilted {@link OBLIQUITY} from the ecliptic's pole toward
+ * the right, so the whole tilt shows as a lean in the picture.
  */
 const EARTH = frame(
   mix(Math.cos(OBLIQUITY), ECLIPTIC.pole, Math.sin(OBLIQUITY), ECLIPTIC.zero),
   ECLIPTIC.quarter,
 );
+/** The Earth's north pole and the ecliptic's, as directions in the picture. */
+export const POLES = { earth: EARTH.pole, ecliptic: ECLIPTIC.pole } as const;
 /** The Moon's orbit, tilted about its line of nodes (ecliptic longitude 0). */
 const ORBIT_FRAME = frame(
   mix(
@@ -384,7 +378,10 @@ export const EXTENT = (() => {
  * keeps coastlines crisp and stipples only the half-tones.
  */
 const CONTRAST = [0.1, 0.8] as const;
-/** Samples per cell edge: each cell's ink is the mean of this many squared. */
+/**
+ * Samples per cell edge near an outline: there a cell's ink is the mean of this many
+ * squared, so the Earth's and Moon's rims come out round. Elsewhere one sample does.
+ */
 const SUPERSAMPLE = 2;
 
 /**
@@ -397,17 +394,29 @@ export function skyInk(columns: number, rows: number, time = 0): Float32Array {
   const surfaces = surfaceTables();
   const ink = new Float32Array(columns * rows);
   const step = 1 / SUPERSAMPLE;
+  // Within this of an outline (a cell's half-diagonal, in Earth radii), a cell may straddle it.
+  const near = 0.75 / scale;
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
-      let sum = 0;
-      for (let v = 0; v < SUPERSAMPLE; v++) {
-        for (let u = 0; u < SUPERSAMPLE; u++) {
-          const x = (column + (u + 0.5) * step - columns / 2) / scale;
-          const y = (row + (v + 0.5) * step - rows / 2) / scale;
-          sum += inkAt(x, y, now, surfaces);
+      const cx = (column + 0.5 - columns / 2) / scale;
+      const cy = (row + 0.5 - rows / 2) / scale;
+      const toEarth = Math.abs(Math.hypot(cx, cy) - 1);
+      const toMoon = Math.abs(Math.hypot(cx - now.moon.x, cy - now.moon.y) - MOON_RADIUS);
+      let amount: number;
+      if (toEarth > near && toMoon > near) {
+        amount = inkAt(cx, cy, now, surfaces);
+      } else {
+        let sum = 0;
+        for (let v = 0; v < SUPERSAMPLE; v++) {
+          for (let u = 0; u < SUPERSAMPLE; u++) {
+            const x = (column + (u + 0.5) * step - columns / 2) / scale;
+            const y = (row + (v + 0.5) * step - rows / 2) / scale;
+            sum += inkAt(x, y, now, surfaces);
+          }
         }
+        amount = sum / SUPERSAMPLE ** 2;
       }
-      ink[row * columns + column] = ramp(sum / SUPERSAMPLE ** 2, CONTRAST[0], CONTRAST[1]);
+      ink[row * columns + column] = ramp(amount, CONTRAST[0], CONTRAST[1]);
     }
   }
   return ink;
