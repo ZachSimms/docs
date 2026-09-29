@@ -1,0 +1,348 @@
+---
+title: Browser rendering pipeline
+date: 2026-09-29
+order: 1
+---
+
+How a browser turns HTML, CSS and JavaScript into pixels, and which of your changes make it redo which
+work. Almost every front-end performance fix is "skip a stage" or "stop blocking a stage". The metrics
+that score the result are on [Core Web Vitals](/typescript/performance/core-web-vitals/).
+
+## Navigation to pixels
+
+<Diagram src="/images/diagrams/perf-pipeline.svg" label="The rendering pipeline from left to right: network bytes arrive; the HTML parser builds the DOM and the CSS parser builds the CSSOM; the two combine in Style (computed styles for every element); then Layout (geometry), Paint (draw lists) and Composite (layers assembled into the frame). JavaScript reads and changes the DOM and CSSOM, so Style runs again. Parsing, script, style, layout and paint share the main thread; compositing runs on the compositor thread and GPU." caption="From bytes to pixels" />
+
+| Stage | Input → output | Runs on |
+| :---- | :------------- | :------ |
+| Network | URL → bytes (DNS, TCP/QUIC, TLS, HTTP) | network process |
+| Parse HTML | bytes → tokens → **DOM** tree | main thread |
+| Parse CSS | stylesheets → **CSSOM** | main thread |
+| Script | fetch, compile and run JS; may change DOM/CSSOM | main thread |
+| Style (recalc) | DOM + CSSOM → computed style per element | main thread |
+| Layout (reflow) | computed styles → boxes with sizes and positions | main thread |
+| Paint | boxes → display lists (draw commands) per layer | main thread |
+| Raster | display lists → pixel tiles | raster/GPU threads |
+| Composite | layers + transforms/opacity → the frame | compositor thread + GPU |
+
+"Render tree" is the old name for the style + layout output: only elements that generate boxes
+(`display: none` elements and `<head>` don't). The main thread does parsing, script, style, layout and
+paint, so a busy main thread delays all of them. The compositor can still scroll and run
+`transform`/`opacity` animations while the main thread is blocked.
+
+## Parsing & the preload scanner
+
+| Fact | Consequence |
+| :--- | :---------- |
+| HTML parses incrementally as bytes stream in | flush the `<head>` early; stream the rest |
+| A classic `<script>` (no `async`/`defer`) stops the parser | the DOM after it waits for download + execution |
+| A script also waits for pending stylesheets before running | CSS can block JS, which blocks the parser |
+| The **preload scanner** reads ahead for `src`/`href` while the parser is blocked | resources in the markup are found early |
+| The scanner can't see resources created by JS or CSS | `background-image`, `@import`, JS-injected `<img>` load late |
+| `document.write` of a script forces a synchronous fetch | never use it |
+
+Make the important resources visible to the scanner: real `<img src>` and `<link rel="stylesheet">` in the
+HTML, not `data-src` swaps or CSS backgrounds for the hero image. If a resource can only be discovered late,
+hint it (see [Network & loading](/typescript/performance/loading/)).
+
+## Render-blocking vs parser-blocking
+
+<Diagram src="/images/diagrams/perf-critical-path.svg" label="Timeline of one page load. The HTML parser runs along the top. A stylesheet in the head downloads in parallel but blocks first render until it is parsed. A classic script pauses the parser while it downloads and runs. A defer script downloads in parallel and runs after parsing finishes, before DOMContentLoaded. An async script downloads in parallel and runs as soon as it arrives, pausing the parser briefly. First paint can only happen once the parser has reached the body and every render-blocking stylesheet is ready." caption="What blocks the parser and what blocks the first paint" />
+
+| Resource | Blocks parsing? | Blocks rendering? | Runs / applies |
+| :------- | :-------------- | :---------------- | :------------- |
+| `<link rel="stylesheet">` | no | **yes** (in `<head>`) | when parsed |
+| stylesheet with non-matching `media` | no | no | downloaded at low priority |
+| `<script src>` (classic) | **yes** | yes, indirectly | immediately, in order |
+| `<script defer src>` | no | no | after parsing, in order, before `DOMContentLoaded` |
+| `<script async src>` | only while running | no | as soon as loaded, any order |
+| `<script type="module">` | no (deferred by default) | no | like `defer`; add `async` for ASAP |
+| inline `<script>` | **yes** | yes | immediately (waits for earlier CSS) |
+| `<img>`, fonts, `fetch` | no | no | whenever they arrive |
+
+**Critical rendering path:** the minimum work before the first paint = HTML up to the content + all
+render-blocking CSS (+ any parser-blocking scripts before it). Shorten it by:
+
+- keeping render-blocking CSS small (inline the critical CSS, load the rest non-blocking);
+- `defer`ring scripts or using modules, and putting nothing parser-blocking in `<head>`;
+- cutting round trips: same-origin assets, `preconnect` for the one or two critical third-party origins.
+
+Script loading attributes in depth: [Document head § Script loading](/design/html/document-head/).
+
+## Style, layout, paint, composite
+
+| Stage | Cost grows with | Keep it cheap |
+| :---- | :-------------- | :------------ |
+| Style | elements affected × matching rules | change classes low in the tree; fewer, simpler rules touching big subtrees |
+| Layout | number of boxes whose geometry changes | avoid layout-affecting changes on big subtrees; contain them |
+| Paint | area repainted × effect cost (shadows, blur, gradients) | smaller repaint areas; avoid animating `box-shadow`/`filter` on large boxes |
+| Composite | number and size of layers | promote only what animates |
+
+Selector matching is rarely the bottleneck today; the number of elements restyled is. A class toggled on
+`<body>` restyles the whole page; the same class on one card restyles one card.
+
+## What each property triggers
+
+<Diagram src="/images/diagrams/anim-pipeline.svg" label="The rendering pipeline Style, Layout, Paint, Composite, with three rows: width, height, top, margin and grid properties run all four stages (expensive); color, background and box-shadow skip layout (moderate); transform, translate, scale and opacity skip everything but composite (cheap)." caption="Which stages each kind of property triggers" />
+
+| Changing… | Reruns | Examples |
+| :-------- | :----- | :------- |
+| geometry | style → layout → paint → composite | `width`, `height`, `padding`, `margin`, `border-width`, `top`/`left`, `font-size`, `display`, text content |
+| appearance only | style → paint → composite | `color`, `background-*`, `box-shadow`, `outline`, `border-color`, `visibility` |
+| layer transform / opacity | style → composite | `transform`, `translate`, `rotate`, `scale`, `opacity` |
+| `filter` | style → paint → composite; composite-only while *animated* on its own layer (Chromium) | `filter`, `backdrop-filter` |
+
+`clip-path` usually repaints. CSS animations and transitions of `transform`/`opacity` run on the compositor
+and skip style on each frame (as the diagram shows); setting them from script restyles first (as the table
+shows). The exact list varies by engine and version (the old *CSS Triggers* site is years out of date). Measure
+in the DevTools Performance panel: purple = style/layout, green = paint. For animations, stick to
+`transform` and `opacity`; see [Animation § Performance](/design/css/animation/).
+
+## Layers & the compositor
+
+The compositor thread moves and fades **layers** (GPU textures) without the main thread. An element
+gets its own layer when it has an active `transform`/`opacity` animation, `will-change`, is a `<video>` or
+`<canvas>`, uses `position: fixed` in some engines, or overlaps another layer.
+
+| Tool | Use | Cost |
+| :--- | :-- | :--- |
+| `will-change: transform` | promote before an animation starts | GPU memory per layer; keep it off idle elements |
+| `transform: translateZ(0)` | old promotion hack | same as above, less clear; prefer `will-change` |
+| DevTools → Layers panel | see layers, sizes and why each exists | — |
+| Rendering tab → *Layer borders* | outline layers on the page | — |
+
+Too many layers ("layer explosion") costs memory and compositing time, especially on phones. Add
+`will-change` just before animating and remove it after, or set it only on elements that animate constantly.
+
+## The frame: event loop & 16.7 ms
+
+<Diagram src="/images/diagrams/perf-frame.svg" label="Two rows of frames at 60 Hz, each frame 16.7 milliseconds wide. In the top row every frame runs a short task, then requestAnimationFrame callbacks with style and layout, then paint, and leaves idle time: smooth. In the bottom row a single 120 millisecond long task occupies the main thread across about seven frames, so no rendering can happen and those frames are dropped until the task finishes." caption="A frame's budget, and what a long task does to it" />
+
+One turn of the event loop, per the HTML spec:
+
+1. Run **one task** (a script, an event callback, a `setTimeout` callback, a `message`).
+2. Run **all microtasks** (promise reactions, `queueMicrotask`, `MutationObserver`) until the queue is empty.
+3. If it's time to render (roughly every display refresh, only when something changed):
+   `resize`/`scroll` events → `requestAnimationFrame` callbacks → style → layout →
+   `ResizeObserver` → paint → composite.
+4. Idle time left over → `requestIdleCallback` callbacks.
+
+| Refresh rate | Frame budget | Your share (≈ budget minus browser work) |
+| :----------- | :----------- | :--------------------------------------- |
+| 60 Hz | 16.7 ms | ~10 ms |
+| 90 Hz | 11.1 ms | ~6 ms |
+| 120 Hz | 8.3 ms | ~4 ms |
+
+A **long task** is any task over 50 ms; while it runs, nothing renders and input waits. That is what
+drives a bad [INP](/typescript/performance/core-web-vitals/). Breaking long tasks up and yielding is
+on [JavaScript & the main thread](/typescript/performance/javascript/).
+
+```ts title="Where each callback runs"
+const log = (s: string) => console.log(s);
+setTimeout(() => log("task"), 0);
+queueMicrotask(() => log("microtask"));
+requestAnimationFrame(() => log("before next paint"));
+Promise.resolve().then(() => log("microtask 2"));
+log("sync");
+// sync → microtask → microtask 2 → then "task" and
+// "before next paint" in either order (depends on
+// when the next frame is due)
+```
+
+## Forced synchronous layout & thrashing
+
+Style and layout are lazy: the browser batches DOM writes and computes layout once, before paint. Reading
+a geometry value after a write forces it to compute layout **now** (a *forced synchronous layout*). Doing
+that in a loop (write, read, write, read…) is **layout thrashing**.
+
+```ts title="Thrashing: one layout per iteration"
+for (const el of items) {
+  const w = box.offsetWidth; // read → forces layout
+  el.style.width = `${w / 2}px`; // write → invalidates
+}
+```
+
+```ts title="Batched: one layout total"
+const w = box.offsetWidth; // all reads first
+for (const el of items) {
+  el.style.width = `${w / 2}px`; // then all writes
+}
+```
+
+| Reads that force layout (when styles are dirty) | |
+| :---------------------------------------------- | :- |
+| element geometry | `offsetTop/Left/Width/Height`, `clientTop/Left/Width/Height`, `getBoundingClientRect()`, `getClientRects()` |
+| scrolling | `scrollTop/Left/Width/Height`, `scrollIntoView()`, `scrollBy/To()` |
+| computed style | `getComputedStyle(el)` then reading a layout-dependent value |
+| window | `innerWidth/Height`, `scrollX/Y` |
+| other | `focus()`, `innerText`, `Range.getBoundingClientRect()`, `elementFromPoint()` |
+
+In DevTools a forced layout shows as a purple *Layout* bar inside a script's call stack with a red corner
+and a "Forced reflow" warning. `ResizeObserver` and `IntersectionObserver` give you sizes and visibility
+without forcing a layout.
+
+## Containment
+
+Tell the browser a subtree is independent, so a change inside it doesn't make it re-check the rest of
+the page, and offscreen subtrees can be skipped entirely.
+
+| Property | Effect |
+| :------- | :----- |
+| `contain: layout` | the element's inside can't affect outside layout |
+| `contain: paint` | descendants don't paint outside its box (clips like `overflow: clip`) |
+| `contain: size` | its size ignores its children (you must give it one) |
+| `contain: style` | counters and quotes don't escape |
+| `contain: content` | `layout paint style`: safe default for widgets |
+| `contain: strict` | `content` + `size` |
+| `content-visibility: auto` | skip style, layout and paint of the subtree while it's offscreen |
+| `content-visibility: hidden` | always skip rendering but keep the state (a cheap `display: none` that keeps layout cached) |
+| `contain-intrinsic-size: auto 500px` | placeholder size while skipped; `auto` remembers the last real size |
+
+`content-visibility` is Baseline 2024 (Safari 18). `content-visibility: auto` on long pages (feeds, docs, comment threads) can cut initial rendering work
+by a large factor. Always pair it with `contain-intrinsic-size`, or the scrollbar jumps as sections render.
+Content stays in the DOM, so find-in-page, anchors and assistive tech still work.
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| Classic `<script>` in `<head>` | `defer` or `type="module"` |
+| Hero image as a CSS `background-image` | real `<img>` (visible to the preload scanner) |
+| `@import` inside CSS | `<link>` each file, or bundle them; `@import` chains round trips |
+| Animating `top`/`left`/`width` | animate `transform` (see [Animation](/design/css/animation/)) |
+| Reading `offsetHeight` in a loop that writes styles | read everything first, then write |
+| `will-change` on dozens of elements "for speed" | only on elements about to animate |
+| Toggling a class on `<body>` to restyle one widget | toggle it on the widget |
+| A 1,000-row list fully rendered | `content-visibility: auto` or virtualize the list |
+| Doing heavy work in a `scroll` handler | `requestAnimationFrame` or an observer |
+
+## Recipes
+
+### Batch DOM reads and writes per frame
+Queue reads and writes separately and flush them together, reads first, once per frame.
+
+```ts title="dom-batch.ts"
+type Job = () => void;
+const reads: Job[] = [];
+const writes: Job[] = [];
+let scheduled = false;
+
+function run(jobs: Job[]): void {
+  for (const job of jobs.splice(0)) {
+    try {
+      job();
+    } catch (err) {
+      reportError(err); // one bad job can't stall the queue
+    }
+  }
+}
+
+function flush(): void {
+  scheduled = false;
+  run(reads);
+  run(writes);
+  // jobs queued by the writes run next frame
+  if (reads.length || writes.length) schedule();
+}
+
+function schedule(): void {
+  if (!scheduled) {
+    scheduled = true;
+    requestAnimationFrame(flush);
+  }
+}
+
+export function measure(job: Job): void {
+  reads.push(job);
+  schedule();
+}
+
+export function mutate(job: Job): void {
+  writes.push(job);
+  schedule();
+}
+```
+
+### rAF-throttled scroll handler
+Do scroll-driven work at most once per frame, with a passive listener that never blocks scrolling.
+
+```ts title="on-scroll.ts"
+export function onScrollFrame(
+  handler: (y: number) => void,
+): () => void {
+  let pending = false;
+  const listener = (): void => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      handler(window.scrollY);
+    });
+  };
+  addEventListener("scroll", listener, { passive: true });
+  return () => removeEventListener("scroll", listener);
+}
+```
+
+### Skip offscreen sections
+Each section renders only when it nears the viewport; `auto` remembers its real height afterward.
+
+```css title="long-page.css"
+.feed > article {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 480px;
+}
+```
+
+### Promote ahead of an animation
+Set the layer hint when an animation becomes likely (hovering the trigger), so the layer exists before the
+first frame, and drop it when the animation ends or is canceled.
+
+```ts title="animate-panel.ts"
+export function prepare(trigger: Element, el: HTMLElement) {
+  trigger.addEventListener("pointerenter", () => {
+    el.style.willChange = "transform";
+  });
+}
+
+export async function slideIn(el: HTMLElement) {
+  const anim = el.animate(
+    [
+      { transform: "translateX(100%)" },
+      { transform: "translateX(0)" },
+    ],
+    { duration: 250, easing: "ease-out" },
+  );
+  try {
+    await anim.finished;
+  } catch {
+    // canceled: nothing more to do
+  } finally {
+    el.style.willChange = "auto";
+  }
+}
+```
+
+### Watch size without forcing layout
+`ResizeObserver` delivers sizes after layout, inside the rendering steps, instead of reading them
+in a loop.
+
+```ts title="observe-size.ts"
+const ro = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const { inlineSize } = entry.contentBoxSize[0];
+    entry.target.classList.toggle("wide", inlineSize > 600);
+  }
+});
+ro.observe(document.querySelector(".card")!);
+```
+
+## References
+
+- MDN: [Populating the page: how browsers work](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/How_browsers_work), [Critical rendering path](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/Critical_rendering_path), [Render-blocking](https://developer.mozilla.org/en-US/docs/Glossary/Render_blocking)
+- MDN: [`<script>`: `async` and `defer`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script), [JavaScript execution model](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Execution_model), [Using microtasks](https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide), [`requestAnimationFrame()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)
+- MDN: [CSS and JavaScript animation performance](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/CSS_JavaScript_animation_performance), [`will-change`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/will-change), [Layout and the containing block](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Display/Containing_block)
+- MDN: [CSS containment](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Using), [`content-visibility`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/content-visibility), [`contain-intrinsic-size`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/contain-intrinsic-size), [`ResizeObserver`](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver)
+- [HTML spec: event loop processing model](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model)
+- web.dev: [Avoid large, complex layouts and layout thrashing](https://web.dev/articles/avoid-large-complex-layouts-and-layout-thrashing), [Rendering performance](https://web.dev/articles/rendering-performance), [content-visibility](https://web.dev/articles/content-visibility)
+- Chrome for Developers: [Inside look at modern web browser (parts 1–4)](https://developer.chrome.com/blog/inside-browser-part1), [RenderingNG architecture](https://developer.chrome.com/docs/chromium/renderingng-architecture)
+- Paul Irish: [What forces layout / reflow](https://gist.github.com/paulirish/5d52fb081b3570c81e3a)

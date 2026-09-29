@@ -1,0 +1,316 @@
+---
+title: Core Web Vitals
+date: 2026-09-29
+order: 2
+---
+
+Core Web Vitals are Google's three user-centered page experience metrics: **loading** (LCP),
+**responsiveness** (INP) and **visual stability** (CLS). They are measured on real visits in the field
+and judged at the 75th percentile. This sheet covers what each one measures, its parts, the usual fixes,
+and how to collect it. Tools are on [Measuring & profiling](/typescript/performance/measuring/).
+
+## The three metrics
+
+<Diagram src="/images/diagrams/perf-cwv-thresholds.svg" label="Three horizontal bars, one per metric, each split into good, needs improvement and poor bands. LCP: good up to 2.5 seconds, needs improvement up to 4 seconds, poor beyond. INP: good up to 200 milliseconds, needs improvement up to 500 milliseconds, poor beyond. CLS: good up to 0.1, needs improvement up to 0.25, poor beyond." caption="Thresholds, judged at the 75th percentile of page loads" />
+
+| Metric | Measures | Good | Needs improvement | Poor |
+| :----- | :------- | :--- | :---------------- | :--- |
+| **LCP** Largest Contentful Paint | when the main content appeared | ≤ 2.5 s | ≤ 4.0 s | > 4.0 s |
+| **INP** Interaction to Next Paint | how fast the page answers input | ≤ 200 ms | ≤ 500 ms | > 500 ms |
+| **CLS** Cumulative Layout Shift | how much the layout jumped | ≤ 0.1 | ≤ 0.25 | > 0.25 |
+
+- **p75:** a page passes when 75% of its visits meet "good", assessed separately for mobile and desktop.
+- **Field data:** the official numbers come from real Chrome users (CrUX) over a rolling 28 days. Lab tools
+  can't give you field INP: a Lighthouse page load has no interactions (TBT is its proxy), and DevTools
+  live metrics and Lighthouse timespan mode only measure your own clicks.
+- **Browser support:** LCP and INP (Event Timing) are measurable in every engine since Safari 26.2
+  (December 2025; MDN marks both Baseline 2025). CLS's Layout Instability API is still Chromium-only. Only
+  Chrome feeds CrUX; your own RUM sees the rest.
+- INP replaced **FID** (First Input Delay) as a Core Web Vital in 2024 (Google switched on March 12). FID only measured the delay
+  of the first input; it is retired.
+
+## LCP: Largest Contentful Paint
+
+The render time of the largest image, text block or video poster visible in the viewport, relative to
+the start of navigation.
+
+| Counts as a candidate | Doesn't count |
+| :-------------------- | :------------ |
+| `<img>`, `<image>` in SVG, a `<video>` poster image | elements with `opacity: 0` or offscreen |
+| an element with a CSS `background-image: url()` | full-viewport backgrounds judged as page background |
+| block-level elements containing text | low-entropy placeholder images |
+| | content painted after the user scrolls, taps or types |
+
+The browser reports a new candidate each time a bigger element paints, and stops at the first user
+interaction. The last candidate is the LCP.
+
+<Diagram src="/images/diagrams/perf-lcp-subparts.svg" label="One timeline from navigation start to LCP, split into four consecutive parts: Time to First Byte (server response), resource load delay (from first byte until the LCP image starts downloading), resource load duration (downloading the image), and element render delay (from the image finishing until it is painted). Guidance under the bar: about 40 percent each for TTFB and load duration, and under 10 percent each for the two delays." caption="LCP's four subparts: shrink the two delays first" />
+
+| Subpart | From → to | Target share | Typical fixes |
+| :------ | :-------- | :----------- | :------------ |
+| TTFB | navigation → first byte of HTML | ~40% | CDN, caching HTML at the edge, fewer redirects, faster server work |
+| Resource load delay | TTFB → LCP resource starts loading | < 10% | image in the HTML (not JS/CSS), `fetchpriority="high"`, `preload`, 103 Early Hints, no `loading="lazy"` on it |
+| Resource load duration | start → end of the download | ~40% | smaller image (AVIF/WebP, right size via `srcset`), CDN, less bandwidth contention |
+| Element render delay | resource loaded → painted | < 10% | less render-blocking CSS/JS, no client-side-only rendering, no A/B-test hiding snippets |
+
+Text LCP has no resource: its time is TTFB + render delay, often caused by web fonts blocking text
+(`font-display`) or by JS-rendered content. Image fixes in depth: [CSS, images & fonts](/typescript/performance/assets/).
+
+## INP: Interaction to Next Paint
+
+The time from a user's **click, tap or key press** to the next frame painted after the page handles it.
+Hover and scroll don't count. INP is (close to) the page's **worst** interaction: the slowest one,
+ignoring one outlier for every 50 interactions, so pages with lots of input aren't punished for a single hiccup.
+
+<Diagram src="/images/diagrams/perf-inp-phases.svg" label="An interaction timeline. The user taps; the main thread is busy with another task, which is input delay; then the event handlers run, which is processing duration; then the browser renders the next frame (style, layout, paint), which is presentation delay. INP is the total from the tap to that next paint." caption="INP's three phases" />
+
+| Phase | Caused by | Fixes |
+| :---- | :-------- | :---- |
+| Input delay | other tasks already running: hydration, third-party scripts, timers | break up long tasks; defer non-critical JS; less work at startup |
+| Processing duration | your event handlers (all listeners for the event) | do the visible update first, then [yield](/typescript/performance/javascript/) and do the rest; debounce; move work to a worker |
+| Presentation delay | style, layout and paint of the resulting frame | smaller DOM, fewer elements restyled, `content-visibility`, avoid layout thrashing |
+
+```ts title="Paint first, then do the rest"
+import { yieldToMain } from "./yield";
+
+button.addEventListener("click", async () => {
+  button.classList.add("is-loading"); // visible update
+  await yieldToMain(); // let input and rendering in
+  saveDraft(); // heavy work in a later task
+});
+```
+
+`yieldToMain()` is `scheduler.yield()` with a `setTimeout` fallback; it's on
+[JavaScript & the main thread](/typescript/performance/javascript/).
+
+React renders and commits updates from a click or key press synchronously at the end of the event, so that
+JavaScript counts as processing duration; the browser's style, layout and paint of the resulting DOM is
+presentation delay. Mark
+non-urgent updates with `startTransition` so input stays responsive
+([Rendering strategies](/typescript/performance/rendering-strategies/)).
+
+## CLS: Cumulative Layout Shift
+
+Each unexpected movement of visible content gets a **layout shift score**:
+
+$$
+\text{score} = \text{impact fraction} \times \text{distance fraction}
+$$
+
+- **Impact fraction:** the share of the viewport covered by the unstable elements, before and after the move.
+- **Distance fraction:** the largest distance moved, as a share of the viewport's biggest dimension.
+- Shifts are grouped into **session windows**: shifts less than 1 s apart, capped at 5 s per window. CLS is
+  the worst window's total, not the sum over the page's lifetime.
+- Shifts within 500 ms of a click, tap or key press are expected and excluded (`hadRecentInput`). Scrolling
+  and `transform` animations don't shift layout.
+
+| Cause | Fix |
+| :---- | :-- |
+| Images/videos without dimensions | `width` + `height` attributes, or CSS `aspect-ratio` |
+| Ads, embeds, iframes injected late | reserve the slot: `min-height` on the container |
+| Content inserted above existing content (banners, "new posts") | insert below, or overlay, or on user action |
+| Web fonts swapping and reflowing text | `size-adjust` / metric overrides on the fallback, `font-display: optional` |
+| Animating `top`/`height`/`margin` | animate `transform` |
+| Late CSS or client-rendered skeletons that don't match | server-render the real layout; skeletons at final size |
+| Page restored from bfcache vs full reload | bfcache-eligible pages restore without shifts |
+
+## Supporting metrics
+
+Useful for diagnosis; not Core Web Vitals themselves.
+
+| Metric | Measures | Good | Where |
+| :----- | :------- | :--- | :---- |
+| **TTFB** Time to First Byte | navigation start → first byte of the response | ≤ 0.8 s | field + lab |
+| **FCP** First Contentful Paint | first text/image painted | ≤ 1.8 s | field + lab |
+| **TBT** Total Blocking Time | sum of (long task − 50 ms) between FCP and quiet | ≤ 200 ms | lab only, the lab proxy for INP |
+| **Long animation frames** | frames that took > 50 ms, with the scripts that caused them | — | field (LoAF API, Chromium) |
+| **Speed Index** | how fast the visible area fills in | — | lab |
+
+**Soft navigations:** in a single-page app, route changes don't reload the page, so classic LCP/CLS
+describe only the first load. Chrome 151 (July 2026) ships the Soft Navigations API (`soft-navigation`
+entries), and DevTools' live metrics report per soft navigation from Chrome 152. CrUX doesn't count them yet.
+
+## Where the numbers come from
+
+| Source | Data | Notes |
+| :----- | :--- | :---- |
+| **CrUX** (Chrome UX Report) | field, opted-in Chrome users | origin + URL level, 28-day rolling; the official CWV data |
+| **PageSpeed Insights** | CrUX field + a Lighthouse lab run | one URL at a time; the "Core Web Vitals assessment" is field data |
+| **Search Console** → Core Web Vitals | CrUX, grouped by similar URLs | which templates fail |
+| **CrUX API / BigQuery / CrUX Vis** | CrUX | history and custom queries |
+| **DevTools Performance panel** | your own session, live, + CrUX for the URL | local LCP/INP/CLS as you click around |
+| **Your RUM** (`web-vitals` → your endpoint) | every browser that supports the APIs, every page | the only source with your own segments (route, device, release) |
+
+Pages with too little traffic have no CrUX data. Collect your own RUM from the first release.
+
+## The `web-vitals` library
+
+Google's ~2 KB library implements the metrics exactly as CrUX does (buffering, bfcache restores,
+prerendering, backgrounded tabs). Current major: **v6** (2026). v5 removed `onFID`; v6 adds opt-in soft
+navigation reporting (`reportSoftNavs`) for single-page apps.
+
+```sh
+bun add web-vitals
+```
+
+```ts title="vitals.ts"
+import { onCLS, onINP, onLCP } from "web-vitals";
+import type { Metric } from "web-vitals";
+
+function report(metric: Metric): void {
+  // name, value, rating, delta, id, navigationType
+  console.log(metric.name, metric.value, metric.rating);
+}
+
+onLCP(report);
+onINP(report);
+onCLS(report);
+```
+
+| `Metric` field | Meaning |
+| :------------- | :------ |
+| `name` | `"LCP"`, `"INP"`, `"CLS"`, `"FCP"`, `"TTFB"` |
+| `value` | current value (ms, or unitless for CLS) |
+| `rating` | `"good"`, `"needs-improvement"`, `"poor"` |
+| `delta` | change since the last report (sum deltas when aggregating) |
+| `id` | unique per metric instance (new after a bfcache restore or soft navigation): dedupe with it |
+| `navigationType` | `"navigate"`, `"reload"`, `"back-forward"`, `"back-forward-cache"`, `"prerender"`, `"restore"`, `"soft-navigation"` |
+| `navigationURL` | the URL the metric belongs to (v6; right for soft navigations, unlike `location.href`) |
+| `entries` | the underlying `PerformanceEntry` objects |
+
+Callbacks fire when the value is final (usually when the page is hidden), not on every change. Pass
+`{ reportAllChanges: true }` while debugging.
+
+**Attribution build**: same API from `web-vitals/attribution`, plus a `metric.attribution` object that says
+*why* (about 1.5 KB more):
+
+| Metric | Key attribution fields |
+| :----- | :--------------------- |
+| LCP | `target` (selector), `url`, `timeToFirstByte`, `resourceLoadDelay`, `resourceLoadDuration`, `elementRenderDelay` |
+| INP | `interactionTarget`, `interactionType`, `inputDelay`, `processingDuration`, `presentationDelay`, `longAnimationFrameEntries` |
+| CLS | `largestShiftTarget`, `largestShiftValue`, `largestShiftTime` |
+| FCP / TTFB | `timeToFirstByte`, `firstByteToFCP`; `dnsDuration`, `connectionDuration`, `requestDuration`, `waitingDuration` |
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| Chasing the Lighthouse score instead of field data | fix what CrUX / RUM says fails at p75 |
+| `loading="lazy"` on the hero image | eager + `fetchpriority="high"` |
+| Measuring on a fast laptop on Wi-Fi | throttle, or test on a mid-range Android |
+| Averaging RUM values | report p75 (and p95), per device class |
+| Summing `value` from repeated reports | use `delta`, or keep the last value per `id` |
+| Hiding the page until an A/B test script runs | server-side experiments; anti-flicker snippets add render delay |
+| Treating INP as "first click" | it tracks every interaction for the whole visit |
+| A cookie banner that pushes content down | overlay it (`position: fixed`), don't insert it in flow |
+| Ignoring soft (SPA) navigations | `reportSoftNavs: true` in RUM; CrUX still counts only hard loads |
+
+## Recipes
+
+### Send vitals to your endpoint
+Batch metrics and flush when the page is hidden; `sendBeacon` survives the page unloading.
+
+```ts title="rum.ts"
+import { onCLS, onINP, onLCP } from "web-vitals";
+import type { Metric } from "web-vitals";
+
+// the route pattern (/posts/[id]), not the raw URL, which
+// can carry IDs or personal data
+const route = document.documentElement.dataset.route ?? "?";
+const queue = new Map<string, Metric>();
+const add = (m: Metric) => queue.set(m.id, m);
+
+function flush(): void {
+  if (queue.size === 0) return;
+  const body = JSON.stringify([...queue.values()].map(
+    ({ name, value, rating, id }) =>
+      ({ name, value, rating, id, route }),
+  ));
+  queue.clear();
+  navigator.sendBeacon("/rum", body);
+}
+
+onLCP(add);
+onINP(add);
+onCLS(add);
+addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flush();
+});
+addEventListener("pagehide", flush); // fallback
+```
+
+### Find the LCP element
+Paste into the console, or ship it in a debug build: logs each LCP candidate as it appears.
+
+```ts title="lcp-debug.ts"
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    const lcp = entry as LargestContentfulPaint;
+    console.log("LCP candidate", lcp.startTime, lcp.element);
+  }
+}).observe({
+  type: "largest-contentful-paint",
+  buffered: true,
+});
+```
+
+### Log slow interactions with attribution
+Which element was slow, and which phase to fix.
+
+```ts title="inp-debug.ts"
+import { onINP } from "web-vitals/attribution";
+
+onINP(({ value, attribution }) => {
+  const { interactionTarget, inputDelay,
+    processingDuration, presentationDelay } = attribution;
+  console.table({
+    value, interactionTarget, inputDelay,
+    processingDuration, presentationDelay,
+  });
+}, { reportAllChanges: true });
+```
+
+### Reserve space for late content
+An ad or embed slot that can't shift anything, and an image with its aspect ratio known up front.
+
+```html title="no-shift.html"
+<div class="ad-slot" style="min-height: 250px">
+  <!-- ad script fills this later -->
+</div>
+
+<img src="/hero.avif" width="1200" height="675"
+     alt="Harbor at dawn" fetchpriority="high">
+```
+
+### Log layout shifts and their sources
+See which nodes moved, in the console, while you reproduce the jump.
+
+```ts title="cls-debug.ts"
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    const shift = entry as LayoutShift;
+    if (shift.hadRecentInput) continue;
+    const nodes = shift.sources.map((s) => s.node);
+    console.log("shift", shift.value, nodes);
+  }
+}).observe({ type: "layout-shift", buffered: true });
+```
+
+`LayoutShift` isn't in TypeScript's `lib.dom` yet, so declare the fields you read:
+
+```ts title="layout-shift.d.ts"
+interface LayoutShift extends PerformanceEntry {
+  value: number;
+  hadRecentInput: boolean;
+  sources: { node: Node | null }[];
+}
+```
+
+## References
+
+- MDN: [Web performance](https://developer.mozilla.org/en-US/docs/Web/Performance), [Largest Contentful Paint](https://developer.mozilla.org/en-US/docs/Glossary/Largest_contentful_paint), [Interaction to Next Paint](https://developer.mozilla.org/en-US/docs/Glossary/Interaction_to_next_paint), [Cumulative Layout Shift](https://developer.mozilla.org/en-US/docs/Glossary/CLS)
+- MDN: [`LargestContentfulPaint`](https://developer.mozilla.org/en-US/docs/Web/API/LargestContentfulPaint), [`LayoutShift`](https://developer.mozilla.org/en-US/docs/Web/API/LayoutShift), [`PerformanceEventTiming`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceEventTiming), [`PerformanceObserver`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver), [`navigator.sendBeacon()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon)
+- web.dev: [Web Vitals](https://web.dev/articles/vitals), [LCP](https://web.dev/articles/lcp), [Optimize LCP](https://web.dev/articles/optimize-lcp), [INP](https://web.dev/articles/inp), [Optimize INP](https://web.dev/articles/optimize-inp), [CLS](https://web.dev/articles/cls), [Optimize CLS](https://web.dev/articles/optimize-cls), [Defining the metric thresholds](https://web.dev/articles/defining-core-web-vitals-thresholds)
+- [GoogleChrome/web-vitals](https://github.com/GoogleChrome/web-vitals) (README: API, attribution build)
+- Chrome for Developers: [Chrome UX Report](https://developer.chrome.com/docs/crux), [CrUX methodology](https://developer.chrome.com/docs/crux/methodology)
+- W3C: [Largest Contentful Paint](https://w3c.github.io/largest-contentful-paint/), [Layout Instability](https://wicg.github.io/layout-instability/), [Event Timing](https://w3c.github.io/event-timing/)

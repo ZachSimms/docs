@@ -1,0 +1,344 @@
+---
+title: Network & loading
+date: 2026-09-29
+order: 3
+---
+
+Getting bytes to the browser sooner, and in the right order: HTTP caching, compression, protocols,
+resource hints and priorities, early hints, speculative loading and the back/forward cache. Most of these
+improve TTFB and [LCP](/typescript/performance/core-web-vitals/). Service-worker caching is on
+[Service Workers & PWAs](/typescript/web-apis/service-workers/).
+
+## The request waterfall
+
+| Step | Costs | Cut it with |
+| :--- | :---- | :---------- |
+| Redirects | a full round trip each | link to final URLs; no `http→https→www` chains (use HSTS) |
+| DNS lookup | 1 round trip to the resolver | fewer origins; `dns-prefetch` / `preconnect` |
+| TCP + TLS handshake | TCP 1 round trip + TLS 1 (TLS 1.3) or 2 (TLS 1.2); QUIC (HTTP/3) 1, or 0 on resume | HTTP/3, connection reuse, fewer origins |
+| Request → first byte | server think time + distance | CDN, edge caching, streaming HTML, faster backend |
+| Download | size ÷ bandwidth, plus TCP slow start | compression, smaller assets, CDN |
+| Discovery of sub-resources | parse HTML → find CSS/JS/images → repeat | resources in the HTML, preload, fewer chained requests |
+
+Latency, not bandwidth, is usually the limit on mobile: every chained request (HTML → CSS →
+`@import` → font) adds round trips. Flatten chains before shrinking bytes.
+
+## HTTP caching
+
+<Diagram src="/images/diagrams/perf-caching.svg" label="A request flows from the browser's HTTP cache to a CDN edge cache to the origin server. At the browser: a fresh copy is used with no request at all; a stale copy with a validator sends a conditional request. At the CDN: a fresh copy answers from the edge; a stale one is revalidated with the origin, which answers 304 Not Modified (no body) or 200 with the new body. stale-while-revalidate lets a cache answer with the stale copy immediately while it revalidates in the background." caption="Caches between the user and your server, and what fresh, stale and revalidate mean" />
+
+| `Cache-Control` directive | Meaning |
+| :------------------------ | :------ |
+| `max-age=N` | fresh for N seconds in any cache |
+| `s-maxage=N` | overrides `max-age` for shared caches (CDNs, proxies) |
+| `no-cache` | may store, but **revalidate** before every use (cheap 304s) |
+| `no-store` | never store anywhere (sensitive data) |
+| `private` | only the browser may store it, not CDNs (per-user responses) |
+| `public` | shared caches may store it even if the request had `Authorization` |
+| `immutable` | never changes while fresh: skip revalidation even on reload (Firefox, Safari; Chrome doesn't revalidate subresources on reload anyway) |
+| `must-revalidate` | once stale, don't serve it without revalidating |
+| `stale-while-revalidate=N` | for N seconds after going stale, serve stale and refresh in the background |
+| `stale-if-error=N` | serve stale for N seconds if the origin errors (mostly a CDN feature; browsers barely honor it) |
+
+| Validator | Request header | Answer if unchanged |
+| :-------- | :------------- | :------------------ |
+| `ETag: "abc"` | `If-None-Match: "abc"` | `304 Not Modified`, no body |
+| `Last-Modified: <date>` | `If-Modified-Since: <date>` | `304 Not Modified` |
+
+**The standard pattern:**
+
+| Resource | Header | Why |
+| :------- | :----- | :-- |
+| Hashed assets (`app.3f9a1c.js`, fonts, images with content hashes) | `public, max-age=31536000, immutable` | a new build = a new URL, so cache "forever" |
+| HTML documents | `no-cache` (plus `ETag`) | always check; get a 304 when unchanged |
+| HTML at a CDN | `Cache-Control: no-cache` + `CDN-Cache-Control: max-age=60, stale-while-revalidate=300` | fast edge hits; browsers still revalidate (browsers honor `stale-while-revalidate` too, so keep it out of `Cache-Control`) |
+| API JSON per user | `private, no-cache` or `private, max-age=…` | never in a shared cache |
+| Secrets, account pages | `no-store` | nothing on disk |
+
+- `Vary` lists request headers that change the response (`Accept-Encoding`, `Accept`). Keep it short:
+  `Vary: Cookie` or `Vary: User-Agent` destroys CDN hit rates.
+- A response without `Cache-Control` still gets cached *heuristically* (often 10% of its age since
+  `Last-Modified`). Always set the header explicitly.
+- Never CDN-cache HTML personalized by a cookie. Use `private`, or keep personal bits out of the cached
+  HTML and fetch them client-side.
+
+## Compression
+
+| Encoding | `Content-Encoding` | Use for | Notes |
+| :------- | :----------------- | :------ | :---- |
+| gzip | `gzip` | fallback for everything text | universal |
+| Brotli | `br` | static text assets, precompressed at level 11 | ~15–25% smaller than gzip for JS/CSS; HTTPS only in browsers |
+| Zstandard | `zstd` | dynamic responses (fast at good ratios) | Baseline 2026 (Safari 26.3 was last); keep a `br`/`gzip` fallback |
+| Compression dictionaries | `dcb` / `dcz` | deltas between versions of the same bundle | RFC 9842; Chromium only; `Use-As-Dictionary` / `Available-Dictionary` headers |
+
+- Compress text: HTML, CSS, JS, JSON, SVG, TTF/OTF fonts. Don't recompress images, video, WOFF/WOFF2
+  or zips: they're already compressed.
+- Precompress static files at build time (`.br`, `.gz`) and let the server pick by `Accept-Encoding`.
+  Compress dynamic responses on the fly at a lower level (Brotli 4–6, zstd 3).
+- Most CDNs (Vercel, Cloudflare, Netlify) compress automatically.
+
+## HTTP/2, HTTP/3 & connections
+
+| | HTTP/1.1 | HTTP/2 | HTTP/3 |
+| :- | :------- | :----- | :----- |
+| Transport | TCP | TCP | QUIC over UDP |
+| Requests per connection | 1 at a time (browsers open ~6 per origin) | multiplexed | multiplexed |
+| Head-of-line blocking | per connection | at the TCP level (one lost packet stalls all streams) | none across streams |
+| Header compression | none | HPACK | QPACK |
+| Handshake | TCP + TLS | TCP + TLS | combined, 1 RTT (0-RTT on resume) |
+
+- HTTP/1.1-era tricks hurt on HTTP/2+: domain sharding (new connections), sprites and giant bundles
+  (bad caching granularity). Many small-to-medium files are fine now.
+- Each extra **origin** costs DNS + TCP + TLS. Self-host fonts and critical scripts on your own origin.
+- HTTP/2 server push is gone (removed from Chrome); use `103 Early Hints` and `preload` instead.
+
+## Resource hints
+
+| Hint | Does | Use for |
+| :--- | :--- | :------ |
+| `<link rel="preconnect" href>` | DNS + TCP + TLS now | 1–3 critical third-party origins (font CDN, image CDN, API) |
+| `<link rel="dns-prefetch" href>` | DNS only | many less important origins; fallback for `preconnect` |
+| `<link rel="preload" href as>` | fetch now at the right priority, don't execute | late-discovered critical resources: LCP background image, fonts, a critical script |
+| `<link rel="modulepreload" href>` | fetch + parse + compile one module | ES module chunks; list each one (fetching its imports too is browser-specific) |
+| `<link rel="prefetch" href>` | fetch at lowest priority for a *future* navigation | the next page's bundle; not in Safari |
+| Speculation rules | prefetch or fully prerender next pages | see below |
+
+```html title="Hints in the head"
+<link rel="preconnect" href="https://img.example-cdn.com">
+<link rel="preload" href="/fonts/inter.woff2" as="font"
+      type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="/hero.avif"
+      imagesrcset="/hero-800.avif 800w, /hero.avif 1600w"
+      imagesizes="100vw" fetchpriority="high">
+<link rel="modulepreload" href="/assets/app.3f9a1c.js">
+```
+
+- Fonts are always fetched in CORS mode, so a font preload needs `crossorigin` even on the same origin,
+  or it downloads twice.
+- `preload` without a matching use within a few seconds logs a console warning; unused preloads steal
+  bandwidth from what matters. Preload 1–3 things, not 20.
+- `preconnect` a cross-origin host you'll fetch with CORS (fonts, `fetch`) with `crossorigin`; the
+  credentialed and anonymous connections are separate.
+
+## Priorities: `fetchpriority`
+
+Browsers assign each request a priority (Highest → Lowest). CSS in `<head>` and fonts are high; images
+start low until they're known to be in the viewport; async scripts are low. `fetchpriority` nudges that.
+
+| Element | `fetchpriority="high"` | `fetchpriority="low"` |
+| :------ | :--------------------- | :-------------------- |
+| `<img>` | the LCP image | above-the-fold images that aren't LCP (carousel slides 2+) |
+| `<link rel="preload">` | a critical preloaded resource | preloads that can wait |
+| `<script>` | an `async` script that must run early | non-critical scripts |
+| `fetch(url, { priority })` | `"high"` for a request the UI waits on | `"low"` for analytics, prefetching data |
+
+`fetchpriority` works on `<img>`, `<link>` and `<script>` (not `<iframe>`) in all major engines (Safari
+17.2+, Firefox 132+). Use it on one or two resources; if everything
+is high, nothing is.
+
+## 103 Early Hints
+
+A server (or CDN) can send `103 Early Hints` with `Link` headers while it's still building the HTML, so
+the browser starts connecting and fetching during "server think time".
+
+```text title="Response stream"
+HTTP/1.1 103 Early Hints
+Link: </styles.3f9a.css>; rel=preload; as=style
+Link: <https://img.example-cdn.com>; rel=preconnect
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+...
+```
+
+Early Hints only help when TTFB is long (server rendering, database calls). Chrome and Firefox act on
+`preconnect` and `preload` in a 103; Safari only on `preconnect`. Chrome and Safari ignore 103s over
+HTTP/1.1 (the example above uses HTTP/1.1-style status lines only for readability). Cloudflare and Fastly can generate
+them from earlier `Link` headers.
+
+## Speculation rules: prefetch & prerender
+
+The Speculation Rules API tells the browser which *next* pages to prefetch (fetch the document) or
+prerender (load and render it in a hidden tab), so the next navigation is near-instant.
+
+```html title="Speculation rules"
+<script type="speculationrules">
+{
+  "prerender": [{
+    "where": { "and": [
+      { "href_matches": "/*" },
+      { "not": { "href_matches": "/logout" } },
+      { "not": {
+        "selector_matches": "[data-no-prerender]"
+      } }
+    ]},
+    "eagerness": "moderate"
+  }]
+}
+</script>
+```
+
+| `eagerness` | Triggers |
+| :---------- | :------- |
+| `immediate` | as soon as the rules are seen |
+| `eager` | desktop: a 10 ms hover (Chrome 143+); mobile: shortly after a link enters the viewport |
+| `moderate` | desktop: a 200 ms hover or pointer down; mobile: viewport heuristics |
+| `conservative` | pointer or touch down |
+
+- Chromium ships speculation rules; Safari 26.2 has prefetch-only support behind a flag; other browsers
+  ignore the `<script>` safely. Document rules default to `conservative`, list rules to `immediate`. Prerendering runs your
+  JavaScript, so analytics must wait: check `document.prerendering` and listen for `prerenderingchange`.
+- Never prerender URLs with side effects (logout, add-to-cart GET links). Exclude them with `not`.
+- Prerender is same-origin (Chrome also allows same-site cross-origin with an opt-in header); cross-origin
+  prefetch works, without cookies.
+- For SPAs, the router's own prefetching (Next.js `<Link>`) plays this role for client-side navigations.
+
+## Back/forward cache
+
+The bfcache keeps a whole page (JS heap included) in memory when you navigate away, so Back/Forward
+restores it instantly. It's the fastest navigation there is, and it's easy to break.
+
+| Blocks bfcache | Fix |
+| :------------- | :-- |
+| an `unload` event listener | use `pagehide` (or `visibilitychange`); Chrome is phasing out `unload` entirely |
+| open WebRTC/WebTransport connections, open IndexedDB connections; WebSockets in Firefox | close on `pagehide`, reopen on `pageshow` (Chrome 149+ and Safari close WebSockets for you) |
+| `Cache-Control: no-store` on the document | Chrome now allows these pages (evicted after 3 min or on a cookie change); other browsers still block |
+| `window.opener` references between windows | `rel="noopener"` |
+| Unfinished `fetch` / `XMLHttpRequest` with a body | let them finish or abort them on `pagehide` |
+
+```ts title="Restore from bfcache"
+addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    refreshStaleData(); // restored from bfcache
+  }
+});
+```
+
+Test in DevTools → Application → **Back/forward cache** → *Test back/forward cache*: it lists every
+blocking reason. In the field, `PerformanceNavigationTiming.notRestoredReasons` reports them (Chromium).
+
+## CDNs & TTFB
+
+| Lever | Effect |
+| :---- | :----- |
+| Static files on a CDN | served from a nearby edge: 10–50 ms instead of 100–300 ms |
+| Cache HTML at the edge (SSG, ISR, `s-maxage`) | TTFB near the edge's latency, no server work |
+| Stream HTML | send the `<head>` and shell immediately, fill in slow parts later |
+| Keep the database near the server | server-to-DB round trips multiply with every query |
+| Avoid serverless cold starts on the hot path | warm/regional compute; fewer dependencies |
+| `Server-Timing` headers | show where server time goes, in DevTools ([Measuring](/typescript/performance/measuring/)) |
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| `max-age=31536000` on un-hashed filenames | long caching only for content-hashed URLs; `no-cache` otherwise |
+| Caching HTML for hours at the browser | `no-cache` + ETag in the browser, `s-maxage` at the CDN |
+| Preloading everything | preload only late-discovered critical resources |
+| Font preload without `crossorigin` | add it: fonts are fetched in CORS mode |
+| `preconnect` to ten origins | 1–3 critical ones; `dns-prefetch` for the rest |
+| Brotli at level 11 on every dynamic response | level 4–6 on the fly, 11 only when precompressing |
+| An `unload` handler from an analytics tag | `pagehide`; audit third-party tags for `unload` |
+| Prerendering pages that fire analytics on load | defer until `prerenderingchange` |
+| `Vary: User-Agent` for "mobile HTML" | responsive design; client hints if you must vary |
+
+## Recipes
+
+### Cache headers in Hono
+Immutable caching for the bundler's hashed output, revalidation for everything else. It never overrides a
+header a route set itself (`no-store`, `private`), and never caches errors.
+
+```ts title="cache-headers.ts"
+import { Hono } from "hono";
+
+const app = new Hono();
+// hashed output: Vite /assets/, Next.js /_next/static/
+const HASHED_DIRS = ["/assets/", "/_next/static/"];
+
+app.use("*", async (c, next) => {
+  await next();
+  if (c.res.headers.has("Cache-Control")) return;
+  const hashed = HASHED_DIRS.some((dir) =>
+    c.req.path.startsWith(dir));
+  const cc = hashed && c.res.ok
+    ? "public, max-age=31536000, immutable"
+    : "no-cache";
+  c.header("Cache-Control", cc);
+});
+
+export default app;
+```
+
+### Preload the LCP image
+When the hero image is set from CSS or picked by JS, the preload scanner can't find it; tell it.
+
+```html title="head.html"
+<link rel="preload" as="image" fetchpriority="high"
+      href="/img/hero-1600.avif"
+      imagesrcset="/img/hero-800.avif 800w,
+                   /img/hero-1600.avif 1600w"
+      imagesizes="100vw" type="image/avif">
+```
+
+### Prerender likely next pages
+Moderate eagerness: prerenders on hover or pointer down, and skips API routes and logout.
+
+```html title="speculation.html"
+<script type="speculationrules">
+{
+  "prerender": [{
+    "where": { "and": [
+      { "href_matches": "/*" },
+      { "not": { "href_matches": "/api/*" } },
+      { "not": { "href_matches": "/logout" } }
+    ]},
+    "eagerness": "moderate"
+  }]
+}
+</script>
+```
+
+### Analytics that respect prerendering
+Count a page view only when the user actually sees the page.
+
+```ts title="pageview.ts"
+function whenActivated(fn: () => void): void {
+  if (document.prerendering) {
+    document.addEventListener("prerenderingchange", fn, {
+      once: true,
+    });
+  } else {
+    fn();
+  }
+}
+
+whenActivated(() => sendPageView(location.pathname));
+```
+
+### Keep the page bfcache-friendly
+Close live connections when the page is hidden and reopen them when it comes back.
+
+```ts title="bfcache-socket.ts"
+let socket: WebSocket | null = null;
+const open = () => {
+  socket = new WebSocket("wss://example.com/live");
+};
+
+addEventListener("pagehide", () => {
+  socket?.close();
+  socket = null;
+});
+addEventListener("pageshow", (e) => {
+  if (e.persisted || !socket) open();
+});
+```
+
+## References
+
+- MDN: [HTTP caching](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching), [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control), [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag), [`Vary`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Vary), [Compression in HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Compression)
+- MDN: [`rel=preload`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/preload), [`rel=preconnect`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/preconnect), [`rel=modulepreload`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/modulepreload), [`rel=prefetch`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel/prefetch), [`fetchpriority`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/fetchPriority)
+- MDN: [Speculation Rules API](https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API), [`<script type="speculationrules">`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/speculationrules), [`103 Early Hints`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/103), [Evolution of HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Evolution_of_HTTP)
+- MDN: [`pageshow`](https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event), [`pagehide`](https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event), [`notRestoredReasons`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceNavigationTiming/notRestoredReasons)
+- [RFC 9111: HTTP Caching](https://www.rfc-editor.org/rfc/rfc9111.html), [RFC 5861: stale-while-revalidate](https://www.rfc-editor.org/rfc/rfc5861.html), [RFC 9213: Targeted cache control (`CDN-Cache-Control`)](https://www.rfc-editor.org/rfc/rfc9213.html), [RFC 8297: Early Hints](https://www.rfc-editor.org/rfc/rfc8297.html)
+- web.dev: [Back/forward cache](https://web.dev/articles/bfcache), [Optimize resource loading with Fetch Priority](https://web.dev/articles/fetch-priority), [Prefetch resources](https://web.dev/articles/link-prefetch); Chrome for Developers: [Prerender pages](https://developer.chrome.com/docs/web-platform/prerender-pages), [Early Hints](https://developer.chrome.com/docs/web-platform/early-hints)
+- Ilya Grigorik: [High Performance Browser Networking](https://hpbn.co/) (TCP, TLS, HTTP/2 chapters)

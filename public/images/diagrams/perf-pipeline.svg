@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 250" fill="none" stroke="currentColor">
+  <defs>
+    <marker id="perf-pipeline-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" stroke="none"/>
+    </marker>
+  </defs>
+  <rect x="16" y="30" width="96" height="36" rx="4"/>
+  <rect x="16" y="96" width="96" height="36" rx="4"/>
+  <rect class="d-fill-0 d-tint" stroke="none" x="132" y="30" width="72" height="36" rx="4"/>
+  <rect class="d-fill-0 d-tint" stroke="none" x="132" y="96" width="72" height="36" rx="4"/>
+  <rect x="132" y="30" width="72" height="36" rx="4"/>
+  <rect x="132" y="96" width="72" height="36" rx="4"/>
+  <rect x="226" y="63" width="74" height="36" rx="4"/>
+  <rect x="320" y="63" width="74" height="36" rx="4"/>
+  <rect x="414" y="63" width="74" height="36" rx="4"/>
+  <rect class="d-fill-2 d-tint" stroke="none" x="508" y="63" width="80" height="36" rx="4"/>
+  <rect x="508" y="63" width="80" height="36" rx="4"/>
+  <rect class="d-fill-3 d-tint" stroke="none" x="16" y="150" width="96" height="36" rx="4"/>
+  <rect x="16" y="150" width="96" height="36" rx="4"/>
+  <path d="M112 48 H 128" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M112 114 H 128" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M204 48 L 222 74" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M204 114 L 222 88" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M300 81 H 316" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M394 81 H 410" marker-end="url(#perf-pipeline-arrow)"/>
+  <path d="M488 81 H 504" marker-end="url(#perf-pipeline-arrow)"/>
+  <path class="d-stroke-3" stroke-dasharray="4 3" d="M112 168 H 120 V 81 H 168"/>
+  <path class="d-stroke-3" stroke-dasharray="4 3" d="M168 81 V 70" marker-end="url(#perf-pipeline-arrow)"/>
+  <path class="d-stroke-3" stroke-dasharray="4 3" d="M168 81 V 92" marker-end="url(#perf-pipeline-arrow)"/>
+  <path class="d-muted" d="M16 206 V 212 H 488 V 206"/>
+  <path class="d-muted" d="M508 206 V 212 H 588 V 206"/>
+  <g fill="currentColor" stroke="none">
+    <text x="16" y="20" font-size="11" class="d-muted">bytes from the network</text>
+    <text x="64" y="53" text-anchor="middle">HTML parser</text>
+    <text x="64" y="119" text-anchor="middle">CSS parser</text>
+    <text x="168" y="53" text-anchor="middle">DOM</text>
+    <text x="168" y="119" text-anchor="middle">CSSOM</text>
+    <text x="263" y="86" text-anchor="middle">Style</text>
+    <text x="357" y="86" text-anchor="middle">Layout</text>
+    <text x="451" y="86" text-anchor="middle">Paint</text>
+    <text x="548" y="86" text-anchor="middle">Composite</text>
+    <text x="64" y="173" text-anchor="middle">JavaScript</text>
+    <g font-size="11" class="d-muted" text-anchor="middle">
+      <text x="263" y="118">computed styles</text>
+      <text x="357" y="118">geometry</text>
+      <text x="451" y="118">draw lists</text>
+      <text x="548" y="118">layers → frame</text>
+      <text x="252" y="230">main thread: parse, script, style, layout, paint</text>
+      <text x="588" y="230" text-anchor="end">compositor + GPU</text>
+    </g>
+    <text x="180" y="173" font-size="11">reads and changes the DOM and CSSOM, so Style runs again</text>
+  </g>
+</svg>

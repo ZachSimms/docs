@@ -305,7 +305,8 @@ drags and gestures use a JS spring (Motion).
 ## Performance
 
 The browser renders in stages: style, layout, paint, composite. The cheapest animations
-skip straight to composite.
+skip straight to composite. The whole pipeline, frames and layout thrashing are on
+[Browser rendering pipeline](/typescript/performance/rendering-pipeline/).
 
 <Diagram src="/images/diagrams/anim-pipeline.svg" label="The rendering pipeline Style, Layout, Paint, Composite, with three rows: width, height, top, margin and grid properties run all four stages (expensive); color, background and box-shadow skip layout (moderate); transform, translate, scale and opacity skip everything but composite (cheap)." caption="Which stages each kind of property triggers" />
 

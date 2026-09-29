@@ -1,0 +1,235 @@
+---
+title: CSS, images & fonts
+date: 2026-09-29
+order: 5
+---
+
+The static assets that decide first paint, LCP and layout stability: render-blocking CSS, images, video,
+embeds and web fonts. Image markup is covered in depth on [Media & embeds](/design/html/media-embeds/);
+this sheet is the performance view across all asset types.
+
+## Critical & render-blocking CSS
+
+All CSS in `<head>` blocks rendering until it's downloaded and parsed (see
+[Render-blocking vs parser-blocking](/typescript/performance/rendering-pipeline/)).
+
+| Technique | How | When |
+| :-------- | :-- | :--- |
+| Keep CSS small | remove unused rules (Coverage tab), utility CSS (Tailwind purges by default) | always |
+| Inline critical CSS | the rules for the first viewport in a `<style>` in `<head>` | big stylesheets, slow TTFB for CSS |
+| Load the rest non-blocking | `<link rel="preload" as="style" onload="this.rel='stylesheet'">`, or `media="print" onload="this.media='all'"` | after inlining critical CSS |
+| Split by media | `<link media="(min-width: 60em)">` for desktop-only CSS | the non-matching sheet downloads at low priority, doesn't block |
+| Per-route CSS | the framework splits CSS per page/component | CSS-in-JS runtimes add JS cost: prefer zero-runtime (CSS Modules, Tailwind, vanilla-extract) |
+| No `@import` | `<link>` each file, or bundle | `@import` chains a request behind another |
+
+Inlined CSS isn't cached separately; inline only a few KB (roughly what fits in the first 14 KB of HTML
+with the head), and keep the full stylesheet cached.
+
+## What CSS costs at runtime
+
+| Matters | Rarely matters |
+| :------ | :------------- |
+| number of elements restyled per change | selector complexity for normal sites |
+| huge DOMs (> ~1,500 nodes, deep nesting) | the `*` selector in a reset |
+| expensive paints: large `box-shadow`, `filter: blur()`, `backdrop-filter` over big areas | ordinary gradients and borders |
+| animating layout properties | `:has()` in moderation (engines optimize common cases) |
+| many layers from `will-change` | CSS variables (cheap; changing one high up restyles its subtree) |
+
+## Images
+
+| Lever | Do | Saves |
+| :---- | :- | :---- |
+| Format | AVIF → WebP → JPEG fallback via `<picture>`, or `Accept`-based negotiation at the CDN | 30–50% vs JPEG |
+| Size | `srcset` + `sizes` so phones get phone-sized files | often 3–5× the bytes on mobile |
+| Compression | quality 50–75 for AVIF/WebP photos; SVG for icons and logos | large, invisible |
+| Dimensions | `width` + `height` (or `aspect-ratio`) on every image | CLS |
+| Lazy load | `loading="lazy"` below the fold only | bandwidth, early contention |
+| Priority | `fetchpriority="high"` on the LCP image, never `lazy` on it | LCP |
+| Decoding | `decoding="async"` on non-critical images | main-thread jank on big decodes |
+| Delivery | an image CDN or `next/image` resizes and converts on demand | build time and effort |
+
+| Format | Best for | Support |
+| :----- | :------- | :------ |
+| AVIF | photos, gradients; best compression | Baseline (all modern browsers) |
+| WebP | photos with alpha, animations | Baseline |
+| JPEG / PNG | fallback; PNG for pixel art | universal |
+| SVG | icons, logos, diagrams | universal; run through SVGO |
+| JPEG XL | high-quality photos | Safari, and Chrome from 155; not a safe default yet |
+| GIF | nothing: use `<video>` (MP4/WebM) for animation | universal but huge |
+
+```html title="The LCP hero image"
+<img
+  src="/img/hero-1200.jpg"
+  srcset="/img/hero-600.avif 600w,
+          /img/hero-1200.avif 1200w,
+          /img/hero-2000.avif 2000w"
+  sizes="100vw"
+  width="1200" height="675"
+  alt="Harbor at dawn"
+  fetchpriority="high">
+```
+
+(AVIF in `srcset` with a JPEG `src` works only where every browser you target decodes AVIF; otherwise use
+`<picture>` with `<source type="image/avif">`.)
+
+## Video & embeds
+
+| Asset | Do |
+| :---- | :- |
+| Background/autoplay video | `muted playsinline loop`, a `poster`, small MP4 (H.264/AV1); `autoplay` overrides `preload`, so below the fold start it with `play()` from an `IntersectionObserver` instead |
+| Click-to-play video | `preload="none"` (or `"metadata"`) and a `poster` |
+| Animated GIF | convert to a `<video>` (5–20× smaller) |
+| YouTube/Vimeo embeds | a facade: thumbnail + play button, load the iframe on click; `youtube-nocookie.com` |
+| Maps, chat, social embeds | facade or `loading="lazy"` on the `<iframe>` |
+| Any `<iframe>` | `width`/`height` or `aspect-ratio` to avoid CLS; `loading="lazy"` below the fold |
+
+## Web fonts
+
+Fonts block text rendering while they load, then can reflow text when they swap in (CLS).
+
+| Technique | How |
+| :-------- | :-- |
+| WOFF2 only | every current browser supports it; drop WOFF/TTF/EOT |
+| Self-host | same origin: no extra connection, your cache headers; `next/font` does this |
+| Subset | only the characters you use (`unicode-range`, `glyphhanger`, `pyftsubset`) |
+| Variable fonts | one file for all weights, instead of 4–6 static files |
+| Fewer families and weights | 2 families × 2–3 weights is plenty |
+| Preload the critical one or two | `<link rel="preload" as="font" type="font/woff2" crossorigin>` |
+| `font-display` | see below |
+| Match the fallback's metrics | `size-adjust` (everywhere), `ascent-override`, `descent-override`, `line-gap-override` (Chromium, Firefox; not Safari) |
+| System font stack | zero bytes: `font-family: system-ui, sans-serif` |
+
+| `font-display` | Block period | Swap period | Use |
+| :------------- | :----------- | :---------- | :-- |
+| `auto` | browser's choice (usually like `block`) | — | avoid |
+| `block` | short (~3 s) invisible text | infinite | icon fonts only |
+| `swap` | extremely small (≤ 100 ms) | infinite | brand/headline fonts; pair with metric overrides to stop CLS |
+| `fallback` | extremely small | short (~3 s), then keep the fallback | body text |
+| `optional` | extremely small | none: use it only if it's already there | best for CWV: no swap, no shift; font appears from the next page |
+
+The periods are the CSS Fonts spec's recommendations ("extremely small" ≤ 100 ms, "short" ≈ 3 s);
+each browser picks its exact values.
+
+## SVG & icons
+
+- Inline SVG for a few icons used once; an SVG sprite (`<use href="/icons.svg#x">`) for many icons across
+  pages (cached once).
+- Icon fonts are worse: extra font request, `block` text, accessibility issues.
+- Optimize with SVGO (`bunx svgo`): editors leave metadata that doubles file size.
+- Huge inline SVGs (maps, charts with thousands of paths) bloat HTML and the DOM; use `<img src="x.svg">`
+  when you don't need to style the inside.
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| `loading="lazy"` on the hero | eager, with `fetchpriority="high"` |
+| One 2,400 px image for every screen | `srcset`/`sizes` or an image CDN |
+| No `width`/`height` on images | always set them; CSS `height: auto` keeps it responsive |
+| 8 font files from a third-party CDN | self-host 1–2 variable WOFF2 files |
+| `font-display: block` on body text | `swap` with metric overrides, or `optional` |
+| GIFs for animations | `<video autoplay muted loop playsinline>` |
+| Preloading a font the first view doesn't use | preload only fonts used above the fold |
+| A 300 KB CSS framework for a few components | utility CSS with purging, or only the parts you use |
+
+## Recipes
+
+### Self-hosted variable font, preloaded
+One file, all weights, in a font face that swaps.
+
+```html title="head.html"
+<link rel="preload" href="/fonts/inter-var.woff2"
+      as="font" type="font/woff2" crossorigin>
+<style>
+  @font-face {
+    font-family: "Inter";
+    src: url("/fonts/inter-var.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+  body {
+    font-family: "Inter", "Inter Fallback", sans-serif;
+  }
+</style>
+```
+
+### A metric-matched fallback font
+Resize a local font to take up the same space as the web font, so the swap doesn't move text. Tools like
+Fontaine or `next/font` compute these numbers.
+
+```css title="fallback.css"
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  size-adjust: 107%;
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+```
+
+### Load non-critical CSS without blocking
+Critical rules inline, the rest after first render (with a no-JS fallback).
+
+```html title="head.html"
+<style>/* critical, above-the-fold rules */</style>
+<link rel="preload" href="/css/site.css" as="style"
+      onload="this.onload=null;this.rel='stylesheet'">
+<noscript>
+  <link rel="stylesheet" href="/css/site.css">
+</noscript>
+```
+
+Under a strict nonce-based CSP, inline `onload=` attributes are blocked. Load the stylesheet from a
+nonced script instead, or allow the handler's hash with `'unsafe-hashes'`.
+
+### GIF → video
+Same look, a fraction of the bytes.
+
+```sh title="Convert with ffmpeg"
+ffmpeg -i anim.gif -movflags +faststart -pix_fmt yuv420p \
+  -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" anim.mp4
+```
+
+```html title="Use it"
+<video autoplay muted loop playsinline
+       width="480" height="270" poster="/anim.jpg">
+  <source src="/anim.mp4" type="video/mp4">
+</video>
+```
+
+### YouTube facade
+A self-hosted thumbnail that becomes the player on click: nothing from YouTube (or Google's `i.ytimg.com`
+image host) loads until then.
+
+```html title="yt-facade.html"
+<button class="yt" data-id="dQw4w9WgXcQ"
+        style="aspect-ratio: 16/9; width: 100%">
+  <img src="/img/video-thumb.jpg"
+       alt="Play: video title" loading="lazy">
+</button>
+<script type="module">
+  document.querySelector(".yt").addEventListener("click",
+    (e) => {
+      const btn = e.currentTarget;
+      const f = document.createElement("iframe");
+      f.src = `https://www.youtube-nocookie.com/embed/${
+        btn.dataset.id}?autoplay=1`;
+      f.allow = "autoplay; encrypted-media";
+      f.allowFullscreen = true;
+      f.title = "Video title";
+      f.style.cssText =
+        "width:100%;aspect-ratio:16/9;border:0";
+      btn.replaceWith(f);
+    }, { once: true });
+</script>
+```
+
+## References
+
+- MDN: [Optimizing startup performance](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/Optimizing_startup_performance), [CSS performance optimization](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Performance/CSS), [Multimedia: images](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Performance/Multimedia), [Web performance best practices](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Performance/Best_practices)
+- MDN: [Responsive images](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Responsive_images), [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types), [Lazy loading](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/Lazy_loading)
+- MDN: [`font-display`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@font-face/font-display), [`size-adjust`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@font-face/size-adjust), [`ascent-override`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@font-face/ascent-override), [`unicode-range`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@font-face/unicode-range)
+- web.dev: [Extract critical CSS](https://web.dev/articles/extract-critical-css), [Defer non-critical CSS](https://web.dev/articles/defer-non-critical-css), [Best practices for fonts](https://web.dev/articles/font-best-practices), [CSS size-adjust for @font-face](https://web.dev/articles/css-size-adjust), [Replace animated GIFs with video](https://web.dev/articles/replace-gifs-with-videos)
+- Chrome for Developers: [Lazy load third-party resources with facades](https://developer.chrome.com/docs/lighthouse/performance/third-party-facades)
+- Tools: [Squoosh](https://squoosh.app/), [SVGO](https://github.com/svg/svgo), [Fontaine](https://github.com/unjs/fontaine), [glyphhanger](https://github.com/zachleat/glyphhanger)
