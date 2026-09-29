@@ -1,7 +1,8 @@
 /**
- * @file Ordered dithering and value noise: the pieces the home page's moon and sun are
- * drawn with (see `lib/sky.ts`). Any grid of ink amounts becomes one bit per cell with
- * an 8×8 Bayer matrix; the noise gives surfaces texture.
+ * @file Ordered dithering and value noise: the pieces the home page's Earth and Moon are
+ * drawn with (see `lib/earth-moon.ts`). Any grid of ink amounts becomes one bit per cell
+ * with an 8×8 Bayer matrix; the noise, in space, gives surfaces texture that wraps round
+ * a sphere without a seam.
  *
  * Pure and deterministic (no DOM), so every drawing is repeatable and tested directly.
  */
@@ -25,35 +26,31 @@ function lattice(x: number, y: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4_294_967_296;
 }
 
+/** A repeatable pseudo-random value in [0, 1) for an integer lattice point in space. */
+function lattice3(x: number, y: number, z: number, seed: number): number {
+  return lattice(x ^ Math.imul(z, 1_440_662_683), y, seed);
+}
+
 /** Smoothstep easing, so the noise has no visible grid seams. */
 function smooth(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Value noise in [0, 1): lattice values blended smoothly between integer points. */
-export function valueNoise(x: number, y: number, seed: number): number {
+/** Value noise in space, in [0, 1): lattice values blended smoothly between integer points. */
+export function valueNoise3(x: number, y: number, z: number, seed: number): number {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
+  const z0 = Math.floor(z);
   const sx = smooth(x - x0);
   const sy = smooth(y - y0);
-  const top = lattice(x0, y0, seed) * (1 - sx) + lattice(x0 + 1, y0, seed) * sx;
-  const bottom = lattice(x0, y0 + 1, seed) * (1 - sx) + lattice(x0 + 1, y0 + 1, seed) * sx;
-  return top * (1 - sy) + bottom * sy;
-}
-
-/** Four octaves of value noise, normalized back into [0, 1). */
-export function fractalNoise(x: number, y: number, seed: number): number {
-  let sum = 0;
-  let amplitude = 0.5;
-  let frequency = 1;
-  let total = 0;
-  for (let octave = 0; octave < 4; octave++) {
-    sum += amplitude * valueNoise(x * frequency, y * frequency, seed + octave);
-    total += amplitude;
-    amplitude /= 2;
-    frequency *= 2;
-  }
-  return sum / total;
+  const sz = smooth(z - z0);
+  const plane = (zi: number) => {
+    const top = lattice3(x0, y0, zi, seed) * (1 - sx) + lattice3(x0 + 1, y0, zi, seed) * sx;
+    const bottom =
+      lattice3(x0, y0 + 1, zi, seed) * (1 - sx) + lattice3(x0 + 1, y0 + 1, zi, seed) * sx;
+    return top * (1 - sy) + bottom * sy;
+  };
+  return plane(z0) * (1 - sz) + plane(z0 + 1) * sz;
 }
 
 /**
@@ -71,4 +68,19 @@ export function ditherBits(ink: ArrayLike<number>, columns: number, rows: number
     }
   }
   return bits;
+}
+
+/** Four octaves of value noise in space, normalized back into [0, 1). */
+export function fractalNoise3(x: number, y: number, z: number, seed: number): number {
+  let sum = 0;
+  let amplitude = 0.5;
+  let frequency = 1;
+  let total = 0;
+  for (let octave = 0; octave < 4; octave++) {
+    sum += amplitude * valueNoise3(x * frequency, y * frequency, z * frequency, seed + octave);
+    total += amplitude;
+    amplitude /= 2;
+    frequency *= 2;
+  }
+  return sum / total;
 }

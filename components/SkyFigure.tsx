@@ -1,28 +1,34 @@
 /**
- * @file The home page's sky: tonight's moon in the light theme, the sun in the dark theme,
- * dithered on a canvas (see `lib/sky.ts`), with a two-line caption that names what is
- * shown and how to switch (`d`, the theme key).
+ * @file The home page's sky: the Earth turning and the Moon going round it, dithered on
+ * a canvas (see `lib/earth-moon.ts`) in the text color, so they are light on dark in the
+ * dark theme and dark on light in the light one. Captioned "Pale Blue Dot", after Carl
+ * Sagan's name for Voyager 1's 1990 photograph of the Earth.
  *
- * Client component: the moon's phase and the days to the next equinox or solstice are
- * worked out when the page is opened, not when it was built, for the reader's hemisphere
- * as told by their time zone (see `lib/hemisphere.ts`). Until the theme is known
- * after hydration the canvas is blank and the caption holds its space. Cells are
- * {@link CELL} CSS pixels, drawn at the device's resolution in the text color, and redrawn
- * when the theme changes.
+ * Client component. Until the theme is known after hydration the canvas is blank (the
+ * caption is there from the start). Cells are {@link CELL} CSS pixels, drawn at the
+ * device's resolution, and redrawn when the theme changes. The Earth turns and the Moon
+ * goes round, redrawn {@link FPS} times a second while the figure is on screen; with
+ * reduced motion asked for, the scene holds still.
  */
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useTheme } from "@/components/useTheme";
-import { hemisphereOf, localTimeZone, type Hemisphere } from "@/lib/hemisphere";
-import { THEME_KEY } from "@/lib/keys";
-import { moonBits, moonPhase, nextSeasonEvent, sunBits } from "@/lib/sky";
+import { skyBits } from "@/lib/earth-moon";
 
 /** Size of one dither cell, in CSS pixels. */
-const CELL = 3;
-/** Cells across (and down) the drawing: 252 CSS pixels. */
-const CELLS = 84;
+const CELL = 1;
+/**
+ * Cells across and down the drawing: 456 × 166 CSS pixels, the Moon's orbit seen nearly
+ * edge-on. On a narrower screen it shrinks to fit, keeping its proportions.
+ */
+const COLUMNS = 456;
+const ROWS = 166;
+/** Redraws a second while turning: about a cell of movement a frame at the Earth's middle. */
+const FPS = 20;
+/** Media query for readers who ask for less motion. */
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 /** `rgb(r, g, b)` / `rgba(…)` to channels; black when unparsable. */
 function channels(color: string): [number, number, number] {
@@ -30,81 +36,94 @@ function channels(color: string): [number, number, number] {
   return [r, g, b];
 }
 
-/** Paint a square of bits onto `canvas` in its text color, one bit per cell. */
-function paint(canvas: HTMLCanvasElement, bits: Uint8Array | null): void {
+/**
+ * Size `canvas` for the device and clear it; return a function that paints a grid of
+ * bits onto it in its text color, one bit per cell, or `null` without a 2D context.
+ */
+function painter(canvas: HTMLCanvasElement): ((bits: Uint8Array) => void) | null {
   const context = canvas.getContext("2d");
-  if (!context) return;
-  const ratio = window.devicePixelRatio || 1;
-  const side = CELL * CELLS;
-  canvas.width = Math.round(side * ratio);
-  canvas.height = Math.round(side * ratio);
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!bits) return;
-
   const cells = document.createElement("canvas");
-  cells.width = CELLS;
-  cells.height = CELLS;
   const cellContext = cells.getContext("2d");
-  if (!cellContext) return;
+  if (!context || !cellContext) return null;
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.round(CELL * COLUMNS * ratio);
+  const height = Math.round(CELL * ROWS * ratio);
+  canvas.width = width;
+  canvas.height = height;
+  cells.width = COLUMNS;
+  cells.height = ROWS;
   const [r, g, b] = channels(getComputedStyle(canvas).color);
-  const image = cellContext.createImageData(CELLS, CELLS);
-  bits.forEach((bit, i) => {
-    if (bit) image.data.set([r, g, b, 255], i * 4);
-  });
-  cellContext.putImageData(image, 0, 0);
-  context.imageSmoothingEnabled = false;
-  context.drawImage(cells, 0, 0, side * ratio, side * ratio);
+  const image = cellContext.createImageData(COLUMNS, ROWS);
+
+  return (bits) => {
+    image.data.fill(0);
+    bits.forEach((bit, i) => {
+      if (bit) image.data.set([r, g, b, 255], i * 4);
+    });
+    cellContext.putImageData(image, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(cells, 0, 0, width, height);
+  };
 }
 
-/** The caption's two lines for a theme, at `now`, seen from `hemisphere`. */
-export function skyCaption(
-  theme: "light" | "dark",
-  now: Date,
-  hemisphere: Hemisphere = "north",
-): [string, string] {
-  if (theme === "light") {
-    const { name, illumination } = moonPhase(now);
-    return [
-      `${name}, ${Math.round(illumination * 100)}%`,
-      `tonight's moon; ${THEME_KEY} for the sun`,
-    ];
-  }
-  const { name, days } = nextSeasonEvent(now, hemisphere);
-  const when = days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
-  return [`${name} ${when}`, `today's sun; ${THEME_KEY} for the moon`];
-}
-
-/** Render the figure: the canvas and its caption. */
+/** Render the figure: the Earth and Moon's canvas, and its caption. */
 export function SkyFigure() {
   const theme = useTheme();
   const ref = useRef<HTMLCanvasElement>(null);
-  // The moment the page was opened; kept so a re-render doesn't redraw a different sky.
-  const [now] = useState(() => new Date());
-  // Read on the client when hydrating (state is not carried over from the server), so it
-  // is the reader's time zone, not the build machine's.
-  const [hemisphere] = useState(() => hemisphereOf(localTimeZone()));
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const bits =
-      theme === null
-        ? null
-        : theme === "light"
-          ? moonBits(CELLS, moonPhase(now).age, hemisphere)
-          : sunBits(CELLS);
-    paint(canvas, bits);
-  }, [theme, now, hemisphere]);
+    const paint = painter(canvas);
+    if (!paint || theme === null) return;
+    const draw = (seconds: number) => paint(skyBits(COLUMNS, ROWS, seconds));
 
-  const [first, second] = theme ? skyCaption(theme, now, hemisphere) : ["\u00a0", "\u00a0"];
+    // Off screen there is nothing to see, so frames are skipped until it scrolls back.
+    let visible = true;
+    const observer =
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(([entry]) => {
+            visible = entry?.isIntersecting ?? true;
+          })
+        : null;
+    observer?.observe(canvas);
+
+    const reduce =
+      typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION) : null;
+    let frame = 0;
+    const start = () => {
+      cancelAnimationFrame(frame);
+      draw(0);
+      if (reduce?.matches) return;
+      const began = performance.now();
+      let shown = 0;
+      const tick = (time: number) => {
+        frame = requestAnimationFrame(tick);
+        const step = Math.floor((Math.max(0, time - began) * FPS) / 1000);
+        if (!visible || step === shown) return;
+        shown = step;
+        draw(step / FPS);
+      };
+      frame = requestAnimationFrame(tick);
+    };
+    start();
+    reduce?.addEventListener("change", start);
+    return () => {
+      cancelAnimationFrame(frame);
+      reduce?.removeEventListener("change", start);
+      observer?.disconnect();
+    };
+  }, [theme]);
+
   return (
     <figure className="sky">
-      <canvas ref={ref} aria-hidden="true" style={{ width: CELL * CELLS, height: CELL * CELLS }} />
-      <figcaption className="dim">
-        {first}
-        <br />
-        {second}
-      </figcaption>
+      <canvas
+        ref={ref}
+        aria-hidden="true"
+        style={{ width: CELL * COLUMNS, aspectRatio: `${COLUMNS} / ${ROWS}` }}
+      />
+      <figcaption className="dim">Pale Blue Dot</figcaption>
     </figure>
   );
 }

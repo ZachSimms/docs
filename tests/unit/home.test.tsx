@@ -9,7 +9,7 @@ mock.module("next/navigation", () => ({
 
 const { HomeKeys } = await import("@/components/HomeKeys");
 const { ZenToggle, setZen } = await import("@/components/ZenToggle");
-const { SkyFigure, skyCaption } = await import("@/components/SkyFigure");
+const { SkyFigure } = await import("@/components/SkyFigure");
 const { ZEN_ATTRIBUTE, ZEN_INIT_SCRIPT, ZEN_STORAGE_KEY } = await import("@/lib/theme");
 
 beforeEach(() => {
@@ -47,40 +47,16 @@ describe("HomeKeys", () => {
 });
 
 describe("SkyFigure", () => {
-  it("shows tonight's moon in the light theme and the sun in the dark theme", () => {
-    localStorage.setItem("theme", "light");
-    const { container, unmount } = render(<SkyFigure />);
-    expect(container.querySelector("canvas")).toHaveAttribute("aria-hidden", "true");
-    expect(container.querySelector("figcaption")).toHaveTextContent(
-      /^(new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+%tonight's moon; d for the sun$/,
-    );
-    unmount();
-    localStorage.setItem("theme", "dark");
-    const dark = render(<SkyFigure />);
-    expect(dark.container.querySelector("figcaption")).toHaveTextContent(
-      /(equinox|solstice) (today|tomorrow|in \d+ days)today's sun; d for the moon$/,
-    );
-  });
-
-  it("captions a known night and day", () => {
-    const night = new Date("2024-01-25T17:54Z");
-    expect(skyCaption("light", night)).toEqual([
-      "full moon, 100%",
-      "tonight's moon; d for the sun",
-    ]);
-    expect(skyCaption("dark", new Date(2026, 8, 27, 12))).toEqual([
-      "winter solstice in 85 days",
-      "today's sun; d for the moon",
-    ]);
-    expect(skyCaption("dark", new Date(2026, 11, 21, 12))[0]).toBe("winter solstice today");
-    expect(skyCaption("dark", new Date(2026, 11, 20, 12))[0]).toBe("winter solstice tomorrow");
-  });
-
-  it("names the season for the southern hemisphere", () => {
-    expect(skyCaption("dark", new Date(2026, 8, 27, 12), "south")[0]).toBe(
-      "summer solstice in 85 days",
-    );
-    expect(skyCaption("light", new Date("2024-01-25T17:54Z"), "south")[0]).toBe("full moon, 100%");
+  it("draws the Earth and Moon on a decorative canvas, captioned, in either theme", () => {
+    for (const theme of ["light", "dark"]) {
+      localStorage.setItem("theme", theme);
+      const { container, unmount } = render(<SkyFigure />);
+      const canvas = container.querySelector("figure.sky canvas");
+      expect(canvas).toHaveAttribute("aria-hidden", "true");
+      expect(canvas).toHaveStyle({ width: "456px", aspectRatio: "456 / 166" });
+      expect(container.querySelector("figure.sky figcaption")).toHaveTextContent(/^Pale Blue Dot$/);
+      unmount();
+    }
   });
 });
 

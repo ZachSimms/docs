@@ -158,14 +158,17 @@ not kebab-case fails the build.
   and footer and puts the table of contents on the left, from 900px up. From 900px up it also widens
   the sheet from 72ch to 88ch and loosens prose to 1.65 line height (code stays at 1.5). It is
   remembered in `localStorage` and restored before first paint.
-- **Sky** (home, beside the text): tonight's moon in the light theme, the sun in the dark theme
-  (`d` switches), dithered in 3px cells with an 8×8 Bayer matrix and drawn on a canvas in the text
-  color (`lib/sky.ts`, `lib/dither.ts`). The moon shows its real phase, worked out in the reader's
-  browser (phase name and percent lit, from the mean lunar month); the sun's caption counts the days
-  to the next equinox or solstice (Meeus' mean formulas). Both follow the reader's hemisphere, told
-  from the browser's time zone with no location prompt (`lib/hemisphere.ts`): from the south the
-  moon is drawn upside down and March brings the autumn equinox. On phones it follows the section
-  list.
+- **Sky** (home, beside the text): the Earth turning and the Moon going round it, dithered in 1px
+  cells with an 8×8 Bayer matrix and drawn on a canvas in the text color (`lib/earth-moon.ts`,
+  `lib/dither.ts`). The land is Natural Earth's 1:110m, packed into a 2° bitmap by
+  `bun scripts/build-earth-map.ts` (`lib/earth-map.ts`). The motion is the real one, compressed:
+  with the ecliptic level in the picture, the Earth turns west to east on an axis tilted 23.4° to
+  the right, and the Moon orbits the same way on an eccentric orbit inclined 5.1°, fastest at
+  perigee, keeping one face to the Earth and rocking with libration. The Moon is drawn 3.4 Earth
+  radii out (really 60), and a month lasts 40 seconds and a day 13 (really 27 days to a month).
+  Drawn 456 × 166 (narrower screens shrink it to fit) and redrawn 20 times a second while on
+  screen; with reduced motion asked for it holds still. Captioned "Pale Blue Dot" (Carl Sagan's name
+  for Voyager 1's 1990 photograph of the Earth). On phones it follows the section list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.
