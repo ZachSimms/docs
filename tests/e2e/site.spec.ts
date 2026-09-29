@@ -826,7 +826,7 @@ test.describe("mdx showcase", () => {
 });
 
 test.describe("typescript topic and directories", () => {
-  test("the topic lists its ten directories, then its loose sheet", async ({ page }) => {
+  test("the topic lists its eleven directories, then its loose sheet", async ({ page }) => {
     await page.goto("/docs/");
     await page.locator("main nav[data-menu] a", { hasText: "TypeScript" }).click();
     await expect(page).toHaveURL(/\/typescript\/$/);
@@ -839,6 +839,7 @@ test.describe("typescript topic and directories", () => {
       "Frontend/",
       "React/",
       "Web APIs/",
+      "Performance/",
       "Backend/",
       "Realtime/",
       "Three.js/",
@@ -846,9 +847,10 @@ test.describe("typescript topic and directories", () => {
       "Testing",
     ]);
     await expect(links.nth(1)).toHaveAttribute("href", "/typescript/design-architecture/");
-    await expect(links.nth(7)).toHaveAttribute("href", "/typescript/realtime/");
-    await expect(links.nth(8)).toHaveAttribute("href", "/typescript/three-js/");
-    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("10.");
+    await expect(links.nth(6)).toHaveAttribute("href", "/typescript/performance/");
+    await expect(links.nth(8)).toHaveAttribute("href", "/typescript/realtime/");
+    await expect(links.nth(9)).toHaveAttribute("href", "/typescript/three-js/");
+    await expect(page.locator("main nav[data-menu] span").last()).toHaveText("11.");
     // Every directory is unfolded: its sheets are listed under its heading.
     await expect(
       page.locator(".topic-folder", { has: page.locator('h2 a[href="/typescript/language/"]') }),
@@ -892,7 +894,7 @@ test.describe("typescript topic and directories", () => {
   test("every reference sheet renders with a table of contents that fits its rail", async ({
     page,
   }) => {
-    // Visits every sheet in turn (177 of them); slow when the whole suite runs in parallel.
+    // Visits every sheet in turn (184 of them); slow when the whole suite runs in parallel.
     test.setTimeout(360_000);
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.goto("/sheets/");
@@ -901,7 +903,7 @@ test.describe("typescript topic and directories", () => {
         'main nav[data-menu] a:is([href^="/typescript/"], [href^="/databases/"], [href^="/infrastructure/"], [href^="/design/principles/"], [href^="/design/css/"], [href^="/python/"], [href^="/ml-ai/"], [href^="/physics/"], [href^="/game-dev/"], [href^="/economics/"], [href^="/cpp/"], [href^="/design/html/"], [href^="/finance/"], [href^="/thinking/"], [href^="/leadership/"], [href^="/startups/"], [href^="/writing/"], [href^="/aviation/"]):not([href$="/overview/"])',
       )
       .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-    expect(hrefs).toHaveLength(177);
+    expect(hrefs).toHaveLength(184);
     for (const href of hrefs) {
       await page.goto(href);
       const toc = page.getByRole("navigation", { name: "Contents" });

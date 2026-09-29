@@ -1,0 +1,220 @@
+---
+title: Rendering strategies
+date: 2026-09-29
+order: 6
+---
+
+Where and when HTML gets made (the server at build time, the server per request, or the browser) decides
+TTFB, first paint, how much JavaScript ships and how long the page takes to become interactive. This
+sheet compares the strategies and the React and Next.js levers for each. Framework details are on
+[Next.js](/typescript/react/next-js/) and [React](/typescript/react/react/).
+
+## The strategies at a glance
+
+<Diagram src="/images/diagrams/perf-strategies.svg" label="Four timelines from request to interactive. CSR: fast TTFB for an empty shell, then the JavaScript bundle downloads and runs, then data is fetched, and only then does content paint and become interactive: content is late. SSR: the server renders first, so TTFB is slower, but content paints as soon as the HTML arrives; it becomes interactive after hydration. SSG: HTML comes from a CDN, so TTFB is fast and content paints immediately; hydration follows. Streaming SSR: the shell arrives fast and paints, slow sections stream into the same response as they finish, and hydration happens section by section." caption="When content appears and when it becomes interactive" />
+
+| Strategy | HTML made | TTFB | Content visible | JS / hydration | Best for |
+| :------- | :-------- | :--- | :-------------- | :------------- | :------- |
+| **CSR** (client-side rendering) | in the browser | fast (empty shell) | late: after JS + data | whole app | dashboards behind login, highly interactive tools |
+| **SSR** (server-side rendering) | per request | server time | on first HTML | whole page hydrates | personalized or fast-changing pages |
+| **SSG** (static generation) | at build | fastest (CDN) | on first HTML | whole page hydrates | docs, blogs, marketing |
+| **ISR** (incremental static regeneration) | at build, re-made in the background | fast (CDN) | on first HTML | hydrates | big catalogs, content that changes hourly |
+| **Streaming SSR** | per request, sent in chunks | fast (shell first) | shell first, slow parts stream in | progressive | pages mixing fast and slow data |
+| **PPR** (partial prerendering) | static shell at build + dynamic holes per request | fastest (CDN shell) | shell immediately | only client components | most app pages (Next.js default under Cache Components) |
+| **Islands** (Astro, Fresh) | static or SSR | fast | on first HTML | only interactive widgets | content sites with a few widgets |
+| **Resumability** (Qwik) | SSR | fast | on first HTML | none up front; handlers load on use | large interactive pages where startup JS dominates |
+
+Most apps mix them per route: static marketing pages, a PPR product page, a CSR settings screen.
+
+## Hydration & its costs
+
+**Hydration** = the client framework re-runs the components that produced the server HTML, rebuilds its
+tree, and attaches event listeners. Until it finishes, the page looks ready but ignores or delays input.
+
+| Cost | Shows up as | Reduce with |
+| :--- | :---------- | :---------- |
+| Download + parse the component JS | TBT, INP input delay | Server Components, islands, smaller client components |
+| Re-render work on the main thread | long tasks after load | fewer client components; lazy-hydrate below the fold |
+| Serialized data for hydration (props, RSC payload) | HTML size, TTFB | pass only what the client needs |
+| Hydration mismatches | a full client re-render, flicker | deterministic render: no `Date.now()`/`Math.random()`/`window` checks in render |
+
+## React levers
+
+| Tool | What it does for performance |
+| :--- | :--------------------------- |
+| Server Components (default in the App Router) | render on the server; their code never ships to the client |
+| `"use client"` boundaries | everything imported below one is client JS: place them low, on leaves |
+| `<Suspense>` | streams a fallback now and the content later; hydrates each boundary independently, prioritizing the one the user interacts with |
+| `useTransition` / `startTransition` | marks an update as non-urgent so typing and clicks interrupt it (helps INP) |
+| `useDeferredValue` | renders an expensive child with a lagging value while the input stays responsive |
+| `React.lazy` + `import()` | splits a client component into its own chunk |
+| React Compiler | memoizes components and values automatically; removes most manual `memo`/`useMemo`/`useCallback` |
+| `memo`, `useMemo`, `useCallback` | skip re-renders manually when the compiler isn't in use and profiling shows the need |
+| List virtualization (TanStack Virtual) | renders only visible rows of long lists |
+| `<Activity mode="hidden">` | keeps a hidden tab/panel's state and pre-renders it at low priority |
+
+Measure before memoizing: React DevTools → **Profiler** ("Highlight updates when components render") shows
+what re-renders and why.
+
+## Next.js levers
+
+| Lever | Effect | Details |
+| :---- | :----- | :------ |
+| Cache Components + `"use cache"` | cached work goes into the static shell; dynamic parts stream | [Next.js § Rendering](/typescript/react/next-js/) |
+| `<Suspense>` / `loading.tsx` | stream slow segments; instant navigation to a loading state | |
+| `next/image` | resizes, serves WebP (add AVIF with `images.formats`), lazy by default; `fetchPriority="high"` or `loading="eager"` on the LCP image (`preload` replaced `priority` in 16) | [Next.js § Images & fonts](/typescript/react/next-js/) |
+| `next/font` | self-hosts fonts at build, preloads them, generates metric-matched fallbacks (much less CLS) | |
+| `next/script` | `strategy="afterInteractive"` (default), `"lazyOnload"`, `"beforeInteractive"`; `"worker"` (Partytown; experimental, Pages Router only) | |
+| `<Link>` prefetching | prefetches routes in the viewport (static parts fully, dynamic up to the nearest `loading`) | |
+| `optimizePackageImports` | imports only the used modules from barrel-file libraries | |
+| `after()` | runs logging/analytics after the response is sent, off the critical path | |
+
+## Edge vs origin & caching layers
+
+| Layer | Holds | Invalidate with |
+| :---- | :---- | :-------------- |
+| Browser HTTP cache | assets, sometimes HTML | new URLs (hashed filenames), `no-cache` on HTML |
+| CDN / edge cache | static HTML, ISR/PPR shells, assets | revalidation (time or tag), purge APIs |
+| Framework data cache (`"use cache"`, `fetch` cache) | results of data calls and components | `cacheLife`, `revalidateTag`, `updateTag` |
+| Server memory / Redis | computed results, sessions | TTLs, explicit deletes |
+| Database | the source of truth | — |
+
+Rendering at the edge only helps if the **data** is nearby too. A server near the user that makes five
+round trips to a database on another continent is slower than one server next to the database. Put
+compute next to the data, cache the shell at the edge, and stream the rest.
+
+## Picking one
+
+| If the page… | Use |
+| :----------- | :-- |
+| is the same for everyone and changes rarely | SSG |
+| is the same for everyone, changes often, many URLs | ISR / `"use cache"` with a lifetime |
+| is mostly static with a personalized corner (cart, greeting) | PPR: static shell + a `<Suspense>` hole |
+| depends on the request everywhere (search results, feeds) | streaming SSR |
+| lives behind login, is app-like and long-lived | CSR or SSR + client state; SEO doesn't matter |
+| is content with a few widgets | islands, or Server Components with small client leaves |
+| needs SEO and fast LCP | anything that sends real HTML: never CSR-only |
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| `"use client"` at the top of the layout | push it down to the interactive leaves |
+| Fetching data in `useEffect` on a server-rendered page | fetch on the server; pass the data down |
+| Awaiting every data source before sending anything | `<Suspense>` around slow parts; stream |
+| Sequential awaits that don't depend on each other | `Promise.all`, or start both then await |
+| Rendering with `Date.now()` / `window` checks | hydration mismatch; move to effects or the client |
+| Huge props passed to client components | pass IDs and only needed fields |
+| `memo` everywhere "just in case" | the React Compiler, or profile first |
+| Dynamic rendering for pages that could be static | cache the data (`"use cache"`) so the page joins the shell |
+| Edge functions calling a far-away database | run near the data; cache at the edge |
+
+## Recipes
+
+### Stream a slow section
+The static shell sends immediately; the product and its recommendations stream in, each on its own. With
+Cache Components on, request-time reads (`params` not listed by `generateStaticParams`, uncached data)
+must sit inside `<Suspense>`, as here.
+
+```tsx title="app/product/[id]/page.tsx"
+import { Suspense } from "react";
+import { getProduct, getRecs } from "@/lib/data";
+
+type Props = { params: Promise<{ id: string }> };
+
+export default function Page({ params }: Props) {
+  return (
+    <main>
+      <Suspense fallback={<h1>Loading…</h1>}>
+        <Title params={params} />
+      </Suspense>
+      <Suspense fallback={<p>Loading picks…</p>}>
+        <Recs params={params} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function Title({ params }: Props) {
+  const { id } = await params;
+  const product = await getProduct(id); // fast
+  return <h1>{product.name}</h1>;
+}
+
+async function Recs({ params }: Props) {
+  const { id } = await params;
+  const recs = await getRecs(id); // slow
+  return (
+    <ul>{recs.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
+  );
+}
+```
+
+### Keep typing responsive while a list filters
+The input updates immediately; the expensive list renders with a deferred value and can be interrupted.
+
+```tsx title="search.tsx"
+"use client";
+import { memo, useDeferredValue, useState } from "react";
+
+export function Search({ items }: { items: string[] }) {
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query);
+  return (
+    <>
+      <input value={query}
+        onChange={(e) => setQuery(e.target.value)} />
+      <Results items={items} query={deferred} />
+    </>
+  );
+}
+
+const Results = memo(function Results(
+  { items, query }: { items: string[]; query: string },
+) {
+  const hits = items.filter((i) => i.includes(query));
+  return <ul>{hits.map((h) => <li key={h}>{h}</li>)}</ul>;
+});
+```
+
+### Parallel data on the server
+Start independent requests together instead of one after another.
+
+```ts title="lib/page-data.ts"
+import { getUser, getOrders, getNews } from "./data";
+
+export async function loadDashboard(userId: string) {
+  const [user, orders, news] = await Promise.all([
+    getUser(userId),
+    getOrders(userId),
+    getNews(),
+  ]);
+  return { user, orders, news };
+}
+```
+
+### Client-only widget, loaded on demand
+A heavy chart that renders only in the browser, in its own chunk, with a placeholder at its final size.
+
+```tsx title="components/chart-slot.tsx"
+"use client";
+import dynamic from "next/dynamic";
+
+const Chart = dynamic(() => import("./chart"), {
+  ssr: false,
+  loading: () => <div style={{ height: 320 }} />,
+});
+
+export function ChartSlot({ data }: { data: number[] }) {
+  return <Chart data={data} />;
+}
+```
+
+## References
+
+- MDN: [Server-side rendering](https://developer.mozilla.org/en-US/docs/Glossary/SSR), [Client-side rendering](https://developer.mozilla.org/en-US/docs/Glossary/CSR), [SSG](https://developer.mozilla.org/en-US/docs/Glossary/SSG)
+- web.dev: [Rendering on the Web](https://web.dev/articles/rendering-on-the-web)
+- patterns.dev: [Rendering patterns](https://www.patterns.dev/vanilla/rendering-patterns/), [Streaming SSR](https://www.patterns.dev/react/streaming-ssr/), [Islands architecture](https://www.patterns.dev/vanilla/islands-architecture/), [Progressive hydration](https://www.patterns.dev/react/progressive-hydration/)
+- React: [`<Suspense>`](https://react.dev/reference/react/Suspense), [`useTransition`](https://react.dev/reference/react/useTransition), [`useDeferredValue`](https://react.dev/reference/react/useDeferredValue), [Server Components](https://react.dev/reference/rsc/server-components), [React Compiler](https://react.dev/learn/react-compiler), [`<Activity>`](https://react.dev/reference/react/Activity)
+- Next.js: [Caching (Cache Components)](https://nextjs.org/docs/app/getting-started/caching), [Image component](https://nextjs.org/docs/app/api-reference/components/image), [Font optimization](https://nextjs.org/docs/app/getting-started/fonts), [Script component](https://nextjs.org/docs/app/api-reference/components/script), [Lazy loading](https://nextjs.org/docs/app/guides/lazy-loading)
+- [Astro islands](https://docs.astro.build/en/concepts/islands/), [Qwik: resumable](https://qwik.dev/docs/concepts/resumable/)

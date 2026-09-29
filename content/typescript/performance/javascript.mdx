@@ -1,0 +1,321 @@
+---
+title: JavaScript & the main thread
+date: 2026-09-29
+order: 4
+---
+
+JavaScript is the most expensive byte on the web: it has to be downloaded, parsed, compiled and run on
+the main thread, the same thread that handles input and renders frames. This sheet covers shipping less
+of it, splitting what's left, keeping tasks short, and moving work off the main thread. The frame model
+behind all of this is on [Browser rendering pipeline](/typescript/performance/rendering-pipeline/).
+
+## The cost of JavaScript
+
+| Phase | Where | Scales with | Notes |
+| :---- | :---- | :---------- | :---- |
+| Download | network | compressed size | same as an image of the same size |
+| Decompress + parse | main thread / background | uncompressed size | V8 parses and compiles lazily and off-thread for large scripts |
+| Compile | background + main | functions actually called | cached in the code cache on repeat visits |
+| Execute | **main thread** | work done at startup | module top-level code, framework boot, hydration |
+
+- 100 KB of JS costs far more than 100 KB of JPEG: the image only decodes (off-thread); the script runs.
+- Budget by **uncompressed** size and device class. A mid-range Android phone runs JS 3–5× slower than a
+  recent laptop.
+- Check the **Coverage** tab in DevTools (⌘⇧P → "Coverage"): often more than half the JS loaded at
+  startup never runs.
+
+## Bundle size
+
+| Technique | How | Watch out |
+| :-------- | :-- | :-------- |
+| Code splitting by route | the framework does it (Next.js, Vite + router) | shared chunks growing silently |
+| Dynamic `import()` | load a module when it's needed | loading waterfalls: prefetch on hover/visibility |
+| Tree shaking | ES modules + `"sideEffects": false` in `package.json` | CommonJS and side-effectful imports defeat it |
+| Import only what you use | `import debounce from "lodash-es/debounce"` | barrel files (`index.ts` re-exporting everything) can pull in whole libraries |
+| Replace heavy dependencies | `date-fns`/`Temporal` over `moment`, native `Intl`, `fetch` over `axios` | check with a bundle analyzer, not by feel |
+| Don't ship polyfills to modern browsers | target modern syntax (`es2022`+), `browserslist` | a legacy target transpiles and polyfills everything |
+| Minify + compress | the bundler minifies; the server compresses | source maps: upload privately, don't serve publicly if the code is sensitive |
+
+```sh title="Look inside the bundle"
+# Vite / Rollup
+bunx vite-bundle-visualizer
+# Next.js 16.1+ (Turbopack)
+bunx next experimental-analyze
+# Next.js with webpack: @next/bundle-analyzer
+# any bundle + source map
+bunx source-map-explorer dist/assets/*.js
+```
+
+## Long tasks & yielding
+
+A task that runs longer than **50 ms** is a *long task*: input waits behind it and no frame can
+render. The fix is not "faster code" first; it's **yielding**: split the work so the browser can handle
+input and paint in between.
+
+| API | Queues the continuation | Support |
+| :-- | :---------------------- | :------ |
+| `await scheduler.yield()` | ahead of other tasks of the same priority (input and rendering can still run first) | Chromium 129+, Firefox 142+; not Safari |
+| `scheduler.postTask(fn, { priority })` | a new task with `"user-blocking"`, `"user-visible"` or `"background"` priority | Chromium, Firefox 142+; not Safari |
+| `setTimeout(fn, 0)` | back of the queue (clamped to ≥ 4 ms after nesting) | everywhere |
+| `requestIdleCallback(fn, { timeout })` | when the browser is idle | Chromium, Firefox; not stable Safari |
+| `requestAnimationFrame(fn)` | right before the next paint (not a yield: runs before rendering) | everywhere |
+| `await new Promise(r => queueMicrotask(r))` | **not** a yield: microtasks run before rendering | — |
+
+```ts title="yield.ts: yieldToMain with a fallback"
+export type Priority =
+  | "user-blocking"
+  | "user-visible"
+  | "background";
+export interface SchedulerLike {
+  yield?: () => Promise<void>;
+  postTask?: <T>(
+    fn: () => T,
+    options?: { priority?: Priority },
+  ) => Promise<T>;
+}
+export const scheduler = (
+  globalThis as { scheduler?: SchedulerLike }
+).scheduler;
+
+export function yieldToMain(): Promise<void> {
+  if (scheduler?.yield) return scheduler.yield();
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+```
+
+- Yield **after** the work the user sees (update the button, then yield, then do the rest).
+- Yielding costs a few ms each time; yield every ~50 ms of work, not after every item.
+- `navigator.scheduling.isInputPending()` is deprecated; yield on a time budget instead.
+
+## Debounce, throttle & idle work
+
+| Pattern | Fires | Use for |
+| :------ | :---- | :------ |
+| Debounce | once, after input stops for N ms | search-as-you-type, resize end, autosave |
+| Throttle | at most once per N ms | scroll position, pointer tracking, analytics |
+| rAF throttle | at most once per frame | anything that updates the screen |
+| Idle callback | when the main thread is free | prefetching, warming caches, non-urgent analytics |
+
+```ts title="debounce.ts"
+export function debounce<A extends unknown[]>(
+  fn: (...args: A) => void,
+  ms: number,
+): (...args: A) => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+```
+
+## Web Workers
+
+Anything that doesn't touch the DOM can run on another thread: parsing large JSON, diffing, search
+indexing, image processing, crypto, syntax highlighting, WASM. The main thread only sends a message and
+renders the answer. Details: [Web Workers](/typescript/web-apis/web-workers/).
+
+| Worth moving | Not worth it |
+| :----------- | :----------- |
+| > 50 ms of pure computation | tiny tasks (message overhead is ~0.1–1 ms plus copying) |
+| work on large `ArrayBuffer`s (transfer, don't copy) | anything that needs the DOM or layout |
+| repeated work during interaction (filtering 50k rows as you type) | one-off startup code |
+
+`OffscreenCanvas` moves canvas drawing into a worker; `Comlink` makes worker calls look like async
+functions.
+
+## Third-party scripts
+
+Tag managers, analytics, chat widgets, ads and A/B testing are often the biggest main-thread cost, and
+you don't control their code.
+
+| Strategy | How |
+| :------- | :-- |
+| Audit | DevTools Performance → group by third party; Lighthouse "Reduce the impact of third-party code" |
+| Load late | `async`/`defer`; load after `load` or on idle; Next.js `<Script strategy="lazyOnload">` |
+| Facades | a static placeholder that loads the real widget on click (YouTube, chat, maps) |
+| Self-host | small, stable scripts on your origin: no extra connection, your cache headers |
+| Server-side | send analytics events from the server; server-side tag managers |
+| Worker offload (Partytown) | runs tags in a worker with a synchronous DOM proxy; compatibility varies, and it is **not** a security sandbox |
+| Remove | the fastest script is the one you delete; review tags every quarter |
+
+Security: a third-party script runs with your origin's full privileges. Pin it with **SRI**
+(`integrity="sha384-…" crossorigin="anonymous"`) when the file is versioned, and allow its origins
+explicitly in your **CSP** `script-src`.
+
+## Hydration cost
+
+Server-rendered HTML shows up fast, but it isn't interactive until the framework downloads its JS, runs
+components again, and attaches listeners: **hydration**. During hydration, taps wait (input delay).
+
+| Approach | Effect |
+| :------- | :----- |
+| Server Components (React) | components that never hydrate ship no JS |
+| Selective / progressive hydration (`Suspense`) | hydrate the part the user touches first |
+| Islands (Astro, Fresh) | only interactive widgets hydrate; the page is static HTML |
+| Resumability (Qwik) | no hydration pass; handlers load on first interaction |
+| Less client state at startup | fewer, smaller `"use client"` boundaries, placed low in the tree |
+
+More in [Rendering strategies](/typescript/performance/rendering-strategies/).
+
+## Memory leaks
+
+Leaks make long sessions slow (GC pauses) and eventually crash tabs on phones.
+
+| Leak | Fix |
+| :--- | :-- |
+| Event listeners on `window`/`document` never removed | `AbortController` signal, remove on unmount |
+| Timers and intervals left running | clear in cleanup |
+| Detached DOM nodes kept in JS arrays/maps | drop references; `WeakMap`/`WeakRef` for caches keyed by nodes |
+| Unbounded caches and logs | cap size (LRU), or `WeakMap` |
+| Closures capturing large objects | narrow what the closure uses |
+| Observers (`ResizeObserver`, `IntersectionObserver`) never disconnected | `disconnect()` in cleanup |
+
+Find them in DevTools → **Memory**: take a heap snapshot, do the action a few times, take another, and
+compare; filter by "Detached" for detached DOM trees.
+
+```ts title="One signal removes every listener"
+const controller = new AbortController();
+const { signal } = controller;
+addEventListener("resize", onResize, { signal });
+document.addEventListener("keydown", onKey, { signal });
+// on unmount / navigation:
+controller.abort();
+```
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| One big bundle for every route | route-level splitting; lazy-load below-the-fold widgets |
+| `import _ from "lodash"` | per-function ESM imports, or native methods |
+| Barrel files re-exporting a whole library | import from the specific module; `optimizePackageImports` in Next.js |
+| Processing 10k items in one loop on click | chunk and yield, or a worker |
+| `await Promise.resolve()` as a "yield" | it's a microtask; use `scheduler.yield()` / `setTimeout` |
+| Every third-party tag in `<head>`, synchronous | `async`/`defer`, after load, or facades |
+| Heavy JSON parsing on the main thread | stream it, paginate it, or parse in a worker |
+| Testing on a flagship phone | 4–6× CPU throttling in DevTools, or a real mid-range device |
+
+## Recipes
+
+### Process a big list without blocking input
+Work in ~50 ms slices, yielding between them so clicks and frames get through.
+
+```ts title="chunked.ts"
+import { yieldToMain } from "./yield";
+
+export async function processAll<T>(
+  items: readonly T[],
+  work: (item: T) => void,
+  sliceMs = 50,
+): Promise<void> {
+  let deadline = performance.now() + sliceMs;
+  for (const item of items) {
+    work(item);
+    if (performance.now() >= deadline) {
+      await yieldToMain();
+      deadline = performance.now() + sliceMs;
+    }
+  }
+}
+```
+
+### Load a heavy module on interaction
+The editor's code downloads only when the user asks for it; hovering starts it early.
+
+```ts title="lazy-editor.ts"
+const button = document.querySelector("#edit")!;
+let editor: Promise<typeof import("./editor")> | null =
+  null;
+const load = () =>
+  (editor ??= import("./editor").catch((err) => {
+    editor = null; // let the next click retry
+    throw err;
+  }));
+
+button.addEventListener("pointerenter", load, {
+  once: true,
+});
+button.addEventListener("click", async () => {
+  const { openEditor } = await load();
+  openEditor();
+});
+```
+
+### Load a widget when it scrolls into view
+Nothing below the fold loads until it's about to be seen.
+
+```ts title="on-visible.ts"
+export function onVisible(
+  el: Element,
+  run: () => void,
+  rootMargin = "200px",
+): void {
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      io.disconnect();
+      run();
+    }
+  }, { rootMargin });
+  io.observe(el);
+}
+
+onVisible(document.querySelector("#comments")!, () =>
+  import("./comments").then((m) => m.mount()));
+```
+
+### Background work with priorities
+`postTask` with a fallback: urgent work first, analytics last.
+
+```ts title="post-task.ts"
+import { scheduler, type Priority } from "./yield";
+
+export function postTask<T>(
+  fn: () => T,
+  priority: Priority,
+): Promise<T> {
+  if (scheduler?.postTask) {
+    return scheduler.postTask(fn, { priority });
+  }
+  const delay = priority === "background" ? 100 : 0;
+  return new Promise((resolve, reject) =>
+    setTimeout(() => {
+      try {
+        resolve(fn());
+      } catch (err) {
+        reject(err);
+      }
+    }, delay));
+}
+
+postTask(() => sendAnalytics(), "background");
+```
+
+### A chat widget facade
+Show a static button; load the real (heavy) widget only when someone clicks it.
+
+```html title="chat-facade.html"
+<button id="chat" type="button">Chat with us</button>
+<script type="module">
+  const btn = document.querySelector("#chat");
+  btn.addEventListener("click", async function open() {
+    btn.disabled = true;
+    try {
+      const { openChat } = await import("/chat-widget.js");
+      openChat();
+      btn.removeEventListener("click", open);
+    } catch {
+      btn.disabled = false; // retry on the next click
+    }
+  });
+</script>
+```
+
+## References
+
+- MDN: [JavaScript performance optimization](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Performance/JavaScript), [Long task](https://developer.mozilla.org/en-US/docs/Glossary/Long_task), [`Scheduler.yield()`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield), [`Scheduler.postTask()`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/postTask), [`requestIdleCallback()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback)
+- MDN: [`import()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import), [Tree shaking](https://developer.mozilla.org/en-US/docs/Glossary/Tree_shaking), [Code splitting](https://developer.mozilla.org/en-US/docs/Glossary/Code_splitting), [Using Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers), [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Subresource_Integrity), [Memory management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Memory_management)
+- web.dev: [Optimize long tasks](https://web.dev/articles/optimize-long-tasks), [Use scheduler.yield()](https://developer.chrome.com/blog/use-scheduler-yield), [Third-party JavaScript](https://web.dev/articles/optimizing-content-efficiency-loading-third-party-javascript), [Lazy loading facades](https://developer.chrome.com/docs/lighthouse/performance/third-party-facades)
+- V8: [The cost of JavaScript in 2019](https://v8.dev/blog/cost-of-javascript-2019), [Code caching for JavaScript developers](https://v8.dev/blog/code-caching-for-devs)
+- Chrome for Developers: [Fix memory problems](https://developer.chrome.com/docs/devtools/memory-problems), [Coverage panel](https://developer.chrome.com/docs/devtools/coverage)
+- Tools: [Partytown](https://partytown.qwik.dev/), [Comlink](https://github.com/GoogleChromeLabs/comlink), [vite-bundle-visualizer](https://github.com/KusStar/vite-bundle-visualizer), [@next/bundle-analyzer](https://www.npmjs.com/package/@next/bundle-analyzer)

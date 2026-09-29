@@ -1,0 +1,319 @@
+---
+title: Measuring & profiling
+date: 2026-09-29
+order: 7
+---
+
+You can't fix what you haven't measured, and lab numbers from your laptop aren't what users get. This
+sheet covers lab vs field data, Chrome DevTools, Lighthouse and friends, the browser's Performance APIs,
+collecting your own real-user data (RUM), and budgets that keep a site fast. The metrics themselves are
+on [Core Web Vitals](/typescript/performance/core-web-vitals/).
+
+## Lab vs field
+
+| | Lab (synthetic) | Field (RUM) |
+| :- | :-------------- | :---------- |
+| Where | one controlled run: DevTools, Lighthouse, WebPageTest, CI | real users' browsers |
+| Good for | debugging, before/after comparisons, catching regressions in CI | the truth: what users actually get, at p75 |
+| INP | no field INP: a page-load run has no interactions (TBT is the proxy); timespan mode and live metrics measure your own clicks | yes |
+| Varies with | the throttling settings you chose | devices, networks, caches, geography, user behavior |
+| Tools | DevTools Performance, Lighthouse, PSI lab section, WebPageTest | CrUX, PSI field section, Search Console, `web-vitals` → your backend, vendors |
+
+**They disagree, and that's normal.** Lab runs a cold cache on one emulated device. Field data includes
+warm caches, bfcache restores and prerendering (faster), plus slow phones, bad networks, third-party tags
+that only load for real users, and long sessions (slower). Use field data to find *what* is slow and lab
+tools to find *why*.
+
+## Chrome DevTools: Performance panel
+
+| Feature | Use |
+| :------ | :-- |
+| **Live metrics** (landing view) | local LCP, CLS and INP update as you load and click (per soft navigation in SPAs); shows CrUX field data for the URL next to them |
+| **Record / Record and reload** | a trace of everything: network, main thread, frames, GPU |
+| **Insights** sidebar | ready-made analysis per trace: LCP by phase, LCP request discovery, INP by phase, layout shift culprits, render-blocking requests, third parties, forced reflow, DOM size |
+| **CPU throttling** | fixed 4×/6×/20× slowdowns, or *calibrated* low-tier / mid-tier presets measured on your machine |
+| **Network throttling** | "Slow 4G" / "Fast 4G" presets; disable cache to test first visits |
+| **Annotations** | label and share parts of a trace |
+
+Reading the **Main** track (flame chart):
+
+| Color | Work |
+| :---- | :--- |
+| Yellow | scripting (JS) |
+| Purple | style recalculation and layout |
+| Green | paint and composite |
+| Gray | system / other |
+| Red triangle on a task | a long task (> 50 ms) |
+| Red corner on "Layout" | a forced synchronous layout |
+
+Width is time; the stack below a bar is what it called. Click a bar → **Summary** / **Bottom-up** to find the
+functions that took the most self-time. Enable "Advanced paint instrumentation" only when you need paint
+details: it slows the page.
+
+Other panels: **Network** (waterfall, priorities, initiators; right-click headers to add "Priority"),
+**Coverage** (unused JS/CSS), **Memory** (heap snapshots), **Rendering** tab (paint flashing, layout shift
+regions, layer borders, emulate `prefers-reduced-motion`), **Lighthouse**.
+
+## Lighthouse & PageSpeed Insights
+
+| Lighthouse metric | Weight in the performance score |
+| :---------------- | :------------------------------ |
+| Total Blocking Time | 30% |
+| Largest Contentful Paint | 25% |
+| Cumulative Layout Shift | 25% |
+| First Contentful Paint | 10% |
+| Speed Index | 10% |
+
+- Lighthouse 13 (October 2025) reorganized its audits into the same *insights* the DevTools Performance
+  panel shows; the score weights didn't change.
+- The score is a lab score from one emulated mid-range phone on a throttled connection. It's for
+  comparisons, not a verdict; Google Search ranking uses field Core Web Vitals, not this score.
+- Scores vary ±5 between runs: run 3–5 times and take the median, and close other tabs and extensions
+  (or use an incognito window).
+- **PageSpeed Insights** = CrUX field data for the URL and origin (top) + a Lighthouse run from Google's
+  servers (bottom).
+
+```sh title="Lighthouse from the CLI"
+bunx lighthouse https://example.com \
+  --only-categories=performance \
+  --output=html --output-path=./report.html --view
+# desktop profile
+bunx lighthouse https://example.com --preset=desktop
+```
+
+**WebPageTest** (now part of Catchpoint; free runs still work at webpagetest.org) runs real browsers on real devices in many locations: filmstrips, video comparisons,
+connection views, and "experiments" that test a fix (e.g. adding a preload) without deploying it.
+
+## Performance APIs
+
+| API | Gives you |
+| :-- | :-------- |
+| `performance.now()` | high-resolution time since the page's time origin (ms, fractional) |
+| `performance.mark(name, { detail })` | a named timestamp in the timeline (shows in DevTools) |
+| `performance.measure(name, start, end)` | a named duration between two marks |
+| Navigation Timing (`"navigation"` entry) | DNS, connect, TLS, request, response, DOM events for the document |
+| Resource Timing (`"resource"` entries) | the same per sub-resource (cross-origin detail needs `Timing-Allow-Origin`) |
+| Paint Timing (`"paint"`) | `first-paint`, `first-contentful-paint` |
+| `"largest-contentful-paint"`, `"layout-shift"`, `"event"` | the raw inputs of LCP, CLS and INP |
+| Long Animation Frames (`"long-animation-frame"`) | frames > 50 ms with the scripts that caused them (source URL, function, duration) |
+| `"longtask"` | tasks > 50 ms (older, less detail than LoAF) |
+| `Server-Timing` response header | server-side timings shown in DevTools and readable from JS |
+
+```ts title="Observe entries (including ones before you subscribed)"
+const po = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    console.log(entry.entryType, entry.name, entry.duration);
+  }
+});
+po.observe({ type: "resource", buffered: true });
+```
+
+- Use `type` + `buffered: true` (one type per `observe()` call). The older `entryTypes: [...]` form can't
+  use `buffered`.
+- `PerformanceObserver.supportedEntryTypes` lists what the browser supports.
+- TTFB from Navigation Timing: `responseStart` (relative to navigation start). For prerendered pages,
+  subtract `activationStart`. With 103 Early Hints, `responseStart` marks the 103; the final response's
+  headers are at `finalResponseHeadersStart` (where supported).
+
+```text title="Server-Timing header"
+Server-Timing: db;dur=53;desc="orders query"
+Server-Timing: render;dur=12, cache;desc="HIT"
+```
+
+`Server-Timing` is visible to anyone who loads the page. Don't expose internal hostnames, query text or
+user data; keep it coarse, or enable it only for staff and staging.
+
+## Real-user monitoring (RUM)
+
+| Step | How |
+| :--- | :-- |
+| Collect | `web-vitals` (or the raw observers) in the page |
+| Add context | route pattern (not the raw URL), device class, connection (`navigator.connection` where available), release version, logged-in or not |
+| Send | batch; flush on `visibilitychange` → hidden with `navigator.sendBeacon()` or `fetch(…, { keepalive: true })` (both cap the body at 64 KiB) |
+| Store | an analytics DB or a vendor (Vercel Speed Insights, Sentry, Datadog RUM, SpeedCurve, DebugBear) |
+| Report | p75 per metric, per route, per device, over time; alert on regressions after deploys |
+
+- Sample high-traffic sites (e.g. 10% of sessions); report every metric from a sampled session.
+- Don't send on `unload` (unreliable, and it breaks the bfcache).
+- Percentiles, not averages: an average hides the slow tail that CWV judges.
+
+## Budgets & CI
+
+A **performance budget** is a limit the build isn't allowed to exceed: bytes (JS ≤ 170 KB transferred on
+the critical path), counts (≤ 3 third-party origins) or metrics (LCP ≤ 2.5 s in the lab on a throttled
+phone). Check it on every pull request.
+
+```json title="lighthouserc.json"
+{
+  "ci": {
+    "collect": {
+      "url": ["http://localhost:3000/"],
+      "startServerCommand": "bun run start",
+      "numberOfRuns": 3
+    },
+    "assert": {
+      "assertions": {
+        "largest-contentful-paint": ["error", {
+          "maxNumericValue": 2500,
+          "aggregationMethod": "median-run"
+        }],
+        "cumulative-layout-shift": ["error", {
+          "maxNumericValue": 0.1,
+          "aggregationMethod": "median-run"
+        }],
+        "total-blocking-time": ["warn", {
+          "maxNumericValue": 200,
+          "aggregationMethod": "median-run"
+        }],
+        "resource-summary:script:size": ["error", {
+          "maxNumericValue": 170000
+        }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci"
+    }
+  }
+}
+```
+
+`"aggregationMethod": "median-run"` checks the median run; the default (`optimistic`) passes if the best
+run passes. The `temporary-public-storage` upload target publishes reports at a public URL: fine for open
+source, not for private or staging sites.
+
+```sh title="Run it"
+bunx @lhci/cli autorun
+```
+
+`@lhci/cli` 0.15 still bundles Lighthouse 12, so assert on classic audit ids (like the ones above), not
+Lighthouse 13 insight names. Bundle-size budgets are cheaper and more stable than lab metrics: `size-limit` fails the build when a
+bundle grows past its limit.
+
+## Test conditions
+
+| Setting | Use |
+| :------ | :-- |
+| Device | a real mid-range Android (the p75 user), or DevTools CPU throttling 4–6× |
+| Network | "Slow 4G" for mobile budgets; test with and without cache |
+| Cache | first visit (cold) and repeat visit (warm) are different stories |
+| Location | test from where your users are (WebPageTest locations, CDN logs) |
+| State | logged-in vs anonymous, cookie banner accepted or not, ad blockers off |
+| Builds | always production builds: dev mode is slower and bigger |
+
+## Common mistakes
+
+| Mistake | Fix |
+| :------ | :-- |
+| Measuring `next dev` / `vite dev` | `build` + `start` (or the preview deployment) |
+| One Lighthouse run, then a conclusion | median of several runs, or field data |
+| Profiling with browser extensions on | incognito or a clean profile |
+| Optimizing the Lighthouse score, not user metrics | CrUX / RUM p75 first |
+| Averages in dashboards | p75 (CWV) and p95 |
+| No RUM until something breaks | ship `web-vitals` with the first release |
+| Budgets nobody enforces | fail CI on the budget |
+| `Server-Timing` with SQL text in production | coarse names, or staff-only |
+
+## Recipes
+
+### Time a function with a measure
+Shows in the DevTools Performance panel's Timings track, and can be read back in code. Numeric start and end
+times keep overlapping calls with the same name apart.
+
+```ts title="timed.ts"
+export async function timed<T>(
+  name: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await fn();
+  } finally {
+    performance.measure(name, {
+      start,
+      end: performance.now(),
+    });
+  }
+}
+
+const rows = await timed("load-rows", () => fetchRows());
+```
+
+### `Server-Timing` from Hono
+Time the database and render steps and expose them in the Network panel's Timing tab.
+
+```ts title="server-timing.ts"
+import { Hono } from "hono";
+import { timing, startTime, endTime } from "hono/timing";
+
+const app = new Hono();
+// allow-list: off unless explicitly on (fails closed)
+app.use(timing({
+  enabled: (c) => c.env?.STAGE === "staging",
+}));
+
+app.get("/orders", async (c) => {
+  startTime(c, "db", "orders query");
+  const orders = await db.orders.list();
+  endTime(c, "db");
+  return c.json(orders);
+});
+
+export default app;
+```
+
+### Find the scripts behind slow frames
+Long Animation Frames name the script, function and source position that blocked the frame (Chromium).
+
+```ts title="loaf.ts"
+interface LoAFScript {
+  duration: number;
+  invoker: string;
+  sourceURL: string;
+  sourceFunctionName: string;
+}
+interface LoAF extends PerformanceEntry {
+  blockingDuration: number;
+  scripts: LoAFScript[];
+}
+
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    const frame = entry as LoAF;
+    if (frame.blockingDuration < 100) continue;
+    for (const s of frame.scripts) {
+      console.log(Math.round(s.duration), s.invoker,
+        s.sourceURL, s.sourceFunctionName);
+    }
+  }
+}).observe({ type: "long-animation-frame", buffered: true });
+
+// lib.dom has no LoAF types yet, hence the interfaces
+```
+
+### TTFB breakdown for the current page
+Where the time before the first byte went.
+
+```ts title="ttfb.ts"
+const [nav] = performance.getEntriesByType(
+  "navigation",
+) as PerformanceNavigationTiming[];
+
+console.table({
+  redirect: nav.redirectEnd - nav.redirectStart,
+  dns: nav.domainLookupEnd - nav.domainLookupStart,
+  connect: nav.connectEnd - nav.connectStart,
+  tls: nav.secureConnectionStart
+    ? nav.connectEnd - nav.secureConnectionStart : 0,
+  waiting: nav.responseStart - nav.requestStart,
+  ttfb: nav.responseStart,
+});
+```
+
+## References
+
+- MDN: [Web performance](https://developer.mozilla.org/en-US/docs/Web/Performance), [Performance APIs](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API), [User timing](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/User_timing), [Navigation timing](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/Navigation_timing), [Resource timing](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/Resource_timing)
+- MDN: [`PerformanceObserver`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver), [`PerformanceLongAnimationFrameTiming`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongAnimationFrameTiming), [`Server-Timing`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Server-Timing), [`Timing-Allow-Origin`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Timing-Allow-Origin), [`navigator.sendBeacon()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon)
+- Chrome for Developers: [Performance panel](https://developer.chrome.com/docs/devtools/performance), [Performance features reference](https://developer.chrome.com/docs/devtools/performance/reference), [Lighthouse performance scoring](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring), [Long Animation Frames API](https://developer.chrome.com/docs/web-platform/long-animation-frames)
+- web.dev: [Lab and field data](https://web.dev/articles/lab-and-field-data-differences), [Performance budgets 101](https://web.dev/articles/performance-budgets-101), [Custom metrics](https://web.dev/articles/custom-metrics)
+- Tools: [PageSpeed Insights](https://pagespeed.web.dev/), [WebPageTest](https://www.webpagetest.org/), [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci), [size-limit](https://github.com/ai/size-limit), [Hono timing middleware](https://hono.dev/docs/middleware/builtin/timing)
