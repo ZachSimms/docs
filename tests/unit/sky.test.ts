@@ -166,11 +166,49 @@ describe("moonBits", () => {
   });
 });
 
+describe("moonBits spinning", () => {
+  const size = 60;
+  const turns = [0.4, 1.3, 2.9, 4.4];
+
+  it("moves the seas and craters as it turns, and comes back round after a full turn", () => {
+    const rest = moonBits(size, 0.5);
+    for (const spin of turns)
+      expect([...moonBits(size, 0.5, "north", spin)]).not.toEqual([...rest]);
+    expect([...moonBits(size, 0.5, "north", 2 * Math.PI)]).toEqual([...rest]);
+  });
+
+  it("keeps the outline and tonight's phase whichever way it faces", () => {
+    for (const spin of turns) {
+      const bits = moonBits(size, 0.2, "north", spin);
+      expect(bits[0]).toBe(0);
+      expect(bits[(size / 2) * size + 0]).toBe(1);
+      expect(density(bits, size, 5, 25)).toBeGreaterThan(density(bits, size, 35, 55));
+      expect(density(moonBits(size, 0.5, "north", spin), size, 20, 40)).toBeLessThan(0.3);
+    }
+  });
+
+  it("still turns the whole drawing half a circle for the south", () => {
+    const north = moonBits(size, 0.2, "north", 1.3);
+    expect([...moonBits(size, 0.2, "south", 1.3)].reverse()).toEqual([...north]);
+  });
+});
+
 describe("sunBits", () => {
   it("is densest at the center and empty in the corners", () => {
     const size = 60;
     const bits = sunBits(size);
     expect(bits[0]).toBe(0);
     expect(density(bits, size, 25, 35)).toBeGreaterThan(density(bits, size, 0, 10));
+  });
+
+  it("moves its spots as it turns, but not its rays, and comes back round", () => {
+    const size = 60;
+    const rest = sunBits(size);
+    const turned = sunBits(size, 1.3);
+    expect([...turned]).not.toEqual([...rest]);
+    expect([...sunBits(size, 2 * Math.PI)]).toEqual([...rest]);
+    // Row 2 lies wholly outside the disc (radius 0.72 of the half-width), in the rays.
+    const outside = (bits: Uint8Array) => [...bits.slice(2 * size, 3 * size)];
+    expect(outside(turned)).toEqual(outside(rest));
   });
 });

@@ -8,12 +8,18 @@
  * millennium. The drawings return one bit per cell, 1 where the cell is inked in the
  * text color: the moon's shadow is dense and its lit face sparse, the sun's light dense.
  *
+ * Both turn on an {@link AXIS} tilted in the picture and toward the reader: given a spin
+ * angle, the markings (the moon's seas and craters, the sun's spots) are looked up in the
+ * body's own frame, so they travel round the sphere, in over one limb and out over the
+ * other, while the light stays put. The real moon keeps one face to the Earth, so its
+ * turning is for show; its phase is still tonight's.
+ *
  * The moon's face and the seasons' names depend on the reader's {@link Hemisphere}
  * (see `lib/hemisphere.ts`): from the south the moon is seen upside down, and March
  * brings the autumn equinox.
  */
 
-import { ditherBits, fractalNoise } from "./dither";
+import { ditherBits, fractalNoise3 } from "./dither";
 import type { Hemisphere } from "./hemisphere";
 
 /** Mean length of a lunar month (new moon to new moon), in days. */
@@ -104,20 +110,59 @@ export function nextSeasonEvent(
   return { ...next, days: localDay(next.date) - localDay(date) };
 }
 
-/** A crater on the moon's face: center and radius in disc units (the disc is radius 1). */
-interface Crater {
+/** A point in space: x right, y down, z toward the reader, or the same in a body's frame. */
+interface Point {
   readonly x: number;
   readonly y: number;
+  readonly z: number;
+}
+
+/**
+ * The axis the sun and moon turn on, in radians: its top leaned right of upright by
+ * `lean` in the picture, and tipped toward the reader by `tip` so the north pole shows.
+ */
+export const AXIS = { lean: 0.4, tip: 0.35 } as const;
+
+/**
+ * A function taking a point on the unit sphere, as seen, to the body's own frame (its
+ * axis along −y) when the body has turned `spin` radians from rest. Positive spin
+ * carries the near face from left to right.
+ */
+function bodyFrame(spin: number): (x: number, y: number, z: number) => Point {
+  const [cosL, sinL] = [Math.cos(AXIS.lean), Math.sin(AXIS.lean)];
+  const [cosT, sinT] = [Math.cos(AXIS.tip), Math.sin(AXIS.tip)];
+  const [cosS, sinS] = [Math.cos(spin), Math.sin(spin)];
+  return (x, y, z) => {
+    // Undo the lean (in the picture), then the tip (toward the reader), then the spin.
+    const x1 = x * cosL + y * sinL;
+    const y1 = y * cosL - x * sinL;
+    const y2 = y1 * cosT - z * sinT;
+    const z2 = y1 * sinT + z * cosT;
+    return { x: x1 * cosS - z2 * sinS, y: y2, z: x1 * sinS + z2 * cosS };
+  };
+}
+
+/** A crater on the moon's face: center and angular radius, in the moon's own frame. */
+interface Crater {
+  readonly center: Point;
   readonly r: number;
 }
 
-/** Craters outlined on the lit face. */
+/**
+ * Craters outlined on the lit face, placed where they show at rest: center in disc units
+ * (the disc is radius 1) and radius in radians, about disc units near the middle.
+ */
 const CRATERS: readonly Crater[] = [
   { x: 0.26, y: -0.55, r: 0.1 },
   { x: -0.38, y: 0.46, r: 0.12 },
   { x: -0.12, y: -0.12, r: 0.05 },
   { x: 0.45, y: 0.3, r: 0.07 },
-];
+].map(({ x, y, r }) => ({ center: bodyFrame(0)(x, y, Math.sqrt(1 - x * x - y * y)), r }));
+
+/** The angle between two points on the unit sphere, in radians. */
+function arc(a: Point, b: Point): number {
+  return Math.acos(Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z));
+}
 
 /** Linear ramp between two edges, clamped to [0, 1]. */
 function ramp(value: number, from: number, to: number): number {
@@ -131,17 +176,20 @@ function ramp(value: number, from: number, to: number): number {
  * @param age - Fraction of the lunar month since new moon (see {@link moonPhase}).
  * @param hemisphere - Where it is seen from: the south sees it turned half a circle, so
  *   waxing lights the left-hand side and the seas and craters are upside down.
+ * @param spin - How far it has turned on its {@link AXIS} from rest, in radians.
  */
 export function moonBits(
   size: number,
   age: number,
   hemisphere: Hemisphere = "north",
+  spin = 0,
   seed = 11,
 ): Uint8Array {
   const phase = age * 2 * Math.PI;
   // Direction of the sunlight, seen from Earth: behind the moon at new, in front at full;
   // waxing lights the right-hand side, waning the left (as seen from the north).
   const light = { x: Math.sin(phase), z: -Math.cos(phase) };
+  const toBody = bodyFrame(spin);
   const cell = 2 / size;
   const ink = new Float32Array(size * size);
 
@@ -158,13 +206,15 @@ export function moonBits(
       }
       const z = Math.sqrt(1 - r * r);
       const lit = ramp(x * light.x + z * light.z, -0.04, 0.12);
-      const sea = ramp(fractalNoise(x * 1.8 + 4, y * 1.8 + 9, seed), 0.52, 0.64);
+      const p = toBody(x, y, z);
+      const sea = ramp(
+        fractalNoise3(p.x * 1.8 + 4, p.y * 1.8 + 9, p.z * 1.8 + 2, seed),
+        0.52,
+        0.64,
+      );
       const shade = 1 - lit * (1 - 0.3 * sea);
       let amount = 0.06 + 0.56 * shade;
-      if (
-        lit > 0.5 &&
-        CRATERS.some((c) => Math.abs(Math.hypot(x - c.x, y - c.y) - c.r) < cell * 0.6)
-      ) {
+      if (lit > 0.5 && CRATERS.some((c) => Math.abs(arc(p, c.center) - c.r) < cell * 0.6)) {
         amount = 1;
       }
       ink[i] = amount;
@@ -178,8 +228,11 @@ export function moonBits(
 /**
  * The sun as `size × size` cells: a disc bright at the center and dimmer at the limb,
  * a few spots, and faint rays around it.
+ *
+ * @param spin - How far it has turned on its {@link AXIS} from rest, in radians.
  */
-export function sunBits(size: number, seed = 5): Uint8Array {
+export function sunBits(size: number, spin = 0, seed = 5): Uint8Array {
+  const toBody = bodyFrame(spin);
   const cell = 2 / size;
   const radius = 0.72;
   const ink = new Float32Array(size * size);
@@ -192,7 +245,12 @@ export function sunBits(size: number, seed = 5): Uint8Array {
       const i = row * size + column;
       if (r <= radius) {
         const z = Math.sqrt(1 - (r / radius) ** 2);
-        const spots = ramp(fractalNoise(x * 4 + 2, y * 4 + 7, seed), 0.66, 0.74);
+        const p = toBody(x / radius, y / radius, z);
+        const spots = ramp(
+          fractalNoise3(p.x * 2.9 + 2, p.y * 2.9 + 7, p.z * 2.9 + 3, seed),
+          0.66,
+          0.74,
+        );
         ink[i] = (0.35 + 0.6 * z ** 0.6) * (1 - 0.6 * spots);
       } else if (r <= 1) {
         const rays = 0.5 + 0.5 * Math.cos(Math.atan2(y, x) * 12);

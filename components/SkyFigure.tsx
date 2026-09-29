@@ -9,6 +9,10 @@
  * after hydration the canvas is blank and the caption holds its space. Cells are
  * {@link CELL} CSS pixels, drawn at the device's resolution in the text color, and redrawn
  * when the theme changes.
+ *
+ * The body turns on its tilted axis once every {@link TURN} milliseconds, redrawn
+ * {@link FPS} times a second while the figure is on screen. With reduced motion asked
+ * for, it holds still at rest.
  */
 
 "use client";
@@ -23,6 +27,14 @@ import { moonBits, moonPhase, nextSeasonEvent, sunBits } from "@/lib/sky";
 const CELL = 3;
 /** Cells across (and down) the drawing: 252 CSS pixels. */
 const CELLS = 84;
+/** One full turn of the sun or moon on its axis, in milliseconds. */
+const TURN = 40_000;
+/** Redraws a second while turning; the dither moves in whole cells, so more is wasted. */
+const FPS = 15;
+/** Frames in one turn. */
+const STEPS = (TURN / 1000) * FPS;
+/** Media query for readers who ask for less motion. */
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 /** `rgb(r, g, b)` / `rgba(…)` to channels; black when unparsable. */
 function channels(color: string): [number, number, number] {
@@ -30,30 +42,34 @@ function channels(color: string): [number, number, number] {
   return [r, g, b];
 }
 
-/** Paint a square of bits onto `canvas` in its text color, one bit per cell. */
-function paint(canvas: HTMLCanvasElement, bits: Uint8Array | null): void {
+/**
+ * Size `canvas` for the device and clear it; return a function that paints a square of
+ * bits onto it in its text color, one bit per cell, or `null` without a 2D context.
+ */
+function painter(canvas: HTMLCanvasElement): ((bits: Uint8Array) => void) | null {
   const context = canvas.getContext("2d");
-  if (!context) return;
-  const ratio = window.devicePixelRatio || 1;
-  const side = CELL * CELLS;
-  canvas.width = Math.round(side * ratio);
-  canvas.height = Math.round(side * ratio);
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!bits) return;
-
   const cells = document.createElement("canvas");
+  const cellContext = cells.getContext("2d");
+  if (!context || !cellContext) return null;
+  const ratio = window.devicePixelRatio || 1;
+  const side = Math.round(CELL * CELLS * ratio);
+  canvas.width = side;
+  canvas.height = side;
   cells.width = CELLS;
   cells.height = CELLS;
-  const cellContext = cells.getContext("2d");
-  if (!cellContext) return;
   const [r, g, b] = channels(getComputedStyle(canvas).color);
   const image = cellContext.createImageData(CELLS, CELLS);
-  bits.forEach((bit, i) => {
-    if (bit) image.data.set([r, g, b, 255], i * 4);
-  });
-  cellContext.putImageData(image, 0, 0);
-  context.imageSmoothingEnabled = false;
-  context.drawImage(cells, 0, 0, side * ratio, side * ratio);
+
+  return (bits) => {
+    image.data.fill(0);
+    bits.forEach((bit, i) => {
+      if (bit) image.data.set([r, g, b, 255], i * 4);
+    });
+    cellContext.putImageData(image, 0, 0);
+    context.clearRect(0, 0, side, side);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(cells, 0, 0, side, side);
+  };
 }
 
 /** The caption's two lines for a theme, at `now`, seen from `hemisphere`. */
@@ -87,13 +103,47 @@ export function SkyFigure() {
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const bits =
-      theme === null
-        ? null
-        : theme === "light"
-          ? moonBits(CELLS, moonPhase(now).age, hemisphere)
-          : sunBits(CELLS);
-    paint(canvas, bits);
+    const paint = painter(canvas);
+    if (!paint || theme === null) return;
+    const { age } = moonPhase(now);
+    const draw = (spin: number) =>
+      paint(theme === "light" ? moonBits(CELLS, age, hemisphere, spin) : sunBits(CELLS, spin));
+
+    // Off screen there is nothing to see, so frames are skipped until it scrolls back.
+    let visible = true;
+    const observer =
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(([entry]) => {
+            visible = entry?.isIntersecting ?? true;
+          })
+        : null;
+    observer?.observe(canvas);
+
+    const reduce =
+      typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION) : null;
+    let frame = 0;
+    const start = () => {
+      cancelAnimationFrame(frame);
+      draw(0);
+      if (reduce?.matches) return;
+      const began = performance.now();
+      let shown = 0;
+      const tick = (time: number) => {
+        frame = requestAnimationFrame(tick);
+        const step = Math.floor((Math.max(0, time - began) * FPS) / 1000);
+        if (!visible || step === shown) return;
+        shown = step;
+        draw(((step % STEPS) / STEPS) * 2 * Math.PI);
+      };
+      frame = requestAnimationFrame(tick);
+    };
+    start();
+    reduce?.addEventListener("change", start);
+    return () => {
+      cancelAnimationFrame(frame);
+      reduce?.removeEventListener("change", start);
+      observer?.disconnect();
+    };
   }, [theme, now, hemisphere]);
 
   const [first, second] = theme ? skyCaption(theme, now, hemisphere) : ["\u00a0", "\u00a0"];
