@@ -56,10 +56,19 @@ test.describe("home", () => {
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    // Beside the text: the Earth and Moon, dithered on a canvas in the text color, uncaptioned.
+    // Beside the text: the Earth and Moon, dithered on a canvas in the text color, and below
+    // them, centered under the Earth, its caption.
     const sky = page.locator("figure.sky");
     await expect(sky).toBeVisible();
-    await expect(sky.locator("figcaption")).toHaveCount(0);
+    const caption = sky.locator("figcaption");
+    await expect(caption).toHaveText("Pale Blue Dot");
+    const [canvasBox, captionBox] = await Promise.all([
+      sky.locator("canvas").boundingBox(),
+      caption.boundingBox(),
+    ]);
+    expect(captionBox!.y).toBeGreaterThanOrEqual(canvasBox!.y + canvasBox!.height);
+    const middle = (box: { x: number; width: number }) => box.x + box.width / 2;
+    expect(Math.abs(middle(captionBox!) - middle(canvasBox!))).toBeLessThanOrEqual(2);
     const inked = () =>
       sky.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
         const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);

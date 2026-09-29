@@ -167,7 +167,8 @@ not kebab-case fails the build.
   perigee, keeping one face to the Earth and rocking with libration. The Moon is drawn 3.4 Earth
   radii out (really 60), and a month lasts 40 seconds and a day 13 (really 27 days to a month).
   Drawn 456 × 166 (narrower screens shrink it to fit) and redrawn 20 times a second while on
-  screen; with reduced motion asked for it holds still. On phones it follows the section list.
+  screen; with reduced motion asked for it holds still. Captioned "Pale Blue Dot" (Carl Sagan's name
+  for Voyager 1's 1990 photograph of the Earth). On phones it follows the section list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.

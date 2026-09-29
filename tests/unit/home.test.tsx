@@ -47,14 +47,14 @@ describe("HomeKeys", () => {
 });
 
 describe("SkyFigure", () => {
-  it("draws the Earth and Moon on a decorative canvas, uncaptioned, in either theme", () => {
+  it("draws the Earth and Moon on a decorative canvas, captioned, in either theme", () => {
     for (const theme of ["light", "dark"]) {
       localStorage.setItem("theme", theme);
       const { container, unmount } = render(<SkyFigure />);
       const canvas = container.querySelector("figure.sky canvas");
       expect(canvas).toHaveAttribute("aria-hidden", "true");
       expect(canvas).toHaveStyle({ width: "456px", aspectRatio: "456 / 166" });
-      expect(container.querySelector("figcaption")).toBeNull();
+      expect(container.querySelector("figure.sky figcaption")).toHaveTextContent(/^Pale Blue Dot$/);
       unmount();
     }
   });

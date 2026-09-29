@@ -1,12 +1,14 @@
 /**
  * @file The home page's sky: the Earth turning and the Moon going round it, dithered on
  * a canvas (see `lib/earth-moon.ts`) in the text color, so they are light on dark in the
- * dark theme and dark on light in the light one.
+ * dark theme and dark on light in the light one. Captioned "Pale Blue Dot", after Carl
+ * Sagan's name for Voyager 1's 1990 photograph of the Earth.
  *
- * Client component. Until the theme is known after hydration the canvas is blank.
- * Cells are {@link CELL} CSS pixels, drawn at the device's resolution, and redrawn when
- * the theme changes. The rings and bands turn, redrawn {@link FPS} times a second while
- * the figure is on screen; with reduced motion asked for, the scene holds still.
+ * Client component. Until the theme is known after hydration the canvas is blank (the
+ * caption is there from the start). Cells are {@link CELL} CSS pixels, drawn at the
+ * device's resolution, and redrawn when the theme changes. The Earth turns and the Moon
+ * goes round, redrawn {@link FPS} times a second while the figure is on screen; with
+ * reduced motion asked for, the scene holds still.
  */
 
 "use client";
@@ -65,7 +67,7 @@ function painter(canvas: HTMLCanvasElement): ((bits: Uint8Array) => void) | null
   };
 }
 
-/** Render the figure: the Earth and Moon's canvas. */
+/** Render the figure: the Earth and Moon's canvas, and its caption. */
 export function SkyFigure() {
   const theme = useTheme();
   const ref = useRef<HTMLCanvasElement>(null);
@@ -121,6 +123,7 @@ export function SkyFigure() {
         aria-hidden="true"
         style={{ width: CELL * COLUMNS, aspectRatio: `${COLUMNS} / ${ROWS}` }}
       />
+      <figcaption className="dim">Pale Blue Dot</figcaption>
     </figure>
   );
 }
