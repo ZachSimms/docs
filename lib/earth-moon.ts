@@ -43,9 +43,9 @@ export const ORBIT = 3.4;
 /** The Moon's radius, in Earth radii: true to life. */
 export const MOON_RADIUS = 0.2727;
 /** Seconds for the Moon to go once round (a sidereal month). */
-export const MONTH = 60;
+export const MONTH = 40;
 /** Seconds for the Earth to turn once (a sidereal day). */
-export const DAY = 20;
+export const DAY = 13;
 
 /** A direction or point in the picture's frame: x right, y down, z toward the reader. */
 export interface Vector {

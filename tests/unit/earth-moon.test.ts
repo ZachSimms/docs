@@ -15,8 +15,8 @@ import {
 import { EARTH_MAP, EARTH_MAP_COLUMNS, EARTH_MAP_ROWS } from "@/lib/earth-map";
 
 const DEG = Math.PI / 180;
-const COLUMNS = 252;
-const ROWS = 136;
+const COLUMNS = 320;
+const ROWS = 172;
 
 describe("the land map", () => {
   it("holds one bit per 2° cell, about 29% of them land", () => {

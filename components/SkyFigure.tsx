@@ -17,11 +17,14 @@ import { skyBits } from "@/lib/earth-moon";
 
 /** Size of one dither cell, in CSS pixels. */
 const CELL = 1;
-/** Cells across and down the drawing: 252 × 136 CSS pixels, room for the Moon's orbit. */
-const COLUMNS = 252;
-const ROWS = 136;
-/** Redraws a second while turning; the dither moves in whole cells, so more is wasted. */
-const FPS = 15;
+/**
+ * Cells across and down the drawing: 320 × 172 CSS pixels, room for the Moon's orbit.
+ * On a narrower screen it shrinks to fit, keeping its proportions.
+ */
+const COLUMNS = 320;
+const ROWS = 172;
+/** Redraws a second while turning: about a cell of movement a frame at the Earth's middle. */
+const FPS = 20;
 /** Media query for readers who ask for less motion. */
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
@@ -113,7 +116,11 @@ export function SkyFigure() {
 
   return (
     <figure className="sky">
-      <canvas ref={ref} aria-hidden="true" style={{ width: CELL * COLUMNS, height: CELL * ROWS }} />
+      <canvas
+        ref={ref}
+        aria-hidden="true"
+        style={{ width: CELL * COLUMNS, aspectRatio: `${COLUMNS} / ${ROWS}` }}
+      />
     </figure>
   );
 }
