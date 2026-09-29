@@ -1,8 +1,8 @@
 /**
- * @file Ordered dithering and value noise: the pieces the home page's planet is drawn
- * with (see `lib/planet.ts`). Any grid of ink amounts becomes one bit per cell with an
- * 8×8 Bayer matrix; the noise gives surfaces texture, in the plane or in space (where
- * laying it round a circle makes it wrap without a seam).
+ * @file Ordered dithering and value noise: the pieces the home page's Earth and Moon are
+ * drawn with (see `lib/earth-moon.ts`). Any grid of ink amounts becomes one bit per cell
+ * with an 8×8 Bayer matrix; the noise, in space, gives surfaces texture that wraps round
+ * a sphere without a seam.
  *
  * Pure and deterministic (no DOM), so every drawing is repeatable and tested directly.
  */
@@ -34,17 +34,6 @@ function lattice3(x: number, y: number, z: number, seed: number): number {
 /** Smoothstep easing, so the noise has no visible grid seams. */
 function smooth(t: number): number {
   return t * t * (3 - 2 * t);
-}
-
-/** Value noise in [0, 1): lattice values blended smoothly between integer points. */
-export function valueNoise(x: number, y: number, seed: number): number {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const sx = smooth(x - x0);
-  const sy = smooth(y - y0);
-  const top = lattice(x0, y0, seed) * (1 - sx) + lattice(x0 + 1, y0, seed) * sx;
-  const bottom = lattice(x0, y0 + 1, seed) * (1 - sx) + lattice(x0 + 1, y0 + 1, seed) * sx;
-  return top * (1 - sy) + bottom * sy;
 }
 
 /** Value noise in space, in [0, 1): lattice values blended smoothly between integer points. */

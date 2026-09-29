@@ -1,23 +1,23 @@
 /**
- * @file The home page's sky: a ringed planet, dithered on a canvas (see `lib/planet.ts`)
- * in the text color, so it is light on dark in the dark theme and dark on light in the
- * light one.
+ * @file The home page's sky: the Earth turning and the Moon going round it, dithered on
+ * a canvas (see `lib/earth-moon.ts`) in the text color, so they are light on dark in the
+ * dark theme and dark on light in the light one.
  *
  * Client component. Until the theme is known after hydration the canvas is blank.
  * Cells are {@link CELL} CSS pixels, drawn at the device's resolution, and redrawn when
  * the theme changes. The rings and bands turn, redrawn {@link FPS} times a second while
- * the figure is on screen; with reduced motion asked for, the planet holds still.
+ * the figure is on screen; with reduced motion asked for, the scene holds still.
  */
 
 "use client";
 
 import { useEffect, useRef } from "react";
 import { useTheme } from "@/components/useTheme";
-import { planetBits } from "@/lib/planet";
+import { skyBits } from "@/lib/earth-moon";
 
 /** Size of one dither cell, in CSS pixels. */
 const CELL = 1;
-/** Cells across and down the drawing: 252 × 136 CSS pixels, the planet's own proportions. */
+/** Cells across and down the drawing: 252 × 136 CSS pixels, room for the Moon's orbit. */
 const COLUMNS = 252;
 const ROWS = 136;
 /** Redraws a second while turning; the dither moves in whole cells, so more is wasted. */
@@ -62,7 +62,7 @@ function painter(canvas: HTMLCanvasElement): ((bits: Uint8Array) => void) | null
   };
 }
 
-/** Render the figure: the planet's canvas. */
+/** Render the figure: the Earth and Moon's canvas. */
 export function SkyFigure() {
   const theme = useTheme();
   const ref = useRef<HTMLCanvasElement>(null);
@@ -72,7 +72,7 @@ export function SkyFigure() {
     if (!canvas) return;
     const paint = painter(canvas);
     if (!paint || theme === null) return;
-    const draw = (seconds: number) => paint(planetBits(COLUMNS, ROWS, seconds));
+    const draw = (seconds: number) => paint(skyBits(COLUMNS, ROWS, seconds));
 
     // Off screen there is nothing to see, so frames are skipped until it scrolls back.
     let visible = true;

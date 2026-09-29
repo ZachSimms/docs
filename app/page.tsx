@@ -1,7 +1,7 @@
 /**
  * @file Home page (`/`): a single column without the side navigation. The name, the
  * introduction and the sections with their shortcut keys, beside a dithered sky:
- * a ringed planet, turning.
+ * the Earth turning, and the Moon going round it.
  */
 import { HomeKeys } from "@/components/HomeKeys";
 import { Page } from "@/components/Page";

@@ -47,7 +47,7 @@ describe("HomeKeys", () => {
 });
 
 describe("SkyFigure", () => {
-  it("draws the planet on a decorative canvas, uncaptioned, in either theme", () => {
+  it("draws the Earth and Moon on a decorative canvas, uncaptioned, in either theme", () => {
     for (const theme of ["light", "dark"]) {
       localStorage.setItem("theme", theme);
       const { container, unmount } = render(<SkyFigure />);

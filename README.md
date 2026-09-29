@@ -158,11 +158,15 @@ not kebab-case fails the build.
   and footer and puts the table of contents on the left, from 900px up. From 900px up it also widens
   the sheet from 72ch to 88ch and loosens prose to 1.65 line height (code stays at 1.5). It is
   remembered in `localStorage` and restored before first paint.
-- **Sky** (home, beside the text): a ringed planet of dark glass and streaked light, dithered in
-  1px cells with an 8×8 Bayer matrix and drawn on a canvas in the text color (`lib/planet.ts`,
-  `lib/dither.ts`). Each ringlet turns at its own Keplerian rate, inner ones faster, and the bands
-  round the polar cap turn with the globe, redrawn 15 times a second while on screen; with reduced
-  motion asked for it holds still. On phones it follows the section list.
+- **Sky** (home, beside the text): the Earth turning and the Moon going round it, dithered in 1px
+  cells with an 8×8 Bayer matrix and drawn on a canvas in the text color (`lib/earth-moon.ts`,
+  `lib/dither.ts`). The land is Natural Earth's 1:110m, packed into a 2° bitmap by
+  `bun scripts/build-earth-map.ts` (`lib/earth-map.ts`). The motion is the real one, compressed: the
+  Earth turns west to east on an axis tilted 23.4°, and the Moon orbits the same way on an eccentric
+  orbit inclined 5.1°, fastest at perigee, keeping one face to the Earth and rocking with libration.
+  The Moon is drawn 3.4 Earth radii out (really 60), and a month lasts 60 seconds and a day 20
+  (really 27 days to a month). Redrawn 15 times a second while on screen; with reduced motion asked
+  for it holds still. On phones it follows the section list.
 - **Table of contents**: on viewports 1280px and wider every sheet with two or more `##`/`###` headings
   gets a contents list in the right margin; the section on screen is underlined solid. Narrower, the
   same list opens from `≡` in the top bar.

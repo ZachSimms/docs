@@ -1,13 +1,6 @@
 /** Unit tests for the home page's dither pattern (`lib/dither.ts`). */
 import { describe, expect, it } from "bun:test";
-import {
-  BAYER_8,
-  bayerThreshold,
-  ditherBits,
-  fractalNoise3,
-  valueNoise,
-  valueNoise3,
-} from "@/lib/dither";
+import { BAYER_8, bayerThreshold, ditherBits, fractalNoise3, valueNoise3 } from "@/lib/dither";
 
 describe("Bayer matrix", () => {
   it("holds every threshold 0–63 exactly once", () => {
@@ -26,23 +19,7 @@ describe("Bayer matrix", () => {
 });
 
 describe("noise", () => {
-  it("stays in [0, 1), is repeatable, and changes with the seed", () => {
-    for (let i = 0; i < 200; i++) {
-      const x = i * 0.37;
-      const y = i * 0.61;
-      const v = valueNoise(x, y, 7);
-      expect(v).toBeGreaterThanOrEqual(0);
-      expect(v).toBeLessThan(1);
-      expect(valueNoise(x, y, 7)).toBe(v);
-    }
-    expect(valueNoise(1.5, 2.5, 7)).not.toBe(valueNoise(1.5, 2.5, 8));
-  });
-
-  it("is continuous: nearby points have nearby values", () => {
-    expect(Math.abs(valueNoise(3.5, 4.5, 7) - valueNoise(3.501, 4.5, 7))).toBeLessThan(0.01);
-  });
-
-  it("works in space too: in [0, 1), repeatable, continuous, and varying with depth", () => {
+  it("stays in [0, 1), is repeatable, continuous, and changes with the seed and depth", () => {
     for (let i = 0; i < 200; i++) {
       const [x, y, z] = [i * 0.37 - 30, i * 0.61 - 50, i * 0.23 - 20];
       const v = fractalNoise3(x, y, z, 7);
@@ -54,6 +31,7 @@ describe("noise", () => {
       0.01,
     );
     expect(valueNoise3(1.5, 2.5, 0.5, 7)).not.toBe(valueNoise3(1.5, 2.5, 1.5, 7));
+    expect(valueNoise3(1.5, 2.5, 0.5, 7)).not.toBe(valueNoise3(1.5, 2.5, 0.5, 8));
   });
 });
 

@@ -44,7 +44,7 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("home", () => {
-  test("is one column: name, introduction and sections, beside a ringed planet", async ({
+  test("is one column: name, introduction and sections, beside the Earth and Moon", async ({
     page,
   }) => {
     await page.goto("/");
@@ -56,7 +56,7 @@ test.describe("home", () => {
     // No side navigation on the home page; the content column is the original 90ch.
     await expect(page.locator(".site-nav")).toHaveCount(0);
 
-    // Beside the text: a ringed planet, dithered on a canvas in the text color, uncaptioned.
+    // Beside the text: the Earth and Moon, dithered on a canvas in the text color, uncaptioned.
     const sky = page.locator("figure.sky");
     await expect(sky).toBeVisible();
     await expect(sky.locator("figcaption")).toHaveCount(0);
@@ -80,7 +80,7 @@ test.describe("home", () => {
     );
     expect(Math.abs(skyBox!.y - nameBox!.y)).toBeLessThan(20);
 
-    // d switches the theme; the planet is redrawn in the new text color.
+    // d switches the theme; the scene is redrawn in the new text color.
     await hydrated(page);
     await page.keyboard.press("d");
     expect(await inked()).toBeGreaterThan(0);
@@ -153,7 +153,7 @@ function skyPixels(page: Page) {
 }
 
 test.describe("sky", () => {
-  test("turns the planet's rings, and holds it still for reduced motion", async ({ page }) => {
+  test("turns the Earth and moves the Moon, and holds them still for reduced motion", async ({ page }) => {
     await page.clock.install();
     await page.goto("/");
     await hydrated(page);
